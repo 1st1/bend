@@ -10,6 +10,11 @@ struct PaneDragHandle: NSViewRepresentable {
     var onHover: ((Bool) -> Void)? = nil
 
     func makeNSView(context: Context) -> PaneDragSourceView { PaneDragSourceView() }
+    static func dismantleNSView(_ view: PaneDragSourceView, coordinator: ()) {
+        // SwiftUI may retire this handle while AppKit still keeps it mounted.
+        view.onHover = nil
+        view.cancelDrag()
+    }
     func updateNSView(_ view: PaneDragSourceView, context: Context) {
         view.store = store; view.tabID = tabID; view.pageID = pageID; view.title = title
         view.onHover = onHover
@@ -27,7 +32,7 @@ final class PaneDragSourceView: NSView {
     private(set) var isHovering = false
     private(set) var mouseDownPoint: NSPoint?
     private(set) var dragSurface: PaneDragSurface?
-    private var dragEventMonitor: Any?
+    weak var trackingWindow: BrowseWindow?
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -68,30 +73,12 @@ final class PaneDragSourceView: NSView {
             let surface = PaneDragSurface(source: self, content: content, badge: dragBadge())
             dragSurface = surface
             content.addSubview(surface, positioned: .above, relativeTo: nil)
-            // AppKit stops routing mouse tracking to a hidden source after a
-            // sidebar tab switch. Keep the active gesture at the window level.
-            dragEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
-                guard let self, self.dragSurface != nil else { return event }
-                if event.type == .keyDown, event.keyCode == 53 { self.cancelDrag(); return nil }
-                guard event.window === self.window else { return event }
-                if event.type == .leftMouseDragged { self.mouseDragged(with: event); return nil }
-                if event.type == .leftMouseUp {
-                    self.mouseUp(with: event)
-                    // AppKit saw the original press and must see its release
-                    // to end native mouse tracking before the next gesture.
-                    return event
-                }
-                return event
-            }
-            NotificationCenter.default.addObserver(self, selector: #selector(windowResigned),
-                name: NSWindow.didResignKeyNotification, object: window)
+
         }
         dragSurface?.update(at: event.locationInWindow)
     }
 
     override func mouseUp(with event: NSEvent) {
-        // The monitor completes the drop first; AppKit may subsequently deliver
-        // that same release to this view while balancing its own tracking state.
         guard mouseDownPoint != nil else { return }
         dragSurface?.update(at: event.locationInWindow)
         let target = dragSurface?.target
@@ -117,7 +104,6 @@ final class PaneDragSourceView: NSView {
     }
 
     override func cancelOperation(_ sender: Any?) { cancelDrag() }
-    @objc private func windowResigned(_ notification: Notification) { cancelDrag() }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil { cancelDrag(); setHovering(false) }
@@ -128,8 +114,8 @@ final class PaneDragSourceView: NSView {
         dragSurface?.clearTargets()
         dragSurface?.removeFromSuperview()
         dragSurface = nil
-        if let dragEventMonitor { NSEvent.removeMonitor(dragEventMonitor); self.dragEventMonitor = nil }
-        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        trackingWindow?.releasePaneDrag(self)
+        trackingWindow = nil
     }
 
     private func dragBadge() -> NSImage {
@@ -203,9 +189,8 @@ class PaneDropHost: NSView {
     override func layout() { super.layout(); showPreview(dropEdge) }
 }
 
-// This surface exists only for an active header drag. The local event monitor
-// retains tracking across tab switches; these handlers also forward events
-// delivered directly to the overlay.
+// The surface is purely visual: BrowseWindow owns the entire mouse gesture.
+// It must never shield the window if SwiftUI retires or replaces a drag handle.
 @MainActor
 final class PaneDragSurface: NSView {
     private weak var source: PaneDragSourceView?
@@ -215,6 +200,7 @@ final class PaneDragSurface: NSView {
     private var hoverTask: Task<Void, Never>?
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     init(source: PaneDragSourceView, content: NSView, badge image: NSImage) {
         self.source = source

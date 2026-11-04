@@ -9,6 +9,7 @@ struct TabDragHandle: NSViewRepresentable {
     let reduceMotion: Bool
 
     func makeNSView(context: Context) -> TabDragSourceView { TabDragSourceView() }
+    static func dismantleNSView(_ view: TabDragSourceView, coordinator: ()) { view.cancelDrag() }
     func updateNSView(_ view: TabDragSourceView, context: Context) {
         view.store = store; view.tabID = tabID; view.title = title; view.reduceMotion = reduceMotion
     }
@@ -40,10 +41,11 @@ final class TabDragSourceView: NSView {
             let surface = TabDragSurface(source: self, content: content)
             dragSurface = surface
             content.addSubview(surface, positioned: .above, relativeTo: nil)
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
                 guard let self, self.dragSurface != nil else { return event }
                 if event.type == .keyDown, event.keyCode == 53 { self.cancelDrag(); return nil }
                 guard event.window === self.window else { return event }
+                if event.type == .leftMouseDown { self.cancelDrag(); return event }
                 if event.type == .leftMouseDragged { self.mouseDragged(with: event); return nil }
                 if event.type == .leftMouseUp { self.mouseUp(with: event) }
                 // Balance AppKit's press/release tracking even after completing a drop.
@@ -99,6 +101,7 @@ final class TabDragSurface: NSView {
     private(set) var placement: Placement?
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     init(source: TabDragSourceView, content: NSView) {
         self.source = source

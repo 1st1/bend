@@ -122,7 +122,7 @@ The test sends a complete mouse gesture through the window: header press, drag a
 
 [PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) drives a single-pane tab through sidebar hover into an unvisited tab, drops on its WebKit content, then detaches into sidebar space.
 
-The test uses the unified titlebar and glass window hierarchy. It verifies delayed-hover cancellation, destination selection, source-tab removal, edge placement, direct row drops before the hover delay, and saved layouts. Consecutive same-tab drops alternate between panes after focus/layout updates, and every release must reach the native window to end AppKit tracking. The same live web view, document timestamp, unsaved input, and extension tab adapter survive transfers without creating closed-item history. All data and HTTP pages are disposable.
+The test uses the unified titlebar and glass window hierarchy. It verifies delayed-hover cancellation, destination selection, source-tab removal, edge placement, direct row drops before the hover delay, and saved layouts. Consecutive same-tab drops alternate between panes during hover animation and after focus/layout updates in a key window, and every release must reach the window drag controller. The same live web view, document timestamp, unsaved input, and extension tab adapter survive transfers without creating closed-item history. A missing mouse-up is followed by a press on another pane, which must cancel stale tracking and complete a fresh drag. All data and HTTP pages are disposable.
 
 ## Pane drop targeting
 
@@ -136,7 +136,7 @@ The test uses the unified titlebar and glass window hierarchy. It verifies delay
 
 [PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) sends mouse events through an ordered offscreen window to verify preview updates, cancellation without mutation, outside rejection, surface cleanup, and a valid move on release.
 
-The native preview layer is observed during continuous movement and edge changes. It must never transition to hidden while the pointer remains over a valid pane, including between events and layout passes.
+The native preview layer is observed during continuous movement and edge changes. It must never transition to hidden while the pointer remains over a valid pane, including between events and layout passes. The drag surface must never intercept hit testing; SwiftUI representable teardown clears the overlay, preview, and tracking before native view removal, and a subsequent drag still works. Teardown and window deactivation leave the window consuming the cancelled gesture until release, then return it to idle.
 
 ## Pane header mouse routing
 
@@ -236,4 +236,10 @@ Explicit requests for an existing pane focus that pane; invalid identities produ
 
 ## Native sidebar tab dragging
 
-[PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) sends window mouse events through the glass sidebar to verify repeated tab reordering, stable insertion targets, Escape and outside cancellation, selection, and separate close-button handling.
+[PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) sends window mouse events through the glass sidebar to verify repeated tab reordering, stable insertion targets, Escape and outside cancellation, selection, recovery from a missing release, and separate close-button handling.
+
+## Pane transfer round trips
+
+[PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) moves the same live pane between two surviving tabs 24 times per layout, using normal and scrolling layouts to check the third drag and later round trips.
+
+The first twenty transfers in each layout hover to select the destination before dropping onto a pane; the remainder drop directly onto the tab row. Each press must reach exactly one visible handle with current tab ownership. The window must consume every mouse event in that gesture and return to idle after release. Synthetic window events verify retained page controllers, document tokens, unsaved form contents, and unique model ownership while both tab trees remain mounted.

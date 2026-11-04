@@ -35,7 +35,7 @@ import BrowseCore
         glass.style = .regular; glass.cornerRadius = 0; glass.contentView = content
         window.contentView = glass
     } else { window.contentView = content }
-    window.orderFront(nil)
+    window.makeKeyAndOrderFront(nil)
     defer { window.orderOut(nil); window.contentView = nil }
     func settle(_ count: Int = 6) async throws {
         for _ in 0..<count { content.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(50)) }
@@ -102,6 +102,14 @@ import BrowseCore
         let targetID = draggedID == pageID ? second.pages[0].id : pageID
         let targetWeb = draggedID == pageID ? destinationWeb : web
         let down = center(repeatedSource)
+        let enter = try #require(NSEvent.enterExitEvent(with: .mouseEntered, location: down, modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 1, trackingNumber: 1, userData: nil))
+        repeatedSource.mouseEntered(with: enter)
+        try await Task.sleep(for: .milliseconds(35))
+        content.layoutSubtreeIfNeeded()
+        let frameView = try #require(window.contentView?.superview)
+        #expect(frameView.hitTest(frameView.convert(down, from: nil)) === repeatedSource)
         let pointInPage: NSPoint
         switch edge {
         case .top: pointInPage = NSPoint(x: targetWeb.bounds.midX, y: targetWeb.isFlipped ? 40 : targetWeb.bounds.height - 40)
@@ -124,6 +132,25 @@ import BrowseCore
         #expect(repeatedSource.mouseDownPoint == nil)
         #expect(store.selectedTab.layout.paneIDs == (edge.isBefore ? [draggedID, targetID] : [targetID, draggedID]))
     }
+    // If a release is lost, the next press must reach a different pane and
+    // start a new gesture instead of being swallowed by the old overlay.
+    let abandoned = try handle(pageID)
+    let replacement = try handle(second.pages[0].id)
+    try sendTransferMouse(.leftMouseDown, at: center(abandoned), to: window)
+    try sendTransferMouse(.leftMouseDragged, at: center(replacement), to: window)
+    let abandonedSurface = try #require(abandoned.dragSurface)
+    try sendTransferMouse(.leftMouseDown, at: center(replacement), to: window)
+    #expect(abandoned.dragSurface == nil)
+    #expect(abandonedSurface.superview == nil)
+    #expect(replacement.mouseDownPoint != nil)
+    let recoveryDrop = web.convert(NSPoint(x: 40, y: web.bounds.midY), to: nil)
+    try sendTransferMouse(.leftMouseDragged, at: recoveryDrop, to: window)
+    #expect(replacement.dragSurface?.target?.pageID == pageID)
+    try sendTransferMouse(.leftMouseUp, at: recoveryDrop, to: window)
+    try await settle()
+    #expect(replacement.dragSurface == nil)
+    #expect(store.selectedTab.layout.paneIDs == [second.pages[0].id, pageID])
+
     // Drag back into unused sidebar space to create a tab with the same page.
     let moved = try handle(pageID)
     try sendTransferMouse(.leftMouseDown, at: center(moved), to: window)
@@ -160,8 +187,13 @@ import BrowseCore
     #expect(saved.selectedTab == store.selectedTab.id)
 }
 
-@MainActor private final class DragTrackingWindow: NSWindow {
+@MainActor private final class DragTrackingWindow: BrowseWindow {
     var mouseUpCount = 0
+    var forwardedMouseEvents = 0
+    override func forwardToAppKit(_ event: NSEvent) {
+        if [.leftMouseDown, .leftMouseDragged, .leftMouseUp].contains(event.type) { forwardedMouseEvents += 1 }
+        super.forwardToAppKit(event)
+    }
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseUp { mouseUpCount += 1 }
         super.sendEvent(event)
@@ -263,6 +295,10 @@ import BrowseCore
         #expect(store.session.workspaces[0].tabs.map(\.id) == tabs.map(\.id))
         #expect(store.session.selectedTab == tabs[1].id)
     }
+    // Tab overlays also cannot block the next click when a release is lost.
+    try sendTransferMouse(.leftMouseDown, at: try point(tabs[0].id), to: window)
+    try sendTransferMouse(.leftMouseDragged, at: try point(tabs[2].id), to: window)
+    #expect(source.dragSurface != nil)
     // Plain clicks still select; close controls stay outside the drag handle.
     let click = try point(tabs[2].id)
     try sendTransferMouse(.leftMouseDown, at: click, to: window)
@@ -270,6 +306,7 @@ import BrowseCore
     try sendTransferMouse(.leftMouseUp, at: click, to: window)
     try await settle()
     #expect(store.session.selectedTab == tabs[2].id)
+    #expect(source.dragSurface == nil)
     let closeRow = try row(tabs[2].id)
     let close = closeRow.convert(NSPoint(x: closeRow.bounds.width - 19, y: closeRow.bounds.midY), to: nil)
     #expect(!(host.hitTest(host.convert(close, from: nil)) is TabDragSourceView))
@@ -278,4 +315,111 @@ import BrowseCore
     try await settle()
     #expect(store.session.workspaces[0].tabs.map(\.id) == [tabs[0].id, tabs[1].id])
     #expect(window.frame == frame)
+}
+
+// @lat: [[tests#Pane transfer round trips]]
+@Test(.serialized, arguments: [false, true]) @MainActor func paneTransferRoundTrips(crowded: Bool) async throws {
+    guard #available(macOS 15.4, *) else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseRoundTrip-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let server = try await ExtensionHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let address = "http://127.0.0.1:\(server.port)/"
+    let manager = ExtensionManager(root: root.appendingPathComponent("extensions"), persistent: false,
+        websiteDataStore: .nonPersistent(), notifications: TestNotifications())
+    manager.presentsWindows = false
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
+    let moving = Page(address: address), anchorA = Page(address: address), anchorB = Page(address: address)
+    let first = BrowserTab(pages: crowded ? [moving, Page(address: address), anchorA] : [anchorA, moving])
+    let second = BrowserTab(pages: [anchorB])
+    store.session.workspaces = [Workspace(name: "Test", tabs: [first, second])]
+    store.session.selectedTab = first.id
+    let window = DragTrackingWindow(contentRect: NSRect(x: -10000, y: -10000, width: crowded ? 1100 : 1400, height: 850),
+        styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+    window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true
+    window.toolbarStyle = .unified; window.toolbar = NSToolbar(identifier: "RoundTripTest")
+    window.isMovableByWindowBackground = true
+    let content = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
+    if #available(macOS 26.0, *) {
+        let glass = NSGlassEffectView(); glass.style = .regular; glass.contentView = content
+        window.contentView = glass
+    } else { window.contentView = content }
+    window.makeKeyAndOrderFront(nil)
+    defer { window.orderOut(nil); window.contentView = nil }
+    func settle(_ count: Int = 6) async throws {
+        for _ in 0..<count { content.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(50)) }
+    }
+    func descendants<T: NSView>(_ type: T.Type, _ view: NSView) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(type, $0) }
+    }
+    func center(_ view: NSView) -> NSPoint { view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil) }
+    try await settle()
+    let controller = try #require(store.existingController(for: moving.id))
+    let web = controller.webView
+    for _ in 0..<40 {
+        if (try? await web.evaluateJavaScript("document.body?.textContent.includes('Fixture')")) as? Bool == true { break }
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    _ = try await web.evaluateJavaScript("window.roundTripToken='retained'; document.body.innerHTML='<input id=draft value=unsaved>'")
+    let initialOrigin = try await web.evaluateJavaScript("performance.timeOrigin")
+    let stamp = try #require(initialOrigin as? Double)
+    window.makeFirstResponder(web)
+    for index in 0..<24 {
+        let destination = index.isMultiple(of: 2) ? second.id : first.id
+        let anchor = index.isMultiple(of: 2) ? anchorB.id : anchorA.id
+        let handles = descendants(PaneDragSourceView.self, content).filter {
+            $0.pageID == moving.id && $0.onHover != nil && !$0.isHiddenOrHasHiddenAncestor
+        }
+        #expect(handles.count == 1, "Round trip gesture \(index + 1): exactly one visible title handle")
+        let source = try #require(handles.first)
+        #expect(source.tabID == store.selectedTab.id)
+        let down = center(source)
+        let frameView = try #require(window.contentView?.superview)
+        #expect(frameView.hitTest(frameView.convert(down, from: nil)) === source)
+        let forwarded = window.forwardedMouseEvents
+        try sendTransferMouse(.leftMouseDown, at: down, to: window)
+        #expect(window.activePaneDrag === source)
+        #expect(source.mouseDownPoint != nil, "Round trip gesture \(index + 1): press reaches handle")
+        let row = try #require(descendants(PaneSidebarTargetView.self, content).first { $0.destination == .tab(destination) })
+        try sendTransferMouse(.leftMouseDragged, at: center(row), to: window)
+        #expect(source.dragSurface != nil, "Round trip gesture \(index + 1): drag starts")
+        if index < 20 {
+            // The original tabs both survive; hover mounts their retained trees.
+            try await settle(12)
+            #expect(store.selectedTab.id == destination)
+            let target = try #require(store.existingController(for: anchor)?.webView)
+            target.scrollToVisible(target.bounds)
+            try await settle(2)
+            let visible = target.bounds.intersection(target.visibleRect)
+            let drop = target.convert(NSPoint(x: visible.maxX - 40, y: visible.midY), to: nil)
+            try sendTransferMouse(.leftMouseDragged, at: drop, to: window)
+            #expect(source.dragSurface?.target?.pageID == anchor)
+            try sendTransferMouse(.leftMouseUp, at: drop, to: window)
+        } else {
+            try sendTransferMouse(.leftMouseUp, at: center(row), to: window)
+        }
+        try await settle()
+        #expect(source.dragSurface == nil)
+        #expect(source.mouseDownPoint == nil)
+        #expect(store.selectedTab.id == destination)
+        #expect(store.selectedTab.pages.contains { $0.id == moving.id })
+        #expect(window.activePaneDrag == nil)
+        #expect(!window.capturesPaneGesture)
+        #expect(window.forwardedMouseEvents == forwarded, "The complete pane gesture bypasses AppKit view tracking")
+        #expect(store.session.workspaces[0].tabs.count == 2)
+        #expect(store.session.workspaces.flatMap(\.tabs).flatMap(\.pages).filter { $0.id == moving.id }.count == 1)
+        #expect(store.existingController(for: moving.id) === controller)
+        #expect(web.window === window && !web.isHiddenOrHasHiddenAncestor)
+        #expect(try await web.evaluateJavaScript("window.roundTripToken") as? String == "retained")
+        let currentOrigin = try await web.evaluateJavaScript("performance.timeOrigin")
+        let actualStamp = try #require(currentOrigin as? Double)
+        // WebKit can quantize this timestamp to adjacent millisecond buckets.
+        // The token and unsaved DOM input above/below prove document identity.
+        #expect(abs(actualStamp - stamp) <= 2)
+        #expect(try await web.evaluateJavaScript("document.querySelector('#draft').value") as? String == "unsaved")
+        #expect(descendants(PaneDragSurface.self, window.contentView!).isEmpty)
+        #expect(!store.canReopenClosed)
+        window.makeFirstResponder(web)
+    }
 }

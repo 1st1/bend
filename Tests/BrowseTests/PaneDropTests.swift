@@ -10,7 +10,7 @@ import BrowseCore
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseHeaderDrag-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
-    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1420, height: 880),
+    let window = BrowseWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1420, height: 880),
         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
@@ -79,7 +79,7 @@ func sendPaneMouse(_ type: NSEvent.EventType, at point: NSPoint, to window: NSWi
     source.store = store; source.tabID = tab.id; source.pageID = tab.pages[1].id
     let host = PaneDropHost(frame: NSRect(x: 200, y: 0, width: 600, height: 400))
     host.store = store; host.tabID = tab.id; host.pageID = tab.pages[0].id
-    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 800, height: 400),
+    let window = BrowseWindow(contentRect: NSRect(x: -10000, y: -10000, width: 800, height: 400),
         styleMask: [.borderless], backing: .buffered, defer: false)
     let content = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 400))
     content.addSubview(source); content.addSubview(host)
@@ -129,6 +129,36 @@ func sendPaneMouse(_ type: NSEvent.EventType, at point: NSPoint, to window: NSWi
     #expect(store.selectedTab.layout.paneIDs == [tab.pages[1].id, tab.pages[0].id])
     #expect(store.selectedTab.focusedPane == tab.pages[1].id)
     #expect(store.session.isValid)
+    // SwiftUI can retire a representable before AppKit removes its cached view.
+    // Teardown must clear tracking immediately, and the visual surface must
+    // never become a full-window input shield, even while a drag is active.
+    try sendPaneMouse(.leftMouseDown, at: NSPoint(x: 50, y: 365), to: window)
+    try sendPaneMouse(.leftMouseDragged, at: NSPoint(x: 300, y: 200), to: window)
+    let activeSurface = try #require(source.dragSurface)
+    #expect(content.hitTest(NSPoint(x: 500, y: 200)) === host)
+    PaneDragHandle.dismantleNSView(source, coordinator: ())
+    #expect(window.activePaneDrag == nil)
+    #expect(window.capturesPaneGesture)
+    #expect(source.dragSurface == nil)
+    #expect(source.mouseDownPoint == nil)
+    #expect(activeSurface.superview == nil)
+    #expect(host.dropEdge == nil)
+    try sendPaneMouse(.leftMouseUp, at: NSPoint(x: 300, y: 200), to: window)
+    #expect(!window.capturesPaneGesture)
+    try sendPaneMouse(.leftMouseDown, at: NSPoint(x: 50, y: 365), to: window)
+    try sendPaneMouse(.leftMouseDragged, at: NSPoint(x: 500, y: 390), to: window)
+    #expect(source.dragSurface?.target === host)
+    try sendPaneMouse(.leftMouseUp, at: NSPoint(x: 500, y: 390), to: window)
+    #expect(source.dragSurface == nil)
+    // Window deactivation cancels the session but still owns its trailing up.
+    try sendPaneMouse(.leftMouseDown, at: NSPoint(x: 50, y: 365), to: window)
+    try sendPaneMouse(.leftMouseDragged, at: NSPoint(x: 300, y: 200), to: window)
+    window.resignKey()
+    #expect(source.dragSurface == nil)
+    #expect(window.activePaneDrag == nil)
+    #expect(window.capturesPaneGesture)
+    try sendPaneMouse(.leftMouseUp, at: NSPoint(x: 300, y: 200), to: window)
+    #expect(!window.capturesPaneGesture)
 }
 
 @MainActor private final class PreviewVisibility {

@@ -24,7 +24,7 @@ import BrowseCore
     store.session.workspaces = [Workspace(name: "Test", tabs: [first, second, unvisited])]
     store.session.selectedTab = first.id
     let host = MountedTabHost(frame: NSRect(x: 0, y: 0, width: 1100, height: 700))
-    let window = NSWindow(contentRect: host.frame,
+    let window = BrowseWindow(contentRect: host.frame,
         styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
