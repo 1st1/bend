@@ -1,0 +1,10 @@
+This directory defines the high-level concepts, business logic, and architecture of this project using markdown. It is managed by [lat.md](https://www.npmjs.com/package/lat.md) — a tool that anchors source code to these definitions. Install the `lat` command with `npm i -g lat.md` and run `lat --help`.
+
+# Browse
+
+Browse is a SwiftUI and WebKit macOS browser prototype with Rex-inspired vertical tabs and tiled browsing panes.
+
+- [[architecture]] describes the native shell, tiling model, WebKit ownership, session persistence, and navigation.
+- [[tests]] describes model and store regression coverage.
+
+See [README.md](../README.md) for building, running, keyboard shortcuts, and prototype scope.
