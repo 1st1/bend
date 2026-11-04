@@ -300,7 +300,7 @@ private struct BrowserPane: View {
                     iconButton("sidebar.left", "Show sidebar · ⌘⇧S") { store.sidebarVisible = true }
                 }
                 Circle().fill(.white.opacity(focused ? 0.8 : 0.2)).frame(width: 5, height: 5)
-                Image(systemName: controller.isStartPage ? "square.grid.2x2" : "globe").font(.system(size: 11)).foregroundStyle(Chrome.muted)
+                pageIcon.frame(width: 14, height: 14).accessibilityHidden(true)
                 Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
                     .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
                 Spacer(minLength: 0)
@@ -323,6 +323,21 @@ private struct BrowserPane: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { store.focus(pageID) }
+    }
+
+    @ViewBuilder
+    private var pageIcon: some View {
+        if controller.isStartPage {
+            Image(systemName: controller.address == "browse://history" ? "clock" : "square.grid.2x2")
+                .font(.system(size: 11)).foregroundStyle(Chrome.muted)
+        } else if let favicon = controller.favicon {
+            Image(nsImage: favicon).resizable().scaledToFit()
+        } else {
+            Text(String((URL(string: controller.address)?.host ?? controller.title).prefix(1)).uppercased())
+                .font(.system(size: 9, weight: .semibold)).foregroundStyle(Chrome.muted)
+                .frame(width: 14, height: 14)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 3))
+        }
     }
 
     @ViewBuilder

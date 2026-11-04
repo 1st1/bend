@@ -149,6 +149,8 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     let webView: FocusWebView
     @Published var address: String
     @Published var title = "New tab"
+    @Published var favicon: NSImage?
+    private var faviconTask: Task<Void, Never>?
     @Published var isLoading = false
     @Published var progress = 0.0
     @Published var canGoBack = false
@@ -163,11 +165,11 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var lastReportedAddress = ""
     private var lastReportedTitle = ""
 
-    init(address: String) {
+    init(address: String, webView suppliedWebView: FocusWebView? = nil) {
         self.address = address
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
-        webView = FocusWebView(frame: .zero, configuration: configuration)
+        webView = suppliedWebView ?? FocusWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.navigationDelegate = self; webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
@@ -183,6 +185,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func navigate(_ input: String) {
         guard let url = AddressResolver.resolve(input) else { error = "Enter a web address or search phrase."; return }
+        resetFavicon()
         error = nil; address = url.absoluteString
         isStartPage = url.scheme == "browse"
         if isStartPage {
@@ -207,7 +210,29 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         onNavigation?(address, title)
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { refresh() }
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        resetFavicon()
+    }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        refresh()
+        guard !isStartPage, let url = webView.url else { return }
+        faviconTask?.cancel()
+        faviconTask = Task { [weak self] in
+            let candidates = await FaviconLoader.candidates(in: webView, pageURL: url)
+            guard !Task.isCancelled else { return }
+            let image = await FaviconLoader.load(candidates)
+            guard !Task.isCancelled else { return }
+            self?.favicon = image
+        }
+    }
+
+    private func resetFavicon() {
+        faviconTask?.cancel()
+        faviconTask = nil
+        favicon = nil
+    }
+
+    deinit { faviconTask?.cancel() }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { show(error) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { show(error) }
     func show(_ failure: Error) {
