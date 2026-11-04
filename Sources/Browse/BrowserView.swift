@@ -16,7 +16,13 @@ struct BrowserView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if store.sidebarVisible { sidebar.frame(width: 236) }
+            if store.sidebarVisible {
+                sidebar.frame(width: store.sidebarWidth)
+                    .overlay(alignment: .trailing) {
+                        SidebarResizeHandle(store: store).frame(width: 8).offset(x: 4)
+                    }
+                    .zIndex(1)
+            }
             MountedTabContent(store: store)
             .padding(6)
             .background {
@@ -36,12 +42,14 @@ struct BrowserView: View {
                 iconButton("plus", "New tab · ⌘T", prominent: true) { store.newTab() }
                 iconButton("sidebar.left", "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
             }.padding(.horizontal, 15).frame(height: 47)
+                .padding(.top, store.sidebarWidth < 180 ? 33 : 0)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 7) {
                     ForEach(store.session.workspaces.flatMap(\.tabs)) { tab in
                         SidebarTabRow(store: store, tab: tab)
                     }
+
                 }.padding(.horizontal, 10).padding(.top, 6)
             }
             if let error = store.persistenceError {
@@ -75,9 +83,13 @@ private struct SidebarTabRow: View {
                         .font(.system(size: 13)).foregroundStyle(selected ? Chrome.accent : .white.opacity(0.5))
                     FadingTabTitle(title: tab.title)
                         .font(.system(size: 12, weight: selected ? .medium : .regular))
-                    if tab.pages.count > 1 { Text("\(tab.pages.count)").font(.system(size: 9, design: .monospaced)).foregroundStyle(Chrome.muted) }
-                }.contentShape(Rectangle())
+                    if tab.pages.count > 1 && store.sidebarWidth >= 160 { Text("\(tab.pages.count)").font(.system(size: 9, design: .monospaced)).foregroundStyle(Chrome.muted) }
+                }.frame(maxHeight: .infinity).contentShape(Rectangle())
             }.buttonStyle(.plain)
+            .overlay {
+                TabDragHandle(store: store, tabID: tab.id, title: tab.title, reduceMotion: reduceMotion)
+                    .accessibilityHidden(true)
+            }
             Button { store.closeTab(tab.id) } label: {
                 Image(systemName: "xmark").font(.system(size: 9))
                     .frame(width: 16, height: 22).contentShape(Rectangle())

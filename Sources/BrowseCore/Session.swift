@@ -152,6 +152,7 @@ public struct Workspace: Codable, Identifiable, Sendable {
 public struct BrowserSession: Codable, Sendable {
     public var workspaces: [Workspace]
     public var selectedTab: UUID
+    public var sidebarWidth: Double?
 
     public init() {
         let initial = BrowserTab(title: "Start here", pages: [Page(), Page(address: "browse://guide")])

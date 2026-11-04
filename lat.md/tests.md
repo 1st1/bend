@@ -225,3 +225,15 @@ Explicit requests for an existing pane focus that pane; invalid identities produ
 ## Flat tab list restoration
 
 [ReopenTests.swift](../Tests/BrowseTests/ReopenTests.swift) verifies legacy groups merge in order without losing selection, pane identities, layouts, or URLs. New tabs append to the list; close/reopen and saving preserve the single-group session.
+
+## Sidebar tab reordering
+
+[ReopenTests.swift](../Tests/BrowseTests/ReopenTests.swift) exercises upward and downward tab moves, invalid and redundant drops, unchanged selection and live views, and persistence of tab order and pane layouts.
+
+## Sidebar resize tracking and restoration
+
+[PaneResizingTests.swift](../Tests/BrowseTests/PaneResizingTests.swift) drives the sidebar edge in a native window, checking repeated pointer positions, reversals, bounds, repeated drags, pane resizing, live controllers, hide/show, and saved-width restoration.
+
+## Native sidebar tab dragging
+
+[PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) sends window mouse events through the glass sidebar to verify repeated tab reordering, stable insertion targets, Escape and outside cancellation, selection, and separate close-button handling.

@@ -174,3 +174,108 @@ import BrowseCore
         context: nil, eventNumber: 1, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1))
     NSApplication.shared.sendEvent(event)
 }
+
+// @lat: [[tests#Native sidebar tab dragging]]
+@Test @MainActor func nativeSidebarTabDragging() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseTabDrag-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let tabs = [BrowserTab(title: "First"), BrowserTab(title: "Second"), BrowserTab(title: "Third")]
+    store.session.workspaces = [Workspace(name: "Tabs", tabs: tabs)]
+    store.session.selectedTab = tabs[1].id
+    let window = DragTrackingWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1100, height: 800),
+        styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+    window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true
+    window.toolbarStyle = .unified; window.toolbar = NSToolbar(identifier: "TabReorderTest")
+    window.isMovableByWindowBackground = true
+    let host = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
+    if #available(macOS 26.0, *) {
+        let glass = NSGlassEffectView(); glass.style = .regular; glass.contentView = host
+        window.contentView = glass
+    } else { window.contentView = host }
+    window.orderFront(nil)
+    defer { window.orderOut(nil); window.contentView = nil }
+    func settle() async throws {
+        for _ in 0..<3 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(50)) }
+    }
+    func descendants<T: NSView>(_ type: T.Type, _ view: NSView) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(type, $0) }
+    }
+    func row(_ id: UUID) throws -> PaneSidebarTargetView {
+        try #require(descendants(PaneSidebarTargetView.self, host).first { $0.destination == .tab(id) })
+    }
+    func point(_ id: UUID, below: Bool = false) throws -> NSPoint {
+        let row = try row(id)
+        let y = below ? (row.isFlipped ? row.bounds.maxY - 3 : row.bounds.minY + 3) : row.bounds.midY
+        return row.convert(NSPoint(x: 60, y: y), to: nil)
+    }
+    try await settle()
+    let frame = window.frame
+    let down = try point(tabs[0].id)
+    let up = try point(tabs[2].id, below: true)
+    try sendTransferMouse(.leftMouseDown, at: down, to: window)
+    try sendTransferMouse(.leftMouseDragged, at: up, to: window)
+    try await settle()
+    #expect(store.session.workspaces[0].tabs.map(\.id) == tabs.map(\.id))
+    let releases = window.mouseUpCount
+    try sendTransferMouse(.leftMouseUp, at: up, to: window)
+    try await settle()
+    #expect(store.session.workspaces[0].tabs.map(\.id) == [tabs[1].id, tabs[2].id, tabs[0].id])
+    #expect(store.session.selectedTab == tabs[1].id)
+    #expect(window.mouseUpCount == releases + 1)
+    #expect(window.frame == frame)
+    let source = try #require(descendants(TabDragSourceView.self, host).first { $0.tabID == tabs[0].id })
+    #expect(source.mouseDownPoint == nil)
+    #expect(source.dragSurface == nil)
+    // Repeat in the opposite direction using the same native source view.
+    let firstRow = try row(tabs[1].id)
+    let above = firstRow.convert(NSPoint(x: 60, y: firstRow.isFlipped ? 3 : firstRow.bounds.height - 3), to: nil)
+    let secondDown = try point(tabs[0].id)
+    try sendTransferMouse(.leftMouseDown, at: secondDown, to: window)
+    for offset in [0.0, 2, 4, 2, 0] {
+        try sendTransferMouse(.leftMouseDragged, at: NSPoint(x: above.x + offset, y: above.y), to: window)
+        #expect(source.dragSurface?.placement == .init(tabID: tabs[1].id, after: false))
+    }
+    try sendTransferMouse(.leftMouseUp, at: above, to: window)
+    try await settle()
+    #expect(store.session.workspaces[0].tabs.map(\.id) == tabs.map(\.id))
+    #expect(store.session.selectedTab == tabs[1].id)
+    #expect(source.dragSurface == nil)
+    // Escape and releasing outside the sidebar leave the order unchanged.
+    for cancel in [true, false] {
+        try sendTransferMouse(.leftMouseDown, at: try point(tabs[0].id), to: window)
+        try sendTransferMouse(.leftMouseDragged, at: try point(tabs[2].id, below: true), to: window)
+        #expect(source.dragSurface != nil)
+        if cancel {
+            let escape = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53))
+            NSApplication.shared.sendEvent(escape)
+            #expect(source.dragSurface == nil)
+        }
+        let outside = NSPoint(x: 600, y: 300)
+        try sendTransferMouse(.leftMouseDragged, at: outside, to: window)
+        #expect(source.dragSurface?.placement == nil)
+        try sendTransferMouse(.leftMouseUp, at: outside, to: window)
+        try await settle()
+        #expect(source.dragSurface == nil)
+        #expect(store.session.workspaces[0].tabs.map(\.id) == tabs.map(\.id))
+        #expect(store.session.selectedTab == tabs[1].id)
+    }
+    // Plain clicks still select; close controls stay outside the drag handle.
+    let click = try point(tabs[2].id)
+    try sendTransferMouse(.leftMouseDown, at: click, to: window)
+    try sendTransferMouse(.leftMouseDragged, at: NSPoint(x: click.x + 2, y: click.y), to: window)
+    try sendTransferMouse(.leftMouseUp, at: click, to: window)
+    try await settle()
+    #expect(store.session.selectedTab == tabs[2].id)
+    let closeRow = try row(tabs[2].id)
+    let close = closeRow.convert(NSPoint(x: closeRow.bounds.width - 19, y: closeRow.bounds.midY), to: nil)
+    #expect(!(host.hitTest(host.convert(close, from: nil)) is TabDragSourceView))
+    try sendTransferMouse(.leftMouseDown, at: close, to: window)
+    try sendTransferMouse(.leftMouseUp, at: close, to: window)
+    try await settle()
+    #expect(store.session.workspaces[0].tabs.map(\.id) == [tabs[0].id, tabs[1].id])
+    #expect(window.frame == frame)
+}

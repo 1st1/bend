@@ -91,6 +91,36 @@ final class BrowserStore: ObservableObject {
         }
     }
 
+    var sidebarWidth: CGFloat {
+        let width = session.sidebarWidth ?? 236
+        return width.isFinite ? min(300, max(100, width)) : 236
+    }
+
+    func resizeSidebar(to width: CGFloat) {
+        guard width.isFinite else { return }
+        let clamped = min(300, max(100, width))
+        guard clamped != sidebarWidth else { return }
+        session.sidebarWidth = clamped
+        saveSoon()
+    }
+
+    @discardableResult
+    func reorderTab(_ source: UUID, relativeTo target: UUID, after: Bool) -> Bool {
+        guard source != target,
+              let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == source } }),
+              let sourceIndex = session.workspaces[wi].tabs.firstIndex(where: { $0.id == source }),
+              let targetIndex = session.workspaces[wi].tabs.firstIndex(where: { $0.id == target }) else { return false }
+        var destination = targetIndex + (after ? 1 : 0)
+        if sourceIndex < destination { destination -= 1 }
+        guard sourceIndex != destination else { return false }
+        var tabs = session.workspaces[wi].tabs
+        let tab = tabs.remove(at: sourceIndex)
+        tabs.insert(tab, at: destination)
+        session.workspaces[wi].tabs = tabs
+        saveSoon()
+        return true
+    }
+
     func select(_ id: UUID) { session.selectedTab = id; zoomedPane = nil; saveSoon() }
     func focus(_ id: UUID) {
         guard selectedTab.focusedPane != id, selectedTab.pages.contains(where: { $0.id == id }) else { return }

@@ -12,13 +12,27 @@ The script verifies the signature before reporting success and does not fall bac
 
 [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) owns the native window, menus, keyboard shortcuts, and application lifetime. [BrowserView.swift](../Sources/Browse/BrowserView.swift) renders a dark sidebar, vertical tabs, pane controls, and start pages.
 
-The sidebar presents one continuous column of tabs without group headings or group creation. Each tab contains one or more browser panes. Selection changes the displayed tab; closing the final tab creates a replacement. The sidebar has a fixed width and can be hidden, with session-save errors shown at the bottom only when needed.
+The sidebar presents one continuous column of tabs without group headings or group creation. Each tab contains one or more browser panes. Selection changes the displayed tab; closing the final tab creates a replacement. The sidebar can be resized or hidden, with session-save errors shown at the bottom only when needed.
 
 The sidebar header places a new-tab button beside a right-aligned sidebar toggle, without a brand label or a trailing new-tab row. Command-T and the File menu also create tabs. Panes use six-point outer margins and divider gaps, starting at the top window inset with no shared navigation bar. When the sidebar is hidden, the upper-left pane reserves space for window controls and exposes the sidebar toggle.
 
 Each pane has one compact title row with extensions, reload/stop, split, zoom, and close controls, using shared [[architecture#Toolbar button styling]]. Reload focuses its pane and becomes stop while loading; it is disabled on start pages. The persistent address row is replaced by the [[architecture#Location popup]]. Back/forward remain available through the View menu and shortcuts; tab creation remains in the sidebar and File menu.
 
 [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) attaches an empty unified native toolbar to give the traffic lights standard toolbar-height spacing. AppKit manages their placement through resizing and full-screen transitions; the transparent titlebar has no separator or shared toolbar actions.
+
+## Sidebar sizing
+
+[SidebarResizing.swift](../Sources/Browse/SidebarResizing.swift) supplies an invisible eight-point handle at the sidebar's right edge, with a horizontal resize cursor and immediate resizing between 100 and 300 points.
+
+Dragging measures pointer movement in window coordinates so resizing the sidebar cannot feed movement back into the gesture. [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) clamps and saves the width in the session; older sessions default to 236 points. Hiding the sidebar preserves its width, and resizing retains live pane controllers. At narrow widths, header buttons move below the window controls and pane-count labels disappear to leave room for tab titles.
+
+## Sidebar tab reordering
+
+[TabReordering.swift](../Sources/Browse/TabReordering.swift) uses native sidebar drags to reorder tabs, with an insertion line above or below the hovered row and a drop area after the final tab.
+
+A native mouse handle covers the tab label and starts dragging after five points of movement; ordinary clicks still select the tab, and close controls remain separate. A window-level surface shows a title badge and insertion line using the sidebar rows’ actual bounds. Pointer positions select the boundary above or below each row, including blank sidebar space after the last row. Escape, window deactivation, source removal, or release outside the sidebar cancels without changing order. The event monitor forwards mouse-up to AppKit so repeated drags work. A completed move animates for 180 ms unless Reduce Motion is enabled.
+
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) changes only the tab array and saves its order. Selection, pane layouts, zoom, live page controllers, and closed-item history remain unchanged. Self-drops, missing tabs, and already-adjacent placements are no-ops. Targets must belong to the source store and window; external pasteboard drags cannot reorder tabs. [[architecture#Pane drag and drop|Pane transfers]] use separate tracking and targets.
 
 ## Toolbar button styling
 
