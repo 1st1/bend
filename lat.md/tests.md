@@ -102,6 +102,30 @@ Opening a link splits its source pane to the right even when another pane is foc
 
 The test uses local HTTP fixtures and ephemeral storage in a full-content window with a unified toolbar. It checks that the titlebar adds no extra top inset. Unvisited tabs remain uncreated, hidden tabs keep their viewport and ignore other tabs' zoom, selection resizes the active host, and tab or background-pane closure removes retained content.
 
+The test sends a complete mouse gesture through the window: header press, drag across nine interior points of a real web view, and release. Each point activates the target preview; release rearranges the panes and removes the drag surface while preserving native WebKit parents, document identity, and unsaved input.
+
+## Pane drop layout moves
+
+[PaneDropTests.swift](../Tests/BrowseCoreTests/PaneDropTests.swift) checks every source, target, and edge combination in a nested layout, preserving all pane IDs and unrelated split fractions while rejecting missing or identical endpoints.
+
+## Pane drop targeting
+
+[PaneDropTests.swift](../Tests/BrowseCoreTests/PaneDropTests.swift) verifies normalized edge selection, half-pane preview frames, and rejection of outside points or empty viewports.
+
+## Pane drop validation and persistence
+
+[PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) checks hidden, zoomed, stale, and other-tab rejection. A valid move preserves URLs, focuses the moved pane, survives session restoration, and creates no closed-item history.
+
+## Native pane drop lifecycle
+
+[PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) sends mouse events through an ordered offscreen window to verify preview updates, cancellation without mutation, outside rejection, surface cleanup, and a valid move on release.
+
+## Pane header mouse routing
+
+[PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) sends window mouse events through the actual browser shell, unified titlebar, and glass container in an ordered offscreen window.
+
+Header hit testing reaches the native drag source. Mouse-down focuses its pane and starts tracking; small motion does not move the window or begin a drag, and mouse-up clears tracking.
+
 ## Session round trip
 
 JSON encoding and decoding preserve the selected tab and nested layout. Restore validation rejects missing pages and selected tabs that do not exist.

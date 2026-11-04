@@ -35,6 +35,17 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
         }
     }
 
+    // @lat: [[architecture#Pane drag and drop]]
+    public func moving(_ source: UUID, beside target: UUID, edge: PaneDropEdge) -> Self? {
+        guard source != target, paneIDs.contains(source), paneIDs.contains(target),
+              let remaining = removing(source) else { return nil }
+        return remaining.replacingNode(target) { current in
+            .split(id: UUID(), axis: edge.axis, fraction: 0.5,
+                   first: edge.isBefore ? .pane(source) : current,
+                   second: edge.isBefore ? current : .pane(source))
+        }
+    }
+
     public func resizing(_ target: UUID, to value: Double) -> Self {
         switch self {
         case .pane: return self

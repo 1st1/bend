@@ -8,6 +8,7 @@ final class BrowserStore: ObservableObject {
     @Published var session: BrowserSession
     @Published var sidebarVisible = true
     @Published var zoomedPane: UUID?
+    @Published private(set) var paneMoveRevision = 0
     var onAddressRequested: ((UUID) -> Void)?
     var onSettingsRequested: (() -> Void)?
     private var extensionStorage: AnyObject?
@@ -110,6 +111,14 @@ final class BrowserStore: ObservableObject {
         }
     }
     func resize(_ id: UUID, fraction: Double) { editTab { $0.layout = $0.layout.resizing(id, to: fraction) } }
+    @discardableResult
+    func movePane(_ source: UUID, beside target: UUID, edge: PaneDropEdge, in tabID: UUID) -> Bool {
+        guard selectedTab.id == tabID, zoomedPane == nil,
+              let layout = selectedTab.layout.moving(source, beside: target, edge: edge) else { return false }
+        editTab(tabID) { $0.layout = layout; $0.focusedPane = source }
+        paneMoveRevision += 1
+        return true
+    }
     func toggleZoom(_ id: UUID) { focus(id); zoomedPane = zoomedPane == id ? nil : id }
 
     func newTab(in workspace: UUID? = nil, address: String = "browse://start", linkOpener: UUID? = nil) {

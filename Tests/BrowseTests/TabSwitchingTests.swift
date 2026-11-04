@@ -30,9 +30,12 @@ import BrowseCore
     window.titlebarAppearsTransparent = true
     window.toolbarStyle = .unified
     window.toolbar = NSToolbar(identifier: "MountedTabTest")
+    window.isMovableByWindowBackground = true
     window.contentView = host
+    window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+    window.orderFront(nil)
     // Keep the window offscreen; all pages and extension storage are disposable.
-    defer { window.contentView = nil }
+    defer { window.orderOut(nil); window.contentView = nil }
     func update() { host.update(store: store, environment: EnvironmentValues()); host.layoutSubtreeIfNeeded() }
     func settle() async throws {
         for _ in 0..<5 {
@@ -51,6 +54,12 @@ import BrowseCore
     }
     try await settle()
     let parent = try #require(web.superview)
+    func dragHandles(in view: NSView) -> [PaneDragSourceView] {
+        (view as? PaneDragSourceView).map { [$0] } ?? view.subviews.flatMap { dragHandles(in: $0) }
+    }
+    let handles = dragHandles(in: firstHost)
+    #expect(handles.count == 2)
+    let source = try #require(handles.first { $0.pageID != first.pages[0].id })
     let otherWeb = try #require(store.existingController(for: first.pages[1].id)?.webView)
     let otherParent = try #require(otherWeb.superview)
     let originalBounds = web.bounds
@@ -90,7 +99,7 @@ import BrowseCore
     #expect(otherWeb.superview === otherParent)
     #expect(otherWeb.isDescendant(of: firstHost))
     let hiddenFrame = firstHost.frame
-    host.setFrameSize(NSSize(width: 1200, height: 750))
+    window.setContentSize(NSSize(width: 1200, height: 750))
     host.layoutSubtreeIfNeeded()
     #expect(firstHost.frame == hiddenFrame)
 
@@ -108,6 +117,32 @@ import BrowseCore
     #expect(try await web.evaluateJavaScript("scrollY") as? Double == scroll)
     #expect(host.mounted[unvisited.id] == nil)
     #expect(store.existingController(for: unvisited.pages[0].id) == nil)
+
+    // Send a complete header-to-page gesture through NSWindow, rather than
+    // calling a drag destination or hit-test override directly.
+    let downPoint = source.convert(NSPoint(x: source.bounds.midX, y: source.bounds.midY), to: nil)
+    try sendPaneMouse(.leftMouseDown, at: downPoint, to: window)
+    for x in [0.2, 0.5, 0.8] {
+        for y in [0.2, 0.5, 0.8] {
+            let point = web.convert(NSPoint(x: web.bounds.width * x, y: web.bounds.height * y), to: nil)
+            try sendPaneMouse(.leftMouseDragged, at: point, to: window)
+            #expect(source.dragSurface?.target?.pageID == first.pages[0].id)
+            #expect(source.dragSurface?.target?.dropEdge != nil)
+        }
+    }
+    let dropPoint = web.convert(NSPoint(x: web.bounds.midX, y: web.bounds.height * (web.isFlipped ? 0.2 : 0.8)), to: nil)
+    try sendPaneMouse(.leftMouseDragged, at: dropPoint, to: window)
+    #expect(source.dragSurface?.target?.dropEdge == .top)
+    try sendPaneMouse(.leftMouseUp, at: dropPoint, to: window)
+    #expect(source.dragSurface == nil)
+    #expect(store.selectedTab.layout.paneIDs == [first.pages[1].id, first.pages[0].id])
+    update()
+    try await settle()
+    #expect(web.superview === parent)
+    #expect(otherWeb.superview === otherParent)
+    #expect(try await web.evaluateJavaScript("window.tabSwitchToken") as? String == "retained")
+    #expect(try await web.evaluateJavaScript("document.getElementById('draft').value") as? String == "unsaved input")
+    #expect(try await web.evaluateJavaScript("performance.timeOrigin") as? Double == stamp)
 
     let secondHost = try #require(host.mounted[second.id])
     store.closeTab(second.id)

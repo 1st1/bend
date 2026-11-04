@@ -150,6 +150,7 @@ private struct PaneCanvas: View {
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .animation(animation, value: tab.pages.count)
+                .animation(animation, value: store.paneMoveRevision)
             }
             .scrollIndicators(.hidden)
             .onChange(of: tab.pages.map(\.id)) { previous, current in
@@ -275,7 +276,7 @@ private struct BrowserPane: View {
     }
 
     var body: some View {
-        ClippedPaneContent(content: decoratedPane)
+        ClippedPaneContent(content: decoratedPane, store: store, tabID: tab.id, pageID: pageID)
     }
 
     private var decoratedPane: some View {
@@ -316,10 +317,14 @@ private struct BrowserPane: View {
                     Color.clear.frame(width: 66)
                     iconButton("sidebar.left", "Show sidebar · ⌘⇧S") { store.sidebarVisible = true }
                 }
-                pageIcon.frame(width: 14, height: 14).accessibilityHidden(true)
-                Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
-                    .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
-                Spacer(minLength: 0)
+                HStack(spacing: 9) {
+                    pageIcon.frame(width: 14, height: 14).accessibilityHidden(true)
+                    Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                        .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
+                    Spacer(minLength: 0)
+                }
+                .frame(maxHeight: .infinity)
+                .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title))
                 HStack(spacing: 0) {
                     if #available(macOS 15.4, *) {
                         PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
@@ -344,8 +349,6 @@ private struct BrowserPane: View {
                 }
             }.frame(height: 2)
         }
-        .contentShape(Rectangle())
-        .onTapGesture { store.focus(pageID) }
     }
 
     @ViewBuilder
@@ -388,6 +391,9 @@ private struct BrowserPane: View {
 // layers. Applying the pane background outside this host leaves it unmasked.
 private struct ClippedPaneContent<Content: View>: NSViewRepresentable {
     let content: Content
+    let store: BrowserStore
+    let tabID: UUID
+    let pageID: UUID
     @Environment(\.self) private var environment
 
     func makeNSView(context: Context) -> ClippedPaneHost {
@@ -395,11 +401,12 @@ private struct ClippedPaneContent<Content: View>: NSViewRepresentable {
     }
 
     func updateNSView(_ host: ClippedPaneHost, context: Context) {
+        host.store = store; host.tabID = tabID; host.pageID = pageID
         host.content.rootView = AnyView(content.environment(\.self, environment))
     }
 }
 
-private final class ClippedPaneHost: NSView {
+private final class ClippedPaneHost: PaneDropHost {
     let content: NSHostingView<AnyView>
 
     init(content rootView: AnyView) {

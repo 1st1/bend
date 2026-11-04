@@ -51,6 +51,8 @@ Choose History → Show History (⌘Y) to search visits grouped by day, revisit 
 
 Drag dividers to resize. Click a pane header or its web content to focus it. Large layouts scroll once their panes reach minimum sizes. Closing the last pane closes its tab; an empty workspace receives a fresh tab.
 
+Drag a pane's title or the empty space beside it onto another pane in the same tab. A blue preview shows placement to the left, right, above, or below; release to rearrange, or press Escape to cancel. Live pages and unsaved input stay intact. Exit pane zoom before rearranging.
+
 Press ⌘⇧T to reopen closed panes and tabs, most recent first. Panes return to their original tab and split position where possible, preserving later edits. The last 50 closures are available during the current app session. Reopening reloads saved URLs; page forms and back-forward history are not retained after closing.
 
 Tabs, workspace names, URLs, focus, and split proportions restore from `~/Library/Application Support/BrowsePrototype/session.json`. Visited tabs keep their pane views and browser instances mounted while inactive, so switching does not rebuild the canvas or reload pages. Unvisited tabs load on first selection; after restarting, pages load again from saved URLs. WebKit stores website data in this app’s own persistent profile. The prototype does not access Safari’s data.

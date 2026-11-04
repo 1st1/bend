@@ -72,6 +72,16 @@ Adding a pane animates existing frames over 180 ms with an ease-out curve. The n
 
 The geometry retains pane minimum sizes and divider constraints, growing the scrollable canvas when necessary. Dividers are invisible hit regions spanning the gaps; hovering shows the directional resize cursor, and dragging updates immediately. Tab switches and session restoration start at their final layout; animation state is not persisted.
 
+## Pane drag and drop
+
+[PaneDragging.swift](../Sources/Browse/PaneDragging.swift) provides title-bar dragging within the selected tab, with a floating title badge and blue previews for placing a pane above, below, left, or right of another pane.
+
+The title and adjacent empty header space start an internal drag after a movement threshold; toolbar buttons keep their normal actions. Native mouse-down, dragged, and up handlers retain the gesture through a temporary window-level surface. Pointer positions are compared directly with visible pane rectangles, avoiding AppKit's pasteboard destination routing into WebKit. The surface carries the floating badge and is removed on release, Escape, window deactivation, or source removal; ordinary page events then resume.
+
+[PaneDropEdge.swift](../Sources/BrowseCore/PaneDropEdge.swift) chooses the nearest normalized edge and its half-pane preview across the target's full visible content area. Leaving valid targets, cancelling, or completing a drag clears the preview. Self-drops, stale sources, other tabs, and zoomed layouts are rejected. External pasteboard drags do not initiate pane rearrangement.
+
+[Session.swift](../Sources/BrowseCore/Session.swift) removes the source leaf, collapses its former split, and inserts the same pane beside the target with an equal split. Unrelated branches retain their identities and fractions. [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) focuses the moved pane and saves the layout without closing pages or adding closed-item history. Existing pane views and WebKit controllers remain mounted. Moves animate over 180 ms unless Reduce Motion is enabled; divider dragging still updates immediately.
+
 ## WebKit integration
 
 [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) retains one WebKit controller per visited pane, keeping live pages and navigation history while switching tabs or changing layouts. The native host uses the system WebKit framework, not an embedded Safari application.
