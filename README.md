@@ -10,13 +10,15 @@ Requires macOS 14 or newer and a Swift 6 toolchain (Xcode or Command Line Tools)
 ./scripts/build-app.sh --open
 ```
 
-This builds `dist/Browse.app` and defaults to the local `Browse Dev` signing identity. The build fails if signing or signature verification fails. A self-signed certificate preserves the app's designated requirement but does **not** prevent WebCrypto Keychain prompts after rebuilds: macOS places these builds in separate code-hash partitions. For a stable team partition, create an Apple-issued development certificate through [Xcode's certificate manager](https://help.apple.com/xcode/mac/current/en.lproj/dev154b28f09.html), then select its installed signing identity:
+This builds `dist/Browse.app` and defaults to `Apple Development: Yury Selivanov (H8TFDJMW7E)`. The build fails if signing or signature verification fails. Apple-issued signing supplies a stable team partition for WebCrypto Keychain access across rebuilds. The former self-signed `Browse Dev` identity used separate code-hash partitions and could prompt again after each rebuild. On another Mac, create an Apple-issued development certificate through [Xcode's certificate manager](https://help.apple.com/xcode/mac/current/en.lproj/dev154b28f09.html), then select its installed signing identity:
 
 ```sh
 BROWSE_SIGNING_IDENTITY='Apple Development: Your Name (IDENTIFIER)' ./scripts/build-app.sh --open
 ```
 
 Switching to the Apple-issued identity may require a new Keychain approval once. The build never changes Keychain access controls or stored keys. You can also open `Package.swift` in Xcode, or run `swift run Browse` during development; those paths do not use the script's signing step.
+
+The signing certificate's Apple intermediate must also be installed locally. If signing reports “unable to build chain to self-signed root,” follow [Apple's intermediate-certificate instructions](https://help.apple.com/xcode/mac/current/en.lproj/devc4c7101d8.html); this Apple Development identity uses Worldwide Developer Relations G3. `security find-identity -v -p codesigning` should list the identity as valid.
 
 ## Use
 

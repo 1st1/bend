@@ -24,7 +24,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 # @lat: [[architecture#Development signing]]
-codesign --force --sign "${BROWSE_SIGNING_IDENTITY:-Browse Dev}" "$app"
+codesign --force --sign "${BROWSE_SIGNING_IDENTITY:-Apple Development: Yury Selivanov (H8TFDJMW7E)}" "$app"
 codesign --verify --strict "$app"
 printf 'Built %s\n' "$app"
 if [[ "${1:-}" == "--open" ]]; then open "$app"; fi

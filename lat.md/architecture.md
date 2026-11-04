@@ -4,9 +4,9 @@ Browse is a native macOS prototype combining SwiftUI browser chrome, an AppKit w
 
 ## Development signing
 
-[build-app.sh](../scripts/build-app.sh) packages and signs Browse.app, using `BROWSE_SIGNING_IDENTITY` when set and the local Browse Dev certificate otherwise.
+[build-app.sh](../scripts/build-app.sh) packages and signs Browse.app, using `BROWSE_SIGNING_IDENTITY` when set and Yury's Apple Development certificate otherwise.
 
-The script verifies the signature before reporting success and does not fall back to ad-hoc signing. Reusing the certificate and bundle identifier preserves the designated requirement, but the self-signed Browse Dev identity does not prevent recurring WebCrypto Keychain prompts: macOS assigns it a per-build code-hash partition. The inspected Browse key has accumulated those hashes. Apple-issued development or Developer ID signing uses a stable team partition instead; switching identities can still require one new approval. The build does not alter Keychain access lists or key data.
+The script verifies the signature before reporting success and does not fall back to ad-hoc or self-signed signing. Apple-issued development or Developer ID signing uses a stable team partition for Keychain access; switching identities can still require one new approval. A self-signed identity supplied explicitly through the override does not prevent recurring WebCrypto prompts because macOS assigns it a per-build code-hash partition. The build does not alter Keychain access lists or key data.
 
 ## Application shell
 
