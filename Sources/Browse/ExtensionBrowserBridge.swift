@@ -39,7 +39,7 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
     }
     func webExtensionController(_ controller: WKWebExtensionController, focusedWindowFor context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? {
         if let document = documents.values.first(where: { $0.nativeWindow.isKeyWindow }) { return document }
-        return browserWindow?.isKeyWindow == true ? window : nil
+        return browserWindow?.isKeyWindow == true || !presentsWindows ? window : nil
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, openNewTabUsing configuration: WKWebExtension.TabConfiguration,
@@ -140,6 +140,10 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
     var page: Page? { manager?.pages.first { $0.id == id } }
     var pageController: PageController? { manager?.store?.existingController(for: id) }
     func window(for context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? { manager?.window }
+    func parentTab(for context: WKWebExtensionContext) -> (any WKWebExtensionTab)? {
+        guard let manager, let parent = manager.store?.linkOpeners[id] else { return nil }
+        return manager.tabs[parent]
+    }
     func webView(for context: WKWebExtensionContext) -> WKWebView? { pageController?.webView }
     func title(for context: WKWebExtensionContext) -> String? { pageController?.title ?? page?.address }
     func url(for context: WKWebExtensionContext) -> URL? { (pageController?.address ?? page?.address).flatMap(URL.init(string:)) }
@@ -149,10 +153,18 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
         manager?.store?.revealPage(id); completionHandler(nil)
     }
     func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        guard ["https", "http"].contains(url.scheme ?? ""), let page, let store = manager?.store else {
+        guard let page, let store = manager?.store else {
             completionHandler(manager?.failure("This URL cannot open in a browser pane.")); return
         }
-        store.controller(for: page).navigate(url.absoluteString); completionHandler(nil)
+        if context.isLoaded, url.scheme == context.baseURL.scheme, url.host == context.baseURL.host,
+           let configuration = context.webViewConfiguration {
+            store.controller(for: page).navigateExtension(url, configuration: configuration)
+        } else if ["https", "http"].contains(url.scheme ?? "") {
+            store.controller(for: page).navigate(url.absoluteString)
+        } else {
+            completionHandler(manager?.failure("This URL cannot open in a browser pane.")); return
+        }
+        completionHandler(nil)
     }
     func reload(fromOrigin: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
         if fromOrigin { pageController?.webView.reloadFromOrigin() } else { pageController?.webView.reload() }

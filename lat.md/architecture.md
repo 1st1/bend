@@ -80,15 +80,41 @@ Manual replacement installs a separate package revision and retains the extensio
 
 Native messaging is left to WebKit's default app-extension handling; Browse implements no custom native messaging bridge. This does not establish companion-app compatibility: 1Password for Safari's native OS-version request fails with “Native messaging is not supported” in Browse. Its bundle can load, but unlock and autofill are not supported. Loading SafariServices does not resolve this failure.
 
+[probe-native-extension.sh](../scripts/probe-native-extension.sh) builds a temporary, windowless diagnostic app that resolves a native extension through the Foundation API used by WebKit. It sends no native messages. The default runs without extra entitlements; setting `BROWSE_PROBE_HOST_ENTITLEMENT=1` signs only the probe with `com.apple.private.can-load-any-content-blocker`. On the tested Mac, PlugInKit rejects the default host for lacking that entitlement, while macOS kills the entitled probe before execution with “No matching profile found.” Browse's build does not claim this entitlement. See the [reproduction and limitations](../docs/extension-support-research.md).
+
 Enabling an extension asks for its requested capabilities and website access. Updated extensions that need additional grants stay unloaded until reviewed. Runtime requests prompt separately and are granted for the current app session. Private website-data access is not granted. Unreadable extension metadata is preserved and prevents writes. Disabling unloads the extension; existing page changes disappear after reload. Removing also deletes the extension's Browse data and managed resource copy, leaving the source app and Safari settings intact.
 
 [ExtensionBrowserBridge.swift](../Sources/Browse/ExtensionBrowserBridge.swift) maps every pane across workspaces to an extension tab and the browser window to an extension window. Focused panes are active tabs. The host reports creation, closure, focus, URL, title, and loading changes; tab queries do not instantiate unvisited web views. Web extensions can open web tabs, navigate, reload, activate, or close panes. The windows-create API, tab moves and grouping are not implemented.
 
 [ExtensionDocument.swift](../Sources/Browse/ExtensionDocument.swift) hosts extension-owned pages, including options and extension-created tabs, in separate windows using their required context configuration. These windows and pages participate in the extension window/tab APIs and close when the owning extension is disabled or removed. External web links open in browser tabs.
 
+[Extension tab updates](../Sources/Browse/ExtensionBrowserBridge.swift) can replace a website with the requesting loaded extension's own page, including a post-authentication confirmation page. [The page controller](../Sources/Browse/BrowserStore.swift) installs a context-configured web view while preserving pane and extension-tab identity. Returning to a website replaces it with an ordinary configuration; native back/forward history resets at this boundary. Saved extension panes wait for extension restoration before loading, and unavailable extensions show an error. Disabling or replacing an extension tears down its pane documents as well as separate windows.
+
+[Navigation policy](../Sources/Browse/BrowserStore.swift) permits embedded pages from loaded extension contexts so inline extension menus can render and communicate with their background. WebKit still enforces web-accessible-resource declarations. Ordinary websites cannot promote themselves into privileged top-level extension documents.
+
 Each browser web view receives the shared extension controller before creation. WebKit provides content scripts, background contexts, storage, and declarative request rules. The pane extension menu invokes actions with a user gesture; WebKit's popup is anchored to the associated visible pane. Availability of individual extension features depends on WebKit's API coverage and any native companion app's requirements.
 
-Importing Chrome or Firefox resources does not establish compatibility with those browsers. The host supplies no adapter for their notifications API or the navigation-target-created event missing from the system WebKit API namespace; these missing APIs also prevent the Firefox 1Password package from starting successfully.
+Importing Chrome or Firefox resources does not establish full compatibility with those browsers. [[architecture#Extension compatibility adapters]] support Firefox 1Password onboarding without modifying its package. The user has confirmed vault items in its toolbar; authenticated inline autofill and desktop integration remain unverified.
+
+## Extension compatibility adapters
+
+[ExtensionCompatibility.swift](../Sources/Browse/ExtensionCompatibility.swift) adds basic notifications and main-frame navigation-target events to extension pages while preserving WebKit's native event delivery and permission checks.
+
+The controller's extension-only web-view configuration injects the adapter at document start. The native `browser` namespace remains intact so WebKit can dispatch events; the `chrome` namespace forwards native APIs and supplies missing ones. The notification namespace is also exposed on `browser`. Ordinary website views receive no adapter, and native message handling rejects non-main frames, foreign origins, unloaded contexts, and missing notification permission. Extension source packages are not patched.
+
+[ExtensionNotifications.swift](../Sources/Browse/ExtensionNotifications.swift) delivers basic macOS notifications, requests system authorization when a notification is created, and returns authorization failures to the extension. Notification IDs are scoped to the owning extension. Create, update, clear, enumeration, click, button, and dismissal callbacks are supported for the current session. Up to two buttons and bounded title/message lengths are accepted; richer notification types are rejected. Notifications use Browse's system icon and identify the extension in their title. Disabling, uninstalling, or replacing a context clears its tracked notifications and page registrations. Permission-level changes are checked on visibility changes and periodically while extension pages are alive.
+
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) records opener relationships for main-frame link openings before publishing the destination tab. [ExtensionBrowserBridge.swift](../Sources/Browse/ExtensionBrowserBridge.swift) exposes those relationships through WebKit. The adapter derives `chrome.webNavigation.onCreatedNavigationTarget` from real tab-created events, checking the current navigation permission and URL filters. Unrelated tab creation does not emit this event. Subframe source IDs are unavailable through this host's public navigation interface, so subframe openings are excluded rather than mislabeled. The native `browser.webNavigation` namespace is unchanged.
+
+The [compatibility regression tests](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) exercise native messaging alongside the adapter, notification scoping and revocation, rejection of website callers, cleanup, and navigation-event identity. The opt-in real-package test follows Firefox 1Password onboarding without entering credentials.
+
+## Extension runtime diagnostics
+
+[runtime.swift](../Tools/ExtensionProbe/runtime.swift) exercises real extension startup, actions, and extension-owned pages in a windowless app with temporary WebKit storage. It is separate from the production extension host.
+
+The [runtime wrapper](../scripts/probe-extension-runtime.sh) signs a disposable app, enforces a bounded runtime, and removes its bundle on exit. The controller, background views, and test tab share an explicitly nonpersistent website data store. The diagnostic context grants private-data access only for that isolated store because WebKit otherwise filters its events. Browse's production permission policy remains unchanged. External tab requests fail explicitly; extension-owned tabs load invisibly. Diagnostics report page errors, selected console messages, action delivery, and rendered text without signing into an account.
+
+The [Firefox 1Password reproduction](../scripts/probe-onepassword-firefox.sh) verifies a pinned Mozilla package checksum before extraction. Its baseline uses unmodified resources. The explicit diagnostic-startup mode guards one unsupported navigation listener in a temporary copy and injects [notification registration placeholders](../Tools/ExtensionProbe/startup-notifications.js); notification operations throw errors. This mode tests later startup stages, not API compatibility. It does not install or modify production packages. Research results and remaining limitations live in [extension-support-research.md](../docs/extension-support-research.md).
 
 ## Extension settings
 
@@ -96,7 +122,7 @@ Importing Chrome or Firefox resources does not establish compatibility with thos
 
 Settings centers on packages installed in Browse, with Install from File and Update from File actions. Users can install ZIP, XPI, CRX, or unpacked packages, inspect requested access, enable or disable extensions, open options pages, and remove packages with confirmation. A collapsed import section offers copies of Safari Web Extensions found in Applications. Updates are manual; store downloads and automatic updates are not implemented. Load and runtime errors remain visible. Earlier macOS versions show the minimum version needed for extension support.
 
-The enable switch reflects whether WebKit loaded the context, not whether every extension feature works. Settings identifies the signed 1Password Safari bundle by its bundle identifier and displays its known native-connection limitation without changing enablement or deleting data.
+The enable switch reflects whether WebKit loaded the context, not whether every extension feature works. Settings identifies the Safari 1Password bundle and displays its known native-connection limitation. The Firefox package is marked experimental, with standalone sign-in instructions and an explicit desktop-integration and autofill limitation.
 
 ## Session restoration
 

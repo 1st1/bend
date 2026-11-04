@@ -300,7 +300,7 @@ private final class ExtensionTestNavigation: NSObject, WKNavigationDelegate {
     }
 }
 
-private final class ExtensionHTTPFixture: @unchecked Sendable {
+final class ExtensionHTTPFixture: @unchecked Sendable {
     let listener: NWListener
     var port: UInt16 { listener.port!.rawValue }
     init() throws { listener = try NWListener(using: .tcp, on: .any) }

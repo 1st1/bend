@@ -30,6 +30,7 @@ final class ExtensionManager: NSObject, ObservableObject {
     @Published var error: String?
     @Published private(set) var failures: [UUID: String] = [:]
     let controller: WKWebExtensionController
+    let compatibility: ExtensionCompatibility
     let root: URL
     weak var store: BrowserStore?
     weak var browserWindow: NSWindow?
@@ -43,15 +44,24 @@ final class ExtensionManager: NSObject, ObservableObject {
     var documents: [UUID: ExtensionDocument] = [:]
     private var errorObservation: AnyCancellable?
     var popup: NSPopover?
+    var presentsWindows = true
 
-    init(root: URL, persistent: Bool = true, storageIdentifier: UUID? = nil) {
+    init(root: URL, persistent: Bool = true, storageIdentifier: UUID? = nil,
+         websiteDataStore: WKWebsiteDataStore? = nil, notifications: (any ExtensionNotificationDelivering)? = nil) {
         self.root = root
+        compatibility = ExtensionCompatibility(notifications: notifications ?? ExtensionNotifications())
         let configuration: WKWebExtensionController.Configuration
         if !persistent { configuration = .nonPersistent() }
         else if let storageIdentifier { configuration = .init(identifier: storageIdentifier) }
         else { configuration = .default() }
+        if let websiteDataStore { configuration.defaultWebsiteDataStore = websiteDataStore }
+        let webConfiguration = configuration.webViewConfiguration ?? WKWebViewConfiguration()
+        if let websiteDataStore { webConfiguration.websiteDataStore = websiteDataStore }
+        compatibility.configure(webConfiguration)
+        configuration.webViewConfiguration = webConfiguration
         controller = WKWebExtensionController(configuration: configuration)
         super.init()
+        compatibility.manager = self
         controller.delegate = self
         errorObservation = NotificationCenter.default.publisher(for: WKWebExtensionContext.errorsDidUpdateNotification)
             .receive(on: RunLoop.main).sink { [weak self] _ in self?.objectWillChange.send() }
@@ -109,6 +119,7 @@ final class ExtensionManager: NSObject, ObservableObject {
 
     func configure(_ configuration: WKWebViewConfiguration) {
         configuration.webExtensionController = controller
+        if let dataStore = controller.configuration.defaultWebsiteDataStore { configuration.websiteDataStore = dataStore }
     }
 
     private func makeContext(_ record: ExtensionRecord) async throws -> WKWebExtensionContext {
@@ -118,6 +129,9 @@ final class ExtensionManager: NSObject, ObservableObject {
             webExtension = try await WKWebExtension(appExtensionBundle: bundle)
         } else { webExtension = try await WKWebExtension(resourceBaseURL: record.source) }
         let context = WKWebExtensionContext(for: webExtension)
+        // Explicitly supplied ephemeral test stores are private to this manager.
+        // Production uses the default persistent store and keeps this disabled.
+        context.hasAccessToPrivateData = controller.configuration.defaultWebsiteDataStore?.isPersistent == false
         context.uniqueIdentifier = record.id.uuidString
         context.baseURL = URL(string: "webkit-extension://\(record.id.uuidString.lowercased())/")!
         context.unsupportedAPIs = ["browser.windows.create", "browser.tabs.move", "browser.tabs.group", "browser.tabs.ungroup"]
@@ -357,9 +371,14 @@ final class ExtensionManager: NSObject, ObservableObject {
     func isEnabled(_ id: UUID) -> Bool { contexts[id]?.isLoaded == true }
 
     func compatibilityNotice(_ id: UUID) -> String? {
-        guard let record = records.first(where: { $0.id == id }), record.isBundle,
-              Bundle(url: record.source)?.bundleIdentifier == "com.1password.safari.extension" else { return nil }
-        return "1Password for Safari is not supported in Browse yet. Its native app connection fails, so enabling it does not mean unlocking or autofill will work."
+        guard let record = records.first(where: { $0.id == id }) else { return nil }
+        if record.packageIdentifier == "gecko:{d634138d-c276-4fc8-924b-40a0ea21d284}" {
+            return "Experimental 1Password support. Sign in directly to your account; connection to the desktop app is not available. Unlock and autofill still need testing."
+        }
+        if record.isBundle, Bundle(url: record.source)?.bundleIdentifier == "com.1password.safari.extension" {
+            return "1Password for Safari is not supported in Browse yet. Its native app connection fails, so enabling it does not mean unlocking or autofill will work."
+        }
+        return nil
     }
 
     func permissionSummary(_ id: UUID) -> [String] {
@@ -478,14 +497,18 @@ final class ExtensionManager: NSObject, ObservableObject {
         controller.didOpenWindow(document)
         controller.didOpenTab(document)
         document.web.load(URLRequest(url: url))
-        document.nativeWindow.center()
-        if active { document.nativeWindow.makeKeyAndOrderFront(nil) }
-        else { document.nativeWindow.orderBack(nil) }
+        if presentsWindows {
+            document.nativeWindow.center()
+            if active { document.nativeWindow.makeKeyAndOrderFront(nil) }
+            else { document.nativeWindow.orderBack(nil) }
+        }
         return document
     }
 
     func closeDocuments(for context: WKWebExtensionContext) {
+        if let id = UUID(uuidString: context.uniqueIdentifier) { compatibility.stop(id) }
         for document in Array(documents.values) where document.context === context { document.nativeWindow.close() }
+        for page in pages { store?.existingController(for: page.id)?.unloadExtension(at: context.baseURL) }
     }
 
     func performAction(_ id: UUID, pageID: UUID) {

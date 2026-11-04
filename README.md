@@ -50,6 +50,8 @@ On macOS 15.4 or newer, Browse → Settings (⌘,) installs and manages Browse's
 
 **1Password for Safari is not currently supported.** Its web extension bundle loads, but its native companion connection fails in Browse with “Native messaging is not supported.” Enabling the extension does not establish working unlock or autofill. Settings displays this limitation alongside its runtime errors.
 
+**Firefox 1Password has experimental standalone onboarding support.** Download its official Firefox XPI from Mozilla, turn off the Safari 1Password copy in Browse, and use **Settings → Install from File**. Enable it, approve its requested access, and choose it from a pane's puzzle-piece menu. Complete its onboarding choices and choose **Sign in**. Initial startup can take roughly 20–30 seconds while desktop-app connection attempts time out. Desktop-app unlock is unavailable; authenticated sign-in, autofill, save, and account persistence still need testing. Browse's adapters leave the downloaded package unchanged.
+
 This embeds **system WebKit**, the engine Safari uses. macOS has no supported API for embedding the Safari app itself into arbitrary tiled views. Safari extensions, Safari profiles, Safari tab sync, and existing Safari logins are not inherited.
 
 The prototype supports normal web navigation, search, browsing history and address suggestions, pop-up links as new tabs, JavaScript dialogs, and WebKit’s developer inspector. It does not yet implement downloads, permission prompts for camera/microphone, bookmarks, tab reordering, or full browser settings. It is a local prototype, not a hardened or notarized browser distribution.
@@ -64,3 +66,9 @@ lat check
 The core tests cover nested split collapse, focus repair, persisted session integrity, resize bounds, and address/search resolution.
 
 History tests cover visit recording, title updates, matching, ranking, completion, retention, persistence, deletion, corrupt-file preservation, and successful-navigation callbacks.
+
+Extension compatibility tests exercise notification permissions and isolation, native event delivery, and main-frame link-opening events. An optional real-package smoke test runs without opening windows or using existing browser data:
+
+```sh
+BROWSE_TEST_FIREFOX_PACKAGE=/absolute/path/to/1password.xpi swift test --disable-sandbox --filter firefoxOnboardingSmoke
+```

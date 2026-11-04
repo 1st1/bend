@@ -25,6 +25,9 @@ final class BrowserStore: ObservableObject {
     @Published private(set) var history = BrowsingHistory()
     @Published private(set) var historyError: String?
     private var browsers: [UUID: PageController] = [:]
+    // Only main-frame link openings populate this map. Subframe source IDs are
+    // not exposed by public WKNavigationAction and must not be fabricated.
+    private(set) var linkOpeners: [UUID: UUID] = [:]
     private var pendingSave: Task<Void, Never>?
     private let sessionFile: URL
     private let historyFile: URL
@@ -32,7 +35,7 @@ final class BrowserStore: ObservableObject {
     private var historyDirty = false
     private var historyWritable = true
 
-    init(sessionFile: URL? = nil, persistentExtensions: Bool = true) {
+    init(sessionFile: URL? = nil, persistentExtensions: Bool = true, extensionManager: AnyObject? = nil) {
         self.persistentExtensions = persistentExtensions
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BrowsePrototype", isDirectory: true)
@@ -51,6 +54,11 @@ final class BrowserStore: ObservableObject {
                 historyWritable = false
                 historyError = "Saved history could not be read. Clear history to reset it."
             }
+        }
+        extensionStorage = extensionManager
+        if #available(macOS 15.4, *), let manager = extensionManager as? ExtensionManager {
+            manager.store = self
+            manager.start()
         }
     }
 
@@ -84,18 +92,22 @@ final class BrowserStore: ObservableObject {
         focus(target)
         onAddressRequested?(target)
     }
-    func openPane(address: String, toRightOf source: UUID) {
+    func openPane(address: String, toRightOf source: UUID, fromMainFrame: Bool = true) {
         guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == source } }) else { return }
         select(tab.id)
-        editTab(tab.id) { $0.split(axis: .horizontal, after: source, address: address) }
+        editTab(tab.id) {
+            $0.split(axis: .horizontal, after: source, address: address)
+            if fromMainFrame { linkOpeners[$0.focusedPane] = source }
+        }
     }
     func resize(_ id: UUID, fraction: Double) { editTab { $0.layout = $0.layout.resizing(id, to: fraction) } }
     func toggleZoom(_ id: UUID) { focus(id); zoomedPane = zoomedPane == id ? nil : id }
 
-    func newTab(in workspace: UUID? = nil, address: String = "browse://start") {
+    func newTab(in workspace: UUID? = nil, address: String = "browse://start", linkOpener: UUID? = nil) {
         let index = session.workspaces.firstIndex { $0.id == workspace }
             ?? session.workspaces.firstIndex { $0.tabs.contains { $0.id == session.selectedTab } } ?? 0
         let tab = BrowserTab(title: address == "browse://history" ? "History" : "New tab", pages: [Page(address: address)])
+        if let linkOpener { linkOpeners[tab.pages[0].id] = linkOpener }
         session.workspaces[index].tabs.append(tab); select(tab.id)
         if address == "browse://start" { requestAddress() }
     }
@@ -183,8 +195,9 @@ final class BrowserStore: ObservableObject {
 
     func controller(for page: Page) -> PageController {
         if let existing = browsers[page.id] { return existing }
-        let controller = PageController(address: page.address, configure: { configuration in
-            if #available(macOS 15.4, *) { self.extensions.configure(configuration) }
+        let extensionURL = URL(string: page.address).flatMap { $0.scheme == "webkit-extension" ? $0 : nil }
+        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", configure: { [weak self] configuration in
+            if #available(macOS 15.4, *) { self?.extensions.configure(configuration) }
         })
         controller.onStateChanged = { [weak self] in
             if #available(macOS 15.4, *) { self?.extensions.pageChanged(page.id) }
@@ -203,6 +216,10 @@ final class BrowserStore: ObservableObject {
         }
         controller.onNewTab = { [weak self] address in self?.newTab(address: address) }
         controller.onNewPane = { [weak self] address in self?.openPane(address: address, toRightOf: page.id) }
+        controller.onNewLink = { [weak self] address, adjacent, mainFrame in
+            if adjacent { self?.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame) }
+            else { self?.newTab(address: address, linkOpener: mainFrame ? page.id : nil) }
+        }
         controller.onFocus = { [weak self] in self?.focus(page.id) }
         controller.onVisit = { [weak self] url, title in self?.recordVisit(url: url, title: title) }
         controller.onHistoryTitleChanged = { [weak self] url, title in
@@ -211,6 +228,20 @@ final class BrowserStore: ObservableObject {
             self.saveHistorySoon()
         }
         browsers[page.id] = controller
+        if #available(macOS 15.4, *), let extensionURL {
+            let manager = extensions
+            Task { [weak controller] in
+                await manager.restorationTask?.value
+                guard let controller, self.browsers[page.id] === controller,
+                      controller.address == "browse://start" else { return }
+                guard let context = manager.controller.extensionContext(for: extensionURL), context.isLoaded,
+                      let configuration = context.webViewConfiguration else {
+                    controller.error = "This extension page is unavailable. Enable its extension in Settings."
+                    return
+                }
+                controller.navigateExtension(extensionURL, configuration: configuration)
+            }
+        }
         return controller
     }
 
@@ -230,6 +261,8 @@ final class BrowserStore: ObservableObject {
     }
 
     func saveSoon() {
+        let pageIDs = Set(session.workspaces.flatMap(\.tabs).flatMap(\.pages).map(\.id))
+        linkOpeners = linkOpeners.filter { pageIDs.contains($0.key) && pageIDs.contains($0.value) }
         if #available(macOS 15.4, *), let manager = extensionStorage as? ExtensionManager { manager.synchronizeTabs() }
         pendingSave?.cancel()
         pendingSave = Task { [weak self] in
@@ -258,7 +291,9 @@ class FocusWebView: WKWebView {
 
 @MainActor
 final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
-    let webView: FocusWebView
+    @Published private(set) var webView: FocusWebView
+    private let configure: (WKWebViewConfiguration) -> Void
+    private var extensionOrigin: URL?
     @Published var address: String
     @Published var title = "New tab"
     @Published var favicon: NSImage?
@@ -273,6 +308,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     var onStateChanged: (() -> Void)?
     var onNewTab: ((String) -> Void)?
     var onNewPane: ((String) -> Void)?
+    var onNewLink: ((String, Bool, Bool) -> Void)?
     var onFocus: (() -> Void)?
     private var observations: [NSKeyValueObservation] = []
     var onVisit: ((String, String) -> Void)?
@@ -281,13 +317,19 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var lastReportedAddress = ""
     private var lastReportedTitle = ""
 
-    init(address: String, webView suppliedWebView: FocusWebView? = nil, configure: (WKWebViewConfiguration) -> Void = { _ in }) {
+    init(address: String, webView suppliedWebView: FocusWebView? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
+        self.configure = configure
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         configure(configuration)
         webView = suppliedWebView ?? FocusWebView(frame: .zero, configuration: configuration)
         super.init()
+        observeWebView()
+        navigate(address)
+    }
+
+    private func observeWebView() {
         webView.navigationDelegate = self; webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         webView.isInspectable = true
@@ -298,11 +340,47 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
             webView.observe(\.title) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
             webView.observe(\.url) { [weak self] _, _ in Task { @MainActor in self?.refresh() } }
         ]
-        navigate(address)
+    }
+
+    private func replaceWebView(configuration: WKWebViewConfiguration) {
+        observations.removeAll()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView.onFocus = nil
+        webView.stopLoading()
+        webView = FocusWebView(frame: webView.frame, configuration: configuration)
+        canGoBack = false; canGoForward = false
+        observeWebView()
+    }
+
+    // Only the extension host may authorize a top-level extension document.
+    func navigateExtension(_ url: URL, configuration: WKWebViewConfiguration) {
+        if extensionOrigin?.scheme != url.scheme || extensionOrigin?.host != url.host {
+            extensionOrigin = url
+            replaceWebView(configuration: configuration)
+        }
+        load(url)
+    }
+
+    func unloadExtension(at origin: URL) {
+        guard extensionOrigin?.scheme == origin.scheme, extensionOrigin?.host == origin.host else { return }
+        navigate("browse://start")
+        error = "This extension page is unavailable. Enable its extension in Settings."
     }
 
     func navigate(_ input: String) {
         guard let url = AddressResolver.resolve(input) else { error = "Enter a web address or search phrase."; return }
+        if extensionOrigin != nil {
+            extensionOrigin = nil
+            let configuration = WKWebViewConfiguration()
+            configuration.websiteDataStore = .default()
+            configure(configuration)
+            replaceWebView(configuration: configuration)
+        }
+        load(url)
+    }
+
+    private func load(_ url: URL) {
         resetFavicon()
         error = nil; address = url.absoluteString
         completedAddress = nil
@@ -388,13 +466,27 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard action.navigationType == .linkActivated, action.modifierFlags.contains(.command),
               action.buttonNumber == 1, let url = action.request.url,
               ["http", "https"].contains(url.scheme?.lowercased() ?? ""), let onNewPane else { return false }
-        onNewPane(url.absoluteString)
+        if let onNewLink { onNewLink(url.absoluteString, true, action.sourceFrame.isMainFrame) }
+        else { onNewPane(url.absoluteString) }
         return true
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
         if openCommandClickedLink(action) { decisionHandler(.cancel); return }
+        if #available(macOS 15.4, *),
+           let context = webView.configuration.webExtensionController?.extensionContext(for: url), context.isLoaded {
+            // WebKit still enforces web_accessible_resources for embedded frames.
+            let ownDocument = extensionOrigin?.scheme == url.scheme && extensionOrigin?.host == url.host
+            decisionHandler(action.targetFrame?.isMainFrame == false || ownDocument ? .allow : .cancel)
+            return
+        }
+        if extensionOrigin != nil, action.targetFrame?.isMainFrame == true,
+           ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+            decisionHandler(.cancel)
+            Task { @MainActor [weak self] in self?.navigate(url.absoluteString) }
+            return
+        }
         // Do not silently hand arbitrary custom schemes to other applications.
         decisionHandler(["https", "http", "about"].contains(url.scheme?.lowercased() ?? "") ? .allow : .cancel)
     }
@@ -402,7 +494,10 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if openCommandClickedLink(action) { return nil }
         if action.targetFrame == nil, let url = action.request.url,
-           ["http", "https"].contains(url.scheme ?? "") { onNewTab?(url.absoluteString) }
+           ["http", "https"].contains(url.scheme ?? "") {
+            if let onNewLink { onNewLink(url.absoluteString, false, action.sourceFrame.isMainFrame) }
+            else { onNewTab?(url.absoluteString) }
+        }
         return nil
     }
 
