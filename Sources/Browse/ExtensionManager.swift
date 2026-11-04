@@ -27,6 +27,8 @@ final class ExtensionManager: NSObject, ObservableObject {
     @Published private(set) var records: [ExtensionRecord] = []
     @Published private(set) var available: [AvailableExtension] = []
     @Published private(set) var busy = false
+    @Published private(set) var catalogInstallingID: String?
+    private var catalogTask: Task<Void, Never>?
     @Published var error: String?
     @Published private(set) var failures: [UUID: String] = [:]
     let controller: WKWebExtensionController
@@ -201,7 +203,49 @@ final class ExtensionManager: NSObject, ObservableObject {
         }
     }
 
-    func importExtension(from source: URL) async throws {
+    func catalogRecord(_ entry: CatalogExtension) -> ExtensionRecord? {
+        records.first { $0.packageIdentifier == entry.packageIdentifier }
+    }
+
+    func catalogSource(_ entry: CatalogExtension) -> URL? {
+        guard case .safari(let identifier, _) = entry.installation else { return nil }
+        return available.first { Bundle(url: $0.id)?.bundleIdentifier == identifier }?.id
+    }
+
+    func installFromCatalog(_ entry: CatalogExtension) {
+        guard !busy, catalogRecord(entry) == nil else { return }
+        busy = true; catalogInstallingID = entry.id; error = nil
+        catalogTask = Task {
+            defer { busy = false; catalogInstallingID = nil; catalogTask = nil }
+            do {
+                switch entry.installation {
+                case .safari:
+                    guard let source = catalogSource(entry) else {
+                        throw failure("Install the extension's app from the App Store, then refresh this list.")
+                    }
+                    try await importExtension(from: source, expectedIdentifier: entry.packageIdentifier)
+                case .download(let download):
+                    let data = try await download.fetch()
+                    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseCatalog-\(UUID())")
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    defer { try? FileManager.default.removeItem(at: directory) }
+                    let package = directory.appendingPathComponent("\(entry.id)-\(download.version).xpi")
+                    try data.write(to: package, options: .atomic)
+                    try Task.checkCancellation()
+                    try await importExtension(from: package, expectedIdentifier: entry.packageIdentifier)
+                }
+                discoverInstalled()
+            } catch is CancellationError {
+                // Cancelling a download leaves the installed list unchanged.
+            } catch {
+                if !Task.isCancelled { self.error = error.localizedDescription }
+            }
+        }
+    }
+
+    func cancelCatalogInstall() { catalogTask?.cancel() }
+
+    func importExtension(from source: URL, expectedIdentifier: String? = nil) async throws {
         guard writable else { throw failure("The saved extension list is unreadable.") }
         guard !records.contains(where: { ($0.importedFrom ?? $0.source) == source }) else {
             throw failure("This package is already installed. Use Update from File to replace it.")
@@ -212,6 +256,10 @@ final class ExtensionManager: NSObject, ObservableObject {
         do {
             let context = try await makeContext(record)
             record.packageIdentifier = packageIdentifier(record, extension: context.webExtension)
+            if let expectedIdentifier, record.packageIdentifier != expectedIdentifier {
+                throw failure("This package does not match the catalog entry. Nothing was installed.")
+            }
+            try Task.checkCancellation()
             if let identity = record.packageIdentifier, records.contains(where: { $0.packageIdentifier == identity }) {
                 throw failure("This extension is already installed. Use Update from File to replace it.")
             }

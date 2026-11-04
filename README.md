@@ -48,9 +48,11 @@ Tabs, workspace names, URLs, focus, and split proportions restore from `~/Librar
 
 On macOS 15.4 or newer, Browse → Settings (⌘,) installs and manages Browse's own extension copies. Use **Install from File** for downloaded ZIP, Firefox XPI, Chrome CRX, or unpacked packages. Safari Web Extensions can also be imported as independent resource copies. Review requested access before enabling. **Update from File** replaces a package while retaining its Browse identity and data; additional permissions require approval. Updates are manual, and importing a package does not establish full browser API compatibility or verify its publisher. The puzzle-piece menu opens extension actions; Settings exposes options pages. Reload open pages after enabling or disabling extensions. Native Safari App Extensions are not supported.
 
+**Discover** offers a curated, searchable collection with installation and compatibility notes. uBlock Origin Lite imports the Safari package from this Mac, or links to its official App Store listing if missing. 1Password downloads the reviewed Firefox package from Mozilla and verifies its pinned checksum and package identity. Both start disabled; use **Enable** to review permissions. **Installed** retains the full management controls. Catalog additions and updates are curated in the app, not fetched from a live store feed.
+
 **1Password for Safari is not currently supported.** Its web extension bundle loads, but its native companion connection fails in Browse with “Native messaging is not supported.” Enabling the extension does not establish working unlock or autofill. Settings displays this limitation alongside its runtime errors.
 
-**Firefox 1Password has experimental standalone onboarding support.** Download its official Firefox XPI from Mozilla, turn off the Safari 1Password copy in Browse, and use **Settings → Install from File**. Enable it, approve its requested access, and choose it from a pane's puzzle-piece menu. Complete its onboarding choices and choose **Sign in**. Initial startup can take roughly 20–30 seconds while desktop-app connection attempts time out. Desktop-app unlock is unavailable; authenticated sign-in, autofill, save, and account persistence still need testing. Browse's adapters leave the downloaded package unchanged.
+**Firefox 1Password has experimental standalone support.** Install it from **Settings → Discover**, turn off the Safari 1Password copy in Browse, then enable it and approve its requested access. Choose it from a pane's puzzle-piece menu, complete onboarding, and choose **Sign in**. Initial startup can take roughly 20–30 seconds while desktop-app connection attempts time out. Toolbar vault items have been confirmed after sign-in; autofill, save, and account persistence still need testing. Desktop-app unlock is unavailable. Browse's adapters leave the downloaded package unchanged.
 
 This embeds **system WebKit**, the engine Safari uses. macOS has no supported API for embedding the Safari app itself into arbitrary tiled views. Safari extensions, Safari profiles, Safari tab sync, and existing Safari logins are not inherited.
 
@@ -71,4 +73,10 @@ Extension compatibility tests exercise notification permissions and isolation, n
 
 ```sh
 BROWSE_TEST_FIREFOX_PACKAGE=/absolute/path/to/1password.xpi swift test --disable-sandbox --filter firefoxOnboardingSmoke
+```
+
+The catalog downloader can also be checked against the pinned official package without enabling it:
+
+```sh
+BROWSE_TEST_CATALOG_DOWNLOAD=1 swift test --disable-sandbox --filter catalogDownloadSmoke
 ```

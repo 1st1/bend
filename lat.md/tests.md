@@ -18,6 +18,18 @@ Splitting right and then below preserves leaf order. Closing panes collapses the
 
 [ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) verifies disabled imports, permission denial and approval, website scope, copied resources, enable/disable behavior, and stable extension identity and grants after restoration.
 
+## Catalog download integrity and identity
+
+[ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) rejects modified, empty, oversized, non-HTTPS, or unsuccessful catalog downloads and mismatched package identities before installation.
+
+A rejected package leaves no installed record or package files. A matching import starts disabled without permission grants; unrelated package identities do not match curated entries.
+
+## Catalog package download smoke test
+
+[ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) optionally downloads the pinned official 1Password package, validates its checksum, and imports it disabled into temporary storage.
+
+Set `BROWSE_TEST_CATALOG_DOWNLOAD=1` to exercise the real catalog network path. The test verifies package identity and version without enabling the extension, opening windows, or touching the user's profile.
+
 ## Extension content injection and blocking
 
 [ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) loads a local HTTP fixture in real WebKit, verifies content injection and declarative blocking, then checks both disappear after disable/reload. It also verifies pane registration and active-tab changes.

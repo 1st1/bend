@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Network
 import Testing
 import WebKit
@@ -298,6 +299,63 @@ private final class ExtensionTestNavigation: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         continuation?.resume(throwing: error); continuation = nil
     }
+}
+
+// @lat: [[tests#Catalog download integrity and identity]]
+@Test @MainActor func catalogIntegrityAndIdentity() async throws {
+    let data = Data("package fixture".utf8)
+    let url = URL(string: "https://example.test/extension.xpi")!
+    let download = CatalogDownload(version: "1", url: url,
+        sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined())
+    let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+    try download.validate(data, response: response)
+    #expect(throws: CatalogError.self) { try download.validate(Data("changed".utf8), response: response) }
+    #expect(throws: CatalogError.self) { try download.validate(Data(), response: response) }
+    #expect(throws: CatalogError.self) {
+        try download.validate(data, response: HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)!)
+    }
+    #expect(throws: CatalogError.self) {
+        try download.validate(data, response: HTTPURLResponse(url: URL(string: "http://example.test/package")!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+    #expect(throws: CatalogError.self) {
+        try download.validate(Data(count: CatalogDownload.maximumBytes + 1), response: response)
+    }
+    guard #available(macOS 15.4, *) else { return }
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseCatalogTest-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = try extensionFixture(at: root)
+    let manager = ExtensionManager(root: root.appendingPathComponent("installed"), persistent: false)
+    do {
+        try await manager.importExtension(from: source, expectedIdentifier: CatalogExtension.curated[1].packageIdentifier)
+        Issue.record("A mismatched catalog identity was accepted")
+    } catch { }
+    #expect(manager.records.isEmpty)
+    let leftovers = FileManager.default.enumerator(at: manager.root, includingPropertiesForKeys: [.isRegularFileKey])?.allObjects as? [URL] ?? []
+    #expect(try leftovers.allSatisfy { try $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile != true })
+    try await manager.importExtension(from: source, expectedIdentifier: "gecko:browse-fixture@example.test")
+    let record = try #require(manager.records.first)
+    #expect(!manager.isEnabled(record.id))
+    #expect(record.permissions.isEmpty)
+    #expect(record.websites.isEmpty)
+    #expect(manager.catalogRecord(CatalogExtension.curated[1]) == nil)
+}
+
+// @lat: [[tests#Catalog package download smoke test]]
+@Test @MainActor func catalogDownloadSmoke() async throws {
+    guard #available(macOS 15.4, *), ProcessInfo.processInfo.environment["BROWSE_TEST_CATALOG_DOWNLOAD"] == "1" else { return }
+    let entry = try #require(CatalogExtension.curated.first { $0.id == "1password" })
+    guard case .download(let download) = entry.installation else { Issue.record("Expected downloadable package"); return }
+    let data = try await download.fetch()
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseCatalogDownload-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let source = root.appendingPathComponent("official.xpi")
+    try data.write(to: source)
+    let manager = ExtensionManager(root: root.appendingPathComponent("installed"), persistent: false)
+    try await manager.importExtension(from: source, expectedIdentifier: entry.packageIdentifier)
+    let record = try #require(manager.catalogRecord(entry))
+    #expect(!manager.isEnabled(record.id))
+    #expect(manager.contexts[record.id]?.webExtension.version == download.version)
 }
 
 final class ExtensionHTTPFixture: @unchecked Sendable {

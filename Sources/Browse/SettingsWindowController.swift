@@ -2,16 +2,18 @@ import AppKit
 import SwiftUI
 import WebKit
 
+private typealias SettingsState<Value> = SwiftUI.State<Value>
+
 // @lat: [[architecture#Extension settings]]
 @MainActor
 final class SettingsWindowController {
     private let window: NSWindow
     init(store: BrowserStore) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 650, height: 560),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 650),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = "Browse Settings"
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 540, height: 420)
+        window.minSize = NSSize(width: 620, height: 480)
         window.setFrameAutosaveName("BrowseSettings")
         if #available(macOS 15.4, *) {
             window.contentView = NSHostingView(rootView: ExtensionSettingsView(manager: store.extensions))
@@ -26,51 +28,64 @@ final class SettingsWindowController {
 @available(macOS 15.4, *)
 private struct ExtensionSettingsView: View {
     @ObservedObject var manager: ExtensionManager
+    @SettingsState<Bool> private var discovering = true
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Extensions").font(.system(size: 24, weight: .semibold))
-                    Text("Install and manage Browse’s own extension copies, permissions, and data.")
+                    Text("Your extensions, permissions, and data stay separate from Safari.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Install from File…", action: manager.chooseExtension).disabled(manager.busy)
             }.padding(24)
+            Picker("Extensions view", selection: $discovering) {
+                Text("Discover").tag(true)
+                Text("Installed (\(manager.records.count))").tag(false)
+            }.pickerStyle(.segmented).frame(width: 270).padding(.horizontal, 24).padding(.bottom, 18)
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if manager.busy { ProgressView().controlSize(.small) }
-                    if let error = manager.error {
-                        HStack(alignment: .top) {
-                            Text(error).foregroundStyle(.red).textSelection(.enabled)
-                            Spacer()
-                            Button("Dismiss") { manager.error = nil }
+            if let error = manager.error {
+                HStack(alignment: .top) {
+                    Text(error).foregroundStyle(.red).textSelection(.enabled)
+                    Spacer()
+                    Button("Dismiss") { manager.error = nil }
+                }.padding(16)
+            }
+            if discovering {
+                ExtensionCatalogView(manager: manager, showInstalled: { discovering = false })
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if manager.busy { ProgressView().controlSize(.small) }
+                        if manager.records.isEmpty {
+                            ContentUnavailableView("No Extensions Installed", systemImage: "puzzlepiece.extension",
+                                description: Text("Find an extension in Discover, or install a package from a file."))
+                            Button("Discover Extensions") { discovering = true }
                         }
-                    }
-                    if manager.records.isEmpty {
-                        ContentUnavailableView("No Extensions Installed", systemImage: "puzzlepiece.extension",
-                            description: Text("Install a downloaded ZIP, Firefox XPI, Chrome CRX, or unpacked extension folder. API compatibility varies by extension."))
-                    }
-                    ForEach(manager.records) { record in extensionRow(record) }
-                    if !manager.available.isEmpty {
-                        DisclosureGroup("Import a Safari extension from this Mac") {
-                        ForEach(manager.available) { item in
-                            HStack {
-                                Image(systemName: "puzzlepiece.extension").foregroundStyle(.secondary)
-                                Text(item.name)
-                                Spacer()
-                                Button("Import Copy") { manager.add(item.id) }.disabled(manager.busy)
-                            }.padding(12).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                        ForEach(manager.records) { record in extensionRow(record) }
+                        if !manager.available.isEmpty {
+                            DisclosureGroup("Import a Safari extension from this Mac") {
+                            ForEach(manager.available) { item in
+                                HStack {
+                                    Image(systemName: "puzzlepiece.extension").foregroundStyle(.secondary)
+                                    Text(item.name)
+                                    Spacer()
+                                    Button("Import Copy") { manager.add(item.id) }.disabled(manager.busy)
+                                }.padding(12).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                            }
+                            }.padding(.top, 8)
                         }
-                        }.padding(.top, 8)
-                    }
-                    Text("Reload open pages after changing extensions. Native Safari App Extensions are not supported.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }.padding(24)
+                        Text("Reload open pages after changing extensions. Native Safari App Extensions are not supported.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }.padding(24)
+                }
             }
         }
         .onAppear { manager.discoverInstalled() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            manager.discoverInstalled()
+        }
     }
 
     private func extensionRow(_ record: ExtensionRecord) -> some View {

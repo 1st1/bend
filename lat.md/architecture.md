@@ -120,9 +120,17 @@ The [Firefox 1Password reproduction](../scripts/probe-onepassword-firefox.sh) ve
 
 [SettingsWindowController.swift](../Sources/Browse/SettingsWindowController.swift) provides Browse's own Settings window through Command-comma and pane extension menus. It manages web extensions without opening or modifying Safari preferences.
 
-Settings centers on packages installed in Browse, with Install from File and Update from File actions. Users can install ZIP, XPI, CRX, or unpacked packages, inspect requested access, enable or disable extensions, open options pages, and remove packages with confirmation. A collapsed import section offers copies of Safari Web Extensions found in Applications. Updates are manual; store downloads and automatic updates are not implemented. Load and runtime errors remain visible. Earlier macOS versions show the minimum version needed for extension support.
+Settings opens to [[architecture#Curated extension catalog|Discover]], with an Installed view for managing packages, permissions, enablement, options, manual updates, and removal. Install from File accepts ZIP, XPI, CRX, or unpacked packages. A collapsed import section offers copies of Safari Web Extensions found in Applications. Updates are manual; automatic updates and general store browsing are not implemented. Load and runtime errors remain visible. Earlier macOS versions show the minimum version needed for extension support.
 
 The enable switch reflects whether WebKit loaded the context, not whether every extension feature works. Settings identifies the Safari 1Password bundle and displays its known native-connection limitation. The Firefox package is marked experimental, with standalone sign-in instructions and an explicit desktop-integration and autofill limitation.
+
+## Curated extension catalog
+
+[ExtensionCatalog.swift](../Sources/Browse/ExtensionCatalog.swift) defines a bundled, curated collection with package-specific installation routes and explicit compatibility notes.
+
+[ExtensionCatalogView.swift](../Sources/Browse/ExtensionCatalogView.swift) provides searchable cards, publisher and category information, source links, installation state, and Enable or Manage actions. uBlock Origin Lite's Safari package is labeled reported working; its local bundle is identified by bundle ID and copied into Browse. If absent, the card links to its official App Store listing. Returning to Browse or refreshing rescans Applications. Firefox 1Password is labeled experimental, with confirmed toolbar vault access and remaining autofill and desktop-unlock limitations. Safari 1Password is not offered as its catalog package.
+
+The 1Password download is pinned to the reviewed Mozilla-hosted version and SHA-256. Downloads use an ephemeral session, a size limit and timeouts, require a successful HTTPS response, and validate the digest before import. [ExtensionManager.swift](../Sources/Browse/ExtensionManager.swift) checks the expected package identity before persistence, rejects duplicate identities, and cleans temporary downloads. Failed or cancelled downloads do not install a package. Catalog entries are matched to installed records by package identity, never display name. Imported packages remain disabled with no granted access until the user enables them and approves permissions. The catalog does not silently follow latest releases or update installed packages.
 
 ## Session restoration
 
