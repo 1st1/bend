@@ -30,15 +30,19 @@ The sidebar and exposed workspace share one native Liquid Glass base on macOS 26
 
 ## Pane materials
 
-Browser panes use rounded native Liquid Glass panels on macOS 26 and later, with standard material on older systems. Focus is indicated by a neutral header dot and brighter title rather than a colored border.
+Browser panes use rounded native Liquid Glass panels on macOS 26 and later, with standard material on older systems. Focus is indicated by a brighter title and dimming of inactive panes.
 
 [BrowserView.swift](../Sources/Browse/BrowserView.swift) dims inactive panes, including chrome and page content, with an 8% black overlay. Focus changes fade the overlay in or out over 100 ms. The overlay ignores hit testing and accessibility so underlying controls remain usable.
 
-[BrowserView.swift](../Sources/Browse/BrowserView.swift) places the pane canvas over the shared [[architecture#Sidebar materials|app base material]]. Pane chrome and built-in pages reveal the panel material; web pages keep their own rendering. A narrow content inset exposes the system glass edge without drawing a custom outline. Pane materials have a 50% black scrim beneath foreground controls and content, reducing glass brightness without dimming text or web pages.
+[BrowserView.swift](../Sources/Browse/BrowserView.swift) places the pane canvas over the shared [[architecture#Sidebar materials|app base material]]. Pane chrome and built-in pages reveal the panel material; web pages keep their own rendering. A narrow content inset sits behind an opaque neutral rim on the native clipping layer, covering bright glass bevels and page colors at the rounded edge. Pane materials have a 50% black scrim beneath foreground controls and content, reducing glass brightness without dimming text or web pages.
 
 On macOS 26 and later, each live web page extends behind its compact title row, which uses native regular Liquid Glass. Scrolling page colors show through the header while its controls remain readable. The measured header height sets WebKit's obscured content inset, keeping fixed and sticky site elements below the controls. Start pages, errors, and older macOS versions retain the stacked header layout.
 
-The web view sits inside a rounded, layer-backed AppKit container that clips WebKit's composited content independently of SwiftUI's pane clip. Its mask follows resizing and covers all corners under the glass header, or only the bottom corners in the stacked layout.
+Each web view fills its pane's viewport and scrolls its document internally through WebKit. Page content height does not size the web view or the pane. The outer canvas scrolls only when the split layout's minimum dimensions exceed the available window area.
+
+The complete pane, including its outer glass background, header, and page, shares a rounded, layer-backed AppKit container. Clipping is applied after the pane background so its glass compositing layers cannot extend outside the silhouette. The header glass also has rounded top corners, and the clip follows pane resizing.
+
+The web view has an additional native clip around its composited content: all corners under the glass header, or only the bottom corners in the stacked layout. Nested SwiftUI content inherits the pane's environment through its native host.
 
 ## Tiling model
 

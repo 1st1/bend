@@ -211,9 +211,14 @@ private struct PaneMaterial: ViewModifier {
 
 private struct PaneChromeBackground: View {
     var cornerRadius: CGFloat = 0
+    var roundsBottomCorners = true
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius)
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: cornerRadius,
+            bottomLeadingRadius: roundsBottomCorners ? cornerRadius : 0,
+            bottomTrailingRadius: roundsBottomCorners ? cornerRadius : 0,
+            topTrailingRadius: cornerRadius)
         Group {
             if #available(macOS 26.0, *) {
                 Color.clear.glassEffect(.regular, in: shape)
@@ -261,8 +266,11 @@ private struct BrowserPane: View {
     }
 
     var body: some View {
+        ClippedPaneContent(content: decoratedPane)
+    }
+
+    private var decoratedPane: some View {
         paneContent
-        .clipShape(RoundedRectangle(cornerRadius: 11))
         .padding(1)
         .modifier(PaneMaterial())
         .overlay {
@@ -281,7 +289,7 @@ private struct BrowserPane: View {
             WebSurface(webView: controller.webView, topContentInset: headerHeight)
                 .overlay(alignment: .top) {
                     header
-                        .background(PaneChromeBackground())
+                        .background(PaneChromeBackground(cornerRadius: 11, roundsBottomCorners: false))
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
                 }
         } else {
@@ -299,7 +307,6 @@ private struct BrowserPane: View {
                     Color.clear.frame(width: 66)
                     iconButton("sidebar.left", "Show sidebar · ⌘⇧S") { store.sidebarVisible = true }
                 }
-                Circle().fill(.white.opacity(focused ? 0.8 : 0.2)).frame(width: 5, height: 5)
                 pageIcon.frame(width: 14, height: 14).accessibilityHidden(true)
                 Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
                     .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
@@ -359,6 +366,45 @@ private struct BrowserPane: View {
             WebSurface(webView: controller.webView)
         }
     }
+}
+
+// Clip the completed pane, including both glass backgrounds and their compositing
+// layers. Applying the pane background outside this host leaves it unmasked.
+private struct ClippedPaneContent<Content: View>: NSViewRepresentable {
+    let content: Content
+    @Environment(\.self) private var environment
+
+    func makeNSView(context: Context) -> ClippedPaneHost {
+        ClippedPaneHost(content: AnyView(content.environment(\.self, environment)))
+    }
+
+    func updateNSView(_ host: ClippedPaneHost, context: Context) {
+        host.content.rootView = AnyView(content.environment(\.self, environment))
+    }
+}
+
+private final class ClippedPaneHost: NSView {
+    let content: NSHostingView<AnyView>
+
+    init(content rootView: AnyView) {
+        content = NSHostingView(rootView: rootView)
+        super.init(frame: .zero)
+        wantsLayer = true
+        clipsToBounds = true
+        layer?.cornerRadius = 12
+        layer?.cornerCurve = .continuous
+        layer?.masksToBounds = true
+        // Keep glass specular highlights and the page's edge antialiasing
+        // behind an opaque neutral rim, on the same curve as the native clip.
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor(calibratedWhite: 0.15, alpha: 1).cgColor
+        content.sizingOptions = []
+        content.frame = bounds
+        content.autoresizingMask = [.width, .height]
+        addSubview(content)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 
 private struct WebSurface: NSViewRepresentable {
