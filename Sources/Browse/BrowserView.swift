@@ -20,16 +20,8 @@ struct BrowserView: View {
         HStack(spacing: 0) {
             if store.sidebarVisible { sidebar.frame(width: 236) }
             GeometryReader { geometry in
-                let tab = store.selectedTab
-                ScrollView([.horizontal, .vertical]) {
-                    if let zoom = store.zoomedPane, let page = tab.pages.first(where: { $0.id == zoom }) {
-                        pane(page).frame(width: max(360, geometry.size.width), height: max(240, geometry.size.height))
-                    } else {
-                        let minimum = minimumSize(tab.layout)
-                        layout(tab.layout, pages: tab.pages)
-                            .frame(width: max(minimum.width, geometry.size.width), height: max(minimum.height, geometry.size.height))
-                    }
-                }.scrollIndicators(.hidden)
+                PaneCanvas(store: store, tab: store.selectedTab, viewport: geometry.size)
+                    .id(store.selectedTab.id)
             }
             .padding(8)
             .background {
@@ -77,22 +69,10 @@ struct BrowserView: View {
                     }.buttonStyle(.plain)
                 }.padding(.horizontal, 10).padding(.top, 14)
             }
-            Spacer(minLength: 12)
-            VStack(alignment: .leading, spacing: 12) {
-                if let error = store.persistenceError {
-                    Label(error, systemImage: "exclamationmark.triangle").font(.system(size: 10)).foregroundStyle(.orange)
-                }
-                HStack(spacing: 7) {
-                    Circle().fill(Chrome.accent).frame(width: 5, height: 5)
-                    Text("SYSTEM WEBKIT").font(.system(size: 9, weight: .medium, design: .monospaced)).tracking(1.3)
-                    Spacer()
-                    Text("0.1").font(.system(size: 10, design: .monospaced))
-                }.foregroundStyle(Chrome.muted)
-                HStack {
-                    Text("A little more room to think.").font(.system(size: 11)).foregroundStyle(.white.opacity(0.28))
-                    Spacer()
-                }
-            }.padding(20)
+            if let error = store.persistenceError {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 10)).foregroundStyle(.orange).padding(20)
+            }
         }.background {
             if #unavailable(macOS 26.0) {
                 WindowMaterial(material: .sidebar).allowsHitTesting(false)
@@ -125,33 +105,69 @@ struct BrowserView: View {
         }
     }
 
-    private func minimumSize(_ node: PaneLayout) -> CGSize {
-        switch node {
-        case .pane: return CGSize(width: 340, height: 240)
-        case .split(_, let axis, _, let a, let b):
-            let first = minimumSize(a), second = minimumSize(b)
-            return axis == .horizontal
-                ? CGSize(width: first.width + second.width + 8, height: max(first.height, second.height))
-                : CGSize(width: max(first.width, second.width), height: first.height + second.height + 8)
+}
+
+private struct PaneCanvas: View {
+    @ObservedObject var store: BrowserStore
+    let tab: BrowserTab
+    let viewport: CGSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var animation: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
+
+    var body: some View {
+        let layout = store.zoomedPane.map(PaneLayout.pane) ?? tab.layout
+        let geometry = PaneGeometry(layout: layout, viewport: viewport)
+        ScrollViewReader { proxy in
+            ScrollView([.horizontal, .vertical]) {
+                ZStack(alignment: .topLeading) {
+                    ForEach(geometry.panes) { placement in
+                        if let page = tab.pages.first(where: { $0.id == placement.id }) {
+                            BrowserPane(store: store, controller: store.controller(for: page), pageID: page.id)
+                                .frame(width: placement.frame.width, height: placement.frame.height)
+                                .transition(reduceMotion ? .identity : .asymmetric(
+                                    insertion: .modifier(active: PaneReveal(progress: 0, axis: placement.insertionAxis),
+                                                         identity: PaneReveal(progress: 1, axis: placement.insertionAxis)),
+                                    removal: .identity))
+                                .position(x: placement.frame.midX, y: placement.frame.midY)
+                                .id(page.id)
+                        }
+                    }
+                    ForEach(geometry.dividers) { divider in
+                        PaneDivider(placement: divider) { store.resize(divider.id, fraction: $0) }
+                            .frame(width: divider.frame.width, height: divider.frame.height)
+                            .position(x: divider.frame.midX, y: divider.frame.midY)
+                    }
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .animation(animation, value: tab.pages.count)
+            }
+            .scrollIndicators(.hidden)
+            .onChange(of: tab.pages.map(\.id)) { previous, current in
+                guard current.count > previous.count,
+                      let added = current.first(where: { !previous.contains($0) }) else { return }
+                withAnimation(animation) { proxy.scrollTo(added, anchor: .bottomTrailing) }
+            }
         }
     }
+}
 
-    private func layout(_ node: PaneLayout, pages: [Page]) -> AnyView {
-        switch node {
-        case .pane(let id):
-            if let page = pages.first(where: { $0.id == id }) { return AnyView(pane(page)) }
-            return AnyView(Color.clear)
-        case .split(let id, let axis, let fraction, let first, let second):
-            return AnyView(SplitView(axis: axis, fraction: fraction,
-                                     firstMinimum: minimumSize(first), secondMinimum: minimumSize(second),
-                                     onResize: { store.resize(id, fraction: $0) },
-                                     first: layout(first, pages: pages), second: layout(second, pages: pages)))
-        }
+private struct PaneReveal: AnimatableModifier {
+    nonisolated var progress: CGFloat
+    let axis: SplitAxis
+    nonisolated var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
     }
 
-    private func pane(_ page: Page) -> some View {
-        BrowserPane(store: store, controller: store.controller(for: page), pageID: page.id)
-            .id(page.id)
+    func body(content: Content) -> some View {
+        content.mask(alignment: .topLeading) {
+            GeometryReader { geometry in
+                Rectangle().frame(width: geometry.size.width * (axis == .horizontal ? progress : 1),
+                                  height: geometry.size.height * (axis == .vertical ? progress : 1))
+            }
+        }
+        .opacity(progress)
     }
 }
 
@@ -212,40 +228,25 @@ private struct PaneChromeBackground: View {
     }
 }
 
-private struct SplitView: View {
-    let axis: SplitAxis
-    let fraction: Double
-    let firstMinimum: CGSize
-    let secondMinimum: CGSize
+private struct PaneDivider: View {
+    let placement: DividerPlacement
     let onResize: (Double) -> Void
-    let first: AnyView
-    let second: AnyView
-    @ViewState<Double?> private var dragStart: Double?
+    @ViewState<CGFloat?> private var dragStart: CGFloat?
 
     var body: some View {
-        GeometryReader { geo in
-            let horizontal = axis == .horizontal
-            let available = max(1, (horizontal ? geo.size.width : geo.size.height) - 8)
-            let lower = horizontal ? firstMinimum.width : firstMinimum.height
-            let upper = available - (horizontal ? secondMinimum.width : secondMinimum.height)
-            let length = min(max(lower, available * fraction), max(lower, upper))
-            let stack = horizontal ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
-            stack {
-                first.frame(width: horizontal ? length : nil, height: horizontal ? nil : length)
-                Rectangle().fill(Color.clear).contentShape(Rectangle())
-                    .overlay(Capsule().fill(.white.opacity(0.12)).frame(width: horizontal ? 2 : 30, height: horizontal ? 30 : 2))
-                    .frame(width: horizontal ? 8 : nil, height: horizontal ? nil : 8)
-                    .onHover { hovering in
-                        if hovering { (horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).push() } else { NSCursor.pop() }
-                    }
-                    .gesture(DragGesture(minimumDistance: 0).onChanged { value in
-                        if dragStart == nil { dragStart = length }
-                        let delta = horizontal ? value.translation.width : value.translation.height
-                        onResize(min(max(lower, (dragStart ?? length) + delta), max(lower, upper)) / available)
-                    }.onEnded { _ in dragStart = nil })
-                second.frame(maxWidth: .infinity, maxHeight: .infinity)
+        let horizontal = placement.axis == .horizontal
+        Rectangle().fill(Color.clear).contentShape(Rectangle())
+            .overlay(Capsule().fill(.white.opacity(0.12))
+                .frame(width: horizontal ? 2 : 30, height: horizontal ? 30 : 2))
+            .onHover { hovering in
+                if hovering { (horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).push() }
+                else { NSCursor.pop() }
             }
-        }
+            .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+                if dragStart == nil { dragStart = placement.firstLength }
+                let delta = horizontal ? value.translation.width : value.translation.height
+                onResize(placement.fraction(forLength: (dragStart ?? placement.firstLength) + delta))
+            }.onEnded { _ in dragStart = nil })
     }
 }
 

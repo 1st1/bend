@@ -36,14 +36,24 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         background.material = .hudWindow
         background.blendingMode = .behindWindow
         background.state = .active
-        background.wantsLayer = true
-        background.layer?.cornerRadius = 18
-        background.layer?.masksToBounds = true
+        // Mask the native backdrop and window shadow together, not only the backing layer.
+        let radius: CGFloat = 18
+        let mask = NSImage(size: NSSize(width: radius * 2 + 1, height: radius * 2 + 1), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        mask.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        mask.resizingMode = .stretch
+        background.maskImage = mask
         panel.contentView = background
 
         let shade = NSView()
         shade.wantsLayer = true
         shade.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.5).cgColor
+        // The material mask does not clip subviews.
+        shade.layer?.cornerRadius = radius
+        shade.layer?.masksToBounds = true
         shade.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(shade)
         NSLayoutConstraint.activate([
