@@ -43,6 +43,48 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
                           first: first.resizing(target, to: value), second: second.resizing(target, to: value))
         }
     }
+
+    // Restore beside the nearest surviving sibling, preserving subsequent edits
+    // to the live layout instead of replacing the entire tree with a snapshot.
+    public func restoring(_ target: UUID, from previous: Self) -> Self? {
+        guard !paneIDs.contains(target) else { return nil }
+        if previous.removing(target) == self { return previous }
+        guard case .split(_, let axis, let fraction, let first, let second) = previous else { return nil }
+        let wasFirst = first.paneIDs.contains(target)
+        guard wasFirst || second.paneIDs.contains(target) else { return nil }
+        if let nested = restoring(target, from: wasFirst ? first : second) { return nested }
+        let sibling = wasFirst ? second : first
+        for anchor in sibling.nodeIDs {
+            if let restored = replacingNode(anchor, transform: { current in
+                .split(id: UUID(), axis: axis, fraction: fraction,
+                    first: wasFirst ? .pane(target) : current,
+                    second: wasFirst ? current : .pane(target))
+            }) { return restored }
+        }
+        return nil
+    }
+
+    private var nodeIDs: [UUID] {
+        switch self {
+        case .pane(let id): [id]
+        case .split(let id, _, _, let first, let second): [id] + first.nodeIDs + second.nodeIDs
+        }
+    }
+
+    private func replacingNode(_ target: UUID, transform: (Self) -> Self) -> Self? {
+        switch self {
+        case .pane(let id): return id == target ? transform(self) : nil
+        case .split(let id, let axis, let fraction, let first, let second):
+            if id == target { return transform(self) }
+            if let next = first.replacingNode(target, transform: transform) {
+                return .split(id: id, axis: axis, fraction: fraction, first: next, second: second)
+            }
+            if let next = second.replacingNode(target, transform: transform) {
+                return .split(id: id, axis: axis, fraction: fraction, first: first, second: next)
+            }
+            return nil
+        }
+    }
 }
 
 public struct Page: Codable, Identifiable, Sendable {

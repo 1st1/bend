@@ -31,6 +31,7 @@ The sidebar and exposed workspace share a native Liquid Glass base on macOS 26 a
 | Show / hide sidebar | ⌘⇧S |
 | Close focused pane | ⌘W |
 | Close entire tab | ⌘⇧W |
+| Reopen last closed pane or tab | ⌘⇧T |
 | Reload | ⌘R |
 | Back / forward | ⌘[ / ⌘] |
 
@@ -41,6 +42,8 @@ The location popup searches browsing history by page title and URL as you type. 
 Choose History → Show History (⌘Y) to search visits grouped by day, revisit a page, remove it from history, or clear history. Up to 10,000 web visits are saved in `~/Library/Application Support/BrowsePrototype/history.json`, separately from the open-tab session. Internal pages and failed loads are excluded.
 
 Drag dividers to resize. Click a pane header or its web content to focus it. Large layouts scroll once their panes reach minimum sizes. Closing the last pane closes its tab; an empty workspace receives a fresh tab.
+
+Press ⌘⇧T to reopen closed panes and tabs, most recent first. Panes return to their original tab and split position where possible, preserving later edits. The last 50 closures are available during the current app session. Reopening reloads saved URLs; page forms and back-forward history are not retained after closing.
 
 Tabs, workspace names, URLs, focus, and split proportions restore from `~/Library/Application Support/BrowsePrototype/session.json`. Browser instances stay alive while switching tabs; after restarting, pages load again from saved URLs. WebKit stores website data in this app’s own persistent profile. The prototype does not access Safari’s data.
 

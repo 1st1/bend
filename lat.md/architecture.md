@@ -16,9 +16,15 @@ Each workspace contains tabs; each tab contains one or more browser panes. Sideb
 
 The sidebar header places workspace creation beside a right-aligned sidebar toggle, without a brand label. Panes start at the top window inset with no shared navigation bar. When the sidebar is hidden, the upper-left pane reserves space for window controls and exposes the sidebar toggle.
 
-Each pane has one compact title row with reload/stop, split, zoom, and close controls. Reload focuses its pane and becomes stop while loading; it is disabled on start pages. The persistent address row is replaced by the [[architecture#Location popup]]. Back/forward remain available through the View menu and shortcuts; tab creation remains in the sidebar and File menu.
+Each pane has one compact title row with extensions, reload/stop, split, zoom, and close controls, using shared [[architecture#Toolbar button styling]]. Reload focuses its pane and becomes stop while loading; it is disabled on start pages. The persistent address row is replaced by the [[architecture#Location popup]]. Back/forward remain available through the View menu and shortcuts; tab creation remains in the sidebar and File menu.
 
 [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) attaches an empty unified native toolbar to give the traffic lights standard toolbar-height spacing. AppKit manages their placement through resizing and full-screen transitions; the transparent titlebar has no separator or shared toolbar actions.
+
+## Toolbar button styling
+
+[ChromeButtonStyle.swift](../Sources/Browse/ChromeButtonStyle.swift) gives pane controls and the extension menu a shared appearance, with muted cool-gray icons and translucent black circular hover backgrounds.
+
+Pane controls use regular 12-point symbols on a 24-point pitch, with a 22-point hover circle. Hover or pressing brightens the icon and reveals a pure-black background at 20% opacity over 100 ms. Disabled controls stay dim and do not highlight. Sidebar header controls use a brighter 14-point symbol and a 28-point circle. Reduce Motion removes state-transition animations. The extension menu uses the button menu style so it receives the same sizing and interaction treatment as adjacent buttons. Native menu tracking clears cached hover when it begins and ends, preventing a missed mouse-exit event from leaving the extension button highlighted after dismissal.
 
 ## Sidebar materials
 
@@ -49,6 +55,14 @@ The web view has an additional native clip around its composited content: all co
 [Session.swift](../Sources/BrowseCore/Session.swift) represents pane layouts as binary split trees. Splitting replaces the focused leaf; closing a leaf collapses its parent into the surviving sibling and repairs focus when necessary.
 
 Splits carry an axis and fraction. [BrowserView.swift](../Sources/Browse/BrowserView.swift) draws draggable dividers, constrains pane minimum sizes, and scrolls oversized layouts. Zoom temporarily displays a single pane without modifying the saved split tree.
+
+## Reopening closed panes and tabs
+
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) keeps the last fifty pane or tab closures in one in-memory stack. Command-Shift-T reopens the most recent item and selects its original tab and workspace.
+
+[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) exposes Reopen Closed Pane or Tab in the File menu, disabled when the stack is empty. Closing the final pane records one whole-tab closure; extension-requested pane closures use the same history. Reopening clears zoom and the location popup. Closed views are released: restoration uses saved URLs and identities, without recovering page forms, scroll positions, or back-forward lists. Closed-item history is discarded on restart; reopened layouts are saved normally.
+
+[Session.swift](../Sources/BrowseCore/Session.swift) restores the original split tree when the remaining layout is unchanged. Otherwise it inserts the closed pane beside the nearest surviving sibling, retaining subsequent splits, divider changes, and surviving page URLs. If no sibling remains, the pane opens beside the focused pane. Whole tabs return at their saved index. An unused blank tab created automatically after closing a workspace's last tab is removed on reopen; a replacement that has been navigated or split is retained.
 
 ## Pane layout animation
 

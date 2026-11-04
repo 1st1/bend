@@ -15,7 +15,7 @@ enum BrowseApp {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
     private let store = BrowserStore()
     private var window: NSWindow!
     private var clickMonitor: Any?
@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         file.addItem(.separator())
         add("Close Pane", #selector(closePane), "w", to: file)
         add("Close Tab", #selector(closeTab), "w", modifiers: [.command, .shift], to: file)
+        add("Reopen Closed Pane or Tab", #selector(reopenClosed), "t", modifiers: [.command, .shift], to: file)
         append(file, to: main)
 
         let edit = NSMenu(title: "Edit")
@@ -151,6 +152,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     @objc private func closePane() { store.closePane(store.selectedTab.focusedPane) }
     @objc private func closeTab() { store.closeTab(store.selectedTab.id) }
+    @objc private func reopenClosed() {
+        addressPanel.dismiss(restoreFocus: false)
+        store.reopenClosed()
+        window.makeKeyAndOrderFront(nil)
+    }
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        menuItem.action == #selector(reopenClosed) ? store.canReopenClosed : true
+    }
     @objc private func splitRight() { store.split(.horizontal) }
     @objc private func splitBelow() { store.split(.vertical) }
     @objc private func zoomPane() { store.toggleZoom(store.selectedTab.focusedPane) }

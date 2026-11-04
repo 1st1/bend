@@ -100,6 +100,22 @@ Opening a link splits its source pane to the right even when another pane is foc
 
 JSON encoding and decoding preserve the selected tab and nested layout. Restore validation rejects missing pages and selected tabs that do not exist.
 
+## Reopening nested pane layouts
+
+[ReopenTests.swift](../Tests/BrowseTests/ReopenTests.swift) verifies exact split restoration without intervening changes and preserves new panes and divider fractions when reopening into an edited layout.
+
+Restoration uses the nearest surviving ancestor when the original sibling is gone, retaining pane order and split direction.
+
+## Closed pane and tab history
+
+[ReopenTests.swift](../Tests/BrowseTests/ReopenTests.swift) verifies a unified last-closed-first history, original workspace selection, focus, zoom clearing, saved URLs, and preservation of subsequent pane edits.
+
+Closing a pane and then its tab reopens them in reverse order without duplicate pages or blank replacement tabs. Reopened layouts persist as valid sessions; closed-item history does not persist.
+
+## Reopen boundaries and background closures
+
+[ReopenTests.swift](../Tests/BrowseTests/ReopenTests.swift) checks background extension closures, final-pane tab closure, invalid pane IDs, preservation of navigated replacement tabs, and the fifty-entry history limit.
+
 ## Pane geometry and insertion
 
 [PaneGeometryTests.swift](../Tests/BrowseCoreTests/PaneGeometryTests.swift) verifies stable pane identities and exact frames through horizontal and nested vertical splits. Unaffected branches keep their frames, and closing restores the previous geometry.

@@ -148,9 +148,9 @@ struct PaneExtensionsMenu: View {
             Divider()
             Button("Manage Extensions…", action: showSettings)
         } label: {
-            Image(systemName: "puzzlepiece.extension").font(.system(size: 11)).frame(width: 22, height: 22)
+            Image(systemName: "puzzlepiece.extension").resizable().scaledToFit().frame(width: 12, height: 12)
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .menuStyle(.button).buttonStyle(ChromeButtonStyle()).menuIndicator(.hidden).fixedSize()
         .help("Extensions").accessibilityLabel("Extensions")
     }
 }

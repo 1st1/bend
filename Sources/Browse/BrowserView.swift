@@ -41,10 +41,10 @@ struct BrowserView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 13) {
+            HStack(spacing: 2) {
                 Spacer()
-                iconButton("plus", "New workspace") { addingWorkspace = true }
-                iconButton("sidebar.left", "Toggle sidebar · ⌘⇧S") { store.sidebarVisible.toggle() }
+                iconButton("plus", "New workspace", prominent: true) { addingWorkspace = true }
+                iconButton("sidebar.left", "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
             }.padding(.horizontal, 15).frame(height: 47)
 
             ScrollView {
@@ -311,19 +311,21 @@ private struct BrowserPane: View {
                 Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
                     .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
                 Spacer(minLength: 0)
-                if #available(macOS 15.4, *) {
-                    PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
-                        store.focus(pageID); store.onSettingsRequested?()
+                HStack(spacing: 0) {
+                    if #available(macOS 15.4, *) {
+                        PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
+                            store.focus(pageID); store.onSettingsRequested?()
+                        }
                     }
+                    iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
+                        store.focus(pageID)
+                        if controller.isLoading { controller.webView.stopLoading() }
+                        else if !controller.isStartPage { controller.webView.reload() }
+                    }.disabled(controller.isStartPage)
+                    iconButton("rectangle.split.2x1", "Split this pane right") { store.focus(pageID); store.split(.horizontal) }
+                    iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
+                    iconButton("xmark", "Close pane · ⌘W") { store.closePane(pageID) }
                 }
-                iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
-                    store.focus(pageID)
-                    if controller.isLoading { controller.webView.stopLoading() }
-                    else if !controller.isStartPage { controller.webView.reload() }
-                }.disabled(controller.isStartPage)
-                iconButton("rectangle.split.2x1", "Split this pane right") { store.focus(pageID); store.split(.horizontal) }
-                iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
-                iconButton("xmark", "Close pane · ⌘W") { store.closePane(pageID) }
             }.padding(.horizontal, 12).frame(height: 34)
 
             ZStack(alignment: .topLeading) {
@@ -549,7 +551,7 @@ private struct StartPage: View {
 }
 
 @MainActor
-private func iconButton(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) { Image(systemName: symbol).font(.system(size: 11)).frame(width: 17, height: 20).contentShape(Rectangle()) }
-        .buttonStyle(.plain).foregroundStyle(.white.opacity(0.5)).help(help).accessibilityLabel(help)
+private func iconButton(_ symbol: String, _ help: String, prominent: Bool = false, action: @escaping () -> Void) -> some View {
+    Button(action: action) { Image(systemName: symbol) }
+        .buttonStyle(ChromeButtonStyle(prominent: prominent)).help(help).accessibilityLabel(help)
 }

@@ -25,6 +25,15 @@ final class BrowserStore: ObservableObject {
     @Published private(set) var history = BrowsingHistory()
     @Published private(set) var historyError: String?
     private var browsers: [UUID: PageController] = [:]
+    private struct ClosedItem {
+        let tab: BrowserTab
+        let workspaceID: UUID
+        let tabIndex: Int
+        let paneID: UUID?
+        let replacementID: UUID?
+    }
+    @Published private var closedItems: [ClosedItem] = []
+    var canReopenClosed: Bool { !closedItems.isEmpty }
     // Only main-frame link openings populate this map. Subframe source IDs are
     // not exposed by public WKNavigationAction and must not be fabricated.
     private(set) var linkOpeners: [UUID: UUID] = [:]
@@ -177,10 +186,13 @@ final class BrowserStore: ObservableObject {
     func closeTab(_ id: UUID) {
         for wi in session.workspaces.indices {
             guard let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == id }) else { continue }
+            let closed = snapshot(session.workspaces[wi].tabs[ti])
             for page in session.workspaces[wi].tabs[ti].pages { browsers.removeValue(forKey: page.id)?.webView.stopLoading() }
             session.workspaces[wi].tabs.remove(at: ti)
             let needsReplacement = session.workspaces[wi].tabs.isEmpty
             if needsReplacement { session.workspaces[wi].tabs.append(BrowserTab()) }
+            rememberClosed(.init(tab: closed, workspaceID: session.workspaces[wi].id, tabIndex: ti, paneID: nil,
+                replacementID: needsReplacement ? session.workspaces[wi].tabs[0].id : nil))
             if session.selectedTab == id { select(session.workspaces[wi].tabs[min(ti, session.workspaces[wi].tabs.count - 1)].id) }
             if needsReplacement && session.selectedTab == session.workspaces[wi].tabs[0].id { requestAddress() }
             saveSoon(); return
@@ -188,9 +200,54 @@ final class BrowserStore: ObservableObject {
     }
 
     func closePane(_ id: UUID) {
-        if selectedTab.pages.count == 1 { closeTab(selectedTab.id); return }
-        zoomedPane = nil; editTab { $0.closePane(id) }
-        browsers.removeValue(forKey: id)?.webView.stopLoading()
+        guard selectedTab.pages.contains(where: { $0.id == id }) else { return }
+        closePage(id)
+    }
+
+    private func snapshot(_ tab: BrowserTab) -> BrowserTab {
+        var result = tab
+        for index in result.pages.indices {
+            if let controller = browsers[result.pages[index].id] { result.pages[index].address = controller.address }
+        }
+        return result
+    }
+
+    private func rememberClosed(_ item: ClosedItem) {
+        closedItems.append(item)
+        if closedItems.count > 50 { closedItems.removeFirst(closedItems.count - 50) }
+    }
+
+    // @lat: [[architecture#Reopening closed panes and tabs]]
+    func reopenClosed() {
+        guard let item = closedItems.popLast() else { return }
+        let wi = session.workspaces.firstIndex { $0.id == item.workspaceID } ?? 0
+        if let paneID = item.paneID, let pageIndex = item.tab.pages.firstIndex(where: { $0.id == paneID }) {
+            let page = item.tab.pages[pageIndex]
+            if let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == item.tab.id }) {
+                var tab = session.workspaces[wi].tabs[ti]
+                tab.layout = tab.layout.restoring(paneID, from: item.tab.layout)
+                    ?? tab.layout.splitting(tab.focusedPane, with: paneID, axis: .horizontal)
+                tab.pages.insert(page, at: min(pageIndex, tab.pages.count))
+                tab.focusedPane = paneID
+                session.workspaces[wi].tabs[ti] = tab
+            } else {
+                var tab = BrowserTab(title: item.tab.title, pages: [page])
+                tab.id = item.tab.id
+                session.workspaces[wi].tabs.insert(tab, at: min(item.tabIndex, session.workspaces[wi].tabs.count))
+            }
+        } else {
+            if let replacementID = item.replacementID,
+               let index = session.workspaces[wi].tabs.firstIndex(where: { $0.id == replacementID }) {
+                let replacement = session.workspaces[wi].tabs[index]
+                if replacement.pages.count == 1, replacement.pages[0].address == "browse://start",
+                   (browsers[replacement.pages[0].id]?.address ?? "browse://start") == "browse://start" {
+                    browsers.removeValue(forKey: replacement.pages[0].id)?.webView.stopLoading()
+                    session.workspaces[wi].tabs.remove(at: index)
+                }
+            }
+            session.workspaces[wi].tabs.insert(item.tab, at: min(item.tabIndex, session.workspaces[wi].tabs.count))
+        }
+        select(item.tab.id)
     }
 
     func controller(for page: Page) -> PageController {
@@ -253,8 +310,11 @@ final class BrowserStore: ObservableObject {
     }
 
     func closePage(_ id: UUID) {
-        guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == id } }) else { return }
+        guard let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.pages.contains { $0.id == id } } }),
+              let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.pages.contains { $0.id == id } }) else { return }
+        let tab = session.workspaces[wi].tabs[ti]
         if tab.pages.count == 1 { closeTab(tab.id); return }
+        rememberClosed(.init(tab: snapshot(tab), workspaceID: session.workspaces[wi].id, tabIndex: ti, paneID: id, replacementID: nil))
         editTab(tab.id) { $0.closePane(id) }
         if zoomedPane == id { zoomedPane = nil }
         browsers.removeValue(forKey: id)?.webView.stopLoading()
