@@ -26,7 +26,7 @@ A rejected package leaves no installed record or package files. A matching impor
 
 ## Catalog package download smoke test
 
-[ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) optionally downloads the pinned official 1Password package, validates its checksum, and imports it disabled into temporary storage.
+[ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) optionally downloads the pinned official 1Password and Dark Reader packages, validates their checksums, and imports each disabled into temporary storage.
 
 Set `BROWSE_TEST_CATALOG_DOWNLOAD=1` to exercise the real catalog network path. The test verifies package identity and version without enabling the extension, opening windows, or touching the user's profile.
 
@@ -57,6 +57,12 @@ A declared web-accessible iframe communicates with its background, while a priva
 [ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) optionally loads a real Firefox 1Password package through Browse's production extension manager in an isolated, windowless profile.
 
 Set `BROWSE_TEST_FIREFOX_PACKAGE` to a local official XPI to run this network-dependent test. It verifies action-driven onboarding, declines the three optional onboarding choices in disposable data, and follows Sign in to the official account page's email form. The website view has a normal pane-sized viewport even though no window is displayed. It enters no credentials and does not establish authenticated sign-in, desktop-app integration, autofill, or account persistence. Without the environment variable, this smoke test returns without loading a real package.
+
+## Dark Reader compatibility smoke test
+
+[DarkReaderTests.swift](../Tests/BrowseTests/DarkReaderTests.swift) exercises the official Firefox Dark Reader package through Browse's production extension host with temporary storage and a local HTTP page.
+
+Set `BROWSE_TEST_DARK_READER_PACKAGE` to the official 4.9.134 XPI. The test verifies the pinned SHA-256 and package identity, computed dark colors, popup global and per-site toggles, and disable/re-enable with page reloads. The popup runs windowlessly; this checks its DOM controls and messaging, not native popover placement. It does not touch the user's profile or establish compatibility across arbitrary websites. Without the environment variable, the package test is skipped.
 
 ## Extension update permissions and resource pages
 

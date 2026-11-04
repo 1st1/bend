@@ -43,7 +43,16 @@ struct CatalogExtension: Identifiable, Sendable {
             website: URL(string: "https://addons.mozilla.org/firefox/addon/1password-x-password-manager/")!,
             installation: .download(.init(version: "8.12.41.1",
                 url: URL(string: "https://addons.mozilla.org/firefox/downloads/file/5097307/1password_x_password_manager-8.12.41.1.xpi")!,
-                sha256: "6b00acff73253865303af49e99329245a940348484cbd931ea39f9fa215134f5")))
+                sha256: "6b00acff73253865303af49e99329245a940348484cbd931ea39f9fa215134f5"))),
+        .init(id: "dark-reader", name: "Dark Reader", publisher: "Dark Reader Ltd", category: "Appearance",
+            summary: "Give websites a dark theme with adjustable brightness and contrast.",
+            compatibility: "Dark themes, on/off controls, and per-site toggles passed Browse's compatibility test. Appearance may vary by website.",
+            experimental: true, symbol: "moon.fill",
+            packageIdentifier: "gecko:addon@darkreader.org",
+            website: URL(string: "https://darkreader.org/")!,
+            installation: .download(.init(version: "4.9.134",
+                url: URL(string: "https://addons.mozilla.org/firefox/downloads/file/5175215/darkreader-4.9.134.xpi")!,
+                sha256: "700633395aa2f639a1bed4253e27309eb676f346d599b0ae2b7a0453232e0aec")))
     ]
 }
 
