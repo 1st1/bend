@@ -349,6 +349,8 @@ private struct BrowserPane: View {
                 Text(error).font(.system(size: 12)).foregroundStyle(Chrome.muted).multilineTextAlignment(.center)
                 Button("Try again") { controller.navigate(controller.address) }.buttonStyle(.bordered)
             }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if controller.address == "browse://history" {
+            HistoryView(store: store, navigate: controller.navigate)
         } else if controller.isStartPage {
             StartPage(isGuide: controller.address == "browse://guide", navigate: controller.navigate,
                       split: { store.focus(pageID); store.split(.horizontal) }, focusAddress: { store.requestAddress(for: pageID) })
@@ -363,16 +365,44 @@ private struct WebSurface: NSViewRepresentable {
     let webView: WKWebView
     var topContentInset: CGFloat = 0
 
-    func makeNSView(context: Context) -> WKWebView {
-        updateContentInset(webView)
-        return webView
+    func makeNSView(context: Context) -> WebSurfaceHost {
+        let host = WebSurfaceHost()
+        host.update(webView: webView, topContentInset: topContentInset)
+        return host
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {
-        updateContentInset(nsView)
+    func updateNSView(_ nsView: WebSurfaceHost, context: Context) {
+        nsView.update(webView: webView, topContentInset: topContentInset)
+    }
+}
+
+// SwiftUI's shape clip does not reliably clip WebKit's native composited layers.
+// Keep the clip on an AppKit ancestor, outside WebKit's own layer management.
+private final class WebSurfaceHost: NSView {
+    private weak var hostedWebView: WKWebView?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 11
+        layer?.cornerCurve = .continuous
+        layer?.masksToBounds = true
     }
 
-    private func updateContentInset(_ webView: WKWebView) {
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func update(webView: WKWebView, topContentInset: CGFloat) {
+        if hostedWebView !== webView {
+            hostedWebView?.removeFromSuperview()
+            hostedWebView = webView
+            webView.frame = bounds
+            webView.autoresizingMask = [.width, .height]
+            addSubview(webView)
+        }
+        // In the stacked layout the page only touches the pane's bottom corners.
+        layer?.maskedCorners = topContentInset > 0
+            ? [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+            : [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         if #available(macOS 26.0, *) {
             // Reserve the visible viewport for the page while allowing its
             // scrolled content to render behind the overlaid glass header.

@@ -23,6 +23,7 @@ The sidebar and exposed workspace share a native Liquid Glass base on macOS 26 a
 | New tab | ⌘T |
 | Open link in a new pane to its right | ⌘-click link |
 | Open location popup | ⌘L |
+| Show History | ⌘Y |
 | Split focused pane right | ⌘D |
 | Split focused pane below | ⌘⇧D |
 | Zoom / restore focused pane | ⌘⇧Return |
@@ -34,6 +35,10 @@ The sidebar and exposed workspace share a native Liquid Glass base on macOS 26 a
 
 Press ⌘L to open a Spotlight-style URL/search popup for the focused pane. Return opens the address; Escape or an outside click dismisses the popup. New blank panes and tabs open it automatically. Reload/stop is in the top-right pane toolbar; back and forward use the shortcuts above.
 
+The location popup searches browsing history by page title and URL as you type. Suggestions favor recent/frequent pages and learn from the results you choose; URL prefixes autocomplete with the suffix selected. Use ↑/↓ and Return or click a result. Matching is local; web searches run only when submitted.
+
+Choose History → Show History (⌘Y) to search visits grouped by day, revisit a page, remove it from history, or clear history. Up to 10,000 web visits are saved in `~/Library/Application Support/BrowsePrototype/history.json`, separately from the open-tab session. Internal pages and failed loads are excluded.
+
 Drag dividers to resize. Click a pane header or its web content to focus it. Large layouts scroll once their panes reach minimum sizes. Closing the last pane closes its tab; an empty workspace receives a fresh tab.
 
 Tabs, workspace names, URLs, focus, and split proportions restore from `~/Library/Application Support/BrowsePrototype/session.json`. Browser instances stay alive while switching tabs; after restarting, pages load again from saved URLs. WebKit stores website data in this app’s own persistent profile. The prototype does not access Safari’s data.
@@ -42,7 +47,7 @@ Tabs, workspace names, URLs, focus, and split proportions restore from `~/Librar
 
 This embeds **system WebKit**, the engine Safari uses. macOS has no supported API for embedding the Safari app itself into arbitrary tiled views. Safari extensions, Safari profiles, Safari tab sync, and existing Safari logins are not inherited.
 
-The prototype supports normal web navigation, search, pop-up links as new tabs, JavaScript dialogs, and WebKit’s developer inspector. It does not yet implement downloads, permission prompts for camera/microphone, a bookmarks/history UI, tab reordering, or full browser settings. It is a local prototype, not a hardened or notarized browser distribution.
+The prototype supports normal web navigation, search, browsing history and address suggestions, pop-up links as new tabs, JavaScript dialogs, and WebKit’s developer inspector. It does not yet implement downloads, permission prompts for camera/microphone, bookmarks, tab reordering, or full browser settings. It is a local prototype, not a hardened or notarized browser distribution.
 
 ## Verify
 
@@ -52,3 +57,5 @@ lat check
 ```
 
 The core tests cover nested split collapse, focus repair, persisted session integrity, resize bounds, and address/search resolution.
+
+History tests cover visit recording, title updates, matching, ranking, completion, retention, persistence, deletion, corrupt-file preservation, and successful-navigation callbacks.

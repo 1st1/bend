@@ -10,18 +10,35 @@ final class BrowserStore: ObservableObject {
     @Published var zoomedPane: UUID?
     var onAddressRequested: ((UUID) -> Void)?
     @Published var persistenceError: String?
+    @Published private(set) var history = BrowsingHistory()
+    @Published private(set) var historyError: String?
     private var browsers: [UUID: PageController] = [:]
     private var pendingSave: Task<Void, Never>?
     private let sessionFile: URL
+    private let historyFile: URL
+    private var pendingHistorySave: Task<Void, Never>?
+    private var historyDirty = false
+    private var historyWritable = true
 
     init(sessionFile: URL? = nil) {
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BrowsePrototype", isDirectory: true)
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
+        historyFile = self.sessionFile.deletingLastPathComponent().appendingPathComponent("history.json")
         if let data = try? Data(contentsOf: self.sessionFile),
            let restored = try? JSONDecoder().decode(BrowserSession.self, from: data), restored.isValid {
             session = restored
         } else { session = BrowserSession() }
+        if FileManager.default.fileExists(atPath: historyFile.path) {
+            do {
+                let restored = try JSONDecoder().decode(BrowsingHistory.self, from: Data(contentsOf: historyFile))
+                guard restored.isValid else { throw CocoaError(.fileReadCorruptFile) }
+                history = restored
+            } catch {
+                historyWritable = false
+                historyError = "Saved history could not be read. Clear history to reset it."
+            }
+        }
     }
 
     var selectedTab: BrowserTab {
@@ -65,7 +82,7 @@ final class BrowserStore: ObservableObject {
     func newTab(in workspace: UUID? = nil, address: String = "browse://start") {
         let index = session.workspaces.firstIndex { $0.id == workspace }
             ?? session.workspaces.firstIndex { $0.tabs.contains { $0.id == session.selectedTab } } ?? 0
-        let tab = BrowserTab(pages: [Page(address: address)])
+        let tab = BrowserTab(title: address == "browse://history" ? "History" : "New tab", pages: [Page(address: address)])
         session.workspaces[index].tabs.append(tab); select(tab.id)
         if address == "browse://start" { requestAddress() }
     }
@@ -76,6 +93,60 @@ final class BrowserStore: ObservableObject {
         let workspace = Workspace(name: name)
         session.workspaces.append(workspace); select(workspace.tabs[0].id)
         requestAddress()
+    }
+
+    func showHistory() {
+        for workspace in session.workspaces {
+            if let tab = workspace.tabs.first(where: { $0.pages.contains { $0.address == "browse://history" } }),
+               let page = tab.pages.first(where: { $0.address == "browse://history" }) {
+                select(tab.id); focus(page.id); return
+            }
+        }
+        newTab(address: "browse://history")
+    }
+
+    func recordVisit(url: String, title: String, at date: Date = Date()) {
+        guard history.record(url: url, title: title, at: date) else { return }
+        saveHistorySoon()
+    }
+
+    func recordHistoryChoice(url: String, query: String) {
+        history.recordChoice(url: url, query: query)
+        saveHistorySoon()
+    }
+
+    func removeHistory(url: String) {
+        history.remove(url: url)
+        historyDirty = true
+        saveHistory()
+    }
+
+    func clearHistory() {
+        history.clear()
+        historyWritable = true
+        historyDirty = true
+        saveHistory()
+    }
+
+    private func saveHistorySoon() {
+        historyDirty = true
+        pendingHistorySave?.cancel()
+        pendingHistorySave = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            self?.saveHistory()
+        }
+    }
+
+    func saveHistory() {
+        pendingHistorySave?.cancel()
+        pendingHistorySave = nil
+        guard historyDirty, historyWritable else { return }
+        do {
+            try FileManager.default.createDirectory(at: historyFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(history).write(to: historyFile, options: .atomic)
+            historyDirty = false
+            historyError = nil
+        } catch { historyError = "History could not be saved: \(error.localizedDescription)" }
     }
 
     func closeTab(_ id: UUID) {
@@ -115,6 +186,12 @@ final class BrowserStore: ObservableObject {
         controller.onNewTab = { [weak self] address in self?.newTab(address: address) }
         controller.onNewPane = { [weak self] address in self?.openPane(address: address, toRightOf: page.id) }
         controller.onFocus = { [weak self] in self?.focus(page.id) }
+        controller.onVisit = { [weak self] url, title in self?.recordVisit(url: url, title: title) }
+        controller.onHistoryTitleChanged = { [weak self] url, title in
+            guard let self else { return }
+            self.history.updateTitle(title, for: url)
+            self.saveHistorySoon()
+        }
         browsers[page.id] = controller
         return controller
     }
@@ -133,12 +210,13 @@ final class BrowserStore: ObservableObject {
             try JSONEncoder().encode(session).write(to: sessionFile, options: .atomic)
             persistenceError = nil
         } catch { persistenceError = "Session could not be saved: \(error.localizedDescription)" }
+        saveHistory()
     }
 }
 
 // @lat: [[architecture#WebKit integration]]
 @MainActor
-final class FocusWebView: WKWebView {
+class FocusWebView: WKWebView {
     var onFocus: (() -> Void)?
     override func mouseDown(with event: NSEvent) { onFocus?(); super.mouseDown(with: event) }
     override func becomeFirstResponder() -> Bool { onFocus?(); return super.becomeFirstResponder() }
@@ -162,6 +240,9 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     var onNewPane: ((String) -> Void)?
     var onFocus: (() -> Void)?
     private var observations: [NSKeyValueObservation] = []
+    var onVisit: ((String, String) -> Void)?
+    var onHistoryTitleChanged: ((String, String) -> Void)?
+    private var completedAddress: String?
     private var lastReportedAddress = ""
     private var lastReportedTitle = ""
 
@@ -178,7 +259,8 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         observations = [
             webView.observe(\.estimatedProgress) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
             webView.observe(\.isLoading) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
-            webView.observe(\.title) { [weak self] _, _ in Task { @MainActor in self?.refresh() } }
+            webView.observe(\.title) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
+            webView.observe(\.url) { [weak self] _, _ in Task { @MainActor in self?.refresh() } }
         ]
         navigate(address)
     }
@@ -187,9 +269,11 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard let url = AddressResolver.resolve(input) else { error = "Enter a web address or search phrase."; return }
         resetFavicon()
         error = nil; address = url.absoluteString
+        completedAddress = nil
         isStartPage = url.scheme == "browse"
         if isStartPage {
-            webView.stopLoading(); title = address == "browse://guide" ? "Tiling guide" : "New tab"
+            webView.stopLoading()
+            title = address == "browse://history" ? "History" : (address == "browse://guide" ? "Tiling guide" : "New tab")
             reportNavigation()
         } else { webView.load(URLRequest(url: url)) }
     }
@@ -201,6 +285,14 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
             if let url = webView.url { address = url.absoluteString }
             title = webView.title?.isEmpty == false ? webView.title! : (webView.url?.host ?? "New tab")
             reportNavigation()
+            if let completedAddress, !isLoading, error == nil {
+                if completedAddress != address {
+                    recordCompletedVisit()
+                } else if title != historyTitle {
+                    historyTitle = title
+                    onHistoryTitleChanged?(address, title)
+                }
+            }
         }
     }
 
@@ -210,11 +302,24 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         onNavigation?(address, title)
     }
 
+    private var historyTitle = ""
+
+    private func recordCompletedVisit() {
+        guard !isStartPage, error == nil, let url = webView.url,
+              BrowsingHistory.webAddress(url.absoluteString) != nil else { return }
+        completedAddress = url.absoluteString
+        historyTitle = title
+        onVisit?(url.absoluteString, title)
+    }
+
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         resetFavicon()
+        completedAddress = nil
+        if !isStartPage { error = nil }
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         refresh()
+        recordCompletedVisit()
         guard !isStartPage, let url = webView.url else { return }
         faviconTask?.cancel()
         faviconTask = Task { [weak self] in
@@ -236,6 +341,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { show(error) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { show(error) }
     func show(_ failure: Error) {
+        completedAddress = nil
         if (failure as NSError).code != NSURLErrorCancelled { error = failure.localizedDescription }
         refresh()
     }

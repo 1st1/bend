@@ -4,7 +4,7 @@ This directory defines the high-level concepts, business logic, and architecture
 
 Browse is a SwiftUI and WebKit macOS browser prototype with Rex-inspired vertical tabs and tiled browsing panes.
 
-- [[architecture]] describes the native shell, tiling model, WebKit ownership, session persistence, and navigation.
+- [[architecture]] describes the native shell, tiling model, WebKit ownership, session persistence, browsing history, and address suggestions.
 - [[tests]] describes model and store regression coverage.
 
 See [README.md](../README.md) for building, running, keyboard shortcuts, and prototype scope.

@@ -61,3 +61,31 @@ Hostnames, explicit HTTPS, localhost, internal start pages, and search queries r
 The store tests use an isolated temporary session-file path. They cover both split directions, blank tabs, new workspaces, and the replacement tab created after closing a workspace's last tab. Each automatic request must identify the newly focused pane.
 
 Explicit requests for an existing pane focus that pane; invalid identities produce no request. Opening a link in a right-hand pane or a tab with a supplied URL must not request location entry. These tests exercise store events without instantiating the popup or loading WebKit pages.
+
+## History recording
+
+[HistoryTests.swift](../Tests/BrowseCoreTests/HistoryTests.swift) verifies web-only recording, credential stripping, merging of rapid repeated visits, title updates, and serialization that preserves valid history.
+
+## History matching and completion
+
+[HistoryTests.swift](../Tests/BrowseCoreTests/HistoryTests.swift) checks case- and accent-insensitive matching across titles and decoded URLs. Prefix completion handles explicit schemes and declines short, complete, or multiword queries.
+
+## History ranking and learned choices
+
+[HistoryTests.swift](../Tests/BrowseCoreTests/HistoryTests.swift) verifies recency, frequency, learned query choices, URL matching, and result limits so suggestions remain relevant and bounded.
+
+## History removal and bounds
+
+[HistoryTests.swift](../Tests/BrowseCoreTests/HistoryTests.swift) verifies eviction at the visit limit, removal from suggestions, and clearing visits and learned choices while retaining a valid model.
+
+## History persistence and clearing
+
+[HistoryStoreTests.swift](../Tests/BrowseTests/HistoryStoreTests.swift) verifies that visits and learned choices survive reloading, and that removal and clearing persist independently of session data.
+
+## Unreadable history preservation
+
+[HistoryStoreTests.swift](../Tests/BrowseTests/HistoryStoreTests.swift) verifies that corrupt history is reported and preserved during ordinary saves. Explicit clearing permits a valid empty history file to replace it.
+
+## Completed navigation history
+
+[HistoryStoreTests.swift](../Tests/BrowseTests/HistoryStoreTests.swift) checks that completed web navigation records once, title changes update existing history, and later URL changes add visits. Failed navigation and internal pages are excluded.

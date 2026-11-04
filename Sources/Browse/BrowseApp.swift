@@ -111,6 +111,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         add("Back", #selector(back), "[", to: view)
         add("Forward", #selector(forward), "]", to: view)
         append(view, to: main)
+        let history = NSMenu(title: "History")
+        add("Show History", #selector(showHistory), "y", to: history)
+        append(history, to: main)
         NSApp.mainMenu = main
     }
     private func append(_ menu: NSMenu, to main: NSMenu) {
@@ -125,6 +128,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     @objc private func newTab() { store.newTab() }
     @objc private func openLocation() { store.requestAddress() }
+    @objc private func showHistory() {
+        addressPanel.dismiss(restoreFocus: false)
+        store.showHistory()
+        window.makeKeyAndOrderFront(nil)
+    }
     @objc private func closePane() { store.closePane(store.selectedTab.focusedPane) }
     @objc private func closeTab() { store.closeTab(store.selectedTab.id) }
     @objc private func splitRight() { store.split(.horizontal) }

@@ -122,7 +122,7 @@ public enum AddressResolver {
     public static func resolve(_ input: String) -> URL? {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
-        if text == "browse://start" || text == "browse://guide" { return URL(string: text) }
+        if ["browse://start", "browse://guide", "browse://history"].contains(text) { return URL(string: text) }
         if text.contains("://") {
             guard let url = URL(string: text), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
                   let host = url.host, !host.isEmpty else { return nil }

@@ -38,6 +38,8 @@ Browser panes use rounded native Liquid Glass panels on macOS 26 and later, with
 
 On macOS 26 and later, each live web page extends behind its compact title row, which uses native regular Liquid Glass. Scrolling page colors show through the header while its controls remain readable. The measured header height sets WebKit's obscured content inset, keeping fixed and sticky site elements below the controls. Start pages, errors, and older macOS versions retain the stacked header layout.
 
+The web view sits inside a rounded, layer-backed AppKit container that clips WebKit's composited content independently of SwiftUI's pane clip. Its mask follows resizing and covers all corners under the glass header, or only the bottom corners in the stacked layout.
+
 ## Tiling model
 
 [Session.swift](../Sources/BrowseCore/Session.swift) represents pane layouts as binary split trees. Splitting replaces the focused leaf; closing a leaf collapses its parent into the surviving sibling and repairs focus when necessary.
@@ -51,7 +53,6 @@ Splits carry an axis and fraction. [BrowserView.swift](../Sources/Browse/Browser
 Adding a pane animates existing frames over 180 ms with an ease-out curve. The new pane reveals horizontally for a right split or vertically for a lower split, without scaling its text or web content. The scroll view reveals the destination when it would extend beyond the viewport. Reduce Motion disables these layout and insertion animations.
 
 The geometry retains pane minimum sizes and divider constraints, growing the scrollable canvas when necessary. Divider dragging updates immediately. Tab switches and session restoration start at their final layout; animation state is not persisted.
-
 
 ## WebKit integration
 
@@ -71,6 +72,34 @@ External custom URL schemes are not handed to other applications. Downloads, web
 
 Persistence includes workspaces, selected tab, URLs, focused panes, and split trees. Restarting recreates web views from URLs; in-page state and back-forward lists are only retained during the running process. Invalid session files fall back to the initial workspace. Save failures appear in the sidebar.
 
+## Browsing history
+
+[History.swift](../Sources/BrowseCore/History.swift) models a bounded, serializable collection of web visits. It normalizes HTTP and HTTPS addresses, strips embedded credentials, and combines rapid consecutive visits to the same URL.
+
+Visits retain titles and timestamps, newest first, up to 10,000 visits. Consecutive visits to the same URL within 30 seconds coalesce. Removing a URL also removes its learned suggestion choices; clearing history removes both visits and choices.
+
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) records successful web navigations. Later URL changes on a completed, idle page create visits, while title changes update the latest matching visit. Internal pages and failed navigations are excluded.
+
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) persists visits and learned choices atomically in a separate history file beside the session file. Writes are debounced and flushed with session saves; removal and clearing save immediately. An unreadable history file is preserved until an explicit clear permits replacement, with errors exposed by the store.
+
+## History interface
+
+[HistoryView.swift](../Sources/Browse/HistoryView.swift) displays searchable visits grouped by local calendar day in the built-in history page, with controls to revisit or remove pages and clear recorded history.
+
+The History menu and Command-Y open `browse://history`, reusing an existing history pane across workspaces when available. Selecting a visit navigates the current pane; its context menu can open a new tab. Removing a page deletes all visits and learned choices for that URL. Clearing all history requires confirmation and leaves open pages and website data intact. The view displays history read and write errors from the store.
+
+## History suggestions
+
+[History.swift](../Sources/BrowseCore/History.swift) groups visits by URL and ranks matching suggestions using prior choices, URL match strength, and visit frequency weighted by recency.
+
+Matching ignores case and diacritics and requires every query word to occur in the title or decoded URL. URL-prefix completions preserve the typed prefix; whitespace-containing queries do not receive inline completions.
+
+Suggestions combine visits into one result per URL. Ranking prefers learned query choices, then exact or prefix URL matches, then frequency with a 30-day recency half-life. Learned choices are bounded to 1,000 query/URL pairs and decay over time. Matching runs locally without sending partial queries to a search engine or preloading pages.
+
+The interaction draws on [Firefox's address-bar matching](https://support.mozilla.org/en-US/kb/address-bar-autocomplete-firefox), its [frequency/recency and adaptive-input ranking](https://firefox-source-docs.mozilla.org/browser/urlbar/ranking.html), and [Safari's combined search field](https://support.apple.com/en-ie/guide/safari/sfrid73436cb/mac). Browse implements its own bounded ranking over recorded visits.
+
+[AddressPanelController.swift](../Sources/Browse/AddressPanelController.swift) combines history matches with a direct visit or search action in the [[architecture#Location popup]]. The popup refreshes when history changes; selecting a history result records the typed query to influence later rankings.
+
 ## Address handling
 
 [Session.swift](../Sources/BrowseCore/Session.swift) resolves web addresses, localhost development URLs, built-in start pages, and search queries. Explicit non-web schemes are rejected; search text is encoded as a Google query parameter.
@@ -83,9 +112,15 @@ Bare hostnames containing dots use HTTPS, while localhost and loopback IPv4 addr
 
 Command-L and the start-page location button open the popup for a specific pane, with its current URL selected (blank for start pages). Return navigates that pane using the [[architecture#Address handling|address resolver]]; invalid input stays open with an error that clears when editing resumes.
 
+[AddressPanelController.swift](../Sources/Browse/AddressPanelController.swift) displays [[architecture#History suggestions]] beneath the input. Arrow keys select results, Return opens the selection, and clicking a result opens it. Eligible URL prefixes autocomplete with the added suffix selected; deletion, marked text input, and edits away from the end suppress autofill.
+
+Opening the popup shows frequent/recent pages while retaining the current address selected for editing. Typing shows up to six history matches alongside an explicit visit/search action. Inline URL matches become the selected top result; other queries keep the explicit action selected. History updates preserve selection when possible, and deletion removes stale suggestions immediately. Results sit directly beneath the input with compact spacing; validation errors reserve extra space only while visible.
+
 The popup is a borderless child panel positioned near the main window's upper center. It uses native HUD material with a 50% black background scrim, accepts keyboard focus without becoming the main window, supports full-screen use, and hides when the app deactivates.
 
 A stretchable rounded material mask shapes both the backdrop and the native window shadow. The dark scrim uses the same corner radius, keeping it inside the material's outline as the popup width changes.
+
+Selected suggestions use a rounded native clear-glass background on macOS 26 and later, with a subtle translucent fill on earlier systems. The selection keeps the compact row alignment and leaves keyboard focus in the address input.
 
 Escape dismisses the popup and returns keyboard focus to the browser, as does successful submission. Losing key-window status dismisses it without reclaiming focus, allowing outside clicks to select another pane or application normally.
 

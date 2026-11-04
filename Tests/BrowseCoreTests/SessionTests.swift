@@ -86,6 +86,7 @@ import Testing
     #expect(AddressResolver.resolve("localhost:8080")?.absoluteString == "http://localhost:8080")
     #expect(AddressResolver.resolve("https://swift.org")?.host == "swift.org")
     #expect(AddressResolver.resolve("browse://start")?.scheme == "browse")
+    #expect(AddressResolver.resolve("browse://history")?.absoluteString == "browse://history")
     #expect(AddressResolver.resolve("file:///etc/passwd") == nil)
     #expect(AddressResolver.resolve("javascript://alert(1)") == nil)
     #expect(AddressResolver.resolve("   ") == nil)
