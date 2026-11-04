@@ -70,7 +70,7 @@ Splits carry an axis and fraction. [BrowserView.swift](../Sources/Browse/Browser
 
 Adding a pane animates existing frames over 180 ms with an ease-out curve. The new pane reveals horizontally for a right split or vertically for a lower split, without scaling its text or web content. The scroll view reveals the destination when it would extend beyond the viewport. Reduce Motion disables these layout and insertion animations.
 
-The geometry retains pane minimum sizes and divider constraints, growing the scrollable canvas when necessary. Dividers are invisible hit regions spanning the gaps; hovering shows the directional resize cursor, and dragging updates immediately. Tab switches and session restoration start at their final layout; animation state is not persisted.
+The geometry retains pane minimum sizes and divider constraints, growing the scrollable canvas when necessary. Dividers are invisible hit regions spanning the gaps; hovering shows the directional resize cursor, and dragging updates immediately. Drag translation uses a fixed global coordinate space so the moving divider does not feed its own movement back into the resize calculation. Tab switches and session restoration start at their final layout; animation state is not persisted.
 
 ## Pane drag and drop
 
@@ -87,6 +87,8 @@ The title and adjacent empty header space start an internal drag after a movemen
 [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) retains one WebKit controller per visited pane, keeping live pages and navigation history while switching tabs or changing layouts. The native host uses the system WebKit framework, not an embedded Safari application.
 
 Selecting a visited tab does not load or reload its pages. Its [[architecture#Mounted tab views|mounted view hierarchy]] stays attached while inactive. First visits, reopened closed pages, and process restarts still load URLs.
+
+Website configurations append Safari-compatible product tokens and a Browse identifier to WebKit’s default user agent before navigation, including when leaving extension pages. The Safari version comes from the installed app’s bundle metadata, with a macOS 14-era fallback; this prevents sites such as Google from serving legacy fixed-width layouts. This does not read Safari preferences or share its session.
 
 All panes share the app’s default persistent WebKit website data store, separate from Safari. Navigation updates the stored address and first-pane tab title. Command-clicking an HTTP or HTTPS link opens and focuses a new pane to the right of its source, leaving the source page unchanged and exiting pane zoom. This also applies to links targeting a new window; other new-window web links create tabs. Errors offer retry, and page JavaScript alert, confirm, and text-input dialogs use AppKit.
 

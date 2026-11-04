@@ -369,7 +369,10 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
             connection.receive(minimumIncompleteLength: 1, maximumLength: 16384) { data, _, _, _ in
                 let request = String(data: data ?? Data(), encoding: .utf8) ?? ""
                 let script = request.hasPrefix("GET /blocked.js ")
-                let body = script ? "window.blockedScriptRan = true;" : "<html><body>Fixture<script src='/blocked.js'></script></body></html>"
+                let userAgent = request.components(separatedBy: "\r\n").first { $0.lowercased().hasPrefix("user-agent:") } ?? ""
+                let encodedAgent = (try? JSONSerialization.data(withJSONObject: userAgent, options: .fragmentsAllowed))
+                    .flatMap { String(data: $0, encoding: .utf8) } ?? "null"
+                let body = script ? "window.blockedScriptRan = true;" : "<html><body>Fixture<script>window.requestUserAgent=\(encodedAgent)</script><script src='/blocked.js'></script></body></html>"
                 let type = script ? "text/javascript" : "text/html"
                 let response = "HTTP/1.1 200 OK\r\nContent-Type: \(type)\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
                 connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })

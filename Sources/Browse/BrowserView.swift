@@ -255,7 +255,9 @@ private struct PaneDivider: View {
                 if hovering { (horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).push() }
                 else { NSCursor.pop() }
             }
-            .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+            // The divider moves as it resizes the panes. Measuring translation
+            // in its local coordinates feeds that movement back into the drag.
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global).onChanged { value in
                 if dragStart == nil { dragStart = placement.firstLength }
                 let delta = horizontal ? value.translation.width : value.translation.height
                 onResize(placement.fraction(forLength: (dragStart ?? placement.firstLength) + delta))

@@ -386,10 +386,20 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var lastReportedAddress = ""
     private var lastReportedTitle = ""
 
+    // WebKit's default user agent omits Safari's product tokens. Some sites
+    // consequently serve a legacy, fixed-width page to an otherwise modern engine.
+    static let websiteApplicationName: String = {
+        let safariVersion = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari")
+            .flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String }
+        let version = safariVersion.map { $0.split(separator: ".").prefix(2).joined(separator: ".") } ?? "17.0"
+        return "Version/\(version) Safari/605.1.15 Browse/0.1"
+    }()
+
     init(address: String, webView suppliedWebView: FocusWebView? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
         self.configure = configure
         let configuration = WKWebViewConfiguration()
+        configuration.applicationNameForUserAgent = Self.websiteApplicationName
         configuration.websiteDataStore = .default()
         configure(configuration)
         webView = suppliedWebView ?? FocusWebView(frame: .zero, configuration: configuration)
@@ -442,6 +452,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         if extensionOrigin != nil {
             extensionOrigin = nil
             let configuration = WKWebViewConfiguration()
+            configuration.applicationNameForUserAgent = Self.websiteApplicationName
             configuration.websiteDataStore = .default()
             configure(configuration)
             replaceWebView(configuration: configuration)

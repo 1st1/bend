@@ -54,6 +54,11 @@ import BrowseCore
     }
     try await settle()
     let parent = try #require(web.superview)
+    for expression in ["navigator.userAgent", "window.requestUserAgent"] {
+        let userAgent = try #require(try await web.evaluateJavaScript(expression) as? String)
+        #expect(userAgent.contains(" Version/"))
+        #expect(userAgent.contains(" Safari/605.1.15 Browse/0.1"))
+    }
     func dragHandles(in view: NSView) -> [PaneDragSourceView] {
         (view as? PaneDragSourceView).map { [$0] } ?? view.subviews.flatMap { dragHandles(in: $0) }
     }
@@ -64,6 +69,32 @@ import BrowseCore
     let otherParent = try #require(otherWeb.superview)
     let originalBounds = web.bounds
     #expect(originalBounds.width > 100 && originalBounds.height > 100)
+    // Responsive layout must follow the real pane width, including after a
+    // resize while keeping the same live document mounted.
+    _ = try await web.evaluateJavaScript("""
+        const responsiveStyle = document.createElement('style');
+        responsiveStyle.textContent = 'body { --pane-layout: wide; } @media (max-width: 450px) { body { --pane-layout: narrow; } }';
+        document.head.append(responsiveStyle);
+        window.paneResizeEvents = 0;
+        window.addEventListener('resize', () => window.paneResizeEvents++);
+        """)
+    func checkResponsive(_ expected: String) async throws {
+        let innerWidth = try #require(try await web.evaluateJavaScript("innerWidth") as? Double)
+        print("PANE_VIEWPORT", expected, "native", web.bounds.width, "css", innerWidth)
+        #expect(abs(innerWidth - web.bounds.width) <= 1)
+        #expect(try await web.evaluateJavaScript("getComputedStyle(document.body).getPropertyValue('--pane-layout').trim()") as? String == expected)
+    }
+    try await checkResponsive("wide")
+    window.setContentSize(NSSize(width: 720, height: 700))
+    update()
+    try await settle()
+    #expect(web.bounds.width < 450)
+    try await checkResponsive("narrow")
+    window.setContentSize(NSSize(width: 1100, height: 700))
+    update()
+    try await settle()
+    try await checkResponsive("wide")
+    #expect((try await web.evaluateJavaScript("window.paneResizeEvents") as? Int ?? 0) >= 2)
     #expect(web.window === window)
     if #available(macOS 26.0, *) {
         let rect = web.convert(web.bounds, to: host)
