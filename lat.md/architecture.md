@@ -14,7 +14,7 @@ The script verifies the signature before reporting success and does not fall bac
 
 The sidebar presents one continuous column of tabs without group headings or group creation. Each tab contains one or more browser panes. Selection changes the displayed tab; closing the final tab creates a replacement. The sidebar has a fixed width and can be hidden, with session-save errors shown at the bottom only when needed.
 
-The sidebar header places a new-tab button beside a right-aligned sidebar toggle, without a brand label. Panes use six-point outer margins and divider gaps, starting at the top window inset with no shared navigation bar. When the sidebar is hidden, the upper-left pane reserves space for window controls and exposes the sidebar toggle.
+The sidebar header places a new-tab button beside a right-aligned sidebar toggle, without a brand label or a trailing new-tab row. Command-T and the File menu also create tabs. Panes use six-point outer margins and divider gaps, starting at the top window inset with no shared navigation bar. When the sidebar is hidden, the upper-left pane reserves space for window controls and exposes the sidebar toggle.
 
 Each pane has one compact title row with extensions, reload/stop, split, zoom, and close controls, using shared [[architecture#Toolbar button styling]]. Reload focuses its pane and becomes stop while loading; it is disabled on start pages. The persistent address row is replaced by the [[architecture#Location popup]]. Back/forward remain available through the View menu and shortcuts; tab creation remains in the sidebar and File menu.
 
@@ -32,7 +32,7 @@ The sidebar and exposed workspace share one native Liquid Glass base on macOS 26
 
 [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) hosts the entire SwiftUI workspace as the content of a regular native glass effect view. AppKit manages the glass/content geometry together; the transparent window supplies the outer corner clipping. The base spans the sidebar, titlebar area, and gaps around panes, including when the sidebar is hidden.
 
-[BrowserView.swift](../Sources/Browse/BrowserView.swift) omits the legacy sidebar and canvas backdrops on macOS 26 and later so they do not cover the shared glass. Earlier systems retain behind-window sidebar and under-window materials that follow the window's active state. Selection has no custom fill or border, and pane chrome retains its separate darkened material.
+[BrowserView.swift](../Sources/Browse/BrowserView.swift) omits the legacy sidebar and canvas backdrops on macOS 26 and later so they do not cover the shared glass. Earlier systems retain behind-window sidebar and under-window materials that follow the window's active state. Selection has no custom fill or border, and pane chrome retains its separate darkened material. Inactive tab hover adds a capsule filled with the shared 6% white button highlight and reveals a close button. The close-button space stays reserved to prevent title movement. Titles that exceed their available width fade to transparent over the trailing 24 points instead of showing an ellipsis; fitting titles remain fully visible. Hover fades over 100 ms, or changes immediately with Reduce Motion; selected tabs retain their glass selection.
 
 ## Pane materials
 

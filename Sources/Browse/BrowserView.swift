@@ -40,13 +40,8 @@ struct BrowserView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 7) {
                     ForEach(store.session.workspaces.flatMap(\.tabs)) { tab in
-                        tabRow(tab)
+                        SidebarTabRow(store: store, tab: tab)
                     }
-                    Button { store.newTab() } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "plus"); Text("New tab"); Spacer(); Text("⌘T").font(.system(size: 10))
-                        }.font(.system(size: 12)).foregroundStyle(Chrome.muted).padding(.horizontal, 12)
-                    }.buttonStyle(.plain).padding(.top, 8)
                 }.padding(.horizontal, 10).padding(.top, 6)
             }
             if let error = store.persistenceError {
@@ -63,25 +58,45 @@ struct BrowserView: View {
         }
     }
 
-    private func tabRow(_ tab: BrowserTab) -> some View {
+}
+
+private struct SidebarTabRow: View {
+    @ObservedObject var store: BrowserStore
+    let tab: BrowserTab
+    @ViewState<Bool> private var hovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
         let selected = tab.id == store.session.selectedTab
         return HStack(spacing: 8) {
             Button { store.select(tab.id) } label: {
                 HStack(spacing: 9) {
                     Image(systemName: tab.pages.count > 1 ? "rectangle.split.2x1" : "globe")
                         .font(.system(size: 13)).foregroundStyle(selected ? Chrome.accent : .white.opacity(0.5))
-                    Text(tab.title).font(.system(size: 12, weight: selected ? .medium : .regular)).lineLimit(1)
-                    Spacer(minLength: 0)
+                    FadingTabTitle(title: tab.title)
+                        .font(.system(size: 12, weight: selected ? .medium : .regular))
                     if tab.pages.count > 1 { Text("\(tab.pages.count)").font(.system(size: 9, design: .monospaced)).foregroundStyle(Chrome.muted) }
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
-            if selected {
-                Button { store.closeTab(tab.id) } label: { Image(systemName: "xmark").font(.system(size: 9)) }
-                    .buttonStyle(.plain).foregroundStyle(Chrome.muted).help("Close tab · ⌘⇧W")
+            Button { store.closeTab(tab.id) } label: {
+                Image(systemName: "xmark").font(.system(size: 9))
+                    .frame(width: 16, height: 22).contentShape(Rectangle())
             }
+            .buttonStyle(.plain).foregroundStyle(Chrome.muted).help("Close tab · ⌘⇧W")
+            .opacity(selected || hovered ? 1 : 0)
+            .allowsHitTesting(selected || hovered)
+            .accessibilityHidden(!selected && !hovered)
         }
         .padding(.horizontal, 11).frame(height: 34)
+        .background {
+            Capsule().fill(ChromeButtonStyle.highlightBackground)
+                .opacity(hovered && !selected ? 1 : 0)
+        }
         .modifier(TabSelectionMaterial(selected: selected))
+        .contentShape(Capsule())
+        .onHover { hovered = $0 }
+        .onDisappear { hovered = false }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: hovered)
         .background(PaneSidebarTarget(store: store, destination: .tab(tab.id)))
         .contextMenu {
             Button("New tab") { store.newTab() }
@@ -89,6 +104,34 @@ struct BrowserView: View {
         }
     }
 
+}
+
+private struct FadingTabTitle: View {
+    let title: String
+    @ViewState<CGFloat> private var textWidth = 0
+
+    var body: some View {
+        GeometryReader { geometry in
+            Text(title)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { textWidth = $0 }
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
+                .clipped()
+                .mask {
+                    if textWidth > geometry.size.width {
+                        HStack(spacing: 0) {
+                            Rectangle()
+                            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                                .frame(width: min(24, geometry.size.width))
+                        }
+                    } else {
+                        Rectangle()
+                    }
+                }
+        }
+        .frame(height: 18)
+    }
 }
 
 struct TabCanvasRoot: View {
