@@ -216,8 +216,9 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { error = "This page stopped responding. Reload to continue." }
     private func openCommandClickedLink(_ action: WKNavigationAction) -> Bool {
+        // WebKit reports left-click as 1 (a button mask), unlike NSEvent's zero-based buttonNumber.
         guard action.navigationType == .linkActivated, action.modifierFlags.contains(.command),
-              action.buttonNumber == 0, let url = action.request.url,
+              action.buttonNumber == 1, let url = action.request.url,
               ["http", "https"].contains(url.scheme?.lowercased() ?? ""), let onNewPane else { return false }
         onNewPane(url.absoluteString)
         return true

@@ -4,7 +4,7 @@ lat:
 ---
 # Tests
 
-Model and store tests cover pane layouts, persistence, navigation resolution, and location-popup requests without loading external websites.
+Model, store, and navigation-delegate tests cover pane layouts, persistence, link routing, navigation resolution, and location-popup requests without loading external websites.
 
 ## Nested splits and closing
 
@@ -13,6 +13,14 @@ Splitting right and then below preserves leaf order. Closing panes collapses the
 ## Link pane placement
 
 Opening a link splits its source pane to the right even when another pane is focused, preserves neighboring branches and the source URL, and focuses the destination. The result survives serialization; missing source panes leave the tab unchanged.
+
+## Command-click navigation
+
+[LinkNavigationTests.swift](../Tests/BrowseTests/LinkNavigationTests.swift) verifies that WebKit's Command-left-click action opens a pane and cancels source navigation. Ordinary clicks, other buttons, and scripted navigation do not open panes; custom schemes remain blocked.
+
+## Command-click new-window links
+
+[LinkNavigationTests.swift](../Tests/BrowseTests/LinkNavigationTests.swift) verifies that Command-clicking a new-window link opens a pane without creating a tab. An ordinary new-window link still creates a tab.
 
 ## Session round trip
 

@@ -48,6 +48,8 @@ Splits carry an axis and fraction. [BrowserView.swift](../Sources/Browse/Browser
 
 All panes share the app’s default persistent WebKit website data store, separate from Safari. Navigation updates the stored address and first-pane tab title. Command-clicking an HTTP or HTTPS link opens and focuses a new pane to the right of its source, leaving the source page unchanged and exiting pane zoom. This also applies to links targeting a new window; other new-window web links create tabs. Errors offer retry, and page JavaScript alert, confirm, and text-input dialogs use AppKit.
 
+Command-click routing uses WebKit's navigation-action modifiers and left-button mask in both navigation policy and new-window callbacks. It cancels source navigation when opening a pane; plain clicks and non-link navigation retain their normal behavior.
+
 External custom URL schemes are not handed to other applications. Downloads, website media permissions, Safari extensions, and Safari session sharing are outside the implemented prototype.
 
 ## Session restoration
