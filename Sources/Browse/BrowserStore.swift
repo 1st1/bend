@@ -55,6 +55,12 @@ final class BrowserStore: ObservableObject {
            let restored = try? JSONDecoder().decode(BrowserSession.self, from: data), restored.isValid {
             session = restored
         } else { session = BrowserSession() }
+        // Keep the persisted workspace envelope compatible, but expose one tab list.
+        if session.workspaces.count > 1 {
+            let tabs = session.workspaces.flatMap(\.tabs)
+            session.workspaces = [session.workspaces[0]]
+            session.workspaces[0].tabs = tabs
+        }
         if FileManager.default.fileExists(atPath: historyFile.path) {
             do {
                 let restored = try JSONDecoder().decode(BrowsingHistory.self, from: Data(contentsOf: historyFile))
@@ -161,14 +167,6 @@ final class BrowserStore: ObservableObject {
         if let linkOpener { linkOpeners[tab.pages[0].id] = linkOpener }
         session.workspaces[index].tabs.append(tab); select(tab.id)
         if address == "browse://start" { requestAddress() }
-    }
-
-    func newWorkspace(name: String) {
-        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-        let workspace = Workspace(name: name)
-        session.workspaces.append(workspace); select(workspace.tabs[0].id)
-        requestAddress()
     }
 
     func showHistory() {

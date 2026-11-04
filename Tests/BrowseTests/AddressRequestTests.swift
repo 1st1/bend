@@ -30,11 +30,9 @@ import BrowseCore
     store.newTab()
     #expect(requested.count == 5)
     #expect(requested.last == store.selectedTab.focusedPane)
-    store.newWorkspace(name: "New workspace")
+    // Closing the final tab creates one replacement and requests its address.
+    for tab in store.session.workspaces.flatMap(\.tabs) { store.closeTab(tab.id) }
     #expect(requested.count == 6)
-    #expect(requested.last == store.selectedTab.focusedPane)
-    store.closeTab(store.selectedTab.id)
-    #expect(requested.count == 7)
     #expect(requested.last == store.selectedTab.focusedPane)
 
     let count = requested.count

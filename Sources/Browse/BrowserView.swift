@@ -13,8 +13,6 @@ private enum Chrome {
 
 struct BrowserView: View {
     @ObservedObject var store: BrowserStore
-    @ViewState<String> private var workspaceName = ""
-    @ViewState<Bool> private var addingWorkspace = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -29,43 +27,27 @@ struct BrowserView: View {
         }
         .foregroundStyle(Color.white.opacity(0.88))
         .preferredColorScheme(.dark)
-        .alert("New workspace", isPresented: $addingWorkspace) {
-            TextField("Workspace name", text: $workspaceName)
-            Button("Cancel", role: .cancel) {}
-            Button("Create") { store.newWorkspace(name: workspaceName); workspaceName = "" }
-        }
     }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 2) {
                 Spacer()
-                iconButton("plus", "New workspace", prominent: true) { addingWorkspace = true }
+                iconButton("plus", "New tab · ⌘T", prominent: true) { store.newTab() }
                 iconButton("sidebar.left", "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
             }.padding(.horizontal, 15).frame(height: 47)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 23) {
-                    ForEach(store.session.workspaces) { workspace in
-                        VStack(alignment: .leading, spacing: 7) {
-                            HStack {
-                                Text(workspace.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(Chrome.muted)
-                                Spacer()
-                                Button { store.newTab(in: workspace.id) } label: { Image(systemName: "plus").font(.system(size: 10)) }
-                                    .buttonStyle(.plain).foregroundStyle(Chrome.muted).help("New tab in \(workspace.name)")
-                            }.padding(.horizontal, 12)
-                            ForEach(workspace.tabs) { tab in
-                                tabRow(tab)
-                            }
-                        }
-                        .background(PaneSidebarTarget(store: store, destination: .workspace(workspace.id)))
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(store.session.workspaces.flatMap(\.tabs)) { tab in
+                        tabRow(tab)
                     }
                     Button { store.newTab() } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "plus"); Text("New tab"); Spacer(); Text("⌘T").font(.system(size: 10))
                         }.font(.system(size: 12)).foregroundStyle(Chrome.muted).padding(.horizontal, 12)
-                    }.buttonStyle(.plain)
-                }.padding(.horizontal, 10).padding(.top, 14)
+                    }.buttonStyle(.plain).padding(.top, 8)
+                }.padding(.horizontal, 10).padding(.top, 6)
             }
             if let error = store.persistenceError {
                 Label(error, systemImage: "exclamationmark.triangle")

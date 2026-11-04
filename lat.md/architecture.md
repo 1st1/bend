@@ -10,11 +10,11 @@ The script verifies the signature before reporting success and does not fall bac
 
 ## Application shell
 
-[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) owns the native window, menus, keyboard shortcuts, and application lifetime. [BrowserView.swift](../Sources/Browse/BrowserView.swift) renders a dark workspace sidebar, vertical tabs, pane controls, and start pages.
+[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) owns the native window, menus, keyboard shortcuts, and application lifetime. [BrowserView.swift](../Sources/Browse/BrowserView.swift) renders a dark sidebar, vertical tabs, pane controls, and start pages.
 
-Each workspace contains tabs; each tab contains one or more browser panes. Sidebar selection changes the displayed tab. The app creates a replacement tab when the last tab in a workspace closes. The sidebar has a fixed width and can be hidden. Its space is reserved for workspace and tab controls, with session-save errors shown at the bottom only when needed.
+The sidebar presents one continuous column of tabs without group headings or group creation. Each tab contains one or more browser panes. Selection changes the displayed tab; closing the final tab creates a replacement. The sidebar has a fixed width and can be hidden, with session-save errors shown at the bottom only when needed.
 
-The sidebar header places workspace creation beside a right-aligned sidebar toggle, without a brand label. Panes use six-point outer margins and divider gaps, starting at the top window inset with no shared navigation bar. When the sidebar is hidden, the upper-left pane reserves space for window controls and exposes the sidebar toggle.
+The sidebar header places a new-tab button beside a right-aligned sidebar toggle, without a brand label. Panes use six-point outer margins and divider gaps, starting at the top window inset with no shared navigation bar. When the sidebar is hidden, the upper-left pane reserves space for window controls and exposes the sidebar toggle.
 
 Each pane has one compact title row with extensions, reload/stop, split, zoom, and close controls, using shared [[architecture#Toolbar button styling]]. Reload focuses its pane and becomes stop while loading; it is disabled on start pages. The persistent address row is replaced by the [[architecture#Location popup]]. Back/forward remain available through the View menu and shortcuts; tab creation remains in the sidebar and File menu.
 
@@ -80,7 +80,7 @@ Hovering the title highlights its favicon and text in a compact pill and crossfa
 
 [PaneDropEdge.swift](../Sources/BrowseCore/PaneDropEdge.swift) chooses the nearest normalized edge and its half-pane preview across the target's full visible content area. Previews stay visible while the pointer moves within a target. Only target changes clear the old highlight; edge or bounds changes update its path without hiding it. Leaving valid targets, cancelling, or completing a drag clears the preview. Self-drops, stale sources, foreign windows, and zoomed layouts are rejected. External pasteboard drags do not initiate pane rearrangement.
 
-Sidebar tab rows highlight during a drag; hovering for 400 ms selects the tab while retaining the original drag source. Newly mounted destination panes become targets immediately. Dropping directly on a tab adds the pane to the right of its focused pane; dropping into empty sidebar space detaches it into a new tab in that workspace. Leaving a row or cancelling clears the delayed selection and all previews.
+Sidebar tab rows highlight during a drag; hovering for 400 ms selects the tab while retaining the original drag source. Newly mounted destination panes become targets immediately. Dropping directly on a tab adds the pane to the right of its focused pane; dropping into empty sidebar space detaches it into a new tab at the end of the list. Leaving a row or cancelling clears the delayed selection and all previews.
 
 [Session.swift](../Sources/BrowseCore/Session.swift) removes the source leaf, collapses its former split, and inserts the same pane beside the target with an equal split. Unrelated branches retain their identities and fractions. [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) focuses the moved pane and saves the layout without closing pages or adding closed-item history. Same-tab moves retain mounted pane views and WebKit controllers. Cross-tab transfers preserve the page ID, live controller, navigation history, and extension tab identity. An emptied source tab is removed; an emptied workspace receives a blank tab. Transfers create no closed-item history and persist both layouts together. Moves animate over 180 ms unless Reduce Motion is enabled; divider dragging still updates immediately.
 
@@ -176,7 +176,7 @@ Tab and pane hosting views disable inherited safe-area regions: the window shell
 
 [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) debounces atomic JSON saves to the app’s Application Support directory and saves on normal termination. [Session.swift](../Sources/BrowseCore/Session.swift) checks restored tab, focus, and pane identity consistency before accepting state.
 
-Persistence includes workspaces, selected tab, URLs, focused panes, and split trees. Restarting recreates web views from URLs; in-page state and back-forward lists are only retained during the running process. Invalid session files fall back to the initial workspace. Save failures appear in the sidebar.
+Persistence retains the workspace envelope for compatibility, plus selected tab, URLs, focused panes, and split trees. On load, [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) combines legacy workspaces into one in their existing tab order, preserving tab and pane identities, layouts, URLs, and selection. New sessions start with one workspace; group names are not displayed. Restarting recreates web views from URLs; in-page state and back-forward lists are only retained during the running process. Invalid session files fall back to the initial workspace. Save failures appear in the sidebar.
 
 ## Browsing history
 
@@ -230,6 +230,6 @@ Selected suggestions use a rounded native clear-glass background on macOS 26 and
 
 Escape dismisses the popup and returns keyboard focus to the browser, as does successful submission. Losing key-window status dismisses it without reclaiming focus, allowing outside clicks to select another pane or application normally.
 
-[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) requests the popup after creating blank split panes, tabs, workspaces, or a replacement for the last closed tab. Link-created panes and tabs already have a destination and do not prompt. Popup requests validate pane identity; submitting after the target has closed or left the selected tab cannot navigate another pane.
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) requests the popup after creating blank split panes, tabs, or a replacement for the last closed tab. Link-created panes and tabs already have a destination and do not prompt. Popup requests validate pane identity; submitting after the target has closed or left the selected tab cannot navigate another pane.
 
 [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) connects the store's location-request callback to the panel controller. Requests carry a pane identity after the store has updated selection and focus, so presentation does not depend on a newly created SwiftUI pane observing an earlier event.

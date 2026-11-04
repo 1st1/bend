@@ -155,7 +155,7 @@ public struct BrowserSession: Codable, Sendable {
 
     public init() {
         let initial = BrowserTab(title: "Start here", pages: [Page(), Page(address: "browse://guide")])
-        workspaces = [Workspace(name: "everyday", tabs: [initial]), Workspace(name: "research")]
+        workspaces = [Workspace(name: "Tabs", tabs: [initial])]
         selectedTab = initial.id
     }
 

@@ -190,7 +190,7 @@ Hostnames, explicit HTTPS, localhost, internal start pages, and search queries r
 
 [AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies that explicit location requests target the chosen pane, new blank panes prompt after focus changes, and link destinations do not prompt. Invalid pane IDs are ignored.
 
-The store tests use an isolated temporary session-file path. They cover both split directions, blank tabs, new workspaces, and the replacement tab created after closing a workspace's last tab. Each automatic request must identify the newly focused pane.
+The store tests use an isolated temporary session-file path. They cover both split directions, blank tabs, and the replacement tab created after closing the final tab. Each automatic request must identify the newly focused pane.
 
 Explicit requests for an existing pane focus that pane; invalid identities produce no request. Opening a link in a right-hand pane or a tab with a supplied URL must not request location entry. These tests exercise store events without instantiating the popup or loading WebKit pages.
 
@@ -221,3 +221,7 @@ Explicit requests for an existing pane focus that pane; invalid identities produ
 ## Completed navigation history
 
 [HistoryStoreTests.swift](../Tests/BrowseTests/HistoryStoreTests.swift) checks that completed web navigation records once, title changes update existing history, and later URL changes add visits. Failed navigation and internal pages are excluded.
+
+## Flat tab list restoration
+
+[ReopenTests.swift](../Tests/BrowseTests/ReopenTests.swift) verifies legacy groups merge in order without losing selection, pane identities, layouts, or URLs. New tabs append to the list; close/reopen and saving preserve the single-group session.
