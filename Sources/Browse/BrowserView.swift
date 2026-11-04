@@ -311,6 +311,11 @@ private struct BrowserPane: View {
                 Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
                     .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
                 Spacer(minLength: 0)
+                if #available(macOS 15.4, *) {
+                    PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
+                        store.focus(pageID); store.onSettingsRequested?()
+                    }
+                }
                 iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
                     store.focus(pageID)
                     if controller.isLoading { controller.webView.stopLoading() }

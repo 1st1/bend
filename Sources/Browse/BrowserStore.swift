@@ -9,6 +9,18 @@ final class BrowserStore: ObservableObject {
     @Published var sidebarVisible = true
     @Published var zoomedPane: UUID?
     var onAddressRequested: ((UUID) -> Void)?
+    var onSettingsRequested: (() -> Void)?
+    private var extensionStorage: AnyObject?
+    private let persistentExtensions: Bool
+    @available(macOS 15.4, *)
+    var extensions: ExtensionManager {
+        if let manager = extensionStorage as? ExtensionManager { return manager }
+        let manager = ExtensionManager(root: sessionFile.deletingLastPathComponent().appendingPathComponent("Extensions"), persistent: persistentExtensions)
+        extensionStorage = manager
+        manager.store = self
+        manager.start()
+        return manager
+    }
     @Published var persistenceError: String?
     @Published private(set) var history = BrowsingHistory()
     @Published private(set) var historyError: String?
@@ -20,7 +32,8 @@ final class BrowserStore: ObservableObject {
     private var historyDirty = false
     private var historyWritable = true
 
-    init(sessionFile: URL? = nil) {
+    init(sessionFile: URL? = nil, persistentExtensions: Bool = true) {
+        self.persistentExtensions = persistentExtensions
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BrowsePrototype", isDirectory: true)
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
@@ -170,7 +183,12 @@ final class BrowserStore: ObservableObject {
 
     func controller(for page: Page) -> PageController {
         if let existing = browsers[page.id] { return existing }
-        let controller = PageController(address: page.address)
+        let controller = PageController(address: page.address, configure: { configuration in
+            if #available(macOS 15.4, *) { self.extensions.configure(configuration) }
+        })
+        controller.onStateChanged = { [weak self] in
+            if #available(macOS 15.4, *) { self?.extensions.pageChanged(page.id) }
+        }
         controller.onNavigation = { [weak self] address, title in
             guard let self else { return }
             for workspace in self.session.workspaces {
@@ -196,7 +214,23 @@ final class BrowserStore: ObservableObject {
         return controller
     }
 
+    func existingController(for pageID: UUID) -> PageController? { browsers[pageID] }
+
+    func revealPage(_ id: UUID) {
+        guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == id } }) else { return }
+        select(tab.id); focus(id)
+    }
+
+    func closePage(_ id: UUID) {
+        guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == id } }) else { return }
+        if tab.pages.count == 1 { closeTab(tab.id); return }
+        editTab(tab.id) { $0.closePane(id) }
+        if zoomedPane == id { zoomedPane = nil }
+        browsers.removeValue(forKey: id)?.webView.stopLoading()
+    }
+
     func saveSoon() {
+        if #available(macOS 15.4, *), let manager = extensionStorage as? ExtensionManager { manager.synchronizeTabs() }
         pendingSave?.cancel()
         pendingSave = Task { [weak self] in
             do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
@@ -236,6 +270,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published var error: String?
     @Published var isStartPage = true
     var onNavigation: ((String, String) -> Void)?
+    var onStateChanged: (() -> Void)?
     var onNewTab: ((String) -> Void)?
     var onNewPane: ((String) -> Void)?
     var onFocus: (() -> Void)?
@@ -246,10 +281,11 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var lastReportedAddress = ""
     private var lastReportedTitle = ""
 
-    init(address: String, webView suppliedWebView: FocusWebView? = nil) {
+    init(address: String, webView suppliedWebView: FocusWebView? = nil, configure: (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
+        configure(configuration)
         webView = suppliedWebView ?? FocusWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.navigationDelegate = self; webView.uiDelegate = self
@@ -279,6 +315,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func refresh() {
+        defer { onStateChanged?() }
         isLoading = webView.isLoading; progress = webView.estimatedProgress
         canGoBack = webView.canGoBack; canGoForward = webView.canGoForward
         if !isStartPage {

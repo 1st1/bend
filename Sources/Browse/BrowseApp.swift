@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var window: NSWindow!
     private var clickMonitor: Any?
     private var addressPanel: AddressPanelController!
+    private var settingsWindow: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1420, height: 880),
@@ -45,6 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.setFrameAutosaveName("BrowseMainWindow")
         addressPanel = AddressPanelController(store: store, parentWindow: window)
         store.onAddressRequested = { [weak self] paneID in self?.addressPanel.show(for: paneID) }
+        store.onSettingsRequested = { [weak self] in self?.showSettings() }
+        if #available(macOS 15.4, *) { store.extensions.browserWindow = window }
         installMenus()
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
             if let content = event.window?.contentView {
@@ -62,6 +65,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationWillTerminate(_ notification: Notification) { store.save() }
+    func windowDidBecomeKey(_ notification: Notification) {
+        if #available(macOS 15.4, *) { store.extensions.controller.didFocusWindow(store.extensions.window) }
+    }
+    func windowDidResignKey(_ notification: Notification) {
+        if #available(macOS 15.4, *) { store.extensions.controller.didFocusWindow(nil) }
+    }
 
     // @lat: [[architecture#Sidebar materials]]
     private func makeWindowContent() -> NSView {
@@ -82,6 +91,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let main = NSMenu()
         let appMenu = NSMenu(title: "Browse")
         appMenu.addItem(withTitle: "About Browse", action: #selector(about), keyEquivalent: "").target = self
+        appMenu.addItem(.separator())
+        add("Settings…", #selector(showSettings), ",", to: appMenu)
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Browse", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit Browse", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -127,6 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         store.controller(for: store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }!)
     }
     @objc private func newTab() { store.newTab() }
+    @objc private func showSettings() {
+        addressPanel.dismiss(restoreFocus: false)
+        if settingsWindow == nil { settingsWindow = SettingsWindowController(store: store) }
+        settingsWindow?.show()
+    }
     @objc private func openLocation() { store.requestAddress() }
     @objc private func showHistory() {
         addressPanel.dismiss(restoreFocus: false)

@@ -24,6 +24,7 @@ The sidebar and exposed workspace share a native Liquid Glass base on macOS 26 a
 | Open link in a new pane to its right | ⌘-click link |
 | Open location popup | ⌘L |
 | Show History | ⌘Y |
+| Settings / extensions | ⌘, |
 | Split focused pane right | ⌘D |
 | Split focused pane below | ⌘⇧D |
 | Zoom / restore focused pane | ⌘⇧Return |
@@ -44,6 +45,10 @@ Drag dividers to resize. Click a pane header or its web content to focus it. Lar
 Tabs, workspace names, URLs, focus, and split proportions restore from `~/Library/Application Support/BrowsePrototype/session.json`. Browser instances stay alive while switching tabs; after restarting, pages load again from saved URLs. WebKit stores website data in this app’s own persistent profile. The prototype does not access Safari’s data.
 
 ## Scope
+
+On macOS 15.4 or newer, Browse → Settings (⌘,) installs and manages Browse's own extension copies. Use **Install from File** for downloaded ZIP, Firefox XPI, Chrome CRX, or unpacked packages. Safari Web Extensions can also be imported as independent resource copies. Review requested access before enabling. **Update from File** replaces a package while retaining its Browse identity and data; additional permissions require approval. Updates are manual, and importing a package does not establish full browser API compatibility or verify its publisher. The puzzle-piece menu opens extension actions; Settings exposes options pages. Reload open pages after enabling or disabling extensions. Native Safari App Extensions are not supported.
+
+**1Password for Safari is not currently supported.** Its web extension bundle loads, but its native companion connection fails in Browse with “Native messaging is not supported.” Enabling the extension does not establish working unlock or autofill. Settings displays this limitation alongside its runtime errors.
 
 This embeds **system WebKit**, the engine Safari uses. macOS has no supported API for embedding the Safari app itself into arbitrary tiled views. Safari extensions, Safari profiles, Safari tab sync, and existing Safari logins are not inherited.
 

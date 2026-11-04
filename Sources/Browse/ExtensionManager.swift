@@ -1,0 +1,501 @@
+import AppKit
+import Combine
+import CryptoKit
+import WebKit
+
+struct ExtensionRecord: Codable, Identifiable {
+    var id: UUID
+    var source: URL
+    var isBundle: Bool
+    var name: String
+    var enabled = false
+    var permissions: [String] = []
+    var websites: [String] = []
+    var importedFrom: URL?
+    var packageIdentifier: String?
+}
+
+struct AvailableExtension: Identifiable {
+    var id: URL
+    var name: String
+}
+
+// @lat: [[architecture#Web extensions]]
+@available(macOS 15.4, *)
+@MainActor
+final class ExtensionManager: NSObject, ObservableObject {
+    @Published private(set) var records: [ExtensionRecord] = []
+    @Published private(set) var available: [AvailableExtension] = []
+    @Published private(set) var busy = false
+    @Published var error: String?
+    @Published private(set) var failures: [UUID: String] = [:]
+    let controller: WKWebExtensionController
+    let root: URL
+    weak var store: BrowserStore?
+    weak var browserWindow: NSWindow?
+    private(set) var contexts: [UUID: WKWebExtensionContext] = [:]
+    var tabs: [UUID: ExtensionTab] = [:]
+    lazy var window = ExtensionWindow(manager: self)
+    var activeID: UUID?
+    private var started = false
+    private(set) var restorationTask: Task<Void, Never>?
+    private var writable = true
+    var documents: [UUID: ExtensionDocument] = [:]
+    private var errorObservation: AnyCancellable?
+    var popup: NSPopover?
+
+    init(root: URL, persistent: Bool = true, storageIdentifier: UUID? = nil) {
+        self.root = root
+        let configuration: WKWebExtensionController.Configuration
+        if !persistent { configuration = .nonPersistent() }
+        else if let storageIdentifier { configuration = .init(identifier: storageIdentifier) }
+        else { configuration = .default() }
+        controller = WKWebExtensionController(configuration: configuration)
+        super.init()
+        controller.delegate = self
+        errorObservation = NotificationCenter.default.publisher(for: WKWebExtensionContext.errorsDidUpdateNotification)
+            .receive(on: RunLoop.main).sink { [weak self] _ in self?.objectWillChange.send() }
+        let file = root.appendingPathComponent("extensions.json")
+        if FileManager.default.fileExists(atPath: file.path) {
+            do {
+                records = try JSONDecoder().decode([ExtensionRecord].self, from: Data(contentsOf: file))
+                guard Set(records.map(\.id)).count == records.count, records.allSatisfy({ $0.source.isFileURL }) else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+            } catch {
+                records = []; writable = false
+                self.error = "Saved extensions could not be read. The original file has been preserved."
+            }
+        }
+    }
+
+    func start() {
+        guard !started else { return }
+        started = true
+        synchronizeTabs()
+        controller.didOpenWindow(window)
+        controller.didFocusWindow(window)
+        guard !records.isEmpty else { return }
+        busy = true
+        restorationTask = Task {
+            for saved in records {
+                do {
+                    var record = saved
+                    if !ownsPackage(record) {
+                        let copy = try copyPackage(from: record.source, id: record.id)
+                        do {
+                            record.importedFrom = record.source
+                            record.source = copy
+                            let context = try await makeContext(record)
+                            record.packageIdentifier = packageIdentifier(record, extension: context.webExtension)
+                            var next = records
+                            next[next.firstIndex(where: { $0.id == record.id })!] = record
+                            try persist(next)
+                        } catch { discardPackage(copy, id: record.id); throw error }
+                    }
+                    let context = try await makeContext(record)
+                    contexts[record.id] = context
+                    if record.enabled {
+                        // Updates may request more access; never silently grant it.
+                        if !missingPermissions(context).isEmpty {
+                            failures[record.id] = "New permissions are required. Turn the extension on to review them."
+                        } else { try controller.load(context) }
+                    }
+                } catch { failures[saved.id] = error.localizedDescription }
+            }
+            busy = false
+        }
+    }
+
+    func configure(_ configuration: WKWebViewConfiguration) {
+        configuration.webExtensionController = controller
+    }
+
+    private func makeContext(_ record: ExtensionRecord) async throws -> WKWebExtensionContext {
+        let webExtension: WKWebExtension
+        if record.isBundle {
+            guard let bundle = Bundle(url: record.source) else { throw CocoaError(.fileReadCorruptFile) }
+            webExtension = try await WKWebExtension(appExtensionBundle: bundle)
+        } else { webExtension = try await WKWebExtension(resourceBaseURL: record.source) }
+        let context = WKWebExtensionContext(for: webExtension)
+        context.uniqueIdentifier = record.id.uuidString
+        context.baseURL = URL(string: "webkit-extension://\(record.id.uuidString.lowercased())/")!
+        context.unsupportedAPIs = ["browser.windows.create", "browser.tabs.move", "browser.tabs.group", "browser.tabs.ungroup"]
+        for permission in record.permissions {
+            context.setPermissionStatus(.grantedExplicitly, for: WKWebExtension.Permission(rawValue: permission))
+        }
+        for website in record.websites {
+            if let pattern = try? WKWebExtension.MatchPattern(string: website) {
+                context.setPermissionStatus(.grantedExplicitly, for: pattern)
+            }
+        }
+        return context
+    }
+
+    func discoverInstalled(in directories: [URL]? = nil) {
+        let roots = directories ?? [URL(fileURLWithPath: "/Applications"),
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications")]
+        var found: [AvailableExtension] = []
+        for root in roots {
+            let apps = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+            for app in apps where app.pathExtension == "app" {
+                for source in Self.webExtensionBundles(in: app) {
+                    let bundle = Bundle(url: source)
+                    let name = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+                        ?? app.deletingPathExtension().lastPathComponent
+                    found.append(AvailableExtension(id: source, name: name))
+                }
+            }
+        }
+        available = found.filter { candidate in !records.contains { ($0.importedFrom ?? $0.source) == candidate.id } }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    static func webExtensionBundles(in app: URL) -> [URL] {
+        let directory = app.appendingPathComponent("Contents/PlugIns")
+        return ((try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []).filter {
+            guard $0.pathExtension == "appex", let bundle = Bundle(url: $0),
+                  let extensionInfo = bundle.infoDictionary?["NSExtension"] as? [String: Any] else { return false }
+            return extensionInfo["NSExtensionPointIdentifier"] as? String == "com.apple.Safari.web-extension"
+        }
+    }
+
+    func chooseExtension() {
+        let panel = NSOpenPanel()
+        panel.title = "Install Extension in Browse"
+        panel.message = "Choose a downloaded ZIP, XPI, or CRX package, an extension folder, or a Safari extension app. Browse installs its own copy."
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        add(url)
+    }
+
+    func add(_ source: URL) {
+        guard !busy else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                let sources = source.pathExtension == "app" ? Self.webExtensionBundles(in: source) : [source]
+                guard !sources.isEmpty else {
+                    throw failure("This app does not contain a Safari Web Extension. Native Safari App Extensions cannot run in Browse.")
+                }
+                for url in sources { try await importExtension(from: url) }
+                discoverInstalled()
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+
+    func importExtension(from source: URL) async throws {
+        guard writable else { throw failure("The saved extension list is unreadable.") }
+        guard !records.contains(where: { ($0.importedFrom ?? $0.source) == source }) else {
+            throw failure("This package is already installed. Use Update from File to replace it.")
+        }
+        var record = ExtensionRecord(id: UUID(), source: source, isBundle: source.pathExtension == "appex", name: source.lastPathComponent)
+        record.importedFrom = source
+        record.source = try copyPackage(from: source, id: record.id)
+        do {
+            let context = try await makeContext(record)
+            record.packageIdentifier = packageIdentifier(record, extension: context.webExtension)
+            if let identity = record.packageIdentifier, records.contains(where: { $0.packageIdentifier == identity }) {
+                throw failure("This extension is already installed. Use Update from File to replace it.")
+            }
+            record.name = context.webExtension.displayName ?? record.name
+            try persist(records + [record])
+            contexts[record.id] = context
+        } catch {
+            discardPackage(record.source, id: record.id)
+            throw error
+        }
+    }
+
+    func ownsPackage(_ record: ExtensionRecord) -> Bool {
+        record.source.standardizedFileURL.path.hasPrefix(root.appendingPathComponent(record.id.uuidString).standardizedFileURL.path + "/")
+    }
+
+    private func copyPackage(from source: URL, id: UUID) throws -> URL {
+        guard source.isFileURL else { throw failure("Choose a downloaded extension package.") }
+        let keys: Set<URLResourceKey> = [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey]
+        func validate(_ url: URL, within package: URL) throws {
+            let values = try url.resourceValues(forKeys: keys)
+            if values.isSymbolicLink == true {
+                let target = try FileManager.default.destinationOfSymbolicLink(atPath: url.path)
+                let resolved = url.resolvingSymlinksInPath().standardizedFileURL
+                let base = package.resolvingSymlinksInPath().standardizedFileURL.path
+                guard url != package, !target.hasPrefix("/"), resolved.path.hasPrefix(base + "/") else {
+                    throw failure("Extension links must stay inside the installed package.")
+                }
+                let resolvedValues = try resolved.resourceValues(forKeys: keys)
+                guard resolvedValues.isSymbolicLink != true,
+                      resolvedValues.isDirectory == true || resolvedValues.isRegularFile == true else {
+                    throw failure("The extension contains an invalid symbolic link.")
+                }
+            } else if values.isDirectory != true && values.isRegularFile != true {
+                throw failure("Extension packages cannot contain special files.")
+            }
+        }
+        let sourcePath = source.resolvingSymlinksInPath().standardizedFileURL.path
+        let rootPath = root.resolvingSymlinksInPath().standardizedFileURL.path
+        guard rootPath != sourcePath, !rootPath.hasPrefix(sourcePath + "/") else {
+            throw failure("Choose an extension package, not a folder containing Browse’s extension storage.")
+        }
+        func validateTree(_ source: URL) throws {
+            try validate(source, within: source)
+            guard try source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { return }
+            var enumerationError: Error?
+            let files = FileManager.default.enumerator(at: source, includingPropertiesForKeys: Array(keys), errorHandler: { _, error in
+                enumerationError = error; return false
+            })
+            while let file = files?.nextObject() as? URL { try validate(file, within: source) }
+            if let enumerationError { throw enumerationError }
+        }
+        try validateTree(source)
+        let revision = root.appendingPathComponent(id.uuidString).appendingPathComponent(UUID().uuidString)
+        let copy = revision.appendingPathComponent(source.lastPathComponent)
+        do {
+            try FileManager.default.createDirectory(at: revision, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: source, to: copy)
+            try validateTree(copy)
+            return copy
+        } catch { try? FileManager.default.removeItem(at: revision); throw error }
+    }
+
+    private func discardPackage(_ source: URL, id: UUID) {
+        let directory = root.appendingPathComponent(id.uuidString).standardizedFileURL
+        guard source.standardizedFileURL.path.hasPrefix(directory.path + "/") else { return }
+        try? FileManager.default.removeItem(at: source)
+        let parent = source.deletingLastPathComponent()
+        if (try? FileManager.default.contentsOfDirectory(atPath: parent.path).isEmpty) == true {
+            try? FileManager.default.removeItem(at: parent)
+        }
+    }
+
+    private func packageIdentifier(_ record: ExtensionRecord, extension webExtension: WKWebExtension) -> String? {
+        if record.isBundle { return Bundle(url: record.source)?.bundleIdentifier.map { "safari:" + $0 } }
+        let manifest = webExtension.manifest
+        for key in ["browser_specific_settings", "applications"] {
+            if let settings = manifest[key] as? [String: Any], let gecko = settings["gecko"] as? [String: Any], let id = gecko["id"] as? String {
+                return "gecko:" + id
+            }
+        }
+        if let key = manifest["key"] as? String, let data = Data(base64Encoded: key) {
+            return "key:" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        }
+        return nil
+    }
+
+    func chooseUpdate(_ id: UUID) {
+        guard !busy, let record = records.first(where: { $0.id == id }) else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Update \(record.name)"
+        panel.message = "Choose the replacement extension package or folder. Existing Browse settings and data are retained."
+        panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do { try await replacePackage(id, from: url) }
+            catch { self.error = error.localizedDescription }
+        }
+    }
+
+    func replacePackage(_ id: UUID, from input: URL) async throws {
+        guard writable, let index = records.firstIndex(where: { $0.id == id }) else { throw failure("The extension cannot be updated.") }
+        let old = records[index]
+        let oldContext: WKWebExtensionContext
+        if let existing = contexts[id] { oldContext = existing }
+        else { oldContext = try await makeContext(old) }
+        let oldIdentity = old.packageIdentifier ?? packageIdentifier(old, extension: oldContext.webExtension)
+        let source: URL
+        if input.pathExtension == "app" {
+            guard let bundle = Self.webExtensionBundles(in: input).first(where: {
+                Bundle(url: $0)?.bundleIdentifier.map { "safari:" + $0 } == oldIdentity
+            }) else { throw failure("This app does not contain the installed extension.") }
+            source = bundle
+        } else { source = input }
+        var replacement = old
+        replacement.source = try copyPackage(from: source, id: id)
+        replacement.importedFrom = source
+        replacement.isBundle = source.pathExtension == "appex"
+        var committed = false
+        defer { if !committed { discardPackage(replacement.source, id: id) } }
+        let context = try await makeContext(replacement)
+        let newIdentity = packageIdentifier(replacement, extension: context.webExtension)
+        guard oldIdentity == newIdentity,
+              oldIdentity != nil || oldContext.webExtension.displayName == context.webExtension.displayName else {
+            throw failure("This package belongs to a different extension.")
+        }
+        replacement.packageIdentifier = newIdentity
+        replacement.name = context.webExtension.displayName ?? old.name
+        let needsApproval = !missingPermissions(context).isEmpty
+        let wasLoaded = oldContext.isLoaded
+        do {
+            if wasLoaded { try controller.unload(oldContext) }
+            if old.enabled && !needsApproval { try controller.load(context) }
+            var next = records; next[index] = replacement
+            try persist(next)
+        } catch {
+            if context.isLoaded { try? controller.unload(context) }
+            if wasLoaded { try? controller.load(oldContext) }
+            throw error
+        }
+        committed = true
+        closeDocuments(for: oldContext); popup?.close()
+        contexts[id] = context
+        failures[id] = old.enabled && needsApproval ? "The update needs additional permissions. Turn the extension on to review them." : nil
+        discardPackage(old.source, id: id)
+    }
+
+    private func persist(_ next: [ExtensionRecord]) throws {
+        guard writable else { throw failure("The saved extension list is unreadable.") }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try JSONEncoder().encode(next).write(to: root.appendingPathComponent("extensions.json"), options: .atomic)
+        records = next
+    }
+
+    func isEnabled(_ id: UUID) -> Bool { contexts[id]?.isLoaded == true }
+
+    func compatibilityNotice(_ id: UUID) -> String? {
+        guard let record = records.first(where: { $0.id == id }), record.isBundle,
+              Bundle(url: record.source)?.bundleIdentifier == "com.1password.safari.extension" else { return nil }
+        return "1Password for Safari is not supported in Browse yet. Its native app connection fails, so enabling it does not mean unlocking or autofill will work."
+    }
+
+    func permissionSummary(_ id: UUID) -> [String] {
+        guard let context = contexts[id] else { return [] }
+        let ext = context.webExtension
+        return ext.requestedPermissions.map(\.rawValue).sorted()
+            + ext.allRequestedMatchPatterns.union(ext.requestedPermissionMatchPatterns).map(\.string).sorted()
+    }
+
+    private func missingPermissions(_ context: WKWebExtensionContext) -> [String] {
+        let ext = context.webExtension
+        return ext.requestedPermissions.filter { !context.hasPermission($0) }.map(\.rawValue)
+            + ext.allRequestedMatchPatterns.union(ext.requestedPermissionMatchPatterns)
+                .filter { context.permissionStatus(for: $0).rawValue < WKWebExtensionContext.PermissionStatus.grantedImplicitly.rawValue }.map(\.string)
+    }
+
+    func setEnabled(_ enabled: Bool, id: UUID) {
+        guard !busy else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do { try await enable(enabled, id: id) { [weak self] name, permissions in self?.approve(name, details: permissions) == true } }
+            catch { self.error = error.localizedDescription }
+        }
+    }
+
+    func enable(_ enabled: Bool, id: UUID, approve: (String, [String]) -> Bool) async throws {
+        guard let index = records.firstIndex(where: { $0.id == id }) else { return }
+        let context: WKWebExtensionContext
+        if let existing = contexts[id] { context = existing }
+        else { context = try await makeContext(records[index]); contexts[id] = context }
+        var next = records
+        if enabled {
+            let missing = missingPermissions(context)
+            guard missing.isEmpty || approve(records[index].name, missing.sorted()) else { return }
+            let ext = context.webExtension
+            next[index].permissions = Array(Set(next[index].permissions).union(ext.requestedPermissions.map(\.rawValue))).sorted()
+            next[index].websites = Array(Set(next[index].websites).union(ext.allRequestedMatchPatterns.union(ext.requestedPermissionMatchPatterns).map(\.string))).sorted()
+            for permission in ext.requestedPermissions { context.setPermissionStatus(.grantedExplicitly, for: permission) }
+            for pattern in ext.allRequestedMatchPatterns.union(ext.requestedPermissionMatchPatterns) {
+                context.setPermissionStatus(.grantedExplicitly, for: pattern)
+            }
+            if !context.isLoaded { try controller.load(context) }
+        } else {
+            if context.isLoaded { try controller.unload(context) }
+            closeDocuments(for: context)
+            popup?.close()
+        }
+        next[index].enabled = enabled
+        do { try persist(next) }
+        catch {
+            if enabled, context.isLoaded { try? controller.unload(context) }
+            throw error
+        }
+        failures[id] = nil
+    }
+
+    func remove(_ id: UUID) {
+        guard !busy, let record = records.first(where: { $0.id == id }) else { return }
+        let alert = NSAlert()
+        alert.messageText = "Remove \(record.name) from Browse?"
+        alert.informativeText = "Its Browse extension data will be deleted. The installed app and Safari settings are kept."
+        alert.addButton(withTitle: "Remove"); alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do { try await uninstall(id) } catch { self.error = error.localizedDescription }
+        }
+    }
+
+    func uninstall(_ id: UUID) async throws {
+        guard writable, records.contains(where: { $0.id == id }) else { throw failure("The extension cannot be removed.") }
+        if let context = contexts[id] {
+            closeDocuments(for: context)
+            let data = await controller.dataRecord(ofTypes: WKWebExtensionController.allExtensionDataTypes, for: context)
+            if context.isLoaded { try controller.unload(context) }
+            if let data { await controller.removeData(ofTypes: WKWebExtensionController.allExtensionDataTypes, from: [data]) }
+        }
+        try persist(records.filter { $0.id != id })
+        contexts[id] = nil; failures[id] = nil
+        try? FileManager.default.removeItem(at: root.appendingPathComponent(id.uuidString))
+        discoverInstalled()
+    }
+
+    func approve(_ name: String, details: [String]) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Allow \(name) access in Browse?"
+        alert.informativeText = details.joined(separator: "\n")
+        alert.addButton(withTitle: "Allow"); alert.addButton(withTitle: "Don’t Allow")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    func showOptions(_ id: UUID) {
+        guard let context = contexts[id] else { return }
+        do { try showOptions(context) } catch { self.error = error.localizedDescription }
+    }
+
+    func showOptions(_ context: WKWebExtensionContext) throws {
+        guard let url = context.optionsPageURL else {
+            throw failure("Enable the extension before opening its settings.")
+        }
+        if let existing = documents.values.first(where: { $0.context === context && $0.web.url == url }) {
+            existing.nativeWindow.makeKeyAndOrderFront(nil); return
+        }
+        _ = try openDocument(url: url, context: context)
+    }
+
+    func openDocument(url: URL, context: WKWebExtensionContext, active: Bool = true) throws -> ExtensionDocument {
+        guard let config = context.webViewConfiguration,
+              url.scheme == context.baseURL.scheme, url.host == context.baseURL.host else {
+            throw failure("The extension page is unavailable.")
+        }
+        let document = ExtensionDocument(manager: self, context: context, configuration: config)
+        documents[document.id] = document
+        controller.didOpenWindow(document)
+        controller.didOpenTab(document)
+        document.web.load(URLRequest(url: url))
+        document.nativeWindow.center()
+        if active { document.nativeWindow.makeKeyAndOrderFront(nil) }
+        else { document.nativeWindow.orderBack(nil) }
+        return document
+    }
+
+    func closeDocuments(for context: WKWebExtensionContext) {
+        for document in Array(documents.values) where document.context === context { document.nativeWindow.close() }
+    }
+
+    func performAction(_ id: UUID, pageID: UUID) {
+        guard let context = contexts[id], context.isLoaded, let tab = tabs[pageID] else { return }
+        store?.revealPage(pageID)
+        context.userGesturePerformed(in: tab)
+        context.performAction(for: tab)
+    }
+
+    func failure(_ message: String) -> NSError {
+        NSError(domain: "Browse.Extensions", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+}

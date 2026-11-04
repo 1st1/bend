@@ -68,7 +68,35 @@ Command-click routing uses WebKit's navigation-action modifiers and left-button 
 
 Pane headers display full-color site favicons discovered from the completed document's icon links, then touch icons, then the origin's `/favicon.ico`. [FaviconLoader.swift](../Sources/Browse/FaviconLoader.swift) resolves and deduplicates candidates, bounds downloads, and uses an ephemeral cookie-free session with an in-memory HTTP cache. Missing or invalid icons use a site initial; internal pages retain their app symbols. Navigation clears the old icon and cancels pending work so stale results cannot replace the next page's icon.
 
-External custom URL schemes are not handed to other applications. Downloads, website media permissions, Safari extensions, and Safari session sharing are outside the implemented prototype.
+External custom URL schemes are not handed to other applications. Downloads, website media permissions, native Safari App Extensions, and Safari session sharing are outside the implemented prototype. Safari Web Extensions use the separate [[architecture#Web extensions|Browse extension host]].
+
+## Web extensions
+
+[ExtensionManager.swift](../Sources/Browse/ExtensionManager.swift) hosts Safari Web Extensions through WebKit's public extension controller on macOS 15.4 and later, with enablement, permissions, and extension storage separate from Safari.
+
+All extension packages, including Safari bundles, are copied into Browse's extension directory before validation and registration. WebKit reads ZIP, XPI, CRX, and unpacked resources. Imports start disabled. The extension list, original import location, declared package identity, approved permissions, and website patterns are saved atomically beside the session data. Each context keeps a stable identifier and extension origin across restarts. Existing externally referenced imports migrate to owned copies while retaining their identifiers and grants; migration failures leave the original record intact.
+
+Manual replacement installs a separate package revision and retains the extension origin and storage. Replacement checks bundle identifiers, declared Gecko identifiers, or manifest keys when present; otherwise it requires the same display name. These checks identify user-selected local packages, not authenticated publisher updates. Invalid or mismatched replacements leave the installed version intact. Additional access keeps an update unloaded until approved. Package folders preserve internal relative symbolic links used by signed frameworks, but reject absolute or escaping links and special files. Removing an extension deletes its managed copy, never its original source.
+
+Native messaging is left to WebKit's default app-extension handling; Browse implements no custom native messaging bridge. This does not establish companion-app compatibility: 1Password for Safari's native OS-version request fails with “Native messaging is not supported” in Browse. Its bundle can load, but unlock and autofill are not supported. Loading SafariServices does not resolve this failure.
+
+Enabling an extension asks for its requested capabilities and website access. Updated extensions that need additional grants stay unloaded until reviewed. Runtime requests prompt separately and are granted for the current app session. Private website-data access is not granted. Unreadable extension metadata is preserved and prevents writes. Disabling unloads the extension; existing page changes disappear after reload. Removing also deletes the extension's Browse data and managed resource copy, leaving the source app and Safari settings intact.
+
+[ExtensionBrowserBridge.swift](../Sources/Browse/ExtensionBrowserBridge.swift) maps every pane across workspaces to an extension tab and the browser window to an extension window. Focused panes are active tabs. The host reports creation, closure, focus, URL, title, and loading changes; tab queries do not instantiate unvisited web views. Web extensions can open web tabs, navigate, reload, activate, or close panes. The windows-create API, tab moves and grouping are not implemented.
+
+[ExtensionDocument.swift](../Sources/Browse/ExtensionDocument.swift) hosts extension-owned pages, including options and extension-created tabs, in separate windows using their required context configuration. These windows and pages participate in the extension window/tab APIs and close when the owning extension is disabled or removed. External web links open in browser tabs.
+
+Each browser web view receives the shared extension controller before creation. WebKit provides content scripts, background contexts, storage, and declarative request rules. The pane extension menu invokes actions with a user gesture; WebKit's popup is anchored to the associated visible pane. Availability of individual extension features depends on WebKit's API coverage and any native companion app's requirements.
+
+Importing Chrome or Firefox resources does not establish compatibility with those browsers. The host supplies no adapter for their notifications API or the navigation-target-created event missing from the system WebKit API namespace; these missing APIs also prevent the Firefox 1Password package from starting successfully.
+
+## Extension settings
+
+[SettingsWindowController.swift](../Sources/Browse/SettingsWindowController.swift) provides Browse's own Settings window through Command-comma and pane extension menus. It manages web extensions without opening or modifying Safari preferences.
+
+Settings centers on packages installed in Browse, with Install from File and Update from File actions. Users can install ZIP, XPI, CRX, or unpacked packages, inspect requested access, enable or disable extensions, open options pages, and remove packages with confirmation. A collapsed import section offers copies of Safari Web Extensions found in Applications. Updates are manual; store downloads and automatic updates are not implemented. Load and runtime errors remain visible. Earlier macOS versions show the minimum version needed for extension support.
+
+The enable switch reflects whether WebKit loaded the context, not whether every extension feature works. Settings identifies the signed 1Password Safari bundle by its bundle identifier and displays its known native-connection limitation without changing enablement or deleting data.
 
 ## Session restoration
 
