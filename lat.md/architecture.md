@@ -22,9 +22,9 @@ Each pane has one compact title row with extensions, reload/stop, split, zoom, a
 
 ## Toolbar button styling
 
-[ChromeButtonStyle.swift](../Sources/Browse/ChromeButtonStyle.swift) gives pane controls and the extension menu a shared appearance, with muted cool-gray icons and translucent black circular hover backgrounds.
+[ChromeButtonStyle.swift](../Sources/Browse/ChromeButtonStyle.swift) gives pane controls and the extension menu a shared appearance, with muted cool-gray icons and subtle white circular hover backgrounds shared with the pane title pill.
 
-Pane controls use regular 12-point symbols on a 24-point pitch, with a 22-point hover circle. Hover or pressing brightens the icon and reveals a pure-black background at 20% opacity over 100 ms. Disabled controls stay dim and do not highlight. Sidebar header controls use a brighter 14-point symbol and a 28-point circle. Reduce Motion removes state-transition animations. The extension menu uses the button menu style so it receives the same sizing and interaction treatment as adjacent buttons. Native menu tracking clears cached hover when it begins and ends, preventing a missed mouse-exit event from leaving the extension button highlighted after dismissal.
+Pane controls use regular 12-point symbols on a 24-point pitch, with a 22-point hover circle. Hover or pressing brightens the icon and reveals the shared white background at 6% opacity over 100 ms. Disabled controls stay dim and do not highlight. Sidebar header controls use a brighter 14-point symbol and a 28-point circle. Reduce Motion removes state-transition animations. The extension menu uses the button menu style so it receives the same sizing and interaction treatment as adjacent buttons. Native menu tracking clears cached hover when it begins and ends, preventing a missed mouse-exit event from leaving the extension button highlighted after dismissal.
 
 ## Sidebar materials
 
@@ -76,7 +76,7 @@ The geometry retains pane minimum sizes and divider constraints, growing the scr
 
 [PaneDragging.swift](../Sources/Browse/PaneDragging.swift) provides title-bar dragging within the selected tab, with a floating title badge and blue previews for placing a pane above, below, left, or right of another pane.
 
-The title and adjacent empty header space start an internal drag after a movement threshold; toolbar buttons keep their normal actions. Native mouse-down, dragged, and up handlers retain the gesture through a temporary window-level surface. Pointer positions are compared directly with visible pane rectangles, avoiding AppKit's pasteboard destination routing into WebKit. The surface carries the floating badge and is removed on release, Escape, window deactivation, or source removal; ordinary page events then resume.
+Hovering the title highlights its favicon and text in a compact pill and crossfades the favicon to a four-way drag arrow over 100 ms; Reduce Motion makes the change immediate. Native tracking confines the hover treatment to the title pill. The title and adjacent empty header space have separate native drag handles and start an internal drag after a movement threshold; toolbar buttons keep their normal actions. Native mouse-down, dragged, and up handlers retain the gesture through a temporary window-level surface. Pointer positions are compared directly with visible pane rectangles, avoiding AppKit's pasteboard destination routing into WebKit. The surface carries the floating badge and is removed on release, Escape, window deactivation, or source removal; ordinary page events then resume.
 
 [PaneDropEdge.swift](../Sources/BrowseCore/PaneDropEdge.swift) chooses the nearest normalized edge and its half-pane preview across the target's full visible content area. Leaving valid targets, cancelling, or completing a drag clears the preview. Self-drops, stale sources, other tabs, and zoomed layouts are rejected. External pasteboard drags do not initiate pane rearrangement.
 

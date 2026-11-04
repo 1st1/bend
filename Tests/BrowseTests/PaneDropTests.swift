@@ -31,7 +31,8 @@ import BrowseCore
         (view as? PaneDragSourceView).map { [$0] } ?? view.subviews.flatMap { handles(in: $0) }
     }
     let sources = handles(in: content)
-    #expect(sources.count == 2)
+    #expect(sources.count == 4)
+    #expect(sources.filter { $0.onHover != nil }.count == 2)
     for source in sources {
         let point = source.convert(NSPoint(x: source.bounds.midX, y: source.bounds.midY), to: nil)
         let frameView = try #require(window.contentView?.superview)

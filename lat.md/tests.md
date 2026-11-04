@@ -130,7 +130,7 @@ The test sends a complete mouse gesture through the window: header press, drag a
 
 [PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) sends window mouse events through the actual browser shell, unified titlebar, and glass container in an ordered offscreen window.
 
-Header hit testing reaches the native drag source. Mouse-down focuses its pane and starts tracking; small motion does not move the window or begin a drag, and mouse-up clears tracking.
+Header hit testing reaches both the compact title handle and the adjacent empty-space handle; only the title handle drives hover feedback. Mouse-down focuses its pane and starts tracking; small motion does not move the window or begin a drag, and mouse-up clears tracking.
 
 ## Session round trip
 

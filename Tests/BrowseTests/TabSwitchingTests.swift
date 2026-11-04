@@ -63,7 +63,7 @@ import BrowseCore
         (view as? PaneDragSourceView).map { [$0] } ?? view.subviews.flatMap { dragHandles(in: $0) }
     }
     let handles = dragHandles(in: firstHost)
-    #expect(handles.count == 2)
+    #expect(handles.filter { $0.onHover != nil }.count == 2)
     let source = try #require(handles.first { $0.pageID != first.pages[0].id })
     let otherWeb = try #require(store.existingController(for: first.pages[1].id)?.webView)
     let otherParent = try #require(otherWeb.superview)

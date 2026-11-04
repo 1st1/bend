@@ -7,10 +7,12 @@ struct PaneDragHandle: NSViewRepresentable {
     let tabID: UUID
     let pageID: UUID
     let title: String
+    var onHover: ((Bool) -> Void)? = nil
 
     func makeNSView(context: Context) -> PaneDragSourceView { PaneDragSourceView() }
     func updateNSView(_ view: PaneDragSourceView, context: Context) {
         view.store = store; view.tabID = tabID; view.pageID = pageID; view.title = title
+        view.onHover = onHover
     }
 }
 
@@ -20,11 +22,32 @@ final class PaneDragSourceView: NSView {
     var tabID: UUID?
     var pageID: UUID?
     var title = ""
+    var onHover: ((Bool) -> Void)?
+    private var hoverTracking: NSTrackingArea?
+    private(set) var isHovering = false
     private(set) var mouseDownPoint: NSPoint?
     private(set) var dragSurface: PaneDragSurface?
     private var escapeMonitor: Any?
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTracking { removeTrackingArea(hoverTracking) }
+        let tracking = NSTrackingArea(rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(tracking)
+        hoverTracking = tracking
+    }
+
+    private func setHovering(_ hovering: Bool) {
+        guard isHovering != hovering else { return }
+        isHovering = hovering
+        onHover?(hovering)
+    }
+
+    override func mouseEntered(with event: NSEvent) { setHovering(true) }
+    override func mouseExited(with event: NSEvent) { setHovering(false) }
 
     override func mouseDown(with event: NSEvent) {
         cancelDrag()
@@ -70,7 +93,7 @@ final class PaneDragSourceView: NSView {
     @objc private func windowResigned(_ notification: Notification) { cancelDrag() }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window == nil { cancelDrag() }
+        if window == nil { cancelDrag(); setHovering(false) }
     }
 
     func cancelDrag() {

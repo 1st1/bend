@@ -271,6 +271,8 @@ private struct BrowserPane: View {
     let tab: BrowserTab
     let pageID: UUID
     @ViewState<CGFloat> private var headerHeight: CGFloat = 36
+    @ViewState<Bool> private var titleHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var focused: Bool { tab.focusedPane == pageID }
     private var hostsWindowControls: Bool {
         let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
@@ -319,14 +321,28 @@ private struct BrowserPane: View {
                     Color.clear.frame(width: 66)
                     iconButton("sidebar.left", "Show sidebar · ⌘⇧S") { store.sidebarVisible = true }
                 }
-                HStack(spacing: 9) {
-                    pageIcon.frame(width: 14, height: 14).accessibilityHidden(true)
-                    Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
-                        .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
+                HStack(spacing: 0) {
+                    HStack(spacing: 7) {
+                        ZStack {
+                            pageIcon.opacity(titleHovered ? 0 : 1)
+                            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.75))
+                                .opacity(titleHovered ? 1 : 0)
+                        }.frame(width: 14, height: 14).accessibilityHidden(true)
+                        Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                            .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
+                    }
+                    .padding(.horizontal, 7).frame(height: 24)
+                    .background(ChromeButtonStyle.highlightBackground.opacity(titleHovered ? 1 : 0), in: Capsule())
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: titleHovered)
+                    .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title,
+                        onHover: { titleHovered = $0 }))
                     Spacer(minLength: 0)
+                        .frame(maxHeight: .infinity)
+                        .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title))
                 }
                 .frame(maxHeight: .infinity)
-                .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title))
                 HStack(spacing: 0) {
                     if #available(macOS 15.4, *) {
                         PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {

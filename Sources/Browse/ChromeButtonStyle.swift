@@ -5,6 +5,7 @@ private typealias ButtonState<Value> = SwiftUI.State<Value>
 
 // @lat: [[architecture#Toolbar button styling]]
 struct ChromeButtonStyle: ButtonStyle {
+    static let highlightBackground = Color.white.opacity(0.06)
     var prominent = false
 
     func makeBody(configuration: Configuration) -> some View {
@@ -34,7 +35,7 @@ struct ChromeButtonStyle: ButtonStyle {
                 .frame(width: prominent ? 28 : 24, height: prominent ? 28 : 24)
                 .background {
                     Circle()
-                        .fill(Color.black.opacity(highlighted ? 0.2 : 0))
+                        .fill(ChromeButtonStyle.highlightBackground.opacity(highlighted ? 1 : 0))
                         .frame(width: prominent ? 28 : 22, height: prominent ? 28 : 22)
                 }
                 .contentShape(Rectangle())
