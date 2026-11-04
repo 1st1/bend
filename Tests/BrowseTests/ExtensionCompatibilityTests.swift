@@ -5,7 +5,7 @@ import WebKit
 import Network
 @testable import Browse
 
-@MainActor private final class TestNotifications: ExtensionNotificationDelivering {
+@MainActor final class TestNotifications: ExtensionNotificationDelivering {
     var onResponse: ((String, String) -> Void)?
     var delivered: [String: String] = [:]
     var allowed = true

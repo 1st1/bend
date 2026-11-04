@@ -4,9 +4,9 @@ Browse is a native macOS prototype combining SwiftUI browser chrome, an AppKit w
 
 ## Development signing
 
-[build-app.sh](../scripts/build-app.sh) packages the release executable as Browse.app and signs it with the persistent Browse Dev identity from the keychain.
+[build-app.sh](../scripts/build-app.sh) packages and signs Browse.app, using `BROWSE_SIGNING_IDENTITY` when set and the local Browse Dev certificate otherwise.
 
-The script verifies the signature before reporting success and does not fall back to ad-hoc signing. Reusing the same certificate and bundle identifier preserves code identity across rebuilds so existing keychain authorizations can remain valid.
+The script verifies the signature before reporting success and does not fall back to ad-hoc signing. Reusing the certificate and bundle identifier preserves the designated requirement, but the self-signed Browse Dev identity does not prevent recurring WebCrypto Keychain prompts: macOS assigns it a per-build code-hash partition. The inspected Browse key has accumulated those hashes. Apple-issued development or Developer ID signing uses a stable team partition instead; switching identities can still require one new approval. The build does not alter Keychain access lists or key data.
 
 ## Application shell
 
@@ -14,7 +14,7 @@ The script verifies the signature before reporting success and does not fall bac
 
 Each workspace contains tabs; each tab contains one or more browser panes. Sidebar selection changes the displayed tab. The app creates a replacement tab when the last tab in a workspace closes. The sidebar has a fixed width and can be hidden. Its space is reserved for workspace and tab controls, with session-save errors shown at the bottom only when needed.
 
-The sidebar header places workspace creation beside a right-aligned sidebar toggle, without a brand label. Panes start at the top window inset with no shared navigation bar. When the sidebar is hidden, the upper-left pane reserves space for window controls and exposes the sidebar toggle.
+The sidebar header places workspace creation beside a right-aligned sidebar toggle, without a brand label. Panes use six-point outer margins and divider gaps, starting at the top window inset with no shared navigation bar. When the sidebar is hidden, the upper-left pane reserves space for window controls and exposes the sidebar toggle.
 
 Each pane has one compact title row with extensions, reload/stop, split, zoom, and close controls, using shared [[architecture#Toolbar button styling]]. Reload focuses its pane and becomes stop while loading; it is disabled on start pages. The persistent address row is replaced by the [[architecture#Location popup]]. Back/forward remain available through the View menu and shortcuts; tab creation remains in the sidebar and File menu.
 
@@ -70,11 +70,13 @@ Splits carry an axis and fraction. [BrowserView.swift](../Sources/Browse/Browser
 
 Adding a pane animates existing frames over 180 ms with an ease-out curve. The new pane reveals horizontally for a right split or vertically for a lower split, without scaling its text or web content. The scroll view reveals the destination when it would extend beyond the viewport. Reduce Motion disables these layout and insertion animations.
 
-The geometry retains pane minimum sizes and divider constraints, growing the scrollable canvas when necessary. Divider dragging updates immediately. Tab switches and session restoration start at their final layout; animation state is not persisted.
+The geometry retains pane minimum sizes and divider constraints, growing the scrollable canvas when necessary. Dividers are invisible hit regions spanning the gaps; hovering shows the directional resize cursor, and dragging updates immediately. Tab switches and session restoration start at their final layout; animation state is not persisted.
 
 ## WebKit integration
 
 [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) retains one WebKit controller per visited pane, keeping live pages and navigation history while switching tabs or changing layouts. The native host uses the system WebKit framework, not an embedded Safari application.
+
+Selecting a visited tab does not load or reload its pages. Its [[architecture#Mounted tab views|mounted view hierarchy]] stays attached while inactive. First visits, reopened closed pages, and process restarts still load URLs.
 
 All panes share the app’s default persistent WebKit website data store, separate from Safari. Navigation updates the stored address and first-pane tab title. Command-clicking an HTTP or HTTPS link opens and focuses a new pane to the right of its source, leaving the source page unchanged and exiting pane zoom. This also applies to links targeting a new window; other new-window web links create tabs. Errors offer retry, and page JavaScript alert, confirm, and text-input dialogs use AppKit.
 
@@ -145,6 +147,16 @@ The enable switch reflects whether WebKit loaded the context, not whether every 
 [ExtensionCatalogView.swift](../Sources/Browse/ExtensionCatalogView.swift) provides searchable cards, publisher and category information, source links, installation state, and Enable or Manage actions. uBlock Origin Lite's Safari package is labeled reported working; its local bundle is identified by bundle ID and copied into Browse. If absent, the card links to its official App Store listing. Returning to Browse or refreshing rescans Applications. Firefox 1Password is labeled experimental, with confirmed toolbar vault access and remaining autofill and desktop-unlock limitations. Safari 1Password is not offered as its catalog package.
 
 The 1Password download is pinned to the reviewed Mozilla-hosted version and SHA-256. Downloads use an ephemeral session, a size limit and timeouts, require a successful HTTPS response, and validate the digest before import. [ExtensionManager.swift](../Sources/Browse/ExtensionManager.swift) checks the expected package identity before persistence, rejects duplicate identities, and cleans temporary downloads. Failed or cancelled downloads do not install a package. Catalog entries are matched to installed records by package identity, never display name. Imported packages remain disabled with no granted access until the user enables them and approves permissions. The catalog does not silently follow latest releases or update installed packages.
+
+## Mounted tab views
+
+[MountedTabContent.swift](../Sources/Browse/MountedTabContent.swift) retains a native hosting view for each visited tab, hiding inactive containers instead of rebuilding the pane canvas on selection.
+
+Unvisited tabs stay lazy. Native hiding excludes inactive content from input and visible rendering while its pane and WebKit parent views remain attached. Hidden containers retain their last viewport; selection applies the current size. Closed tabs release their containers, and closed panes are removed from retained trees. Focus moves out of a hidden canvas without taking focus from unrelated controls.
+
+Tab and pane hosting views disable inherited safe-area regions: the window shell supplies their margins, so the unified titlebar must not insert extra space above nested content.
+
+[BrowserView.swift](../Sources/Browse/BrowserView.swift) renders each retained canvas from its own tab model. Pane focus and window controls belong to that tab, and another tab's zoom cannot replace its layout. Retention avoids reparenting and zero-sized WebKit layout during ordinary tab switches; it does not prevent WebKit process termination or pages' own background behavior. [[tests#Mounted tab switching]] verifies native parent identity and document state.
 
 ## Session restoration
 

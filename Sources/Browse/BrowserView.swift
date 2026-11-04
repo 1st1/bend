@@ -19,11 +19,8 @@ struct BrowserView: View {
     var body: some View {
         HStack(spacing: 0) {
             if store.sidebarVisible { sidebar.frame(width: 236) }
-            GeometryReader { geometry in
-                PaneCanvas(store: store, tab: store.selectedTab, viewport: geometry.size)
-                    .id(store.selectedTab.id)
-            }
-            .padding(8)
+            MountedTabContent(store: store)
+            .padding(6)
             .background {
                 if #unavailable(macOS 26.0) {
                     WindowMaterial(material: .underWindowBackground).allowsHitTesting(false)
@@ -107,6 +104,17 @@ struct BrowserView: View {
 
 }
 
+struct TabCanvasRoot: View {
+    @ObservedObject var store: BrowserStore
+    let tab: BrowserTab
+
+    var body: some View {
+        GeometryReader { geometry in
+            PaneCanvas(store: store, tab: tab, viewport: geometry.size)
+        }
+    }
+}
+
 private struct PaneCanvas: View {
     @ObservedObject var store: BrowserStore
     let tab: BrowserTab
@@ -116,14 +124,15 @@ private struct PaneCanvas: View {
     private var animation: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
 
     var body: some View {
-        let layout = store.zoomedPane.map(PaneLayout.pane) ?? tab.layout
+        let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
+        let layout = zoomed.map(PaneLayout.pane) ?? tab.layout
         let geometry = PaneGeometry(layout: layout, viewport: viewport)
         ScrollViewReader { proxy in
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
                     ForEach(geometry.panes) { placement in
                         if let page = tab.pages.first(where: { $0.id == placement.id }) {
-                            BrowserPane(store: store, controller: store.controller(for: page), pageID: page.id)
+                            BrowserPane(store: store, controller: store.controller(for: page), tab: tab, pageID: page.id)
                                 .frame(width: placement.frame.width, height: placement.frame.height)
                                 .transition(reduceMotion ? .identity : .asymmetric(
                                     insertion: .modifier(active: PaneReveal(progress: 0, axis: placement.insertionAxis),
@@ -241,8 +250,6 @@ private struct PaneDivider: View {
     var body: some View {
         let horizontal = placement.axis == .horizontal
         Rectangle().fill(Color.clear).contentShape(Rectangle())
-            .overlay(Capsule().fill(.white.opacity(0.12))
-                .frame(width: horizontal ? 2 : 30, height: horizontal ? 30 : 2))
             .onHover { hovering in
                 if hovering { (horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).push() }
                 else { NSCursor.pop() }
@@ -258,11 +265,13 @@ private struct PaneDivider: View {
 private struct BrowserPane: View {
     @ObservedObject var store: BrowserStore
     @ObservedObject var controller: PageController
+    let tab: BrowserTab
     let pageID: UUID
     @ViewState<CGFloat> private var headerHeight: CGFloat = 36
-    private var focused: Bool { store.selectedTab.focusedPane == pageID }
+    private var focused: Bool { tab.focusedPane == pageID }
     private var hostsWindowControls: Bool {
-        !store.sidebarVisible && pageID == (store.zoomedPane ?? store.selectedTab.layout.paneIDs.first)
+        let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
+        return !store.sidebarVisible && pageID == (zoomed ?? tab.layout.paneIDs.first)
     }
 
     var body: some View {
@@ -406,6 +415,7 @@ private final class ClippedPaneHost: NSView {
         layer?.borderWidth = 1
         layer?.borderColor = NSColor(calibratedWhite: 0.15, alpha: 1).cgColor
         content.sizingOptions = []
+        content.safeAreaRegions = []
         content.frame = bounds
         content.autoresizingMask = [.width, .height]
         addSubview(content)

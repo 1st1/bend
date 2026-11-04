@@ -14,16 +14,16 @@ import Testing
     let right = tab.focusedPane
     let split = PaneGeometry(layout: tab.layout, viewport: viewport)
     #expect(split.panes.map(\.id) == [original, right])
-    #expect(split.panes[0].frame == CGRect(x: 0, y: 0, width: 596, height: 800))
-    #expect(split.panes[1].frame == CGRect(x: 604, y: 0, width: 596, height: 800))
+    #expect(split.panes[0].frame == CGRect(x: 0, y: 0, width: 597, height: 800))
+    #expect(split.panes[1].frame == CGRect(x: 603, y: 0, width: 597, height: 800))
     #expect(split.panes[1].insertionAxis == .horizontal)
     tab.split(axis: .vertical)
     let bottom = tab.focusedPane
     let nested = PaneGeometry(layout: tab.layout, viewport: viewport)
     #expect(nested.panes.map(\.id) == [original, right, bottom])
     #expect(nested.panes[0].frame == split.panes[0].frame)
-    #expect(nested.panes[1].frame == CGRect(x: 604, y: 0, width: 596, height: 396))
-    #expect(nested.panes[2].frame == CGRect(x: 604, y: 404, width: 596, height: 396))
+    #expect(nested.panes[1].frame == CGRect(x: 603, y: 0, width: 597, height: 397))
+    #expect(nested.panes[2].frame == CGRect(x: 603, y: 403, width: 597, height: 397))
     #expect(nested.panes[2].insertionAxis == .vertical)
     tab.closePane(bottom)
     let closed = PaneGeometry(layout: tab.layout, viewport: viewport)
@@ -36,7 +36,7 @@ import Testing
     tab.split(axis: .horizontal)
     tab.split(axis: .vertical)
     let geometry = PaneGeometry(layout: tab.layout, viewport: CGSize(width: 100, height: 100))
-    #expect(geometry.size == CGSize(width: 688, height: 488))
+    #expect(geometry.size == CGSize(width: 686, height: 486))
     for pane in geometry.panes {
         #expect(pane.frame.width >= 340)
         #expect(pane.frame.height >= 240)
@@ -45,12 +45,12 @@ import Testing
     for divider in geometry.dividers {
         #expect(divider.fraction(forLength: -1000) == Double(divider.minimum / divider.available))
         #expect(divider.fraction(forLength: 10000) == Double(divider.maximum / divider.available))
-        #expect(divider.axis == .horizontal ? divider.frame.width == 8 : divider.frame.height == 8)
+        #expect(divider.axis == .horizontal ? divider.frame.width == 6 : divider.frame.height == 6)
     }
     let wide = PaneGeometry(layout: tab.layout, viewport: CGSize(width: 1600, height: 1000))
     let divider = try #require(wide.dividers.first)
     tab.layout = tab.layout.resizing(divider.id, to: divider.fraction(forLength: 1000))
     let resized = PaneGeometry(layout: tab.layout, viewport: wide.size)
     #expect(abs(resized.panes[0].frame.width - 1000) < 0.001)
-    #expect(abs(resized.panes[1].frame.minX - 1008) < 0.001)
+    #expect(abs(resized.panes[1].frame.minX - 1006) < 0.001)
 }

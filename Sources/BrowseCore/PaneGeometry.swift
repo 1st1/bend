@@ -23,6 +23,7 @@ public struct DividerPlacement: Identifiable {
 
 // @lat: [[architecture#Pane layout animation]]
 public struct PaneGeometry {
+    public static let gap: CGFloat = 6
     public let size: CGSize
     public private(set) var panes: [PanePlacement] = []
     public private(set) var dividers: [DividerPlacement] = []
@@ -39,8 +40,8 @@ public struct PaneGeometry {
         case .split(_, let axis, _, let a, let b):
             let first = minimumSize(a), second = minimumSize(b)
             return axis == .horizontal
-                ? CGSize(width: first.width + second.width + 8, height: max(first.height, second.height))
-                : CGSize(width: max(first.width, second.width), height: first.height + second.height + 8)
+                ? CGSize(width: first.width + second.width + gap, height: max(first.height, second.height))
+                : CGSize(width: max(first.width, second.width), height: first.height + second.height + gap)
         }
     }
 
@@ -51,7 +52,7 @@ public struct PaneGeometry {
         case .split(let id, let axis, let fraction, let first, let second):
             let horizontal = axis == .horizontal
             let a = Self.minimumSize(first), b = Self.minimumSize(second)
-            let available = max(1, (horizontal ? rect.width : rect.height) - 8)
+            let available = max(1, (horizontal ? rect.width : rect.height) - Self.gap)
             let minimum = horizontal ? a.width : a.height
             let maximum = max(minimum, available - (horizontal ? b.width : b.height))
             let length = min(max(minimum, available * fraction), maximum)
@@ -59,14 +60,14 @@ public struct PaneGeometry {
             if horizontal {
                 firstRect.size.width = length
                 dividerRect.origin.x += length
-                dividerRect.size.width = 8
-                secondRect.origin.x += length + 8
+                dividerRect.size.width = Self.gap
+                secondRect.origin.x += length + Self.gap
                 secondRect.size.width = available - length
             } else {
                 firstRect.size.height = length
                 dividerRect.origin.y += length
-                dividerRect.size.height = 8
-                secondRect.origin.y += length + 8
+                dividerRect.size.height = Self.gap
+                secondRect.origin.y += length + Self.gap
                 secondRect.size.height = available - length
             }
             dividers.append(DividerPlacement(id: id, axis: axis, frame: dividerRect,

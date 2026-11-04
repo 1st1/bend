@@ -10,7 +10,13 @@ Requires macOS 14 or newer and a Swift 6 toolchain (Xcode or Command Line Tools)
 ./scripts/build-app.sh --open
 ```
 
-This builds `dist/Browse.app` and signs it with the `Browse Dev` code-signing certificate and private key in your keychain. Reuse that identity across builds so keychain authorization can persist. The build fails if signing or signature verification fails. You can also open `Package.swift` in Xcode, or run `swift run Browse` during development; those paths do not use the script's signing step.
+This builds `dist/Browse.app` and defaults to the local `Browse Dev` signing identity. The build fails if signing or signature verification fails. A self-signed certificate preserves the app's designated requirement but does **not** prevent WebCrypto Keychain prompts after rebuilds: macOS places these builds in separate code-hash partitions. For a stable team partition, create an Apple-issued development certificate through [Xcode's certificate manager](https://help.apple.com/xcode/mac/current/en.lproj/dev154b28f09.html), then select its installed signing identity:
+
+```sh
+BROWSE_SIGNING_IDENTITY='Apple Development: Your Name (IDENTIFIER)' ./scripts/build-app.sh --open
+```
+
+Switching to the Apple-issued identity may require a new Keychain approval once. The build never changes Keychain access controls or stored keys. You can also open `Package.swift` in Xcode, or run `swift run Browse` during development; those paths do not use the script's signing step.
 
 ## Use
 
@@ -45,7 +51,7 @@ Drag dividers to resize. Click a pane header or its web content to focus it. Lar
 
 Press ⌘⇧T to reopen closed panes and tabs, most recent first. Panes return to their original tab and split position where possible, preserving later edits. The last 50 closures are available during the current app session. Reopening reloads saved URLs; page forms and back-forward history are not retained after closing.
 
-Tabs, workspace names, URLs, focus, and split proportions restore from `~/Library/Application Support/BrowsePrototype/session.json`. Browser instances stay alive while switching tabs; after restarting, pages load again from saved URLs. WebKit stores website data in this app’s own persistent profile. The prototype does not access Safari’s data.
+Tabs, workspace names, URLs, focus, and split proportions restore from `~/Library/Application Support/BrowsePrototype/session.json`. Visited tabs keep their pane views and browser instances mounted while inactive, so switching does not rebuild the canvas or reload pages. Unvisited tabs load on first selection; after restarting, pages load again from saved URLs. WebKit stores website data in this app’s own persistent profile. The prototype does not access Safari’s data.
 
 ## Scope
 
