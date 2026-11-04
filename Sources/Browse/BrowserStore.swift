@@ -112,12 +112,45 @@ final class BrowserStore: ObservableObject {
     }
     func resize(_ id: UUID, fraction: Double) { editTab { $0.layout = $0.layout.resizing(id, to: fraction) } }
     @discardableResult
-    func movePane(_ source: UUID, beside target: UUID, edge: PaneDropEdge, in tabID: UUID) -> Bool {
-        guard selectedTab.id == tabID, zoomedPane == nil,
-              let layout = selectedTab.layout.moving(source, beside: target, edge: edge) else { return false }
+    func movePane(_ source: UUID, beside target: UUID, edge: PaneDropEdge, in tabID: UUID, from sourceTabID: UUID? = nil) -> Bool {
+        guard selectedTab.id == tabID, zoomedPane == nil else { return false }
+        if let sourceTabID, sourceTabID != tabID {
+            var next = session
+            guard next.transferPane(source, from: sourceTabID, beside: target, in: tabID, edge: edge) else { return false }
+            refreshTransferredTitles(&next)
+            session = next
+            saveSoon()
+            paneMoveRevision += 1
+            return true
+        }
+        guard let layout = selectedTab.layout.moving(source, beside: target, edge: edge) else { return false }
         editTab(tabID) { $0.layout = layout; $0.focusedPane = source }
         paneMoveRevision += 1
         return true
+    }
+
+    @discardableResult
+    func detachPane(_ source: UUID, from sourceTabID: UUID, into workspaceID: UUID) -> Bool {
+        var next = session
+        let title = browsers[source]?.title ?? session.workspaces.flatMap(\.tabs)
+            .first(where: { $0.id == sourceTabID })?.title ?? "New tab"
+        guard next.detachPane(source, from: sourceTabID, into: workspaceID, title: title) != nil else { return false }
+        zoomedPane = nil
+        refreshTransferredTitles(&next)
+        session = next
+        saveSoon()
+        paneMoveRevision += 1
+        return true
+    }
+
+    private func refreshTransferredTitles(_ next: inout BrowserSession) {
+        for wi in next.workspaces.indices {
+            for ti in next.workspaces[wi].tabs.indices {
+                if let first = next.workspaces[wi].tabs[ti].pages.first, let title = browsers[first.id]?.title {
+                    next.workspaces[wi].tabs[ti].title = title
+                }
+            }
+        }
     }
     func toggleZoom(_ id: UUID) { focus(id); zoomedPane = zoomedPane == id ? nil : id }
 

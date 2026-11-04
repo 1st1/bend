@@ -58,6 +58,7 @@ struct BrowserView: View {
                                 tabRow(tab)
                             }
                         }
+                        .background(PaneSidebarTarget(store: store, destination: .workspace(workspace.id)))
                     }
                     Button { store.newTab() } label: {
                         HStack(spacing: 10) {
@@ -70,7 +71,10 @@ struct BrowserView: View {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.system(size: 10)).foregroundStyle(.orange).padding(20)
             }
-        }.background {
+        }
+        .background(PaneSidebarTarget(store: store, destination: .workspace(
+            store.session.workspaces.first(where: { $0.tabs.contains { $0.id == store.session.selectedTab } })!.id)))
+        .background {
             if #unavailable(macOS 26.0) {
                 WindowMaterial(material: .sidebar).allowsHitTesting(false)
             }
@@ -96,6 +100,7 @@ struct BrowserView: View {
         }
         .padding(.horizontal, 11).frame(height: 34)
         .modifier(TabSelectionMaterial(selected: selected))
+        .background(PaneSidebarTarget(store: store, destination: .tab(tab.id)))
         .contextMenu {
             Button("New tab") { store.newTab() }
             Button("Close tab") { store.closeTab(tab.id) }

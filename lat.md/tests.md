@@ -114,17 +114,29 @@ The test sends a complete mouse gesture through the window: header press, drag a
 
 [PaneDropTests.swift](../Tests/BrowseCoreTests/PaneDropTests.swift) checks every source, target, and edge combination in a nested layout, preserving all pane IDs and unrelated split fractions while rejecting missing or identical endpoints.
 
+## Cross-tab pane transfer model
+
+[PaneTransferTests.swift](../Tests/BrowseCoreTests/PaneTransferTests.swift) checks transfers at all four edges across workspaces, source collapse, empty-workspace recovery, detaching, invalid moves, and valid session restoration.
+
+## Cross-tab native pane dragging
+
+[PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) drives a single-pane tab through sidebar hover into an unvisited tab, drops on its WebKit content, then detaches into sidebar space.
+
+The test uses the unified titlebar and glass window hierarchy. It verifies delayed-hover cancellation, destination selection, source-tab removal, edge placement, direct row drops before the hover delay, and saved layouts. Consecutive same-tab drops alternate between panes after focus/layout updates, and every release must reach the native window to end AppKit tracking. The same live web view, document timestamp, unsaved input, and extension tab adapter survive transfers without creating closed-item history. All data and HTTP pages are disposable.
+
 ## Pane drop targeting
 
 [PaneDropTests.swift](../Tests/BrowseCoreTests/PaneDropTests.swift) verifies normalized edge selection, half-pane preview frames, and rejection of outside points or empty viewports.
 
 ## Pane drop validation and persistence
 
-[PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) checks hidden, zoomed, stale, and other-tab rejection. A valid move preserves URLs, focuses the moved pane, survives session restoration, and creates no closed-item history.
+[PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) checks hidden, zoomed, stale-pane, and missing-source-tab rejection. A valid move preserves URLs, focuses the moved pane, survives session restoration, and creates no closed-item history.
 
 ## Native pane drop lifecycle
 
 [PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) sends mouse events through an ordered offscreen window to verify preview updates, cancellation without mutation, outside rejection, surface cleanup, and a valid move on release.
+
+The native preview layer is observed during continuous movement and edge changes. It must never transition to hidden while the pointer remains over a valid pane, including between events and layout passes.
 
 ## Pane header mouse routing
 

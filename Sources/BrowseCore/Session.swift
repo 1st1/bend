@@ -39,7 +39,12 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
     public func moving(_ source: UUID, beside target: UUID, edge: PaneDropEdge) -> Self? {
         guard source != target, paneIDs.contains(source), paneIDs.contains(target),
               let remaining = removing(source) else { return nil }
-        return remaining.replacingNode(target) { current in
+        return remaining.inserting(source, beside: target, edge: edge)
+    }
+
+    public func inserting(_ source: UUID, beside target: UUID, edge: PaneDropEdge) -> Self? {
+        guard !paneIDs.contains(source), paneIDs.contains(target) else { return nil }
+        return replacingNode(target) { current in
             .split(id: UUID(), axis: edge.axis, fraction: 0.5,
                    first: edge.isBefore ? .pane(source) : current,
                    second: edge.isBefore ? current : .pane(source))
@@ -152,6 +157,48 @@ public struct BrowserSession: Codable, Sendable {
         let initial = BrowserTab(title: "Start here", pages: [Page(), Page(address: "browse://guide")])
         workspaces = [Workspace(name: "everyday", tabs: [initial]), Workspace(name: "research")]
         selectedTab = initial.id
+    }
+
+    // Moving a pane is atomic: its identity and address survive, and no closed
+    // item is created. Keep an empty source workspace usable with a blank tab.
+    public mutating func transferPane(_ source: UUID, from sourceTabID: UUID,
+                                     beside target: UUID, in targetTabID: UUID, edge: PaneDropEdge) -> Bool {
+        guard sourceTabID != targetTabID,
+              let sourceTab = workspaces.flatMap(\.tabs).first(where: { $0.id == sourceTabID }),
+              let page = sourceTab.pages.first(where: { $0.id == source }),
+              let wi = workspaces.firstIndex(where: { $0.tabs.contains { $0.id == targetTabID } }),
+              let ti = workspaces[wi].tabs.firstIndex(where: { $0.id == targetTabID }),
+              let layout = workspaces[wi].tabs[ti].layout.inserting(source, beside: target, edge: edge) else { return false }
+        workspaces[wi].tabs[ti].layout = layout
+        workspaces[wi].tabs[ti].pages.append(page)
+        workspaces[wi].tabs[ti].focusedPane = source
+        removeTransferredPane(source, from: sourceTabID)
+        selectedTab = targetTabID
+        return true
+    }
+
+    public mutating func detachPane(_ source: UUID, from sourceTabID: UUID, into workspaceID: UUID, title: String) -> UUID? {
+        guard let sourceTab = workspaces.flatMap(\.tabs).first(where: { $0.id == sourceTabID }),
+              let page = sourceTab.pages.first(where: { $0.id == source }),
+              let wi = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
+        // A single-pane tab dropped into its existing workspace is already detached.
+        guard sourceTab.pages.count > 1 || !workspaces[wi].tabs.contains(where: { $0.id == sourceTabID }) else { return nil }
+        let tab = BrowserTab(title: title, pages: [page])
+        workspaces[wi].tabs.append(tab)
+        removeTransferredPane(source, from: sourceTabID)
+        selectedTab = tab.id
+        return tab.id
+    }
+
+    private mutating func removeTransferredPane(_ source: UUID, from tabID: UUID) {
+        guard let wi = workspaces.firstIndex(where: { $0.tabs.contains { $0.id == tabID } }),
+              let ti = workspaces[wi].tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        if workspaces[wi].tabs[ti].pages.count > 1 {
+            workspaces[wi].tabs[ti].closePane(source)
+        } else {
+            workspaces[wi].tabs.remove(at: ti)
+            if workspaces[wi].tabs.isEmpty { workspaces[wi].tabs.append(BrowserTab()) }
+        }
     }
 
     public var isValid: Bool {

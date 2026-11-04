@@ -92,8 +92,24 @@ func sendPaneMouse(_ type: NSEvent.EventType, at point: NSPoint, to window: NSWi
     #expect(source.dragSurface?.target === host)
     #expect(host.dropEdge == .top)
     #expect(store.selectedTab.layout == tab.layout)
+    let preview = try #require(host.layer?.sublayers?.compactMap { $0 as? CAShapeLayer }.first)
+    let visibility = PreviewVisibility()
+    let observation = preview.observe(\.isHidden, options: [.new]) { _, change in
+        MainActor.assumeIsolated { if change.newValue == true { visibility.hiddenTransitions += 1 } }
+    }
+    // Continuous movement inside one placement region must not hide the layer,
+    // even transiently between mouse events or layout passes.
+    for x in stride(from: 250.0, through: 700.0, by: 15) {
+        try sendPaneMouse(.leftMouseDragged, at: NSPoint(x: x, y: 390), to: window)
+        host.layoutSubtreeIfNeeded()
+        #expect(host.dropEdge == .top)
+        #expect(!preview.isHidden)
+    }
+    #expect(visibility.hiddenTransitions == 0)
     try sendPaneMouse(.leftMouseDragged, at: NSPoint(x: 500, y: 10), to: window)
     #expect(host.dropEdge == .bottom)
+    #expect(visibility.hiddenTransitions == 0)
+    observation.invalidate()
     source.cancelOperation(nil)
     #expect(source.dragSurface == nil)
     #expect(host.dropEdge == nil)
@@ -113,6 +129,10 @@ func sendPaneMouse(_ type: NSEvent.EventType, at point: NSPoint, to window: NSWi
     #expect(store.selectedTab.layout.paneIDs == [tab.pages[1].id, tab.pages[0].id])
     #expect(store.selectedTab.focusedPane == tab.pages[1].id)
     #expect(store.session.isValid)
+}
+
+@MainActor private final class PreviewVisibility {
+    var hiddenTransitions = 0
 }
 
 // @lat: [[tests#Pane drop validation and persistence]]

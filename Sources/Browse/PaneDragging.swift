@@ -27,7 +27,7 @@ final class PaneDragSourceView: NSView {
     private(set) var isHovering = false
     private(set) var mouseDownPoint: NSPoint?
     private(set) var dragSurface: PaneDragSurface?
-    private var escapeMonitor: Any?
+    private var dragEventMonitor: Any?
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -58,8 +58,9 @@ final class PaneDragSourceView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         guard let origin = mouseDownPoint, let store, let tabID,
-              store.selectedTab.id == tabID, store.zoomedPane == nil,
-              store.selectedTab.pages.count > 1, let window, let content = window.contentView else {
+              store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == tabID && $0.pages.contains { $0.id == pageID } }),
+              (dragSurface != nil || store.selectedTab.id == tabID), store.zoomedPane == nil,
+              let window, let content = window.contentView else {
             cancelDrag(); return
         }
         guard dragSurface != nil || hypot(event.locationInWindow.x - origin.x, event.locationInWindow.y - origin.y) >= 5 else { return }
@@ -67,10 +68,20 @@ final class PaneDragSourceView: NSView {
             let surface = PaneDragSurface(source: self, content: content, badge: dragBadge())
             dragSurface = surface
             content.addSubview(surface, positioned: .above, relativeTo: nil)
-            escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard event.keyCode == 53, self?.dragSurface != nil else { return event }
-                self?.cancelDrag()
-                return nil
+            // AppKit stops routing mouse tracking to a hidden source after a
+            // sidebar tab switch. Keep the active gesture at the window level.
+            dragEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+                guard let self, self.dragSurface != nil else { return event }
+                if event.type == .keyDown, event.keyCode == 53 { self.cancelDrag(); return nil }
+                guard event.window === self.window else { return event }
+                if event.type == .leftMouseDragged { self.mouseDragged(with: event); return nil }
+                if event.type == .leftMouseUp {
+                    self.mouseUp(with: event)
+                    // AppKit saw the original press and must see its release
+                    // to end native mouse tracking before the next gesture.
+                    return event
+                }
+                return event
             }
             NotificationCenter.default.addObserver(self, selector: #selector(windowResigned),
                 name: NSWindow.didResignKeyNotification, object: window)
@@ -79,13 +90,29 @@ final class PaneDragSourceView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        // The monitor completes the drop first; AppKit may subsequently deliver
+        // that same release to this view while balancing its own tracking state.
+        guard mouseDownPoint != nil else { return }
         dragSurface?.update(at: event.locationInWindow)
         let target = dragSurface?.target
+        let sidebarTarget = dragSurface?.sidebarTarget
         let edge = target?.dropEdge
         let sourceID = target?.validSource(self)
         cancelDrag()
         if let target, let edge, let sourceID, let store, let tabID, let targetID = target.pageID {
-            store.movePane(sourceID, beside: targetID, edge: edge, in: tabID)
+            if let destination = target.tabID {
+                store.movePane(sourceID, beside: targetID, edge: edge, in: destination, from: tabID)
+            }
+        } else if let sidebarTarget, let store, let tabID, let pageID {
+            switch sidebarTarget.destination {
+            case .tab(let destination) where destination != tabID:
+                guard let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == destination }) else { return }
+                store.select(destination)
+                store.movePane(pageID, beside: tab.focusedPane, edge: .right, in: destination, from: tabID)
+            case .workspace(let workspace):
+                store.detachPane(pageID, from: tabID, into: workspace)
+            default: break
+            }
         }
     }
 
@@ -98,10 +125,10 @@ final class PaneDragSourceView: NSView {
 
     func cancelDrag() {
         mouseDownPoint = nil
-        dragSurface?.target?.showPreview(nil)
+        dragSurface?.clearTargets()
         dragSurface?.removeFromSuperview()
         dragSurface = nil
-        if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor); self.escapeMonitor = nil }
+        if let dragEventMonitor { NSEvent.removeMonitor(dragEventMonitor); self.dragEventMonitor = nil }
         NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
     }
 
@@ -134,6 +161,7 @@ class PaneDropHost: NSView {
     var pageID: UUID?
     private(set) var dropEdge: PaneDropEdge?
     private let preview = CAShapeLayer()
+    private var previewBounds: NSRect = .zero
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -148,17 +176,19 @@ class PaneDropHost: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func validSource(_ source: PaneDragSourceView) -> UUID? {
-        guard let store, source.store === store, let tabID, source.tabID == tabID,
+        guard let store, source.store === store, let tabID, let sourceTabID = source.tabID,
               store.selectedTab.id == tabID, store.zoomedPane == nil,
               let sourceID = source.pageID, let pageID, sourceID != pageID,
-              store.selectedTab.pages.contains(where: { $0.id == sourceID }),
+              store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == sourceTabID && $0.pages.contains { $0.id == sourceID } }),
               store.selectedTab.pages.contains(where: { $0.id == pageID }),
               !isHiddenOrHasHiddenAncestor else { return nil }
         return sourceID
     }
 
     func showPreview(_ edge: PaneDropEdge?) {
+        guard edge != dropEdge || (edge != nil && previewBounds != bounds) else { return }
         dropEdge = edge
+        previewBounds = bounds
         CATransaction.begin(); CATransaction.setDisableActions(true)
         preview.isHidden = edge == nil
         if let edge {
@@ -173,25 +203,21 @@ class PaneDropHost: NSView {
     override func layout() { super.layout(); showPreview(dropEdge) }
 }
 
-// This surface exists only for the duration of a header drag. NSWindow keeps
-// sending dragged/up events to the original mouse-down view; forwarding here
-// also handles any event delivered to the overlay itself.
+// This surface exists only for an active header drag. The local event monitor
+// retains tracking across tab switches; these handlers also forward events
+// delivered directly to the overlay.
 @MainActor
 final class PaneDragSurface: NSView {
     private weak var source: PaneDragSourceView?
-    private let targets: [PaneDropHost]
     private let badge: NSImageView
     private(set) var target: PaneDropHost?
+    private(set) var sidebarTarget: PaneSidebarTargetView?
+    private var hoverTask: Task<Void, Never>?
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
 
     init(source: PaneDragSourceView, content: NSView, badge image: NSImage) {
         self.source = source
-        func panes(in view: NSView) -> [PaneDropHost] {
-            if let pane = view as? PaneDropHost { return [pane] }
-            return view.subviews.flatMap { panes(in: $0) }
-        }
-        targets = panes(in: content)
         badge = NSImageView(frame: NSRect(origin: .zero, size: image.size))
         badge.image = image
         super.init(frame: content.bounds)
@@ -202,26 +228,121 @@ final class PaneDragSurface: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func update(at windowPoint: NSPoint) {
-        target?.showPreview(nil)
-        target = nil
-        guard let source, source.window === window else { return }
+        guard let source, source.window === window else { clearTargets(); return }
         let point = convert(windowPoint, from: nil)
         badge.setFrameOrigin(NSPoint(x: point.x + 12, y: point.y + 12))
-        guard bounds.contains(point) else { return }
+        guard bounds.contains(point), let content = superview else { clearTargets(); return }
+        let sidebar = descendants(of: PaneSidebarTargetView.self, in: content).filter {
+            $0.store === source.store && !$0.isHiddenOrHasHiddenAncestor
+                && $0.bounds.intersection($0.visibleRect).contains($0.convert(windowPoint, from: nil))
+        }
+        // Rows take precedence over the containing workspace's empty-space target.
+        let hovered = sidebar.first { if case .tab = $0.destination { return true }; return false }
+            ?? sidebar.min { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height }
+        if sidebarTarget !== hovered {
+            sidebarTarget?.showPreview(false)
+            hoverTask?.cancel(); hoverTask = nil
+            sidebarTarget = hovered
+            if let hovered, case .tab(let id) = hovered.destination, let store = source.store,
+               store.session.selectedTab != id {
+                hoverTask = Task { @MainActor [weak self, weak store] in
+                    do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+                    guard let self, self.sidebarTarget === hovered, let store,
+                          store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == id }) else { return }
+                    store.select(id)
+                }
+            }
+        }
+        if let hovered {
+            setTarget(nil)
+            hovered.showPreview(true, at: hovered.convert(windowPoint, from: nil))
+            return
+        }
+        // Tab hovering can mount a previously unvisited canvas while dragging.
+        let targets = descendants(of: PaneDropHost.self, in: content)
         for candidate in targets where candidate.window === window && candidate.validSource(source) != nil {
             let local = candidate.convert(windowPoint, from: nil)
-            guard candidate.visibleRect.contains(local) else { continue }
+            guard candidate.bounds.intersection(candidate.visibleRect).contains(local) else { continue }
             let position = CGPoint(x: local.x - candidate.bounds.minX,
                 y: candidate.isFlipped ? local.y - candidate.bounds.minY : candidate.bounds.maxY - local.y)
             guard let edge = PaneDropEdge.at(position, in: candidate.bounds.size) else { continue }
-            candidate.showPreview(edge)
-            target = candidate
-            break
+            setTarget(candidate, edge: edge)
+            return
         }
+        setTarget(nil)
+    }
+
+    private func setTarget(_ next: PaneDropHost?, edge: PaneDropEdge? = nil) {
+        // Keep an unchanged target visible across pointer events. Clearing it
+        // first lets an intermediate hidden layer reach the compositor.
+        if target !== next { target?.showPreview(nil); target = next }
+        next?.showPreview(edge)
+    }
+
+    private func descendants<T: NSView>(of type: T.Type, in view: NSView) -> [T] {
+        if view === self { return [] }
+        return (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(of: type, in: $0) }
+    }
+
+    func clearTargets() {
+        hoverTask?.cancel(); hoverTask = nil
+        setTarget(nil)
+        sidebarTarget?.showPreview(false); sidebarTarget = nil
     }
 
     override func mouseDown(with event: NSEvent) { source?.cancelDrag() }
     override func mouseDragged(with event: NSEvent) { source?.mouseDragged(with: event) }
     override func mouseUp(with event: NSEvent) { source?.mouseUp(with: event) }
     override func cancelOperation(_ sender: Any?) { source?.cancelDrag() }
+}
+
+enum PaneSidebarDestination: Equatable {
+    case tab(UUID)
+    case workspace(UUID)
+}
+
+struct PaneSidebarTarget: NSViewRepresentable {
+    let store: BrowserStore
+    let destination: PaneSidebarDestination
+    func makeNSView(context: Context) -> PaneSidebarTargetView { PaneSidebarTargetView() }
+    func updateNSView(_ view: PaneSidebarTargetView, context: Context) {
+        view.store = store; view.destination = destination
+    }
+}
+
+@MainActor final class PaneSidebarTargetView: NSView {
+    weak var store: BrowserStore?
+    var destination: PaneSidebarDestination = .workspace(UUID())
+    private let preview = CAShapeLayer()
+    private var previewRect: NSRect = .zero
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        preview.fillColor = NSColor.systemBlue.withAlphaComponent(0.22).cgColor
+        preview.strokeColor = NSColor.systemBlue.withAlphaComponent(0.9).cgColor
+        preview.lineWidth = 1
+        preview.isHidden = true
+        layer?.addSublayer(preview)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    func showPreview(_ visible: Bool, at point: NSPoint = .zero) {
+        let rect: NSRect
+        switch destination {
+        case .tab: rect = bounds.insetBy(dx: 1, dy: 1)
+        case .workspace: rect = NSRect(x: 10, y: point.y, width: max(0, bounds.width - 20), height: 2)
+        }
+        if !visible, preview.isHidden { return }
+        if visible, !preview.isHidden, rect == previewRect { return }
+        previewRect = rect
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        preview.isHidden = !visible
+        switch destination {
+        case .tab:
+            preview.path = CGPath(roundedRect: rect, cornerWidth: 12, cornerHeight: 12, transform: nil)
+        case .workspace:
+            preview.path = CGPath(rect: rect, transform: nil)
+        }
+        CATransaction.commit()
+    }
 }
