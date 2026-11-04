@@ -23,6 +23,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoadsInWebContent</key><true/></dict>
 </dict></plist>
 PLIST
-codesign --force --sign - "$app"
+# @lat: [[architecture#Development signing]]
+codesign --force --sign "Browse Dev" "$app"
+codesign --verify --strict "$app"
 printf 'Built %s\n' "$app"
 if [[ "${1:-}" == "--open" ]]; then open "$app"; fi

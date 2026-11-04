@@ -10,7 +10,7 @@ Requires macOS 14 or newer and a Swift 6 toolchain (Xcode or Command Line Tools)
 ./scripts/build-app.sh --open
 ```
 
-This builds and ad-hoc signs `dist/Browse.app`. You can also open `Package.swift` in Xcode, or run `swift run Browse` during development.
+This builds `dist/Browse.app` and signs it with the `Browse Dev` code-signing certificate and private key in your keychain. Reuse that identity across builds so keychain authorization can persist. The build fails if signing or signature verification fails. You can also open `Package.swift` in Xcode, or run `swift run Browse` during development; those paths do not use the script's signing step.
 
 ## Use
 

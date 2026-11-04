@@ -2,6 +2,12 @@
 
 Browse is a native macOS prototype combining SwiftUI browser chrome, an AppKit window, and system WebKit pages in nested tiling layouts.
 
+## Development signing
+
+[build-app.sh](../scripts/build-app.sh) packages the release executable as Browse.app and signs it with the persistent Browse Dev identity from the keychain.
+
+The script verifies the signature before reporting success and does not fall back to ad-hoc signing. Reusing the same certificate and bundle identifier preserves code identity across rebuilds so existing keychain authorizations can remain valid.
+
 ## Application shell
 
 [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) owns the native window, menus, keyboard shortcuts, and application lifetime. [BrowserView.swift](../Sources/Browse/BrowserView.swift) renders a dark workspace sidebar, vertical tabs, pane controls, and start pages.
