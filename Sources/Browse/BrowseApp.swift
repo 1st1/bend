@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.backgroundColor = .clear
         window.appearance = NSAppearance(named: .darkAqua)
         window.minSize = NSSize(width: 780, height: 500)
-        window.contentView = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
+        window.contentView = makeWindowContent()
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.center()
@@ -62,6 +62,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationWillTerminate(_ notification: Notification) { store.save() }
+
+    // @lat: [[architecture#Sidebar materials]]
+    private func makeWindowContent() -> NSView {
+        let content = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.style = .regular
+            // The window supplies its own outer corner clipping. One glass
+            // surface spans the sidebar, titlebar area, and exposed pane gaps.
+            glass.cornerRadius = 0
+            glass.contentView = content
+            return glass
+        }
+        return content
+    }
 
     private func installMenus() {
         let main = NSMenu()

@@ -22,9 +22,11 @@ Each pane has one compact title row with reload/stop, split, zoom, and close con
 
 ## Sidebar materials
 
-The sidebar uses AppKit’s native sidebar material, while the selected tab uses a capsule-shaped SwiftUI Liquid Glass effect on macOS 26 and later. Earlier systems use a standard SwiftUI material selection.
+The sidebar and exposed workspace share one native Liquid Glass base on macOS 26 and later. Selected tabs retain their capsule-shaped glass selection. Earlier systems use standard AppKit and SwiftUI materials.
 
-[BrowserView.swift](../Sources/Browse/BrowserView.swift) supplies the system materials without a custom selection fill or border. The sidebar blends behind the window and follows its active state. [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) keeps the window background transparent.
+[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) hosts the entire SwiftUI workspace as the content of a regular native glass effect view. AppKit manages the glass/content geometry together; the transparent window supplies the outer corner clipping. The base spans the sidebar, titlebar area, and gaps around panes, including when the sidebar is hidden.
+
+[BrowserView.swift](../Sources/Browse/BrowserView.swift) omits the legacy sidebar and canvas backdrops on macOS 26 and later so they do not cover the shared glass. Earlier systems retain behind-window sidebar and under-window materials that follow the window's active state. Selection has no custom fill or border, and pane chrome retains its separate darkened material.
 
 ## Pane materials
 
@@ -32,7 +34,7 @@ Browser panes use rounded native Liquid Glass panels on macOS 26 and later, with
 
 [BrowserView.swift](../Sources/Browse/BrowserView.swift) dims inactive panes, including chrome and page content, with an 8% black overlay. Focus changes fade the overlay in or out over 100 ms. The overlay ignores hit testing and accessibility so underlying controls remain usable.
 
-[BrowserView.swift](../Sources/Browse/BrowserView.swift) places the pane canvas over an AppKit window material. Pane chrome and built-in pages reveal the panel material; web pages keep their own rendering. A narrow content inset exposes the system glass edge without drawing a custom outline. Pane materials have a 50% black scrim beneath foreground controls and content, reducing glass brightness without dimming text or web pages.
+[BrowserView.swift](../Sources/Browse/BrowserView.swift) places the pane canvas over the shared [[architecture#Sidebar materials|app base material]]. Pane chrome and built-in pages reveal the panel material; web pages keep their own rendering. A narrow content inset exposes the system glass edge without drawing a custom outline. Pane materials have a 50% black scrim beneath foreground controls and content, reducing glass brightness without dimming text or web pages.
 
 On macOS 26 and later, each live web page extends behind its compact title row, which uses native regular Liquid Glass. Scrolling page colors show through the header while its controls remain readable. The measured header height sets WebKit's obscured content inset, keeping fixed and sticky site elements below the controls. Start pages, errors, and older macOS versions retain the stacked header layout.
 

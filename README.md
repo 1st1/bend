@@ -16,7 +16,7 @@ This builds `dist/Browse.app` and signs it with the `Browse Dev` code-signing ce
 
 The sidebar groups vertical tabs into workspaces. Each tab holds its own nested pane layout. Click the sidebar’s top `+` to create a workspace, or the `+` next to a workspace to add a tab there.
 
-The sidebar uses native macOS translucency. Selected tabs and browser pane frames use Liquid Glass on macOS 26 and later, with a standard material fallback on older systems. The focused pane has a brighter neutral header indicator, without a colored border. Pane chrome uses a 50% black scrim to soften the glass effect; web content scrolls behind the compact title row on macOS 26 and later.
+The sidebar and exposed workspace share a native Liquid Glass base on macOS 26 and later. Selected tabs and browser pane frames also use Liquid Glass, with standard material fallbacks on older systems. The focused pane has a brighter neutral header indicator, without a colored border. Pane chrome uses a 50% black scrim to soften the glass effect; web content scrolls behind the compact title row on macOS 26 and later.
 
 | Action | Shortcut |
 | --- | --- |

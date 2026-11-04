@@ -32,7 +32,11 @@ struct BrowserView: View {
                 }.scrollIndicators(.hidden)
             }
             .padding(8)
-            .background(WindowMaterial(material: .underWindowBackground).allowsHitTesting(false))
+            .background {
+                if #unavailable(macOS 26.0) {
+                    WindowMaterial(material: .underWindowBackground).allowsHitTesting(false)
+                }
+            }
         }
         .foregroundStyle(Color.white.opacity(0.88))
         .preferredColorScheme(.dark)
@@ -89,7 +93,11 @@ struct BrowserView: View {
                     Spacer()
                 }
             }.padding(20)
-        }.background(WindowMaterial(material: .sidebar).allowsHitTesting(false))
+        }.background {
+            if #unavailable(macOS 26.0) {
+                WindowMaterial(material: .sidebar).allowsHitTesting(false)
+            }
+        }
     }
 
     private func tabRow(_ tab: BrowserTab) -> some View {
@@ -147,7 +155,6 @@ struct BrowserView: View {
     }
 }
 
-// @lat: [[architecture#Sidebar materials]]
 private struct WindowMaterial: NSViewRepresentable {
     let material: NSVisualEffectView.Material
 
