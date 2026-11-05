@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Testing
 import BrowseCore
 @testable import Browse
@@ -47,20 +48,26 @@ import BrowseCore
     let file = directory.appendingPathComponent("session.json")
     defer { try? FileManager.default.removeItem(at: directory) }
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    // Legacy sessions omit both preference keys.
+    // Legacy sessions omit the optional preference keys.
     let legacy = BrowserSession()
     try JSONEncoder().encode(legacy).write(to: file)
     let store = BrowserStore(sessionFile: file, persistentExtensions: false)
     #expect(store.selectedTab.id == legacy.selectedTab)
     #expect(!store.commandClickOpensNewTab)
     #expect(store.inactivePaneDimAmount == 0.08)
+    #expect(store.windowGlass == .windowDefault)
+    #expect(store.paneHeaderGlass == .headerDefault)
     store.commandClickOpensNewTab = true
     store.inactivePaneDimAmount = 0.35
+    store.windowGlass = GlassAppearance(clear: true, tint: .init(red: 0.2, green: 0.4, blue: 0.8), darkening: 0.15)
+    store.paneHeaderGlass = GlassAppearance(tint: .init(red: 0.8, green: 0.3, blue: 0.1), darkening: 0.65)
     store.save()
     #expect(store.persistenceError == nil)
     let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
     #expect(restored.commandClickOpensNewTab)
     #expect(restored.inactivePaneDimAmount == 0.35)
+    #expect(restored.windowGlass == store.windowGlass)
+    #expect(restored.paneHeaderGlass == store.paneHeaderGlass)
     #expect(restored.selectedTab.id == legacy.selectedTab)
     store.inactivePaneDimAmount = -1
     #expect(store.inactivePaneDimAmount == 0)
@@ -72,4 +79,41 @@ import BrowseCore
     #expect(store.inactivePaneDimAmount == 0)
     store.session.inactivePaneDimAmount = .infinity
     #expect(store.inactivePaneDimAmount == 0.08)
+    store.windowGlass = GlassAppearance(tint: .init(red: -1, green: 2, blue: 0.5), darkening: 2)
+    #expect(store.windowGlass.darkening == 1)
+    #expect(store.windowGlass.tint == .init(red: 0, green: 1, blue: 0.5))
+    store.paneHeaderGlass = GlassAppearance(tint: .init(red: .nan, green: 0, blue: 0), darkening: .infinity)
+    #expect(store.paneHeaderGlass == .headerDefault)
+    store.windowGlass = .windowDefault
+    store.paneHeaderGlass = .headerDefault
+    store.inactivePaneDimAmount = 0.08
+    store.save()
+    #expect(store.persistenceError == nil)
+    let reset = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(reset.windowGlass == .windowDefault)
+    #expect(reset.paneHeaderGlass == .headerDefault)
+}
+
+// @lat: [[tests#Live window glass preferences]]
+@Test @MainActor func liveWindowGlassPreferences() throws {
+    guard #available(macOS 26.0, *) else { return }
+    _ = NSApplication.shared
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseGlass-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = BrowserStore(sessionFile: directory.appendingPathComponent("session.json"), persistentExtensions: false)
+    let content = NSView()
+    let glass = BrowserWindowGlass(store: store, content: content)
+    #expect(glass.style == .regular)
+    #expect(glass.tintColor == nil)
+    store.windowGlass = GlassAppearance(clear: true, tint: .init(red: 0.1, green: 0.4, blue: 0.8))
+    #expect(glass.style == .clear)
+    let tint = try #require(glass.tintColor?.usingColorSpace(.sRGB))
+    #expect(abs(tint.blueComponent - 0.8) < 0.001)
+    store.paneHeaderGlass = GlassAppearance(darkening: 0.9)
+    #expect(glass.style == .clear)
+    #expect(glass.contentView === content)
+    store.windowGlass = .windowDefault
+    #expect(glass.style == .regular)
+    #expect(glass.tintColor == nil)
+    #expect(glass.contentView === content)
 }

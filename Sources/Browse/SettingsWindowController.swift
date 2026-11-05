@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import WebKit
+import BrowseCore
 
 // @lat: [[architecture#Extension settings]]
 @MainActor
@@ -93,7 +94,53 @@ private struct UISettingsView: View {
             } header: {
                 Text("Panes")
             }
+            if #available(macOS 26.0, *) {
+                GlassSettingsSection(title: "Browser window", appearance: $store.windowGlass, defaults: .windowDefault)
+                GlassSettingsSection(title: "Pane headers", appearance: $store.paneHeaderGlass, defaults: .headerDefault)
+            }
         }.formStyle(.grouped)
+    }
+}
+
+private struct GlassSettingsSection: View {
+    let title: String
+    @Binding var appearance: GlassAppearance
+    let defaults: GlassAppearance
+
+    var body: some View {
+        Section {
+            Picker("Glass style", selection: $appearance.clear) {
+                Text("Regular").tag(false)
+                Text("Clear").tag(true)
+            }
+            HStack {
+                Toggle("Tint", isOn: Binding(
+                    get: { appearance.tint != nil },
+                    set: { appearance.tint = $0 ? GlassAppearance.Tint(color: .accentColor) : nil }
+                ))
+                Spacer()
+                ColorPicker("Tint color", selection: Binding(
+                    get: { appearance.tint?.color ?? .accentColor },
+                    set: { appearance.tint = GlassAppearance.Tint(color: $0) }
+                ), supportsOpacity: false)
+                .labelsHidden().disabled(appearance.tint == nil)
+            }
+            VStack(spacing: 10) {
+                HStack {
+                    Text("Darkening")
+                    Spacer()
+                    Text(appearance.darkening, format: .percent.precision(.fractionLength(0)))
+                        .monospacedDigit().foregroundStyle(.secondary)
+                }
+                Slider(value: $appearance.darkening, in: 0...1, step: 0.01) {
+                    Text("Darkening")
+                }.labelsHidden()
+            }
+            Button("Reset to Defaults") { appearance = defaults }
+                .disabled(appearance == defaults)
+        } header: {
+            Text(title)
+        }
     }
 }
 

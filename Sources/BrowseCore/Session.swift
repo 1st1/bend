@@ -155,6 +155,8 @@ public struct BrowserSession: Codable, Sendable {
     public var sidebarWidth: Double?
     public var commandClickOpensNewTab: Bool?
     public var inactivePaneDimAmount: Double?
+    public var windowGlass: GlassAppearance?
+    public var paneHeaderGlass: GlassAppearance?
 
     public init() {
         let initial = BrowserTab(title: "Start here", pages: [Page(), Page(address: "browse://guide")])

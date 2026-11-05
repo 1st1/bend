@@ -119,6 +119,16 @@ final class BrowserStore: ObservableObject {
         return width.isFinite ? min(300, max(100, width)) : 236
     }
 
+    var windowGlass: GlassAppearance {
+        get { (session.windowGlass ?? .windowDefault).normalized(defaultDarkening: 0) }
+        set { session.windowGlass = newValue.normalized(defaultDarkening: 0); saveSoon() }
+    }
+
+    var paneHeaderGlass: GlassAppearance {
+        get { (session.paneHeaderGlass ?? .headerDefault).normalized(defaultDarkening: 0.5) }
+        set { session.paneHeaderGlass = newValue.normalized(defaultDarkening: 0.5); saveSoon() }
+    }
+
     func resizeSidebar(to width: CGFloat) {
         guard width.isFinite else { return }
         let clamped = min(300, max(100, width))

@@ -340,7 +340,9 @@ Success contents are excluded entirely, unknown enum values become a generic lab
 
 ## UI preference persistence
 
-[AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies legacy session defaults, preference persistence across store recreation, preserved tab identity, and dimming bounds and nonfinite-value handling.
+[AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies legacy session defaults, preference persistence across store recreation, preserved tab identity, and numeric bounds and nonfinite-value handling.
+
+Window/header glass preferences persist independently, preserve legacy defaults, and support resetting both appearances.
 
 ## Home page suggestion ranking
 
@@ -349,3 +351,7 @@ Success contents are excluded entirely, unknown enum values become a generic lab
 ## Remove address suggestion
 
 [HistoryStoreTests.swift](../Tests/BrowseTests/HistoryStoreTests.swift) exercises a popup row’s removal button and verifies immediate result refresh, persisted removal of visits and learned choices, and no navigation.
+
+## Live window glass preferences
+
+[AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies style and tint update on the existing native window glass, header changes leave it alone, and reset clears tint without replacing content.

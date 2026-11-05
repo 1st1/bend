@@ -46,7 +46,7 @@ Pane controls use regular 12-point symbols on a 24-point pitch, with a 22-point 
 
 The sidebar and exposed workspace share one native Liquid Glass base on macOS 26 and later. Selected tabs retain their capsule-shaped glass selection. Earlier systems use standard AppKit and SwiftUI materials.
 
-[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) hosts the entire SwiftUI workspace as the content of a regular native glass effect view. AppKit manages the glass/content geometry together; the transparent window supplies the outer corner clipping. The base spans the sidebar, titlebar area, and gaps around panes, including when the sidebar is hidden.
+[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) hosts the entire SwiftUI workspace inside [BrowserWindowGlass](../Sources/Browse/GlassAppearance.swift), which observes the persisted window style and tint without replacing its content view. AppKit manages the glass/content geometry together; the transparent window supplies the outer corner clipping. The base spans the sidebar, titlebar area, and gaps around panes, including when the sidebar is hidden. A separate background scrim controls its darkening without dimming foreground content.
 
 [BrowserView.swift](../Sources/Browse/BrowserView.swift) omits the legacy sidebar and canvas backdrops on macOS 26 and later so they do not cover the shared glass. Earlier systems retain behind-window sidebar and under-window materials that follow the window's active state. Selection has no custom fill or border, and pane chrome retains its separate darkened material. Inactive tab hover adds a capsule filled with the shared 6% white button highlight and reveals a close button. The close-button space stays reserved to prevent title movement. Titles that exceed their available width fade to transparent over the trailing 24 points instead of showing an ellipsis; fitting titles remain fully visible. Hover fades over 100 ms, or changes immediately with Reduce Motion; selected tabs retain their glass selection.
 
@@ -56,9 +56,9 @@ Browser panes use rounded native Liquid Glass panels on macOS 26 and later, with
 
 [BrowserView.swift](../Sources/Browse/BrowserView.swift) dims inactive panes, including chrome and page content, with a configurable black overlay (8% by default); [[architecture#UI preferences]] controls its strength. Focus changes fade the overlay in or out over 100 ms. The overlay ignores hit testing and accessibility so underlying controls remain usable.
 
-[BrowserView.swift](../Sources/Browse/BrowserView.swift) places the pane canvas over the shared [[architecture#Sidebar materials|app base material]]. Pane chrome and built-in pages reveal the panel material; web pages keep their own rendering. A narrow content inset sits behind an opaque neutral rim on the native clipping layer, covering bright glass bevels and page colors at the rounded edge. Pane materials have a 50% black scrim beneath foreground controls and content, reducing glass brightness without dimming text or web pages.
+[BrowserView.swift](../Sources/Browse/BrowserView.swift) places the pane canvas over the shared [[architecture#Sidebar materials|app base material]]. Pane chrome and built-in pages reveal the panel material; web pages keep their own rendering. A narrow content inset sits behind an opaque neutral rim on the native clipping layer, covering bright glass bevels and page colors at the rounded edge. Pane body materials retain a 50% black scrim. Headers have their own configurable glass style, tint, and darkening, defaulting to Regular, no tint, and 50%. Their background sits beneath the controls; it does not dim text or web pages.
 
-On macOS 26 and later, each live web page extends behind its compact title row, which uses native regular Liquid Glass. Scrolling page colors show through the header while its controls remain readable. The measured header height sets WebKit's obscured content inset, keeping fixed and sticky site elements below the controls. Start pages, errors, and older macOS versions retain the stacked header layout.
+On macOS 26 and later, each live web page extends behind its compact title row, which uses the configured native Liquid Glass. Scrolling page colors show through the header while its controls remain readable. The measured header height sets WebKit's obscured content inset, keeping fixed and sticky site elements below the controls. Start pages, errors, and older macOS versions retain the stacked header layout. Stacked headers and page bodies have separate backgrounds, so header customization does not alter built-in page bodies or apply darkening twice.
 
 Each web view fills its pane's viewport and scrolls its document internally through WebKit. Page content height does not size the web view or the pane. The outer canvas scrolls only when the split layout's minimum dimensions exceed the available window area.
 
@@ -245,11 +245,13 @@ The 1Password and Dark Reader downloads are pinned to reviewed Mozilla-hosted ve
 
 ## UI preferences
 
-[SettingsWindowController.swift](../Sources/Browse/SettingsWindowController.swift) exposes link-opening and inactive-pane rendering preferences in Settings’ UI tab.
+[SettingsWindowController.swift](../Sources/Browse/SettingsWindowController.swift) exposes link-opening, inactive-pane dimming, and independent window/header glass controls in Settings’ UI tab.
 
-[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) saves both preferences with the session. Command-click opens an adjacent column to the right by default, with a new-tab option that applies to existing page controllers immediately. Ordinary new-window links continue opening tabs. Main-frame opener tracking is preserved for both destinations.
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) saves UI preferences with the session. Command-click opens an adjacent column to the right by default, with a new-tab option that applies to existing page controllers immediately. Ordinary new-window links continue opening tabs. Main-frame opener tracking is preserved for both destinations.
 
 Inactive-pane dimming ranges from 0% to 100%, defaults to 8%, and updates all mounted panes immediately. Values are clamped and nonfinite edits are ignored. [Session.swift](../Sources/BrowseCore/Session.swift) stores optional fields so older session files retain their tabs and receive the original defaults. [[tests#UI preference persistence]] and [[tests#Configurable link destination]] cover persistence and routing.
+
+On macOS 26 and later, Browser window and Pane headers each offer Regular/Clear style, optional custom sRGB tint, a 0–100% darkening slider, and an independent reset. Defaults preserve untinted Regular glass, with no window darkening and 50% header darkening. Changes apply live to the existing native window and mounted headers. [GlassAppearance.swift](../Sources/BrowseCore/GlassAppearance.swift) stores each appearance in optional session fields and normalizes numeric values; older sessions keep their content and receive defaults. Blur and refraction remain system-controlled. [[tests#Live window glass preferences]] covers native updates without content replacement.
 
 ## Mounted tab views
 

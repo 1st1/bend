@@ -31,6 +31,11 @@ struct BrowserView: View {
                 }
             }
         }
+        .background {
+            if #available(macOS 26.0, *) {
+                Color.black.opacity(store.windowGlass.darkening).allowsHitTesting(false)
+            }
+        }
         .foregroundStyle(Color.white.opacity(0.88))
         .preferredColorScheme(.dark)
     }
@@ -256,15 +261,10 @@ private struct TabSelectionMaterial: ViewModifier {
 }
 
 // @lat: [[architecture#Pane materials]]
-private struct PaneMaterial: ViewModifier {
-    func body(content: Content) -> some View {
-        content.background(PaneChromeBackground(cornerRadius: 12))
-    }
-}
-
 private struct PaneChromeBackground: View {
     var cornerRadius: CGFloat = 0
     var roundsBottomCorners = true
+    var appearance: GlassAppearance = .headerDefault
 
     var body: some View {
         let shape = UnevenRoundedRectangle(
@@ -274,13 +274,13 @@ private struct PaneChromeBackground: View {
             topTrailingRadius: cornerRadius)
         Group {
             if #available(macOS 26.0, *) {
-                Color.clear.glassEffect(.regular, in: shape)
+                Color.clear.glassEffect(appearance.material, in: shape)
             } else {
                 shape.fill(.regularMaterial)
             }
         }
         // Darken only the material, preserving foreground control contrast.
-        .overlay { shape.fill(.black.opacity(0.5)) }
+        .overlay { shape.fill(.black.opacity(appearance.darkening)) }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -337,7 +337,6 @@ private struct BrowserPane: View {
     private var decoratedPane: some View {
         paneContent
         .padding(1)
-        .modifier(PaneMaterial())
         .overlay {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.black)
@@ -352,15 +351,20 @@ private struct BrowserPane: View {
     private var paneContent: some View {
         if #available(macOS 26.0, *), !controller.isStartPage, controller.error == nil {
             WebSurface(webView: controller.webView, topContentInset: headerHeight)
+                .background(PaneChromeBackground(cornerRadius: 12))
                 .overlay(alignment: .top) {
                     header
-                        .background(PaneChromeBackground(cornerRadius: 11, roundsBottomCorners: false))
+                        .background(PaneChromeBackground(cornerRadius: 11, roundsBottomCorners: false,
+                                                        appearance: store.paneHeaderGlass))
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
                 }
         } else {
             VStack(spacing: 0) {
                 header
+                    .background(PaneChromeBackground(cornerRadius: 11, roundsBottomCorners: false,
+                                                    appearance: store.paneHeaderGlass))
                 pageContent
+                    .background(PaneChromeBackground())
             }
         }
     }

@@ -103,13 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func makeWindowContent() -> NSView {
         let content = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
         if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView()
-            glass.style = .regular
-            // The window supplies its own outer corner clipping. One glass
-            // surface spans the sidebar, titlebar area, and exposed pane gaps.
-            glass.cornerRadius = 0
-            glass.contentView = content
-            return glass
+            return BrowserWindowGlass(store: store, content: content)
         }
         return content
     }
