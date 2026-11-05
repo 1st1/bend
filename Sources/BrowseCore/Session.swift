@@ -51,6 +51,15 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
         }
     }
 
+    public func inserting(_ source: Self, beside target: UUID, edge: PaneDropEdge) -> Self? {
+        guard paneIDs.contains(target), Set(paneIDs).isDisjoint(with: source.paneIDs) else { return nil }
+        return replacingNode(target) { current in
+            .split(id: UUID(), axis: edge.axis, fraction: 0.5,
+                   first: edge.isBefore ? source : current,
+                   second: edge.isBefore ? current : source)
+        }
+    }
+
     public func resizing(_ target: UUID, to value: Double) -> Self {
         switch self {
         case .pane: return self
@@ -195,16 +204,26 @@ public struct BrowserSession: Codable, Sendable {
         return tab.id
     }
 
-    // Keep both split trees intact, placing the source group to the right.
-    public mutating func joinTabs(_ sourceID: UUID, into destinationID: UUID) -> Bool {
+    // Keep the source split tree intact, either beside a destination pane or
+    // alongside the entire destination layout for a direct sidebar drop.
+    public mutating func joinTabs(_ sourceID: UUID, into destinationID: UUID,
+                                  beside target: UUID? = nil, edge: PaneDropEdge = .right) -> Bool {
         guard sourceID != destinationID,
               let source = workspaces.flatMap(\.tabs).first(where: { $0.id == sourceID }),
               let sourceWorkspace = workspaces.firstIndex(where: { $0.tabs.contains { $0.id == sourceID } }),
               let wi = workspaces.firstIndex(where: { $0.tabs.contains { $0.id == destinationID } }),
               let ti = workspaces[wi].tabs.firstIndex(where: { $0.id == destinationID }) else { return false }
         let destination = workspaces[wi].tabs[ti]
-        workspaces[wi].tabs[ti].layout = .split(id: UUID(), axis: .horizontal, fraction: 0.5,
-                                               first: destination.layout, second: source.layout)
+        let layout: PaneLayout
+        if let target {
+            guard let inserted = destination.layout.inserting(source.layout, beside: target, edge: edge) else { return false }
+            layout = inserted
+        } else {
+            layout = .split(id: UUID(), axis: edge.axis, fraction: 0.5,
+                            first: edge.isBefore ? source.layout : destination.layout,
+                            second: edge.isBefore ? destination.layout : source.layout)
+        }
+        workspaces[wi].tabs[ti].layout = layout
         workspaces[wi].tabs[ti].pages.append(contentsOf: source.pages)
         workspaces[wi].tabs[ti].focusedPane = source.focusedPane
         workspaces[sourceWorkspace].tabs.removeAll { $0.id == sourceID }

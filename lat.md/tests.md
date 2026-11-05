@@ -375,3 +375,11 @@ The test also closes every registered extension window and opens a new one, chec
 ## New window keyboard command
 
 [BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) dispatches Command-N through the native menu, checks that it creates a separate blank browser window, and verifies tab commands follow focus between both windows.
+
+## Tab merge placement
+
+[PaneTransferTests.swift](../Tests/BrowseCoreTests/PaneTransferTests.swift) checks all four merge edges, intact source trees, untouched destination branches and fractions, focus, title, persistence, and atomic rejection of stale or foreign target panes.
+
+## Tab drag hover and merge placement
+
+[PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) drives native tab drags through delayed selection and all four pane-edge merges, checking timer cancellation, zoom exit, preview cleanup, and preservation of live page and extension identities.

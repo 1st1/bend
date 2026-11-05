@@ -314,7 +314,7 @@ import BrowseCore
     #expect(store.session.workspaces[0].tabs.map(\.id) == tabs.map(\.id))
     #expect(store.session.selectedTab == tabs[1].id)
     #expect(source.dragSurface == nil)
-    // Escape and releasing outside the sidebar leave the order unchanged.
+    // Escape and releasing outside all drop targets leave the order unchanged.
     for cancel in [true, false] {
         try sendTransferMouse(.leftMouseDown, at: try point(tabs[0].id), to: window)
         try sendTransferMouse(.leftMouseDragged, at: try point(tabs[2].id, below: true), to: window)
@@ -326,7 +326,7 @@ import BrowseCore
             NSApplication.shared.sendEvent(escape)
             #expect(source.dragSurface == nil)
         }
-        let outside = NSPoint(x: 600, y: 300)
+        let outside = NSPoint(x: -30, y: 300)
         try sendTransferMouse(.leftMouseDragged, at: outside, to: window)
         #expect(source.dragSurface?.placement == nil)
         try sendTransferMouse(.leftMouseUp, at: outside, to: window)
@@ -462,4 +462,117 @@ import BrowseCore
         #expect(!store.canReopenClosed)
         window.makeFirstResponder(web)
     }
+}
+
+// @lat: [[tests#Tab drag hover and merge placement]]
+@Test(.serialized, arguments: PaneDropEdge.allCases) @MainActor func tabDragMergePlacement(edge: PaneDropEdge) async throws {
+    guard #available(macOS 15.4, *) else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseTabMerge-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let server = try await ExtensionHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let manager = ExtensionManager(root: root.appendingPathComponent("extensions"), persistent: false,
+        websiteDataStore: .nonPersistent(), notifications: TestNotifications())
+    manager.presentsWindows = false
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
+    let first = BrowserTab(title: "Source", pages: [Page(address: "http://127.0.0.1:\(server.port)/"), Page()])
+    let second = BrowserTab(title: "Target", pages: [Page(), Page()])
+    store.session.workspaces = [Workspace(name: "Tabs", tabs: [first, second])]
+    store.session.selectedTab = first.id
+    let window = DragTrackingWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1400, height: 850),
+        styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+    window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true
+    window.toolbarStyle = .unified; window.toolbar = NSToolbar(identifier: "TabMergeTest")
+    window.isMovableByWindowBackground = true
+    let host = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
+    window.contentView = host
+    window.makeKeyAndOrderFront(nil)
+    defer { window.orderOut(nil); window.contentView = nil }
+    func settle(_ count: Int = 3) async throws {
+        for _ in 0..<count { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(50)) }
+    }
+    func descendants<T: NSView>(_ type: T.Type, _ view: NSView) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(type, $0) }
+    }
+    func rowPoint(_ id: UUID) throws -> NSPoint {
+        let row = try #require(descendants(PaneSidebarTargetView.self, host).first { $0.destination == .tab(id) })
+        return row.convert(NSPoint(x: 60, y: row.bounds.midY), to: nil)
+    }
+    try await settle()
+    let controller = try #require(store.existingController(for: first.pages[0].id))
+    let web = controller.webView
+    for _ in 0..<100 {
+        if (try? await web.evaluateJavaScript("document.body?.textContent.includes('Fixture')")) as? Bool == true { break }
+        try await Task.sleep(for: .milliseconds(30))
+    }
+    _ = try await web.evaluateJavaScript("window.mergeMarker = 'retained'")
+    let adapter = try #require(manager.tabs[first.pages[0].id])
+    let source = try #require(descendants(TabDragSourceView.self, host).first { $0.tabID == first.id })
+    let down = try rowPoint(first.id), hover = try rowPoint(second.id)
+    // Leaving before the delay and cancelling must invalidate the pending timer.
+    for cancel in [false, true] {
+        try sendTransferMouse(.leftMouseDown, at: down, to: window)
+        try sendTransferMouse(.leftMouseDragged, at: hover, to: window)
+        #expect(store.session.selectedTab == first.id)
+        if cancel { source.cancelOperation(nil) }
+        else { try sendTransferMouse(.leftMouseDragged, at: NSPoint(x: -30, y: 300), to: window) }
+        try await settle(10)
+        #expect(store.session.selectedTab == first.id)
+        try sendTransferMouse(.leftMouseUp, at: NSPoint(x: -30, y: 300), to: window)
+    }
+    // Zooming the source must not prevent the delayed destination preview.
+    store.toggleZoom(first.pages[0].id)
+    try await settle()
+    try sendTransferMouse(.leftMouseDown, at: down, to: window)
+    try sendTransferMouse(.leftMouseDragged, at: hover, to: window)
+    try await settle(11)
+    #expect(store.session.selectedTab == second.id)
+    #expect(store.zoomedPane == nil)
+    #expect(source.dragSurface != nil)
+    let paneID = second.pages[1].id
+    let target = try #require(descendants(PaneDropHost.self, host).first { $0.pageID == paneID && !$0.isHiddenOrHasHiddenAncestor })
+    let preview = edge.preview(in: target.bounds.size)
+    let local = NSPoint(x: preview.midX, y: target.isFlipped ? preview.midY : target.bounds.height - preview.midY)
+    let drop = target.convert(local, to: nil)
+    try sendTransferMouse(.leftMouseDragged, at: drop, to: window)
+    #expect(source.dragSurface?.placement == .joinAtPane(tabID: second.id, paneID: paneID, edge: edge))
+    #expect(target.dropEdge == edge)
+    // Escape clears a live pane preview, and another gesture can immediately
+    // target the now-visible destination without waiting for sidebar hover.
+    let escape = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+        context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53))
+    NSApplication.shared.sendEvent(escape)
+    #expect(source.dragSurface == nil && target.dropEdge == nil)
+    #expect(store.session.workspaces[0].tabs.count == 2)
+    try sendTransferMouse(.leftMouseUp, at: drop, to: window)
+    try sendTransferMouse(.leftMouseDown, at: down, to: window)
+    try sendTransferMouse(.leftMouseDragged, at: drop, to: window)
+    #expect(source.dragSurface?.placement == .joinAtPane(tabID: second.id, paneID: paneID, edge: edge))
+    // Returning to the row removes the pane preview; re-entering restores it.
+    try sendTransferMouse(.leftMouseDragged, at: hover, to: window)
+    #expect(target.dropEdge == nil)
+    try sendTransferMouse(.leftMouseDragged, at: drop, to: window)
+    #expect(target.dropEdge == edge)
+    let releases = window.mouseUpCount
+    try sendTransferMouse(.leftMouseUp, at: drop, to: window)
+    try await settle()
+    #expect(window.mouseUpCount == releases + 1)
+    #expect(source.dragSurface == nil && target.dropEdge == nil)
+    #expect(store.session.workspaces[0].tabs.count == 1)
+    #expect(store.selectedTab.id == second.id && store.selectedTab.title == second.title)
+    #expect(store.selectedTab.pages.count == first.pages.count + second.pages.count)
+    guard case .split(_, _, _, let untouched, let merged) = store.selectedTab.layout,
+          case .split(_, let axis, _, let before, let after) = merged else {
+        Issue.record("Expected nested merge at the second target pane"); return
+    }
+    #expect(untouched == .pane(second.pages[0].id))
+    #expect(axis == edge.axis)
+    #expect((edge.isBefore ? before : after) == first.layout)
+    #expect((edge.isBefore ? after : before) == .pane(paneID))
+    #expect(store.existingController(for: first.pages[0].id) === controller)
+    #expect(manager.tabs[first.pages[0].id] === adapter)
+    #expect(try await web.evaluateJavaScript("window.mergeMarker") as? String == "retained")
+    #expect(!store.canReopenClosed)
 }

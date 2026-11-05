@@ -261,11 +261,12 @@ final class BrowserStore: ObservableObject {
     }
 
     @discardableResult
-    func joinTabs(_ sourceID: UUID, into destinationID: UUID) -> Bool {
+    func joinTabs(_ sourceID: UUID, into destinationID: UUID,
+                  beside target: UUID? = nil, edge: PaneDropEdge = .right) -> Bool {
         InputDiagnostics.transition(.tabDrop, .requested, tabID: destinationID, flags: ["join": true])
         let panes = session.workspaces.flatMap(\.tabs).first(where: { $0.id == sourceID })?.pages ?? []
         var next = session
-        guard next.joinTabs(sourceID, into: destinationID) else { return false }
+        guard next.joinTabs(sourceID, into: destinationID, beside: target, edge: edge) else { return false }
         zoomedPane = nil
         session = next
         saveSoon()

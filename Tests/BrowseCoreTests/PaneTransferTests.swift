@@ -81,3 +81,44 @@ import Testing
         }
     }
 }
+
+// @lat: [[tests#Tab merge placement]]
+@Test func tabMergePlacement() throws {
+    for edge in PaneDropEdge.allCases {
+        var source = BrowserTab(pages: [Page(), Page()])
+        source.split(axis: .vertical, after: source.pages[0].id)
+        var destination = BrowserTab(title: "Destination", pages: [Page(), Page()])
+        guard case .split(let splitID, let axis, _, let untouched, _) = destination.layout else {
+            Issue.record("Expected a split destination"); return
+        }
+        destination.layout = destination.layout.resizing(splitID, to: 0.3)
+        let target = destination.pages[1].id
+        var session = BrowserSession()
+        session.workspaces = [Workspace(name: "Tabs", tabs: [source, destination])]
+        session.selectedTab = source.id
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        let before = try encoder.encode(session)
+        for badTarget in [UUID(), source.pages[0].id] {
+            let changed = session.joinTabs(source.id, into: destination.id, beside: badTarget, edge: edge)
+            #expect(!changed)
+            #expect(try encoder.encode(session) == before)
+        }
+        let joined = session.joinTabs(source.id, into: destination.id, beside: target, edge: edge)
+        #expect(joined)
+        #expect(session.isValid)
+        let tab = try #require(session.workspaces[0].tabs.first)
+        guard case .split(let retainedID, let retainedAxis, let fraction, let first, let second) = tab.layout,
+              case .split(_, let newAxis, let newFraction, let left, let right) = second else {
+            Issue.record("Merge must replace only the targeted leaf"); return
+        }
+        #expect(retainedID == splitID && retainedAxis == axis && fraction == 0.3)
+        #expect(first == untouched)
+        #expect(newAxis == edge.axis && newFraction == 0.5)
+        #expect((edge.isBefore ? left : right) == source.layout)
+        #expect((edge.isBefore ? right : left) == .pane(target))
+        #expect(tab.focusedPane == source.focusedPane)
+        #expect(tab.title == destination.title)
+        let restored = try JSONDecoder().decode(BrowserSession.self, from: encoder.encode(session))
+        #expect(restored.isValid && restored.workspaces[0].tabs[0].layout == tab.layout)
+    }
+}
