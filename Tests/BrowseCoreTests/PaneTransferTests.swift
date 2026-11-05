@@ -41,3 +41,43 @@ import Testing
         #expect(restored.workspaces.map { $0.tabs.map(\.layout) } == session.workspaces.map { $0.tabs.map(\.layout) })
     }
 }
+
+// @lat: [[tests#Joining tab layouts]]
+@Test func joiningTabLayouts() throws {
+    for separateWorkspaces in [false, true] {
+        var source = BrowserTab(title: "Source", pages: [Page(), Page()])
+        source.split(axis: .vertical, after: source.pages[0].id)
+        var destination = BrowserTab(title: "Destination", pages: [Page(), Page()])
+        destination.split(axis: .vertical, after: destination.pages[1].id)
+        var session = BrowserSession()
+        session.workspaces = separateWorkspaces
+            ? [Workspace(name: "Source", tabs: [source]), Workspace(name: "Destination", tabs: [destination])]
+            : [Workspace(name: "Tabs", tabs: [source, destination])]
+        session.selectedTab = source.id
+        let joined = session.joinTabs(source.id, into: destination.id)
+        #expect(joined)
+        #expect(session.isValid)
+        #expect(session.selectedTab == destination.id)
+        let tab = try #require(session.workspaces.flatMap(\.tabs).first { $0.id == destination.id })
+        guard case .split(_, .horizontal, 0.5, let left, let right) = tab.layout else {
+            Issue.record("Joined tabs must form two side-by-side groups"); return
+        }
+        #expect(left == destination.layout)
+        #expect(right == source.layout)
+        #expect(tab.pages.map(\.id) == (destination.pages + source.pages).map(\.id))
+        #expect(tab.pages.map(\.address) == (destination.pages + source.pages).map(\.address))
+        #expect(tab.focusedPane == source.focusedPane)
+        #expect(tab.title == destination.title)
+        #expect(!session.workspaces.flatMap(\.tabs).contains { $0.id == source.id })
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        let saved = try encoder.encode(session)
+        let restored = try JSONDecoder().decode(BrowserSession.self, from: saved)
+        #expect(restored.isValid)
+        #expect(restored.workspaces.flatMap(\.tabs).first { $0.id == destination.id }?.layout == tab.layout)
+        for (from, to) in [(destination.id, destination.id), (UUID(), destination.id), (destination.id, UUID())] {
+            let changed = session.joinTabs(from, into: to)
+            #expect(!changed)
+            #expect(try encoder.encode(session) == saved)
+        }
+    }
+}

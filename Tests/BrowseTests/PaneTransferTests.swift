@@ -152,6 +152,8 @@ import BrowseCore
     #expect(store.selectedTab.layout.paneIDs == [second.pages[0].id, pageID])
 
     // Drag back into unused sidebar space to create a tab with the same page.
+    store.toggleZoom(pageID)
+    try await settle()
     let moved = try handle(pageID)
     try sendTransferMouse(.leftMouseDown, at: center(moved), to: window)
     let sidebarPoint = NSPoint(x: 100, y: 100)
@@ -160,6 +162,7 @@ import BrowseCore
     try sendTransferMouse(.leftMouseUp, at: sidebarPoint, to: window)
     try await settle()
     #expect(store.selectedTab.id != second.id)
+    #expect(store.zoomedPane == nil)
     #expect(store.selectedTab.pages.map(\.id) == [pageID])
     #expect(store.existingController(for: pageID) === controller)
     #expect(try await web.evaluateJavaScript("window.transferToken") as? String == "alive")
@@ -169,13 +172,19 @@ import BrowseCore
     #expect(!store.canReopenClosed)
     // A direct drop on a row also works before the delayed tab switch fires.
     let detachedID = store.selectedTab.id
+    store.toggleZoom(pageID)
+    try await settle()
     let detachedHandle = try handle(pageID)
     let destinationRow = try #require(descendants(PaneSidebarTargetView.self, content).first { $0.destination == .tab(second.id) })
     try sendTransferMouse(.leftMouseDown, at: center(detachedHandle), to: window)
+    let ownRow = try #require(descendants(PaneSidebarTargetView.self, content).first { $0.destination == .tab(detachedID) })
+    try sendTransferMouse(.leftMouseDragged, at: center(ownRow), to: window)
+    #expect(detachedHandle.dragSurface?.sidebarTarget == nil)
     try sendTransferMouse(.leftMouseDragged, at: center(destinationRow), to: window)
     try sendTransferMouse(.leftMouseUp, at: center(destinationRow), to: window)
     try await settle(10)
     #expect(store.selectedTab.id == second.id)
+    #expect(store.zoomedPane == nil)
     #expect(store.selectedTab.layout.paneIDs == [second.pages[0].id, pageID])
     #expect(!store.session.workspaces.flatMap(\.tabs).contains { $0.id == detachedID })
     #expect(try await web.evaluateJavaScript("performance.timeOrigin") as? Double == stamp)
@@ -185,6 +194,37 @@ import BrowseCore
     let saved = try JSONDecoder().decode(BrowserSession.self, from: Data(contentsOf: root.appendingPathComponent("session.json")))
     #expect(saved.isValid)
     #expect(saved.selectedTab == store.selectedTab.id)
+
+    // Join the whole source tab, preserving its internal layout and live pages.
+    let sourceLayout = store.selectedTab.layout
+    let joinDestination = BrowserTab(title: "Join destination")
+    store.session.workspaces[0].tabs.append(joinDestination)
+    try await settle()
+    let tabHandle = try #require(descendants(TabDragSourceView.self, content).first { $0.tabID == second.id })
+    let joinRow = try #require(descendants(PaneSidebarTargetView.self, content).first { $0.destination == .tab(joinDestination.id) })
+    try sendTransferMouse(.leftMouseDown, at: center(tabHandle), to: window)
+    try sendTransferMouse(.leftMouseDragged, at: center(joinRow), to: window)
+    #expect(tabHandle.dragSurface?.placement == .join(tabID: joinDestination.id))
+    try sendTransferMouse(.leftMouseUp, at: center(joinRow), to: window)
+    try await settle()
+    #expect(store.selectedTab.id == joinDestination.id)
+    guard case .split(_, .horizontal, _, let left, let right) = store.selectedTab.layout else {
+        Issue.record("Expected joined tab groups"); return
+    }
+    #expect(left == joinDestination.layout)
+    #expect(right == sourceLayout)
+    #expect(store.existingController(for: pageID) === controller)
+    #expect(controller.webView === web)
+    #expect(try await web.evaluateJavaScript("performance.timeOrigin") as? Double == stamp)
+    #expect(try await web.evaluateJavaScript("document.querySelector('#transfer').value") as? String == "retained")
+    #expect(manager.tabs[pageID] === adapter)
+    #expect(!store.canReopenClosed)
+    #expect(tabHandle.dragSurface == nil)
+    #expect(!web.isHiddenOrHasHiddenAncestor)
+    store.save()
+    let joined = try JSONDecoder().decode(BrowserSession.self, from: Data(contentsOf: root.appendingPathComponent("session.json")))
+    #expect(joined.isValid)
+    #expect(joined.workspaces[0].tabs.last?.layout == store.selectedTab.layout)
 }
 
 @MainActor private final class DragTrackingWindow: BrowseWindow {
@@ -267,7 +307,7 @@ import BrowseCore
     try sendTransferMouse(.leftMouseDown, at: secondDown, to: window)
     for offset in [0.0, 2, 4, 2, 0] {
         try sendTransferMouse(.leftMouseDragged, at: NSPoint(x: above.x + offset, y: above.y), to: window)
-        #expect(source.dragSurface?.placement == .init(tabID: tabs[1].id, after: false))
+        #expect(source.dragSurface?.placement == .reorder(tabID: tabs[1].id, after: false))
     }
     try sendTransferMouse(.leftMouseUp, at: above, to: window)
     try await settle()

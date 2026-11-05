@@ -70,7 +70,7 @@ final class PaneDragSourceView: NSView {
         InputDiagnostics.record(.paneHandle, event: event, view: self)
         guard let origin = mouseDownPoint, let store, let tabID,
               store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == tabID && $0.pages.contains { $0.id == pageID } }),
-              (dragSurface != nil || store.selectedTab.id == tabID), store.zoomedPane == nil,
+              (dragSurface != nil || store.selectedTab.id == tabID),
               let window, let content = window.contentView else {
             cancelDrag(); return
         }
@@ -102,9 +102,7 @@ final class PaneDragSourceView: NSView {
         } else if let sidebarTarget, let store, let tabID, let pageID {
             switch sidebarTarget.destination {
             case .tab(let destination) where destination != tabID:
-                guard let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == destination }) else { return }
-                store.select(destination)
-                store.movePane(pageID, beside: tab.focusedPane, edge: .right, in: destination, from: tabID)
+                store.movePaneToTab(pageID, from: tabID, into: destination)
             case .workspace(let workspace):
                 store.detachPane(pageID, from: tabID, into: workspace)
             default: break
@@ -260,6 +258,10 @@ final class PaneDragSurface: NSView {
         // Rows take precedence over the containing workspace's empty-space target.
         let hovered = sidebar.first { if case .tab = $0.destination { return true }; return false }
             ?? sidebar.min { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height }
+        if let hovered, case .tab(let id) = hovered.destination, id == source.tabID {
+            clearTargets()
+            return
+        }
         if sidebarTarget !== hovered {
             sidebarTarget?.showPreview(false)
             hoverTask?.cancel(); hoverTask = nil

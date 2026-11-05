@@ -195,6 +195,24 @@ public struct BrowserSession: Codable, Sendable {
         return tab.id
     }
 
+    // Keep both split trees intact, placing the source group to the right.
+    public mutating func joinTabs(_ sourceID: UUID, into destinationID: UUID) -> Bool {
+        guard sourceID != destinationID,
+              let source = workspaces.flatMap(\.tabs).first(where: { $0.id == sourceID }),
+              let sourceWorkspace = workspaces.firstIndex(where: { $0.tabs.contains { $0.id == sourceID } }),
+              let wi = workspaces.firstIndex(where: { $0.tabs.contains { $0.id == destinationID } }),
+              let ti = workspaces[wi].tabs.firstIndex(where: { $0.id == destinationID }) else { return false }
+        let destination = workspaces[wi].tabs[ti]
+        workspaces[wi].tabs[ti].layout = .split(id: UUID(), axis: .horizontal, fraction: 0.5,
+                                               first: destination.layout, second: source.layout)
+        workspaces[wi].tabs[ti].pages.append(contentsOf: source.pages)
+        workspaces[wi].tabs[ti].focusedPane = source.focusedPane
+        workspaces[sourceWorkspace].tabs.removeAll { $0.id == sourceID }
+        if workspaces[sourceWorkspace].tabs.isEmpty { workspaces[sourceWorkspace].tabs.append(BrowserTab()) }
+        selectedTab = destinationID
+        return true
+    }
+
     private mutating func removeTransferredPane(_ source: UUID, from tabID: UUID) {
         guard let wi = workspaces.firstIndex(where: { $0.tabs.contains { $0.id == tabID } }),
               let ti = workspaces[wi].tabs.firstIndex(where: { $0.id == tabID }) else { return }

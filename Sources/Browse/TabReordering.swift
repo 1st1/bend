@@ -80,7 +80,12 @@ final class TabDragSourceView: NSView {
               store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == tabID }) else { return }
         if let placement {
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                _ = store.reorderTab(tabID, relativeTo: placement.tabID, after: placement.after)
+                switch placement {
+                case .reorder(let destination, let after):
+                    _ = store.reorderTab(tabID, relativeTo: destination, after: after)
+                case .join(let destination):
+                    _ = store.joinTabs(tabID, into: destination)
+                }
             }
         } else if !wasDragging, bounds.contains(convert(event.locationInWindow, from: nil)) {
             store.select(tabID)
@@ -108,9 +113,9 @@ final class TabDragSourceView: NSView {
 
 @MainActor
 final class TabDragSurface: NSView {
-    struct Placement: Equatable {
-        let tabID: UUID
-        let after: Bool
+    enum Placement: Equatable {
+        case reorder(tabID: UUID, after: Bool)
+        case join(tabID: UUID)
     }
     private weak var source: TabDragSourceView?
     private let marker = CAShapeLayer()
@@ -154,15 +159,33 @@ final class TabDragSurface: NSView {
         let rows: [(UUID, NSRect)] = targets.compactMap { view in
             guard case .tab(let id) = view.destination,
                   !view.bounds.intersection(view.visibleRect).isEmpty else { return nil }
-            return (id, convert(view.bounds, from: view))
+            return (id, convert(view.bounds.intersection(view.visibleRect), from: view))
         }.sorted { $0.1.midY < $1.1.midY }
         guard let last = rows.last else { clearPlacement(); return }
+        // The middle of a row joins; narrow top/bottom bands keep reordering
+        // available without requiring a modifier key or a hover timer.
+        if let row = rows.first(where: { $0.1.insetBy(dx: 0, dy: $0.1.height * 0.2).contains(point) }) {
+            guard row.0 != source.tabID else { clearPlacement(); return }
+            placement = .join(tabID: row.0)
+            badge.stringValue = "Join tabs"
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            marker.fillColor = NSColor.systemBlue.withAlphaComponent(0.22).cgColor
+            marker.strokeColor = NSColor.systemBlue.cgColor
+            marker.path = CGPath(roundedRect: row.1.insetBy(dx: 1, dy: 1),
+                                 cornerWidth: 12, cornerHeight: 12, transform: nil)
+            marker.isHidden = false
+            CATransaction.commit()
+            return
+        }
         let before = rows.first { point.y < $0.1.midY }
         let row = before ?? last
         guard row.0 != source.tabID else { clearPlacement(); return }
-        placement = Placement(tabID: row.0, after: before == nil)
+        placement = .reorder(tabID: row.0, after: before == nil)
+        badge.stringValue = source.title
         let y = before == nil ? row.1.maxY + 3.5 : row.1.minY - 3.5
         CATransaction.begin(); CATransaction.setDisableActions(true)
+        marker.fillColor = NSColor.systemBlue.cgColor
+        marker.strokeColor = nil
         marker.path = CGPath(roundedRect: NSRect(x: row.1.minX, y: y - 1, width: row.1.width, height: 2),
                              cornerWidth: 1, cornerHeight: 1, transform: nil)
         marker.isHidden = false
@@ -175,6 +198,7 @@ final class TabDragSurface: NSView {
     }
     private func clearPlacement() {
         placement = nil
+        badge.stringValue = source?.title ?? ""
         CATransaction.begin(); CATransaction.setDisableActions(true)
         marker.isHidden = true
         CATransaction.commit()

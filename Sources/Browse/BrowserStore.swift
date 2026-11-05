@@ -222,6 +222,39 @@ final class BrowserStore: ObservableObject {
         return true
     }
 
+    @discardableResult
+    func movePaneToTab(_ source: UUID, from sourceTabID: UUID, into destinationID: UUID) -> Bool {
+        InputDiagnostics.transition(.paneMove, .requested, paneID: source, tabID: destinationID)
+        var next = session
+        guard let destination = next.workspaces.flatMap(\.tabs).first(where: { $0.id == destinationID }),
+              next.transferPane(source, from: sourceTabID, beside: destination.focusedPane,
+                                in: destinationID, edge: .right) else { return false }
+        zoomedPane = nil
+        refreshTransferredTitles(&next)
+        session = next
+        saveSoon()
+        InputDiagnostics.transition(.paneMove, .finished, paneID: source, tabID: destinationID)
+        paneMoveRevision += 1
+        return true
+    }
+
+    @discardableResult
+    func joinTabs(_ sourceID: UUID, into destinationID: UUID) -> Bool {
+        InputDiagnostics.transition(.tabDrop, .requested, tabID: destinationID, flags: ["join": true])
+        let panes = session.workspaces.flatMap(\.tabs).first(where: { $0.id == sourceID })?.pages ?? []
+        var next = session
+        guard next.joinTabs(sourceID, into: destinationID) else { return false }
+        zoomedPane = nil
+        session = next
+        saveSoon()
+        for pane in panes {
+            InputDiagnostics.transition(.paneMove, .finished, paneID: pane.id, tabID: destinationID)
+        }
+        InputDiagnostics.transition(.tabDrop, .finished, tabID: destinationID, flags: ["join": true])
+        paneMoveRevision += 1
+        return true
+    }
+
     private func refreshTransferredTitles(_ next: inout BrowserSession) {
         for wi in next.workspaces.indices {
             for ti in next.workspaces[wi].tabs.indices {
