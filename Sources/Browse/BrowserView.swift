@@ -332,7 +332,7 @@ private struct BrowserPane: View {
         .overlay {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.black)
-                .opacity(focused ? 0 : 0.08)
+                .opacity(focused ? 0 : store.inactivePaneDimAmount)
                 .animation(.easeInOut(duration: 0.1), value: focused)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
@@ -357,51 +357,50 @@ private struct BrowserPane: View {
     }
 
     private var header: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 9) {
-                if hostsWindowControls {
-                    Color.clear.frame(width: 66)
-                    iconButton("sidebar.left", "Show sidebar · ⌘⇧S") { store.sidebarVisible = true }
+        HStack(spacing: 9) {
+            if hostsWindowControls {
+                Color.clear.frame(width: 66)
+                iconButton("sidebar.left", "Show sidebar · ⌘⇧S") { store.sidebarVisible = true }
+            }
+            HStack(spacing: 0) {
+                HStack(spacing: 7) {
+                    ZStack {
+                        pageIcon.opacity(titleHovered ? 0 : 1)
+                        Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.75))
+                            .opacity(titleHovered ? 1 : 0)
+                    }.frame(width: 14, height: 14).accessibilityHidden(true)
+                    Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                        .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
                 }
-                HStack(spacing: 0) {
-                    HStack(spacing: 7) {
-                        ZStack {
-                            pageIcon.opacity(titleHovered ? 0 : 1)
-                            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.75))
-                                .opacity(titleHovered ? 1 : 0)
-                        }.frame(width: 14, height: 14).accessibilityHidden(true)
-                        Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
-                            .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
+                .padding(.horizontal, 7).frame(height: 24)
+                .background(ChromeButtonStyle.highlightBackground.opacity(titleHovered ? 1 : 0), in: Capsule())
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: titleHovered)
+                .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title,
+                    onHover: { titleHovered = $0 }))
+                Spacer(minLength: 0)
+                    .frame(maxHeight: .infinity)
+                    .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title))
+            }
+            .frame(maxHeight: .infinity)
+            HStack(spacing: 0) {
+                if #available(macOS 15.4, *) {
+                    PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
+                        store.focus(pageID); store.onSettingsRequested?()
                     }
-                    .padding(.horizontal, 7).frame(height: 24)
-                    .background(ChromeButtonStyle.highlightBackground.opacity(titleHovered ? 1 : 0), in: Capsule())
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: titleHovered)
-                    .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title,
-                        onHover: { titleHovered = $0 }))
-                    Spacer(minLength: 0)
-                        .frame(maxHeight: .infinity)
-                        .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title))
                 }
-                .frame(maxHeight: .infinity)
-                HStack(spacing: 0) {
-                    if #available(macOS 15.4, *) {
-                        PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
-                            store.focus(pageID); store.onSettingsRequested?()
-                        }
-                    }
-                    iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
-                        store.focus(pageID)
-                        if controller.isLoading { controller.webView.stopLoading() }
-                        else if !controller.isStartPage { controller.webView.reload() }
-                    }.disabled(controller.isStartPage)
-                    iconButton("rectangle.split.2x1", "Split this pane right") { store.focus(pageID); store.split(.horizontal) }
-                    iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
-                    iconButton("xmark", "Close pane · ⌘W") { store.closePane(pageID) }
-                }
-            }.padding(.horizontal, 12).frame(height: 34)
-
+                iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
+                    store.focus(pageID)
+                    if controller.isLoading { controller.webView.stopLoading() }
+                    else if !controller.isStartPage { controller.webView.reload() }
+                }.disabled(controller.isStartPage)
+                iconButton("rectangle.split.2x1", "Split this pane right") { store.focus(pageID); store.split(.horizontal) }
+                iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
+                iconButton("xmark", "Close pane · ⌘W") { store.closePane(pageID) }
+            }
+        }.padding(.horizontal, 12).frame(height: 36)
+        .overlay(alignment: .bottom) {
             ZStack(alignment: .topLeading) {
                 Rectangle().fill(.white.opacity(0.06)).frame(height: 1)
                 if controller.isLoading {

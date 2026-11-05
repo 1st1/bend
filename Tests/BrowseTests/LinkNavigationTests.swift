@@ -70,3 +70,40 @@ private final class LinkAction: WKNavigationAction {
     #expect(panes.count == 1)
     #expect(tabs == [action.destination.absoluteString])
 }
+
+// @lat: [[tests#Configurable link destination]]
+@Test @MainActor func configurableLinkDestination() throws {
+    _ = NSApplication.shared
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePreferences-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = BrowserStore(sessionFile: directory.appendingPathComponent("session.json"), persistentExtensions: false)
+    let originalTab = store.selectedTab
+    let source = try #require(originalTab.pages.first)
+    let controller = store.controller(for: source)
+    let initialCount = originalTab.pages.count
+
+    controller.onNewLink?("https://example.com/adjacent", true, true)
+    #expect(store.selectedTab.id == originalTab.id)
+    #expect(store.selectedTab.pages.count == initialCount + 1)
+    #expect(store.linkOpeners[store.selectedTab.focusedPane] == source.id)
+    #expect(store.selectedTab.layout.paneIDs.firstIndex(of: store.selectedTab.focusedPane)
+        == store.selectedTab.layout.paneIDs.firstIndex(of: source.id).map { $0 + 1 })
+
+    // The same existing controller must use the new preference immediately.
+    store.commandClickOpensNewTab = true
+    controller.onNewLink?("https://example.com/tab", true, true)
+    #expect(store.selectedTab.id != originalTab.id)
+    #expect(store.selectedTab.pages.count == 1)
+    #expect(store.selectedTab.pages[0].address == "https://example.com/tab")
+    #expect(store.linkOpeners[store.selectedTab.focusedPane] == source.id)
+    #expect(store.session.workspaces[0].tabs.first { $0.id == originalTab.id }?.pages.count == initialCount + 1)
+
+    store.commandClickOpensNewTab = false
+    controller.onNewLink?("https://example.com/window", false, false)
+    #expect(store.selectedTab.id != originalTab.id)
+    #expect(store.linkOpeners[store.selectedTab.focusedPane] == nil)
+    controller.onNewLink?("https://example.com/adjacent-again", true, false)
+    #expect(store.selectedTab.id == originalTab.id)
+    #expect(store.selectedTab.pages.count == initialCount + 2)
+    #expect(store.linkOpeners[store.selectedTab.focusedPane] == nil)
+}

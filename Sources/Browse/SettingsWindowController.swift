@@ -2,8 +2,6 @@ import AppKit
 import SwiftUI
 import WebKit
 
-private typealias SettingsState<Value> = SwiftUI.State<Value>
-
 // @lat: [[architecture#Extension settings]]
 @MainActor
 final class SettingsWindowController {
@@ -15,36 +13,75 @@ final class SettingsWindowController {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 620, height: 480)
         window.setFrameAutosaveName("BrowseSettings")
-        if #available(macOS 15.4, *) {
-            window.contentView = NSHostingView(rootView: ExtensionSettingsView(manager: store.extensions))
-        } else {
-            window.contentView = NSHostingView(rootView: Text("Web extensions require macOS 15.4 or later.").padding(40))
-        }
+        window.contentView = NSHostingView(rootView: BrowserSettingsView(store: store))
         window.center()
     }
     func show() { window.makeKeyAndOrderFront(nil) }
 }
 
+struct BrowserSettingsView: View {
+    @ObservedObject var store: BrowserStore
+
+    var body: some View {
+        TabView {
+            Group {
+                if #available(macOS 15.4, *) {
+                    ExtensionSettingsView(manager: store.extensions)
+                } else {
+                    Text("Web extensions require macOS 15.4 or later.").padding(40)
+                }
+            }
+            .tabItem { Label("Extensions", systemImage: "puzzlepiece.extension") }
+
+            UISettingsView(store: store)
+                .tabItem { Label("UI", systemImage: "slider.horizontal.3") }
+        }.padding(16)
+    }
+}
+
+private struct UISettingsView: View {
+    @ObservedObject var store: BrowserStore
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Command-click a link", selection: $store.commandClickOpensNewTab) {
+                    Text("Open in adjacent column to the right").tag(false)
+                    Text("Open in a new tab").tag(true)
+                }
+            } header: {
+                Text("Links")
+            }
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Inactive pane dimming")
+                        Spacer()
+                        Text(store.inactivePaneDimAmount, format: .percent.precision(.fractionLength(0)))
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    Slider(value: $store.inactivePaneDimAmount, in: 0...1, step: 0.01) {
+                        Text("Inactive pane dimming")
+                    }.labelsHidden().frame(maxWidth: .infinity)
+                    HStack {
+                        Text("None")
+                        Spacer()
+                        Text("Fully dimmed")
+                    }.font(.caption).foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Panes")
+            }
+        }.formStyle(.grouped)
+    }
+}
+
 @available(macOS 15.4, *)
 private struct ExtensionSettingsView: View {
     @ObservedObject var manager: ExtensionManager
-    @SettingsState<Bool> private var discovering = true
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Extensions").font(.system(size: 24, weight: .semibold))
-                    Text("Your extensions, permissions, and data stay separate from Safari.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Install from File…", action: manager.chooseExtension).disabled(manager.busy)
-            }.padding(24)
-            Picker("Extensions view", selection: $discovering) {
-                Text("Discover").tag(true)
-                Text("Installed (\(manager.records.count))").tag(false)
-            }.pickerStyle(.segmented).frame(width: 270).padding(.horizontal, 24).padding(.bottom, 18)
-            Divider()
             if let error = manager.error {
                 HStack(alignment: .top) {
                     Text(error).foregroundStyle(.red).textSelection(.enabled)
@@ -52,58 +89,25 @@ private struct ExtensionSettingsView: View {
                     Button("Dismiss") { manager.error = nil }
                 }.padding(16)
             }
-            if discovering {
-                ExtensionCatalogView(manager: manager, showInstalled: { discovering = false })
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if manager.busy { ProgressView().controlSize(.small) }
-                        if manager.records.isEmpty {
-                            ContentUnavailableView("No Extensions Installed", systemImage: "puzzlepiece.extension",
-                                description: Text("Find an extension in Discover, or install a package from a file."))
-                            Button("Discover Extensions") { discovering = true }
-                        }
-                        ForEach(manager.records) { record in extensionRow(record) }
-                        if !manager.available.isEmpty {
-                            DisclosureGroup("Import a Safari extension from this Mac") {
-                            ForEach(manager.available) { item in
-                                HStack {
-                                    Image(systemName: "puzzlepiece.extension").foregroundStyle(.secondary)
-                                    Text(item.name)
-                                    Spacer()
-                                    Button("Import Copy") { manager.add(item.id) }.disabled(manager.busy)
-                                }.padding(12).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
-                            }
-                            }.padding(.top, 8)
-                        }
-                        Text("Reload open pages after changing extensions. Native Safari App Extensions are not supported.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }.padding(24)
-                }
-            }
+            ExtensionCatalogView(manager: manager)
         }
         .onAppear { manager.discoverInstalled() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             manager.discoverInstalled()
         }
     }
+}
 
-    private func extensionRow(_ record: ExtensionRecord) -> some View {
+@available(macOS 15.4, *)
+struct ExtensionManagementView: View {
+    @ObservedObject var manager: ExtensionManager
+    let record: ExtensionRecord
+
+    var body: some View {
         let context = manager.contexts[record.id]
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                if let image = context?.webExtension.icon(for: NSSize(width: 32, height: 32)) {
-                    Image(nsImage: image).resizable().scaledToFit().frame(width: 32, height: 32)
-                } else {
-                    Image(systemName: "puzzlepiece.extension").font(.title2).frame(width: 32, height: 32)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(record.name).font(.headline)
-                    if let version = context?.webExtension.displayVersion { Text(version).font(.caption).foregroundStyle(.secondary) }
-                }
-                Spacer()
-                Toggle("Enable \(record.name)", isOn: Binding(get: { manager.isEnabled(record.id) },
-                    set: { manager.setEnabled($0, id: record.id) })).labelsHidden().toggleStyle(.switch).disabled(manager.busy)
+        VStack(alignment: .leading, spacing: 10) {
+            if let version = context?.webExtension.displayVersion {
+                Text("Installed version \(version)").font(.caption).foregroundStyle(.secondary)
             }
             if let failure = manager.failures[record.id] { Text(failure).font(.callout).foregroundStyle(.red) }
             Text(manager.ownsPackage(record) ? "Installed in Browse · Updated manually" : "Import pending")
@@ -143,7 +147,7 @@ private struct ExtensionSettingsView: View {
                 Button("Update from File…") { manager.chooseUpdate(record.id) }.disabled(manager.busy)
                 Button("Remove…") { manager.remove(record.id) }.disabled(manager.busy)
             }
-        }.padding(16).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+        }
     }
 }
 

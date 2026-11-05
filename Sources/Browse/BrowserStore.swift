@@ -91,6 +91,27 @@ final class BrowserStore: ObservableObject {
         }
     }
 
+    // @lat: [[architecture#UI preferences]]
+    var commandClickOpensNewTab: Bool {
+        get { session.commandClickOpensNewTab ?? false }
+        set {
+            session.commandClickOpensNewTab = newValue
+            saveSoon()
+        }
+    }
+
+    var inactivePaneDimAmount: Double {
+        get {
+            let amount = session.inactivePaneDimAmount ?? 0.08
+            return amount.isFinite ? min(1, max(0, amount)) : 0.08
+        }
+        set {
+            guard newValue.isFinite else { return }
+            session.inactivePaneDimAmount = min(1, max(0, newValue))
+            saveSoon()
+        }
+    }
+
     var sidebarWidth: CGFloat {
         let width = session.sidebarWidth ?? 236
         return width.isFinite ? min(300, max(100, width)) : 236
@@ -344,7 +365,7 @@ final class BrowserStore: ObservableObject {
         controller.onNewTab = { [weak self] address in self?.newTab(address: address) }
         controller.onNewPane = { [weak self] address in self?.openPane(address: address, toRightOf: page.id) }
         controller.onNewLink = { [weak self] address, adjacent, mainFrame in
-            if adjacent { self?.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame) }
+            if adjacent, self?.commandClickOpensNewTab != true { self?.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame) }
             else { self?.newTab(address: address, linkOpener: mainFrame ? page.id : nil) }
         }
         controller.onFocus = { [weak self] in self?.focus(page.id) }

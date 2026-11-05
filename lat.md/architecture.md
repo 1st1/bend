@@ -40,7 +40,7 @@ A native mouse handle covers the tab label and starts dragging after five points
 
 [ChromeButtonStyle.swift](../Sources/Browse/ChromeButtonStyle.swift) gives pane controls and the extension menu a shared appearance, with muted cool-gray icons and subtle white circular hover backgrounds shared with the pane title pill.
 
-Pane controls use regular 12-point symbols on a 24-point pitch, with a 22-point hover circle. Hover or pressing brightens the icon and reveals the shared white background at 6% opacity over 100 ms. Disabled controls stay dim and do not highlight. Sidebar header controls use a brighter 14-point symbol and a 28-point circle. Reduce Motion removes state-transition animations. The extension menu uses the button menu style so it receives the same sizing and interaction treatment as adjacent buttons. Native menu tracking clears cached hover when it begins and ends, preventing a missed mouse-exit event from leaving the extension button highlighted after dismissal.
+Pane controls use regular 12-point symbols on a 24-point pitch, with a 22-point hover circle. The title pill and controls are vertically centered in the full 36-point pane header; the bottom separator and loading strip overlay it without shifting the control row upward. Hover or pressing brightens the icon and reveals the shared white background at 6% opacity over 100 ms. Disabled controls stay dim and do not highlight. Sidebar header controls use a brighter 14-point symbol and a 28-point circle. Reduce Motion removes state-transition animations. The extension menu uses the button menu style so it receives the same sizing and interaction treatment as adjacent buttons. Native menu tracking clears cached hover when it begins and ends, preventing a missed mouse-exit event from leaving the extension button highlighted after dismissal.
 
 ## Sidebar materials
 
@@ -54,7 +54,7 @@ The sidebar and exposed workspace share one native Liquid Glass base on macOS 26
 
 Browser panes use rounded native Liquid Glass panels on macOS 26 and later, with standard material on older systems. Focus is indicated by a brighter title and dimming of inactive panes.
 
-[BrowserView.swift](../Sources/Browse/BrowserView.swift) dims inactive panes, including chrome and page content, with an 8% black overlay. Focus changes fade the overlay in or out over 100 ms. The overlay ignores hit testing and accessibility so underlying controls remain usable.
+[BrowserView.swift](../Sources/Browse/BrowserView.swift) dims inactive panes, including chrome and page content, with a configurable black overlay (8% by default); [[architecture#UI preferences]] controls its strength. Focus changes fade the overlay in or out over 100 ms. The overlay ignores hit testing and accessibility so underlying controls remain usable.
 
 [BrowserView.swift](../Sources/Browse/BrowserView.swift) places the pane canvas over the shared [[architecture#Sidebar materials|app base material]]. Pane chrome and built-in pages reveal the panel material; web pages keep their own rendering. A narrow content inset sits behind an opaque neutral rim on the native clipping layer, covering bright glass bevels and page colors at the rounded edge. Pane materials have a 50% black scrim beneath foreground controls and content, reducing glass brightness without dimming text or web pages.
 
@@ -112,9 +112,9 @@ Selecting a visited tab does not load or reload its pages. Its [[architecture#Mo
 
 Website configurations append Safari-compatible product tokens and a Browse identifier to WebKit’s default user agent before navigation, including when leaving extension pages. The Safari version comes from the installed app’s bundle metadata, with a macOS 14-era fallback; this prevents sites such as Google from serving legacy fixed-width layouts. This does not read Safari preferences or share its session.
 
-All panes share the app’s default persistent WebKit website data store, separate from Safari. Navigation updates the stored address and first-pane tab title. Command-clicking an HTTP or HTTPS link opens and focuses a new pane to the right of its source, leaving the source page unchanged and exiting pane zoom. This also applies to links targeting a new window; other new-window web links create tabs. Errors offer retry, and page JavaScript alert, confirm, and text-input dialogs use AppKit.
+All panes share the app’s default persistent WebKit website data store, separate from Safari. Navigation updates the stored address and first-pane tab title. Command-clicking an HTTP or HTTPS link opens and focuses a new pane to the right of its source by default, or a new tab when selected in [[architecture#UI preferences]], leaving the source page unchanged and exiting pane zoom. This also applies to links targeting a new window; other new-window web links create tabs. Errors offer retry, and page JavaScript alert, confirm, and text-input dialogs use AppKit.
 
-Command-click routing uses WebKit's navigation-action modifiers and left-button mask in both navigation policy and new-window callbacks. It cancels source navigation when opening a pane; plain clicks and non-link navigation retain their normal behavior.
+Command-click routing uses WebKit's navigation-action modifiers and left-button mask in both navigation policy and new-window callbacks. It cancels source navigation when opening the destination; plain clicks and non-link navigation retain their normal behavior.
 
 Pane headers display full-color site favicons discovered from the completed document's icon links, then touch icons, then the origin's `/favicon.ico`. [FaviconLoader.swift](../Sources/Browse/FaviconLoader.swift) resolves and deduplicates candidates, bounds downloads, and uses an ephemeral cookie-free session with an in-memory HTTP cache. Missing or invalid icons use a site initial; internal pages retain their app symbols. Navigation clears the old icon and cancels pending work so stale results cannot replace the next page's icon.
 
@@ -214,17 +214,25 @@ The [Firefox 1Password reproduction](../scripts/probe-onepassword-firefox.sh) ve
 
 [SettingsWindowController.swift](../Sources/Browse/SettingsWindowController.swift) provides Browse's own Settings window through Command-comma and pane extension menus. It manages web extensions without opening or modifying Safari preferences.
 
-Settings opens to [[architecture#Curated extension catalog|Discover]], with an Installed view for managing packages, permissions, enablement, options, manual updates, and removal. Install from File accepts ZIP, XPI, CRX, or unpacked packages. A collapsed import section offers copies of Safari Web Extensions found in Applications. Updates are manual; automatic updates and general store browsing are not implemented. Load and runtime errors remain visible. Earlier macOS versions show the minimum version needed for extension support.
+Settings has Extensions and UI tabs. Extensions shows only the three [[architecture#Curated extension catalog|curated packages]], with installation, enablement, permissions, options, diagnostics, manual updates, and removal in each card. There are no Discover/Installed subviews or general package-import controls. Updates are manual; automatic updates and general store browsing are not implemented. Load and runtime errors remain visible. Earlier macOS versions show the minimum version needed for extensions while keeping UI preferences available.
 
-The enable switch reflects whether WebKit loaded the context, not whether every extension feature works. Settings identifies the Safari 1Password bundle and displays its known native-connection limitation. The Firefox package is marked experimental, with desktop trust-registration instructions and an explicit unverified Touch ID limitation.
+The enable switch reflects whether WebKit loaded the context, not whether every extension feature works. The curated Firefox 1Password package is marked experimental, with desktop trust-registration instructions and an explicit unverified Touch ID limitation.
 
 ## Curated extension catalog
 
 [ExtensionCatalog.swift](../Sources/Browse/ExtensionCatalog.swift) defines a bundled, curated collection with package-specific installation routes and explicit compatibility notes.
 
-[ExtensionCatalogView.swift](../Sources/Browse/ExtensionCatalogView.swift) provides searchable cards, publisher and category information, source links, installation state, and Enable or Manage actions. uBlock Origin Lite's Safari package is labeled reported working; its local bundle is identified by bundle ID and copied into Browse. If absent, the card links to its official App Store listing. Returning to Browse or refreshing rescans Applications. Firefox 1Password is labeled experimental, with confirmed toolbar vault access and remaining autofill and desktop-unlock limitations. Safari 1Password is not offered as its catalog package. Dark Reader is offered as an experimental Firefox package; dark styling and global and per-site toggles pass the isolated compatibility test.
+[ExtensionCatalogView.swift](../Sources/Browse/ExtensionCatalogView.swift) provides three fixed cards with publisher and category information, source links, installation state, enable switches, and inline management controls. uBlock Origin Lite's Safari package is labeled reported working; its local bundle is identified by bundle ID and copied into Browse. If absent, the card links to its official App Store listing. Returning to Browse or refreshing rescans Applications. Firefox 1Password is labeled experimental, with confirmed toolbar vault access and remaining autofill and desktop-unlock limitations. Safari 1Password is not offered as its catalog package. Dark Reader is offered as an experimental Firefox package; dark styling and global and per-site toggles pass the isolated compatibility test.
 
 The 1Password and Dark Reader downloads are pinned to reviewed Mozilla-hosted versions and SHA-256 digests. Downloads use an ephemeral session, a size limit and timeouts, require a successful HTTPS response, and validate the digest before import. [ExtensionManager.swift](../Sources/Browse/ExtensionManager.swift) checks the expected package identity before persistence, rejects duplicate identities, and cleans temporary downloads. Failed or cancelled downloads do not install a package. Catalog entries are matched to installed records by package identity, never display name. Imported packages remain disabled with no granted access until the user enables them and approves permissions. The catalog does not silently follow latest releases or update installed packages.
+
+## UI preferences
+
+[SettingsWindowController.swift](../Sources/Browse/SettingsWindowController.swift) exposes link-opening and inactive-pane rendering preferences in Settings’ UI tab.
+
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) saves both preferences with the session. Command-click opens an adjacent column to the right by default, with a new-tab option that applies to existing page controllers immediately. Ordinary new-window links continue opening tabs. Main-frame opener tracking is preserved for both destinations.
+
+Inactive-pane dimming ranges from 0% to 100%, defaults to 8%, and updates all mounted panes immediately. Values are clamped and nonfinite edits are ignored. [Session.swift](../Sources/BrowseCore/Session.swift) stores optional fields so older session files retain their tabs and receive the original defaults. [[tests#UI preference persistence]] and [[tests#Configurable link destination]] cover persistence and routing.
 
 ## Mounted tab views
 
