@@ -49,7 +49,19 @@ final class ExtensionManager: NSObject, ObservableObject {
     private var writable = true
     var documents: [UUID: ExtensionDocument] = [:]
     private var errorObservation: AnyCancellable?
-    var popup: NSPopover?
+    var popupPaneID: UUID?
+    var popup: NSPopover? {
+        didSet {
+            if let oldValue { NotificationCenter.default.removeObserver(self, name: NSPopover.didCloseNotification, object: oldValue) }
+            if let popup {
+                NotificationCenter.default.addObserver(self, selector: #selector(tracePopupClosed(_:)),
+                    name: NSPopover.didCloseNotification, object: popup)
+            }
+        }
+    }
+    @objc private func tracePopupClosed(_ notification: Notification) {
+        InputDiagnostics.transition(.extensionPopup, .hidden, paneID: popupPaneID)
+    }
     var presentsWindows = true
 
     init(root: URL, persistent: Bool = true, storageIdentifier: UUID? = nil,
@@ -546,6 +558,8 @@ final class ExtensionManager: NSObject, ObservableObject {
     }
 
     func approve(_ name: String, details: [String]) -> Bool {
+        InputDiagnostics.transition(.extensionPermission, .shown, window: browserWindow, paneID: activeID)
+        defer { InputDiagnostics.transition(.extensionPermission, .hidden, window: browserWindow, paneID: activeID) }
         let alert = NSAlert()
         alert.messageText = "Allow \(name) access in Browse?"
         alert.informativeText = details.joined(separator: "\n")

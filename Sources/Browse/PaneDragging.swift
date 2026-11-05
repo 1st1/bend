@@ -12,11 +12,14 @@ struct PaneDragHandle: NSViewRepresentable {
     func makeNSView(context: Context) -> PaneDragSourceView { PaneDragSourceView() }
     static func dismantleNSView(_ view: PaneDragSourceView, coordinator: ()) {
         // SwiftUI may retire this handle while AppKit still keeps it mounted.
+        InputDiagnostics.transition(.paneHandleLifetime, .removed, view: view, tabID: view.tabID)
         view.onHover = nil
         view.cancelDrag()
     }
     func updateNSView(_ view: PaneDragSourceView, context: Context) {
+        let changed = view.pageID != pageID
         view.store = store; view.tabID = tabID; view.pageID = pageID; view.title = title
+        if changed { InputDiagnostics.transition(.paneHandleLifetime, .created, view: view, tabID: tabID) }
         view.onHover = onHover
     }
 }
@@ -55,13 +58,16 @@ final class PaneDragSourceView: NSView {
     override func mouseExited(with event: NSEvent) { setHovering(false) }
 
     override func mouseDown(with event: NSEvent) {
+        InputDiagnostics.record(.paneHandle, event: event, view: self)
         cancelDrag()
         guard let store, let tabID, let pageID, store.selectedTab.id == tabID else { return }
         store.focus(pageID)
         mouseDownPoint = event.locationInWindow
+        InputDiagnostics.transition(.paneDrag, .requested, event: event, view: self, tabID: tabID)
     }
 
     override func mouseDragged(with event: NSEvent) {
+        InputDiagnostics.record(.paneHandle, event: event, view: self)
         guard let origin = mouseDownPoint, let store, let tabID,
               store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == tabID && $0.pages.contains { $0.id == pageID } }),
               (dragSurface != nil || store.selectedTab.id == tabID), store.zoomedPane == nil,
@@ -72,6 +78,7 @@ final class PaneDragSourceView: NSView {
         if dragSurface == nil {
             let surface = PaneDragSurface(source: self, content: content, badge: dragBadge())
             dragSurface = surface
+            InputDiagnostics.transition(.paneDrag, .started, event: event, view: self, tabID: tabID)
             content.addSubview(surface, positioned: .above, relativeTo: nil)
 
         }
@@ -79,12 +86,14 @@ final class PaneDragSourceView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        InputDiagnostics.record(.paneHandle, event: event, view: self)
         guard mouseDownPoint != nil else { return }
         dragSurface?.update(at: event.locationInWindow)
         let target = dragSurface?.target
         let sidebarTarget = dragSurface?.sidebarTarget
         let edge = target?.dropEdge
         let sourceID = target?.validSource(self)
+        InputDiagnostics.transition(.paneDrop, .requested, event: event, view: self, tabID: target?.tabID, relatedPaneID: target?.pageID, flags: ["paneTarget": target != nil, "sidebarTarget": sidebarTarget != nil])
         cancelDrag()
         if let target, let edge, let sourceID, let store, let tabID, let targetID = target.pageID {
             if let destination = target.tabID {
@@ -106,10 +115,14 @@ final class PaneDragSourceView: NSView {
     override func cancelOperation(_ sender: Any?) { cancelDrag() }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        InputDiagnostics.transition(.paneHandleLifetime, window == nil ? .detached : .attached, view: self, tabID: tabID)
         if window == nil { cancelDrag(); setHovering(false) }
     }
 
     func cancelDrag() {
+        if mouseDownPoint != nil || dragSurface != nil {
+            InputDiagnostics.transition(.paneDrag, .finished, view: self, tabID: tabID, flags: ["surface": dragSurface != nil])
+        }
         mouseDownPoint = nil
         dragSurface?.clearTargets()
         dragSurface?.removeFromSuperview()
@@ -142,6 +155,28 @@ final class PaneDragSourceView: NSView {
 // pasteboard destination and hit testing do not participate.
 @MainActor
 class PaneDropHost: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        InputDiagnostics.transition(.paneRoot, window == nil ? .detached : .attached, view: self, tabID: tabID)
+    }
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        InputDiagnostics.transition(.paneRoot, superview == nil ? .detached : .attached, view: self, tabID: tabID, flags: ["superview": true])
+    }
+    override func viewDidHide() {
+        super.viewDidHide()
+        InputDiagnostics.transition(.paneVisibility, .hidden, view: self, tabID: tabID)
+    }
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        InputDiagnostics.transition(.paneVisibility, .shown, view: self, tabID: tabID)
+    }
+    override var frame: NSRect {
+        didSet {
+            if frame != oldValue { InputDiagnostics.transition(.paneGeometry, .changed, view: self, tabID: tabID) }
+        }
+    }
+
     weak var store: BrowserStore?
     var tabID: UUID?
     var pageID: UUID?
@@ -235,6 +270,7 @@ final class PaneDragSurface: NSView {
                     do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
                     guard let self, self.sidebarTarget === hovered, let store,
                           store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == id }) else { return }
+                    InputDiagnostics.transition(.paneHoverSelection, .changed, view: self.source, tabID: id)
                     store.select(id)
                 }
             }
@@ -261,7 +297,10 @@ final class PaneDragSurface: NSView {
     private func setTarget(_ next: PaneDropHost?, edge: PaneDropEdge? = nil) {
         // Keep an unchanged target visible across pointer events. Clearing it
         // first lets an intermediate hidden layer reach the compositor.
-        if target !== next { target?.showPreview(nil); target = next }
+        if target !== next {
+            InputDiagnostics.transition(.paneDrop, .changed, view: source, tabID: next?.tabID, relatedPaneID: next?.pageID, flags: ["hasTarget": next != nil])
+            target?.showPreview(nil); target = next
+        }
         next?.showPreview(edge)
     }
 

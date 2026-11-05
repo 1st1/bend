@@ -120,6 +120,23 @@ Pane headers display full-color site favicons discovered from the completed docu
 
 External custom URL schemes are not handed to other applications. Downloads, website media permissions, native Safari App Extensions, and Safari session sharing are outside the implemented prototype. Safari Web Extensions use the separate [[architecture#Web extensions|Browse extension host]].
 
+## Native input diagnostics
+
+[InputDiagnostics.swift](../Sources/Browse/InputDiagnostics.swift) provides opt-in, bounded native mouse tracing to distinguish window routing failures from events delivered to WebKit.
+
+Settings’ Development tab controls input and pane logging, disabled by default. The preference persists in app defaults and applies immediately to both streams. Startup reads it before session restoration; disabling drains pending writes and stops recording while preserving existing files. Extension diagnostics remain separate.
+
+Two JSONL streams share a run ID, monotonic sequence, timestamps, native view identities, and stable session pane UUIDs:
+
+- `events.jsonl` records each left-button press, drag, and release at application monitoring, window dispatch, AppKit forwarding, web-view entry/return, pane handles, tab drag monitors, and sidebar resizing. The press pane remains the gesture owner through release even after hiding or reparenting; `receiverPaneID` separately identifies the receiving view or current hit target. Non-pane events have a null pane ID and explicit scope.
+- `panes.jsonl` records model membership and transfers, pane and tab drag lifetimes/drop targets, hover selection, native attachment/detachment, frame changes, hiding/showing, retained tab root updates, zoom/focus, dividers, and programmatic canvas scrolling. It also records address panels, navigation decisions, command-click handling, web-view replacement/configuration, process exits, JavaScript dialogs, and extension activation, popovers, permission prompts, and focus requests. Tab IDs and related pane IDs identify relationships without conflating tabs with panes.
+
+Pane UUIDs are assigned to web views before navigation and preserved across replacement. Native snapshots include window activation, drag ownership, first responder, hit-view ancestry, visibility, gesture-recognizer states, and extension-controller/user-script presence. Instrumentation does not consume or redispatch events; it observes our routing boundaries, not WebKit's internal DOM dispatch.
+
+Both streams live in `~/Library/Application Support/BrowsePrototype/InputDiagnostics/`. Each independently rotates at 500 KiB, retaining a `.previous.jsonl` segment of the same maximum size (four files, at most about 2 MiB total). Oversized segments from older builds are discarded when that stream next writes. Separate serial background queues are capped at 64 pending records each; saturation rejects records without blocking input and reports its count in the next accepted record. Clean termination drains queued writes. Native snapshot identities use process-local hashes without retaining objects or registering weak references, so ancestor inspection remains safe during hosting-view destruction. Native addresses can be reused after destruction; pane UUIDs remain the durable identity. The gesture-owner map uses weak window keys only during live input dispatch. Records exclude coordinates, keyboard input, URLs, titles, and page content.
+
+The hooks span [BrowseApp.swift](../Sources/Browse/BrowseApp.swift), [BrowseWindow.swift](../Sources/Browse/BrowseWindow.swift), [BrowserStore.swift](../Sources/Browse/BrowserStore.swift), [BrowserView.swift](../Sources/Browse/BrowserView.swift), [MountedTabContent.swift](../Sources/Browse/MountedTabContent.swift), [PaneDragging.swift](../Sources/Browse/PaneDragging.swift), [TabReordering.swift](../Sources/Browse/TabReordering.swift), [SidebarResizing.swift](../Sources/Browse/SidebarResizing.swift), [AddressPanelController.swift](../Sources/Browse/AddressPanelController.swift), and the extension bridge. [[tests#Input trace rotation]], [[tests#Independent input and pane log retention]], [[tests#Pane trace correlation]], [[tests#Input diagnostics during hosting teardown]], and [[tests#Input logging preference]] cover retention, attribution, destruction with logging active, and opt-in persistence.
+
 ## Web extensions
 
 [ExtensionManager.swift](../Sources/Browse/ExtensionManager.swift) hosts Safari Web Extensions through WebKit's public extension controller on macOS 15.4 and later, with enablement, permissions, and extension storage separate from Safari.
@@ -214,7 +231,7 @@ The [Firefox 1Password reproduction](../scripts/probe-onepassword-firefox.sh) ve
 
 [SettingsWindowController.swift](../Sources/Browse/SettingsWindowController.swift) provides Browse's own Settings window through Command-comma and pane extension menus. It manages web extensions without opening or modifying Safari preferences.
 
-Settings has Extensions and UI tabs. Extensions shows only the three [[architecture#Curated extension catalog|curated packages]], with installation, enablement, permissions, options, diagnostics, manual updates, and removal in each card. There are no Discover/Installed subviews or general package-import controls. Updates are manual; automatic updates and general store browsing are not implemented. Load and runtime errors remain visible. Earlier macOS versions show the minimum version needed for extensions while keeping UI preferences available.
+Settings has Extensions, UI, and Development tabs. Development exposes the opt-in [[architecture#Native input diagnostics|input and pane logging]] toggle. Extensions shows only the three [[architecture#Curated extension catalog|curated packages]], with installation, enablement, permissions, options, diagnostics, manual updates, and removal in each card. There are no Discover/Installed subviews or general package-import controls. Updates are manual; automatic updates and general store browsing are not implemented. Load and runtime errors remain visible. Earlier macOS versions show the minimum version needed for extensions while keeping UI preferences available.
 
 The enable switch reflects whether WebKit loaded the context, not whether every extension feature works. The curated Firefox 1Password package is marked experimental, with desktop trust-registration instructions and an explicit unverified Touch ID limitation.
 
@@ -238,7 +255,7 @@ Inactive-pane dimming ranges from 0% to 100%, defaults to 8%, and updates all mo
 
 [MountedTabContent.swift](../Sources/Browse/MountedTabContent.swift) retains a native hosting view for each visited tab, hiding inactive containers instead of rebuilding the pane canvas on selection.
 
-Unvisited tabs stay lazy. Native hiding excludes inactive content from input and visible rendering while its pane and WebKit parent views remain attached. Hidden containers retain their last viewport; selection applies the current size. Closed tabs release their containers, and closed panes are removed from retained trees. Focus moves out of a hidden canvas without taking focus from unrelated controls.
+Unvisited tabs stay lazy. Inactive content remains natively hidden while its pane and WebKit parent views stay attached. The tab hosting view explicitly returns no hit when it or an ancestor is hidden, before entering SwiftUI hit testing: a hidden SwiftUI root can otherwise claim events intended for the visible page. Hidden containers retain their last viewport; selection applies the current size. Closed tabs release their containers, and closed panes are removed from retained trees. Focus moves out of a hidden canvas without taking focus from unrelated controls.
 
 Tab and pane hosting views disable inherited safe-area regions: the window shell supplies their margins, so the unified titlebar must not insert extra space above nested content.
 

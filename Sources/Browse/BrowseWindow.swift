@@ -19,11 +19,13 @@ class BrowseWindow: NSWindow {
     }
 
     override func sendEvent(_ event: NSEvent) {
+        InputDiagnostics.record(.window, event: event)
         switch event.type {
         case .leftMouseDown:
             cancelPaneDrag()
             paneGesture = .idle
             if let source = paneHandle(at: event.locationInWindow) {
+                InputDiagnostics.transition(.paneOwnership, .started, event: event, view: source)
                 if !isKeyWindow { makeKeyAndOrderFront(nil) }
                 source.mouseDown(with: event)
                 if source.mouseDownPoint != nil && source.window === self {
@@ -33,18 +35,22 @@ class BrowseWindow: NSWindow {
                     source.cancelDrag()
                     paneGesture = .awaitingRelease
                 }
+                InputDiagnostics.record(.paneConsumed, event: event, view: source)
                 return
             }
         case .leftMouseDragged:
             if capturesPaneGesture {
+                InputDiagnostics.record(.paneConsumed, event: event, view: activePaneDrag)
                 activePaneDrag?.mouseDragged(with: event)
                 return
             }
         case .leftMouseUp:
             if capturesPaneGesture {
+                InputDiagnostics.record(.paneConsumed, event: event, view: activePaneDrag)
                 // Release ownership before the drop can rebuild either tab.
                 let source = activePaneDrag
                 paneGesture = .idle
+                InputDiagnostics.transition(.paneOwnership, .finished, event: event, view: source, window: self)
                 source?.mouseUp(with: event)
                 return
             }
@@ -59,20 +65,44 @@ class BrowseWindow: NSWindow {
     // Pane presses, motion, and releases are all consumed by this window.
     // AppKit never starts native view tracking for a pane gesture, so hiding or
     // replacing its source cannot leave an obsolete native mouse target behind.
-    func forwardToAppKit(_ event: NSEvent) { super.sendEvent(event) }
+    func forwardToAppKit(_ event: NSEvent) {
+        InputDiagnostics.record(.appKit, event: event)
+        defer { InputDiagnostics.record(.appKitReturned, event: event) }
+        super.sendEvent(event)
+    }
 
     func releasePaneDrag(_ source: PaneDragSourceView) {
-        if activePaneDrag === source { paneGesture = .awaitingRelease }
+        if activePaneDrag === source {
+            paneGesture = .awaitingRelease
+            InputDiagnostics.transition(.paneOwnership, .cancelled, view: source, window: self)
+        }
     }
 
     private func cancelPaneDrag() {
         let source = activePaneDrag
+        if capturesPaneGesture { InputDiagnostics.transition(.paneOwnership, .cancelled, view: source, window: self) }
         if capturesPaneGesture { paneGesture = .awaitingRelease }
         source?.cancelDrag()
     }
 
-    override func resignKey() { cancelPaneDrag(); super.resignKey() }
-    override func close() { cancelPaneDrag(); paneGesture = .idle; super.close() }
+    override func becomeKey() {
+        super.becomeKey()
+        InputDiagnostics.transition(.windowKey, .started, window: self)
+    }
+    override func resignKey() {
+        InputDiagnostics.transition(.windowKey, .finished, window: self)
+        cancelPaneDrag(); super.resignKey()
+    }
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        InputDiagnostics.transition(.firstResponder, .requested, view: responder as? NSView, window: self)
+        let accepted = super.makeFirstResponder(responder)
+        InputDiagnostics.transition(.firstResponder, accepted ? .allowed : .denied, view: responder as? NSView, window: self)
+        return accepted
+    }
+    override func close() {
+        InputDiagnostics.transition(.windowClose, .started, window: self)
+        cancelPaneDrag(); paneGesture = .idle; super.close()
+    }
 
     private func paneHandle(at point: NSPoint) -> PaneDragSourceView? {
         guard let contentView else { return nil }

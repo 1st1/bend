@@ -149,6 +149,17 @@ import BrowseCore
     #expect(host.mounted[unvisited.id] == nil)
     #expect(store.existingController(for: unvisited.pages[0].id) == nil)
 
+    // The later-mounted tab sits above the selected tab in native z-order.
+    // Hidden SwiftUI hosting roots must not steal either half of a page click.
+    let inactiveHost = try #require(host.mounted[second.id])
+    #expect(inactiveHost.isHidden)
+    for pageWeb in [web, otherWeb] {
+        let point = pageWeb.convert(NSPoint(x: pageWeb.bounds.midX, y: pageWeb.bounds.midY), to: host)
+        #expect(inactiveHost.hitTest(point) == nil)
+        let hit = try #require(host.hitTest(host.convert(point, to: host.superview)))
+        #expect(hit === pageWeb || hit.isDescendant(of: pageWeb))
+    }
+
     // Send a complete header-to-page gesture through NSWindow, rather than
     // calling a drag destination or hit-test override directly.
     let downPoint = source.convert(NSPoint(x: source.bounds.midX, y: source.bounds.midY), to: nil)

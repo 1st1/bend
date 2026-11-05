@@ -185,7 +185,7 @@ private struct PaneCanvas: View {
                         }
                     }
                     ForEach(geometry.dividers) { divider in
-                        PaneDivider(placement: divider) { store.resize(divider.id, fraction: $0) }
+                        PaneDivider(placement: divider, paneIDs: tab.pages.map(\.id), tabID: tab.id) { store.resize(divider.id, fraction: $0) }
                             .frame(width: divider.frame.width, height: divider.frame.height)
                             .position(x: divider.frame.midX, y: divider.frame.midY)
                     }
@@ -198,6 +198,7 @@ private struct PaneCanvas: View {
             .onChange(of: tab.pages.map(\.id)) { previous, current in
                 guard current.count > previous.count,
                       let added = current.first(where: { !previous.contains($0) }) else { return }
+                InputDiagnostics.transition(.canvasScroll, .requested, paneID: added, tabID: tab.id)
                 withAnimation(animation) { proxy.scrollTo(added, anchor: .bottomTrailing) }
             }
         }
@@ -287,6 +288,8 @@ private struct PaneChromeBackground: View {
 
 private struct PaneDivider: View {
     let placement: DividerPlacement
+    let paneIDs: [UUID]
+    let tabID: UUID
     let onResize: (Double) -> Void
     @ViewState<CGFloat?> private var dragStart: CGFloat?
 
@@ -300,10 +303,16 @@ private struct PaneDivider: View {
             // The divider moves as it resizes the panes. Measuring translation
             // in its local coordinates feeds that movement back into the drag.
             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global).onChanged { value in
-                if dragStart == nil { dragStart = placement.firstLength }
+                if dragStart == nil {
+                    for pane in paneIDs { InputDiagnostics.transition(.dividerResize, .started, paneID: pane, tabID: tabID) }
+                    dragStart = placement.firstLength
+                }
                 let delta = horizontal ? value.translation.width : value.translation.height
                 onResize(placement.fraction(forLength: (dragStart ?? placement.firstLength) + delta))
-            }.onEnded { _ in dragStart = nil })
+            }.onEnded { _ in
+                for pane in paneIDs { InputDiagnostics.transition(.dividerResize, .finished, paneID: pane, tabID: tabID) }
+                dragStart = nil
+            })
     }
 }
 
@@ -456,11 +465,19 @@ private struct ClippedPaneContent<Content: View>: NSViewRepresentable {
     @Environment(\.self) private var environment
 
     func makeNSView(context: Context) -> ClippedPaneHost {
-        ClippedPaneHost(content: AnyView(content.environment(\.self, environment)))
+        let host = ClippedPaneHost(content: AnyView(content.environment(\.self, environment)))
+        host.store = store; host.tabID = tabID; host.pageID = pageID
+        InputDiagnostics.transition(.paneRoot, .created, view: host, tabID: tabID)
+        return host
+    }
+
+    static func dismantleNSView(_ host: ClippedPaneHost, coordinator: ()) {
+        InputDiagnostics.transition(.paneRoot, .removed, view: host, tabID: host.tabID)
     }
 
     func updateNSView(_ host: ClippedPaneHost, context: Context) {
         host.store = store; host.tabID = tabID; host.pageID = pageID
+        InputDiagnostics.transition(.paneRoot, .replaced, view: host, tabID: tabID)
         host.content.rootView = AnyView(content.environment(\.self, environment))
     }
 }
@@ -522,11 +539,13 @@ private final class WebSurfaceHost: NSView {
 
     func update(webView: WKWebView, topContentInset: CGFloat) {
         if hostedWebView !== webView {
+            if let old = hostedWebView { InputDiagnostics.transition(.surfaceAttachment, .detached, view: old) }
             hostedWebView?.removeFromSuperview()
             hostedWebView = webView
             webView.frame = bounds
             webView.autoresizingMask = [.width, .height]
             addSubview(webView)
+            InputDiagnostics.transition(.surfaceAttachment, .attached, view: webView)
         }
         // In the stacked layout the page only touches the pane's bottom corners.
         layer?.maskedCorners = topContentInset > 0
@@ -537,6 +556,7 @@ private final class WebSurfaceHost: NSView {
             // scrolled content to render behind the overlaid glass header.
             let inset = max(0, topContentInset)
             if webView.obscuredContentInsets.top != inset {
+                InputDiagnostics.transition(.surfaceInset, .changed, view: webView, flags: ["obscured": inset > 0])
                 webView.obscuredContentInsets = NSEdgeInsets(top: inset, left: 0, bottom: 0, right: 0)
             }
         }

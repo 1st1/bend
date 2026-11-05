@@ -203,6 +203,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         guard let parentWindow,
               let page = store.selectedTab.pages.first(where: { $0.id == paneID }) else { return }
         targetPane = paneID
+        InputDiagnostics.transition(.addressPanel, .shown, window: panel, paneID: paneID)
         let controller = store.controller(for: page)
         input.stringValue = controller.isStartPage ? "" : controller.address
         errorLabel.isHidden = true
@@ -217,6 +218,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     }
 
     @objc private func submit() {
+        InputDiagnostics.transition(.addressSubmit, .requested, window: panel, paneID: targetPane)
         guard let targetPane,
               let page = store.selectedTab.pages.first(where: { $0.id == targetPane }) else {
             dismiss(restoreFocus: true)
@@ -240,6 +242,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
 
     func dismiss(restoreFocus: Bool) {
         guard targetPane != nil else { return }
+        InputDiagnostics.transition(.addressPanel, .hidden, window: panel, paneID: targetPane, flags: ["restoreFocus": restoreFocus])
         targetPane = nil
         parentWindow?.removeChildWindow(panel)
         panel.orderOut(nil)

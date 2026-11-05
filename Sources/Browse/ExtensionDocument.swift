@@ -35,12 +35,14 @@ final class ExtensionDocument: NSObject, WKWebExtensionTab, WKWebExtensionWindow
     func frame(for context: WKWebExtensionContext) -> CGRect { nativeWindow.frame }
     func screenFrame(for context: WKWebExtensionContext) -> CGRect { nativeWindow.screen?.frame ?? .zero }
     func focus(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        InputDiagnostics.transition(.extensionWindowFocus, .requested, view: web, window: nativeWindow)
         nativeWindow.makeKeyAndOrderFront(nil); completionHandler(nil)
     }
     func activate(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
         focus(for: context, completionHandler: completionHandler)
     }
     func close(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        InputDiagnostics.transition(.windowClose, .requested, view: web, window: nativeWindow)
         nativeWindow.close(); completionHandler(nil)
     }
     func navigate(to url: URL) {

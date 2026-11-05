@@ -31,6 +31,7 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
         let selected = store?.selectedTab.focusedPane
         if selected != activeID, let selected, let tab = tabs[selected] {
             let previous = activeID.flatMap { tabs[$0] }
+            InputDiagnostics.transition(.extensionActivation, .changed, paneID: selected, relatedPaneID: activeID)
             activeID = selected
             controller.didActivateTab(tab, previousActiveTab: previous)
         }
@@ -87,11 +88,14 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
               let popover = action.popupPopover else {
             completionHandler(failure("Select a visible web page before opening this extension.")); return
         }
+        InputDiagnostics.transition(.extensionPopup, .requested, view: webView)
         popup?.close()
         popup = popover
+        popupPaneID = (webView as? FocusWebView)?.diagnosticPaneID
         popover.behavior = .transient
         popover.show(relativeTo: NSRect(x: max(0, webView.bounds.width - 40), y: 36, width: 1, height: 1),
             of: webView, preferredEdge: .maxY)
+        InputDiagnostics.transition(.extensionPopup, .shown, view: webView)
         completionHandler(nil)
     }
 
@@ -136,6 +140,7 @@ final class ExtensionWindow: NSObject, WKWebExtensionWindow {
     func frame(for context: WKWebExtensionContext) -> CGRect { manager?.browserWindow?.frame ?? .zero }
     func screenFrame(for context: WKWebExtensionContext) -> CGRect { manager?.browserWindow?.screen?.frame ?? .zero }
     func focus(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        InputDiagnostics.transition(.extensionWindowFocus, .requested, window: manager?.browserWindow, paneID: manager?.activeID)
         manager?.browserWindow?.makeKeyAndOrderFront(nil); completionHandler(nil)
     }
 }
@@ -162,9 +167,11 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
     func isLoadingComplete(for context: WKWebExtensionContext) -> Bool { !(pageController?.isLoading ?? false) }
     func isSelected(for context: WKWebExtensionContext) -> Bool { manager?.store?.selectedTab.pages.contains { $0.id == id } ?? false }
     func activate(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["activate": true])
         manager?.store?.revealPage(id); completionHandler(nil)
     }
     func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["load": true])
         guard let page, let store = manager?.store else {
             completionHandler(manager?.failure("This URL cannot open in a browser pane.")); return
         }
@@ -179,16 +186,20 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
         completionHandler(nil)
     }
     func reload(fromOrigin: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["reload": true])
         if fromOrigin { pageController?.webView.reloadFromOrigin() } else { pageController?.webView.reload() }
         completionHandler(nil)
     }
     func goBack(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["back": true])
         pageController?.webView.goBack(); completionHandler(nil)
     }
     func goForward(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["forward": true])
         pageController?.webView.goForward(); completionHandler(nil)
     }
     func close(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["close": true])
         manager?.store?.closePage(id); completionHandler(nil)
     }
 }

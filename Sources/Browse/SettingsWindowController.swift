@@ -35,7 +35,28 @@ struct BrowserSettingsView: View {
 
             UISettingsView(store: store)
                 .tabItem { Label("UI", systemImage: "slider.horizontal.3") }
+
+            DevelopmentSettingsView()
+                .tabItem { Label("Development", systemImage: "hammer") }
         }.padding(16)
+    }
+}
+
+private struct DevelopmentSettingsView: View {
+    @AppStorage(InputDiagnostics.enabledPreferenceKey) private var loggingEnabled = false
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Input and pane logging", isOn: $loggingEnabled)
+            } header: {
+                Text("Diagnostics")
+            } footer: {
+                Text("Records mouse event routing and pane activity in separate logs, each rotating at 500 KiB. Typed text and page content are excluded.")
+            }
+        }
+        .formStyle(.grouped)
+        .onChange(of: loggingEnabled) { _, _ in InputDiagnostics.applyPreferences() }
     }
 }
 

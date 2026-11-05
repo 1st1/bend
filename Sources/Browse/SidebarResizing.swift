@@ -21,24 +21,33 @@ final class SidebarResizeView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        InputDiagnostics.record(.sidebarResize, event: event, view: self)
+        InputDiagnostics.transition(.sidebarResizeLifetime, .started, view: self)
         startX = event.locationInWindow.x
         startWidth = store?.sidebarWidth ?? 236
     }
 
     override func mouseDragged(with event: NSEvent) {
+        InputDiagnostics.record(.sidebarResize, event: event, view: self)
         guard let startX else { return }
         // Window coordinates stay fixed while this handle moves with the edge.
         store?.resizeSidebar(to: startWidth + event.locationInWindow.x - startX)
     }
 
     override func mouseUp(with event: NSEvent) {
+        InputDiagnostics.record(.sidebarResize, event: event, view: self)
         mouseDragged(with: event)
+        InputDiagnostics.transition(.sidebarResizeLifetime, .finished, view: self)
         startX = nil
     }
 
-    override func cancelOperation(_ sender: Any?) { startX = nil }
+    override func cancelOperation(_ sender: Any?) {
+        InputDiagnostics.transition(.sidebarResizeLifetime, .cancelled, view: self)
+        startX = nil
+    }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        InputDiagnostics.transition(.sidebarResizeLifetime, window == nil ? .detached : .attached, view: self)
         if window == nil { startX = nil }
     }
 }

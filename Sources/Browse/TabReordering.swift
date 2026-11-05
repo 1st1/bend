@@ -28,11 +28,13 @@ final class TabDragSourceView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
+        InputDiagnostics.record(.tabHandle, event: event, view: self)
         cancelDrag()
         mouseDownPoint = event.locationInWindow
     }
 
     override func mouseDragged(with event: NSEvent) {
+        InputDiagnostics.record(.tabHandle, event: event, view: self)
         guard let origin = mouseDownPoint, let store, let tabID,
               store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == tabID }),
               let window, let content = window.contentView else { cancelDrag(); return }
@@ -40,14 +42,22 @@ final class TabDragSourceView: NSView {
         if dragSurface == nil {
             let surface = TabDragSurface(source: self, content: content)
             dragSurface = surface
+            InputDiagnostics.transition(.tabDrag, .started, view: self, tabID: tabID)
             content.addSubview(surface, positioned: .above, relativeTo: nil)
+            InputDiagnostics.transition(.tabMonitorLifetime, .created, view: self, tabID: tabID)
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+                InputDiagnostics.record(.tabMonitor, event: event, view: self)
                 guard let self, self.dragSurface != nil else { return event }
                 if event.type == .keyDown, event.keyCode == 53 { self.cancelDrag(); return nil }
                 guard event.window === self.window else { return event }
                 if event.type == .leftMouseDown { self.cancelDrag(); return event }
-                if event.type == .leftMouseDragged { self.mouseDragged(with: event); return nil }
+                if event.type == .leftMouseDragged {
+                    self.mouseDragged(with: event)
+                    InputDiagnostics.record(.tabMonitorConsumed, event: event, view: self)
+                    return nil
+                }
                 if event.type == .leftMouseUp { self.mouseUp(with: event) }
+                InputDiagnostics.record(.tabMonitorReturned, event: event, view: self)
                 // Balance AppKit's press/release tracking even after completing a drop.
                 return event
             }
@@ -59,10 +69,12 @@ final class TabDragSourceView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        InputDiagnostics.record(.tabHandle, event: event, view: self)
         guard mouseDownPoint != nil else { return }
         dragSurface?.update(at: event.locationInWindow)
         let wasDragging = dragSurface != nil
         let placement = dragSurface?.placement
+        InputDiagnostics.transition(.tabDrop, .requested, view: self, tabID: tabID, flags: ["hasTarget": placement != nil])
         cancelDrag()
         guard let store, let tabID,
               store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == tabID }) else { return }
@@ -79,12 +91,17 @@ final class TabDragSourceView: NSView {
     @objc private func windowResigned(_ notification: Notification) { cancelDrag() }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        InputDiagnostics.transition(.tabHandleLifetime, window == nil ? .detached : .attached, view: self, tabID: tabID)
         if window == nil { cancelDrag() }
     }
     func cancelDrag() {
+        if mouseDownPoint != nil { InputDiagnostics.transition(.tabDrag, .finished, view: self, tabID: tabID) }
         mouseDownPoint = nil
         dragSurface?.removeFromSuperview(); dragSurface = nil
-        if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+        if let monitor {
+            NSEvent.removeMonitor(monitor); self.monitor = nil
+            InputDiagnostics.transition(.tabMonitorLifetime, .removed, view: self, tabID: tabID)
+        }
         NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
     }
 }

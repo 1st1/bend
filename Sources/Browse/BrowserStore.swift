@@ -26,6 +26,7 @@ final class BrowserStore: ObservableObject {
     @Published private(set) var history = BrowsingHistory()
     @Published private(set) var historyError: String?
     private var browsers: [UUID: PageController] = [:]
+    private var diagnosticPaneTabs: [UUID: UUID] = [:]
     private struct ClosedItem {
         let tab: BrowserTab
         let workspaceID: UUID
@@ -71,6 +72,7 @@ final class BrowserStore: ObservableObject {
                 historyError = "Saved history could not be read. Clear history to reset it."
             }
         }
+        tracePaneMembership()
         extensionStorage = extensionManager
         if #available(macOS 15.4, *), let manager = extensionManager as? ExtensionManager {
             manager.store = self
@@ -142,10 +144,15 @@ final class BrowserStore: ObservableObject {
         return true
     }
 
-    func select(_ id: UUID) { session.selectedTab = id; zoomedPane = nil; saveSoon() }
+    func select(_ id: UUID) {
+        InputDiagnostics.transition(.storeSelection, session.selectedTab == id ? .unchanged : .changed, tabID: id)
+        session.selectedTab = id; zoomedPane = nil; saveSoon()
+    }
     func focus(_ id: UUID) {
+        InputDiagnostics.transition(.storeFocus, selectedTab.focusedPane == id ? .unchanged : .requested, paneID: id)
         guard selectedTab.focusedPane != id, selectedTab.pages.contains(where: { $0.id == id }) else { return }
         editTab { $0.focusedPane = id }
+        InputDiagnostics.transition(.storeFocus, .changed, paneID: id)
     }
     func split(_ axis: SplitAxis) {
         zoomedPane = nil
@@ -155,6 +162,7 @@ final class BrowserStore: ObservableObject {
 
     func requestAddress(for paneID: UUID? = nil) {
         let target = paneID ?? selectedTab.focusedPane
+        InputDiagnostics.transition(.addressRequest, .requested, paneID: target)
         guard selectedTab.pages.contains(where: { $0.id == target }) else { return }
         focus(target)
         onAddressRequested?(target)
@@ -170,6 +178,7 @@ final class BrowserStore: ObservableObject {
     func resize(_ id: UUID, fraction: Double) { editTab { $0.layout = $0.layout.resizing(id, to: fraction) } }
     @discardableResult
     func movePane(_ source: UUID, beside target: UUID, edge: PaneDropEdge, in tabID: UUID, from sourceTabID: UUID? = nil) -> Bool {
+        InputDiagnostics.transition(.paneMove, .requested, paneID: source, tabID: tabID, relatedPaneID: target)
         guard selectedTab.id == tabID, zoomedPane == nil else { return false }
         if let sourceTabID, sourceTabID != tabID {
             var next = session
@@ -177,11 +186,13 @@ final class BrowserStore: ObservableObject {
             refreshTransferredTitles(&next)
             session = next
             saveSoon()
+            InputDiagnostics.transition(.paneMove, .finished, paneID: source, tabID: session.selectedTab)
             paneMoveRevision += 1
             return true
         }
         guard let layout = selectedTab.layout.moving(source, beside: target, edge: edge) else { return false }
         editTab(tabID) { $0.layout = layout; $0.focusedPane = source }
+        InputDiagnostics.transition(.paneMove, .finished, paneID: source, tabID: session.selectedTab)
         paneMoveRevision += 1
         return true
     }
@@ -196,6 +207,7 @@ final class BrowserStore: ObservableObject {
         refreshTransferredTitles(&next)
         session = next
         saveSoon()
+        InputDiagnostics.transition(.paneMove, .finished, paneID: source, tabID: session.selectedTab)
         paneMoveRevision += 1
         return true
     }
@@ -209,7 +221,10 @@ final class BrowserStore: ObservableObject {
             }
         }
     }
-    func toggleZoom(_ id: UUID) { focus(id); zoomedPane = zoomedPane == id ? nil : id }
+    func toggleZoom(_ id: UUID) {
+        InputDiagnostics.transition(.storeZoom, .changed, paneID: id, flags: ["zooming": zoomedPane != id])
+        focus(id); zoomedPane = zoomedPane == id ? nil : id
+    }
 
     func newTab(in workspace: UUID? = nil, address: String = "browse://start", linkOpener: UUID? = nil) {
         let index = session.workspaces.firstIndex { $0.id == workspace }
@@ -344,7 +359,7 @@ final class BrowserStore: ObservableObject {
     func controller(for page: Page) -> PageController {
         if let existing = browsers[page.id] { return existing }
         let extensionURL = URL(string: page.address).flatMap { $0.scheme == "webkit-extension" ? $0 : nil }
-        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", configure: { [weak self] configuration in
+        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, configure: { [weak self] configuration in
             if #available(macOS 15.4, *) { self?.extensions.configure(configuration) }
         })
         controller.onStateChanged = { [weak self] in
@@ -411,7 +426,23 @@ final class BrowserStore: ObservableObject {
         browsers.removeValue(forKey: id)?.webView.stopLoading()
     }
 
+    private func tracePaneMembership() {
+        var next: [UUID: UUID] = [:]
+        for tab in session.workspaces.flatMap(\.tabs) {
+            for page in tab.pages { next[page.id] = tab.id }
+        }
+        for (pane, tab) in next where diagnosticPaneTabs[pane] != tab {
+            InputDiagnostics.transition(.paneMembership, diagnosticPaneTabs[pane] == nil ? .created : .changed,
+                                        paneID: pane, tabID: tab)
+        }
+        for (pane, tab) in diagnosticPaneTabs where next[pane] == nil {
+            InputDiagnostics.transition(.paneMembership, .removed, paneID: pane, tabID: tab)
+        }
+        diagnosticPaneTabs = next
+    }
+
     func saveSoon() {
+        tracePaneMembership()
         let pageIDs = Set(session.workspaces.flatMap(\.tabs).flatMap(\.pages).map(\.id))
         linkOpeners = linkOpeners.filter { pageIDs.contains($0.key) && pageIDs.contains($0.value) }
         if #available(macOS 15.4, *), let manager = extensionStorage as? ExtensionManager { manager.synchronizeTabs() }
@@ -435,9 +466,49 @@ final class BrowserStore: ObservableObject {
 // @lat: [[architecture#WebKit integration]]
 @MainActor
 class FocusWebView: WKWebView {
+    var diagnosticPaneID: UUID?
     var onFocus: (() -> Void)?
-    override func mouseDown(with event: NSEvent) { onFocus?(); super.mouseDown(with: event) }
-    override func becomeFirstResponder() -> Bool { onFocus?(); return super.becomeFirstResponder() }
+    override func mouseDown(with event: NSEvent) {
+        InputDiagnostics.record(.webView, event: event, view: self)
+        defer { InputDiagnostics.record(.webViewReturned, event: event, view: self) }
+        onFocus?()
+        super.mouseDown(with: event)
+    }
+    override func mouseDragged(with event: NSEvent) {
+        InputDiagnostics.record(.webView, event: event, view: self)
+        defer { InputDiagnostics.record(.webViewReturned, event: event, view: self) }
+        super.mouseDragged(with: event)
+    }
+    override func mouseUp(with event: NSEvent) {
+        InputDiagnostics.record(.webView, event: event, view: self)
+        defer { InputDiagnostics.record(.webViewReturned, event: event, view: self) }
+        super.mouseUp(with: event)
+    }
+    override func becomeFirstResponder() -> Bool {
+        InputDiagnostics.transition(.webFocus, .requested, view: self)
+        onFocus?()
+        let accepted = super.becomeFirstResponder()
+        InputDiagnostics.transition(.webFocus, accepted ? .allowed : .denied, view: self)
+        return accepted
+    }
+    override func resignFirstResponder() -> Bool {
+        let accepted = super.resignFirstResponder()
+        InputDiagnostics.transition(.webFocus, .finished, view: self, flags: ["accepted": accepted])
+        return accepted
+    }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        let accepted = super.acceptsFirstMouse(for: event)
+        InputDiagnostics.transition(.webFocus, accepted ? .allowed : .denied, event: event, view: self, flags: ["firstMouse": true])
+        return accepted
+    }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        InputDiagnostics.transition(.webAttachment, window == nil ? .detached : .attached, view: self)
+    }
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        InputDiagnostics.transition(.webAttachment, superview == nil ? .detached : .attached, view: self, flags: ["superview": true])
+    }
 }
 
 @MainActor
@@ -477,7 +548,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         return "Version/\(version) Safari/605.1.15 Browse/0.1"
     }()
 
-    init(address: String, webView suppliedWebView: FocusWebView? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
+    init(address: String, paneID: UUID? = nil, webView suppliedWebView: FocusWebView? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
         self.configure = configure
         let configuration = WKWebViewConfiguration()
@@ -486,11 +557,14 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         configure(configuration)
         webView = suppliedWebView ?? FocusWebView(frame: .zero, configuration: configuration)
         super.init()
+        webView.diagnosticPaneID = paneID
+        InputDiagnostics.transition(.webReplacement, .created, view: webView)
         observeWebView()
         navigate(address)
     }
 
     private func observeWebView() {
+        InputDiagnostics.transition(.extensionConfiguration, .changed, view: webView)
         webView.navigationDelegate = self; webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         webView.isInspectable = true
@@ -504,14 +578,18 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     private func replaceWebView(configuration: WKWebViewConfiguration) {
+        InputDiagnostics.transition(.webReplacement, .started, view: webView)
         observations.removeAll()
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
         webView.onFocus = nil
         webView.stopLoading()
+        let paneID = webView.diagnosticPaneID
         webView = FocusWebView(frame: webView.frame, configuration: configuration)
+        webView.diagnosticPaneID = paneID
         canGoBack = false; canGoForward = false
         observeWebView()
+        InputDiagnostics.transition(.webReplacement, .finished, view: webView)
     }
 
     // Only the extension host may authorize a top-level extension document.
@@ -543,6 +621,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     private func load(_ url: URL) {
+        InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "browse"])
         resetFavicon()
         error = nil; address = url.absoluteString
         completedAddress = nil
@@ -590,11 +669,13 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        InputDiagnostics.transition(.webLoad, .started, view: webView)
         resetFavicon()
         completedAddress = nil
         if !isStartPage { error = nil }
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        InputDiagnostics.transition(.webLoad, .finished, view: webView)
         refresh()
         recordCompletedVisit()
         guard !isStartPage, let url = webView.url else { return }
@@ -618,22 +699,36 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { show(error) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { show(error) }
     func show(_ failure: Error) {
+        InputDiagnostics.transition(.webLoad, .cancelled, view: webView)
         completedAddress = nil
         if (failure as NSError).code != NSURLErrorCancelled { error = failure.localizedDescription }
         refresh()
     }
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { error = "This page stopped responding. Reload to continue." }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        InputDiagnostics.transition(.webProcessExit, .finished, view: webView)
+        error = "This page stopped responding. Reload to continue."
+    }
     private func openCommandClickedLink(_ action: WKNavigationAction) -> Bool {
         // WebKit reports left-click as 1 (a button mask), unlike NSEvent's zero-based buttonNumber.
         guard action.navigationType == .linkActivated, action.modifierFlags.contains(.command),
               action.buttonNumber == 1, let url = action.request.url,
               ["http", "https"].contains(url.scheme?.lowercased() ?? ""), let onNewPane else { return false }
+        InputDiagnostics.transition(.commandLink, .allowed, view: webView)
         if let onNewLink { onNewLink(url.absoluteString, true, action.sourceFrame.isMainFrame) }
         else { onNewPane(url.absoluteString) }
         return true
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
+        InputDiagnostics.transition(.navigationPolicy, .requested, view: webView, flags: [
+            "link": action.navigationType == .linkActivated, "command": action.modifierFlags.contains(.command),
+            "mainFrame": action.targetFrame?.isMainFrame == true, "newWindow": action.targetFrame == nil
+        ])
+        let originalHandler = decisionHandler
+        let decisionHandler: (WKNavigationActionPolicy) -> Void = { policy in
+            InputDiagnostics.transition(.navigationPolicy, policy == .allow ? .allowed : .denied, view: webView)
+            originalHandler(policy)
+        }
         guard let url = action.request.url else { decisionHandler(.cancel); return }
         if openCommandClickedLink(action) { decisionHandler(.cancel); return }
         if #available(macOS 15.4, *),
@@ -654,28 +749,36 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        InputDiagnostics.transition(.newWindowLink, .requested, view: webView)
         if openCommandClickedLink(action) { return nil }
         if action.targetFrame == nil, let url = action.request.url,
            ["http", "https"].contains(url.scheme ?? "") {
+            InputDiagnostics.transition(.newWindowLink, .allowed, view: webView)
             if let onNewLink { onNewLink(url.absoluteString, false, action.sourceFrame.isMainFrame) }
             else { onNewTab?(url.absoluteString) }
-        }
+        } else { InputDiagnostics.transition(.newWindowLink, .denied, view: webView) }
         return nil
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor () -> Void) {
+        InputDiagnostics.transition(.javascriptDialog, .shown, view: webView)
+        defer { InputDiagnostics.transition(.javascriptDialog, .hidden, view: webView) }
         let alert = NSAlert(); alert.messageText = webView.url?.host ?? "Web page"; alert.informativeText = message
         alert.runModal(); completionHandler()
     }
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void) {
+        InputDiagnostics.transition(.javascriptDialog, .shown, view: webView)
+        defer { InputDiagnostics.transition(.javascriptDialog, .hidden, view: webView) }
         let alert = NSAlert(); alert.messageText = webView.url?.host ?? "Web page"; alert.informativeText = message
         alert.addButton(withTitle: "OK"); alert.addButton(withTitle: "Cancel")
         completionHandler(alert.runModal() == .alertFirstButtonReturn)
     }
     func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (String?) -> Void) {
+        InputDiagnostics.transition(.javascriptDialog, .shown, view: webView)
+        defer { InputDiagnostics.transition(.javascriptDialog, .hidden, view: webView) }
         let alert = NSAlert(); alert.messageText = prompt
         let field = NSTextField(string: defaultText ?? ""); field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
         alert.accessoryView = field; alert.addButton(withTitle: "OK"); alert.addButton(withTitle: "Cancel")

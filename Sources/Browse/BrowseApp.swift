@@ -11,6 +11,7 @@ enum BrowseApp {
             return
         }
         let app = NSApplication.shared
+        InputDiagnostics.applyPreferences()
         let delegate = AppDelegate()
         app.delegate = delegate
         app.setActivationPolicy(.regular)
@@ -27,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var settingsWindow: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        InputDiagnostics.transition(.launch, .started)
         window = BrowseWindow(contentRect: NSRect(x: 0, y: 0, width: 1420, height: 880),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
@@ -53,11 +55,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         store.onSettingsRequested = { [weak self] in self?.showSettings() }
         if #available(macOS 15.4, *) { store.extensions.browserWindow = window }
         installMenus()
-        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { event in
+            InputDiagnostics.record(.application, event: event)
+            defer { InputDiagnostics.record(.applicationReturned, event: event) }
+            guard event.type == .leftMouseDown else { return event }
             if let content = event.window?.contentView {
                 var hit = content.hitTest(content.convert(event.locationInWindow, from: nil))
                 while let view = hit {
-                    if let browser = view as? FocusWebView { browser.onFocus?(); break }
+                    if let browser = view as? FocusWebView {
+                        InputDiagnostics.transition(.monitorFocus, .started, event: event, view: browser)
+                        browser.onFocus?()
+                        InputDiagnostics.transition(.monitorFocus, .finished, event: event, view: browser)
+                        break
+                    }
                     hit = view.superview
                 }
             }
@@ -65,10 +75,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        InputDiagnostics.transition(.launch, .finished, window: window)
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        InputDiagnostics.transition(.appActivation, .started, window: window)
+    }
+    func applicationDidResignActive(_ notification: Notification) {
+        InputDiagnostics.transition(.appActivation, .finished, window: window)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationWillTerminate(_ notification: Notification) {
+        InputDiagnostics.transition(.launch, .finished, window: window, flags: ["terminating": true])
+        InputDiagnostics.flush()
         if #available(macOS 15.4, *) { store.extensions.diagnostics.record(.hostStopping) }
         store.save()
     }

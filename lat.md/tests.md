@@ -154,7 +154,7 @@ Opening a link splits its source pane to the right even when another pane is foc
 
 The test uses local HTTP fixtures and ephemeral storage in a full-content window with a unified toolbar. It checks that the titlebar adds no extra top inset. Narrowing and widening columns verifies CSS viewport width matches the native web view, media queries switch layouts, and resize events fire. Both the HTTP request received by the fixture and JavaScript expose Safari-compatible product tokens plus Browse’s identifier. Unvisited tabs remain uncreated, hidden tabs keep their viewport and ignore other tabs' zoom, selection resizes the active host, and tab or background-pane closure removes retained content.
 
-The test sends a complete mouse gesture through the window: header press, drag across nine interior points of a real web view, and release. Each point activates the target preview; release rearranges the panes and removes the drag surface while preserving native WebKit parents, document identity, and unsaved input.
+After switching back beneath a later-mounted hidden tab, the test verifies the inactive hosting root rejects hit tests and each visible pane's center resolves to its web view. The test also sends a complete mouse gesture through the window: header press, drag across nine interior points of a real web view, and release. Each point activates the target preview; release rearranges the panes and removes the drag surface while preserving native WebKit parents, document identity, and unsaved input.
 
 ## Pane drop layout moves
 
@@ -189,6 +189,32 @@ The native preview layer is observed during continuous movement and edge changes
 [PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) sends window mouse events through the actual browser shell, unified titlebar, and glass container in an ordered offscreen window.
 
 Header hit testing reaches both the compact title handle and the adjacent empty-space handle; only the title handle drives hover feedback. Mouse-down focuses its pane and starts tracking; small motion does not move the window or begin a drag, and mouse-up clears tracking.
+
+## Input logging preference
+
+[InputDiagnosticsTests.swift](../Tests/BrowseTests/InputDiagnosticsTests.swift) verifies logging defaults off, enabling records both streams, the preference survives recreation, and disabling preserves files without appending events.
+
+## Input trace rotation
+
+[InputDiagnosticsTests.swift](../Tests/BrowseTests/InputDiagnosticsTests.swift) verifies native input logs retain recent complete records within two bounded files, including after a writer is recreated.
+
+The test checks repeated rotation discards the oldest segment, oversized records are rejected, queued writes drain, and both files have private permissions.
+
+## Independent input and pane log retention
+
+[InputDiagnosticsTests.swift](../Tests/BrowseTests/InputDiagnosticsTests.swift) verifies heavy input traffic cannot rotate pane activity away, and adopting a smaller size cap removes oversized legacy segments.
+
+## Pane trace correlation
+
+[InputDiagnosticsTests.swift](../Tests/BrowseTests/InputDiagnosticsTests.swift) verifies the press pane survives hiding/removal through release, the receiving pane is reported separately, and a new non-pane press resets attribution.
+
+Both streams share run and sequence identifiers. The trace includes pane attachment and movement activity, preserves all drag events, and excludes keyboard input. Web-view replacement preserves the pane UUID while changing native view identity.
+
+## Input diagnostics during hosting teardown
+
+[InputDiagnosticsTests.swift](../Tests/BrowseTests/InputDiagnosticsTests.swift) destroys real hosting views with tracing active, exercising pane-handle dismantling while their hosting ancestor is deallocating.
+
+Repeated creation and destruction must finish without an Objective-C weak-registration abort. Hosting views and handles must be released, and each dismantled pane handle must produce a removal record with its pane UUID.
 
 ## Session round trip
 
