@@ -49,7 +49,7 @@ import Network
     try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
     let permissions = notifications ? #"["notifications","tabs","webNavigation","http://example.test/*"]"# : #"["tabs","webNavigation","http://example.test/*"]"#
     try Data("""
-        {"manifest_version":2,"name":"Compatibility fixture","version":"1.0",
+        {"manifest_version":2,"name":"Compatibility fixture","description":"Browse compatibility tests","version":"1.0",
         "permissions":\(permissions),"background":{"scripts":["background.js"],"persistent":true},
         "browser_action":{"default_title":"Fixture"},"options_ui":{"page":"options.html"}}
         """.utf8).write(to: source.appendingPathComponent("manifest.json"))
@@ -274,6 +274,128 @@ import Network
     try await manager.enable(false, id: id) { _, _ in true }
 }
 
+// @lat: [[tests#Extension privacy settings and restored startup]]
+@Test @MainActor func extensionPrivacyRestoration() async throws {
+    guard #available(macOS 15.4, *) else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePrivacy-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = try compatibilityFixture(root)
+    let manifestURL = source.appendingPathComponent("manifest.json")
+    var manifest = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any])
+    manifest["permissions"] = ["privacy", "storage", "tabs"]
+    try JSONSerialization.data(withJSONObject: manifest).write(to: manifestURL)
+    try Data(#"""
+        (async () => {
+            if ((await browser.storage.local.get('configured')).configured) {
+                await chrome.privacy.services.passwordSavingEnabled.set({value: false});
+                await chrome.privacy.services.autofillEnabled.clear({});
+            }
+            browser.runtime.onMessage.addListener((message, sender, reply) => { reply('ready'); });
+        })().catch(error => console.error(String(error)));
+        """#.utf8).write(to: source.appendingPathComponent("background.js"))
+    let storageID = UUID()
+    let installed = root.appendingPathComponent("installed")
+    var manager = ExtensionManager(root: installed, storageIdentifier: storageID, websiteDataStore: .nonPersistent(), notifications: TestNotifications())
+    try await manager.importExtension(from: source)
+    let id = try #require(manager.records.first?.id)
+    try await manager.enable(true, id: id) { _, permissions in
+        #expect(permissions.contains("privacy")); return false
+    }
+    #expect(!manager.isEnabled(id))
+    try await manager.enable(true, id: id) { _, _ in true }
+    for launch in 0..<3 {
+        let context = try #require(manager.contexts[id])
+        #expect(manager.isEnabled(id))
+        #expect(manager.records.first?.permissions.contains("privacy") == true)
+        try await context.loadBackgroundContent()
+        let web = WKWebView(frame: .zero, configuration: try #require(context.webViewConfiguration))
+        let navigation = CompatibilityNavigation(); web.navigationDelegate = navigation
+        try await navigation.load(web, try #require(context.optionsPageURL))
+        let result = try await web.callAsyncJavaScript(#"""
+            const ready = await Promise.race([
+                browser.runtime.sendMessage('ready'),
+                new Promise(resolve => setTimeout(() => resolve('timeout'), 2000))
+            ]);
+            const values = [];
+            for (const setting of Object.values(chrome.privacy.services)) {
+                values.push(await new Promise(resolve => setting.get({}, resolve)));
+                await setting.set({value: false});
+                await new Promise(resolve => setting.clear({}, resolve));
+            }
+            let refused = false;
+            try { await browser.privacy.services.passwordSavingEnabled.set({value:true}); }
+            catch { refused = true; }
+            await browser.storage.local.set({configured: true});
+            return ready === 'ready' && refused && values.length === 4 && values.every(v => v.value === false && v.levelOfControl === 'not_controllable');
+            """#, arguments: [:], in: nil, contentWorld: .page)
+        #expect(result as? Bool == true)
+        #expect(context.errors.isEmpty, "\(context.errors.map(\.localizedDescription))")
+        context.setPermissionStatus(.deniedExplicitly, for: .init(rawValue: "privacy"))
+        #expect(try await web.callAsyncJavaScript(#"""
+            return await new Promise(resolve => chrome.privacy.services.passwordSavingEnabled.get({}, () => resolve(!!chrome.runtime.lastError)));
+            """#, arguments: [:], in: nil, contentWorld: .page) as? Bool == true)
+        #expect(try await web.evaluateJavaScript("chrome.runtime.lastError == null") as? Bool == true)
+        try manager.controller.unload(context)
+        if launch < 2 {
+            manager = ExtensionManager(root: installed, storageIdentifier: storageID, websiteDataStore: .nonPersistent(), notifications: TestNotifications())
+            manager.start(); await manager.restorationTask?.value
+        }
+    }
+    try await manager.uninstall(id)
+}
+
+// @lat: [[tests#Extension document authentication round trip]]
+@Test @MainActor func extensionDocumentAuthenticationRoundTrip() async throws {
+    guard #available(macOS 15.4, *) else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseAuthRoundTrip-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let manager = ExtensionManager(root: root.appendingPathComponent("installed"), persistent: false,
+        websiteDataStore: .nonPersistent(), notifications: TestNotifications())
+    manager.presentsWindows = false
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
+    try await manager.importExtension(from: compatibilityFixture(root))
+    let id = try #require(manager.records.first?.id)
+    try await manager.enable(true, id: id) { _, _ in true }
+    let context = try #require(manager.contexts[id])
+    let url = try #require(context.optionsPageURL)
+    let control = WKWebView(frame: .zero, configuration: try #require(context.webViewConfiguration))
+    let navigation = CompatibilityNavigation(); control.navigationDelegate = navigation
+    try await navigation.load(control, url)
+    let document = try manager.openDocument(url: url, context: context)
+    for _ in 0..<100 {
+        if (try? await document.web.evaluateJavaScript("document.body?.textContent")) as? String == "Compatibility test" { break }
+        try await Task.sleep(for: .milliseconds(30))
+    }
+    let tabID = try #require(try await document.web.callAsyncJavaScript("sessionStorage.setItem('setupAnswered', 'yes'); return (await browser.tabs.getCurrent()).id", arguments: [:], in: nil, contentWorld: .page) as? Int)
+    let pageCount = store.session.workspaces.flatMap(\.tabs).flatMap(\.pages).count
+    let server = try await ExtensionHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let address = "http://127.0.0.1:\(server.port)/"
+    _ = try await document.web.callAsyncJavaScript("location.href = address", arguments: ["address": address], in: nil, contentWorld: .page)
+    for _ in 0..<100 {
+        if document.web.url?.host == "127.0.0.1", !document.web.isLoading { break }
+        try await Task.sleep(for: .milliseconds(30))
+    }
+    #expect(document.web.url?.host == "127.0.0.1")
+    #expect(manager.pages.count == pageCount)
+    #expect(try await document.web.evaluateJavaScript("sessionStorage.getItem('setupAnswered') === null && !globalThis.browser?.runtime?.id && typeof chrome === 'undefined'") as? Bool == true)
+    #expect(try await document.web.callAsyncJavaScript("try { await webkit.messageHandlers.browseExtension.postMessage({operation:'privacySetting', setting:'passwordSavingEnabled', action:'get', details:{}}); return false; } catch { return true; }", arguments: [:], in: nil, contentWorld: .page) as? Bool == true)
+    // A website cannot authorize its own promotion into an extension document.
+    _ = try await document.web.callAsyncJavaScript("location.href = address", arguments: ["address": url.absoluteString], in: nil, contentWorld: .page)
+    try await Task.sleep(for: .milliseconds(150))
+    #expect(document.web.url?.host == "127.0.0.1")
+    _ = try await control.callAsyncJavaScript("return await browser.tabs.update(tabID, {url: address})", arguments: ["tabID": tabID, "address": url.absoluteString], in: nil, contentWorld: .page)
+    for _ in 0..<100 {
+        if (try? await document.web.evaluateJavaScript("sessionStorage.getItem('setupAnswered')")) as? String == "yes" { break }
+        try await Task.sleep(for: .milliseconds(30))
+    }
+    #expect(try await document.web.evaluateJavaScript("sessionStorage.getItem('setupAnswered')") as? String == "yes")
+    #expect(try await document.web.callAsyncJavaScript("return (await browser.tabs.getCurrent()).id", arguments: [:], in: nil, contentWorld: .page) as? Int == tabID)
+    try await manager.enable(false, id: id) { _, _ in true }
+}
+
 // @lat: [[tests#Firefox onboarding smoke test]]
 @Test @MainActor func firefoxOnboardingSmoke() async throws {
     guard #available(macOS 15.4, *), let path = ProcessInfo.processInfo.environment["BROWSE_TEST_FIREFOX_PACKAGE"] else { return }
@@ -313,29 +435,35 @@ import Network
     let next = try await document.web.evaluateJavaScript("document.body.innerText") as? String
     #expect(next?.contains("Sign in") == true)
     #expect(declined as? Int == 3)
-    _ = try await document.web.evaluateJavaScript("[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Sign in').click()")
-    try await Task.sleep(for: .seconds(4))
-    for document in manager.documents.values {
-        print("FIREFOX_SIGNIN_PAGE", document.web.url?.absoluteString ?? "nil", try await document.web.evaluateJavaScript("document.body.innerText") ?? "nil")
-    }
-    print("FIREFOX_SIGNIN_TABS", manager.pages.map(\.address))
-    let signin = try #require(manager.pages.first { $0.address.hasPrefix("https://start.1password.com/signin/") })
-    let signinController = store.controller(for: signin)
-    let signinWeb = signinController.webView
-    signinWeb.frame = NSRect(x: 0, y: 0, width: 900, height: 700)
+    let onboardingURL = try #require(document.web.url)
+    let extensionView = document.web
+    #expect(try await extensionView.evaluateJavaScript("sessionStorage.getItem('firefoxPermissionsCompleted')") as? String == "true")
+    let pageCount = manager.pages.count
+    _ = try await extensionView.evaluateJavaScript("[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Sign in').click()")
     var signinText = ""
-    for _ in 0..<40 {
-        signinText = (try? await signinWeb.evaluateJavaScript("document.body?.innerText || ''")) as? String ?? ""
-        if signinText.localizedCaseInsensitiveContains("email") { break }
+    for _ in 0..<80 {
+        signinText = (try? await document.web.evaluateJavaScript("document.body?.innerText || ''")) as? String ?? ""
+        if document.web.url?.scheme == "https", signinText.localizedCaseInsensitiveContains("email") { break }
         try await Task.sleep(for: .milliseconds(250))
     }
-    print("FIREFOX_ACCOUNT_FORM", signinText.prefix(1500))
-    if !signinText.localizedCaseInsensitiveContains("email") {
-        print("FIREFOX_ACCOUNT_LOAD", signinWeb.url?.absoluteString ?? "nil", signinWeb.isLoading, signinController.error ?? "no error")
-        print("FIREFOX_ACCOUNT_DOM", try await signinWeb.evaluateJavaScript("JSON.stringify({state:document.readyState,title:document.title,body:document.body?.innerHTML.slice(0,2000),scripts:[...document.scripts].map(s=>s.src),resources:performance.getEntriesByType('resource').map(r=>({name:r.name,status:r.responseStatus,duration:r.duration}))})") ?? "nil")
-    }
-    #expect(signinWeb.url?.scheme == "https")
+    #expect(document.web !== extensionView)
+    #expect(manager.pages.count == pageCount)
+    #expect(document.web.url?.scheme == "https")
     #expect(signinText.localizedCaseInsensitiveContains("email"))
-    print("FIREFOX_FINAL_ERRORS", context.errors.map(\.localizedDescription))
+    #expect(try await document.web.evaluateJavaScript("!globalThis.browser?.runtime?.id && typeof chrome === 'undefined'") as? Bool == true)
+    // Exercise the extension's return navigation without credentials or an account.
+    document.loadURL(onboardingURL, for: context) { error in #expect(error == nil) }
+    #expect(document.web === extensionView)
+    var returnedText = ""
+    for _ in 0..<80 {
+        returnedText = (try? await document.web.evaluateJavaScript("document.body?.innerText || ''")) as? String ?? ""
+        if returnedText.contains("Sign in") { break }
+        try await Task.sleep(for: .milliseconds(100))
+    }
+    #expect(try await document.web.evaluateJavaScript("sessionStorage.getItem('firefoxPermissionsCompleted')") as? String == "true")
+    #expect(returnedText.contains("Sign in"))
+    #expect(!returnedText.contains("Before you get started"))
+    #expect(!returnedText.contains("Don't enable"))
+    #expect(context.errors.isEmpty, "\(context.errors.map(\.localizedDescription))")
     try await manager.enable(false, id: id) { _, _ in true }
 }

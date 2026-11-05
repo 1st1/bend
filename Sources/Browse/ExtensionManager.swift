@@ -432,13 +432,13 @@ final class ExtensionManager: NSObject, ObservableObject {
     func permissionSummary(_ id: UUID) -> [String] {
         guard let context = contexts[id] else { return [] }
         let ext = context.webExtension
-        return ext.requestedPermissions.map(\.rawValue).sorted()
+        return ExtensionCompatibility.requiredPermissions(for: ext).map(\.rawValue).sorted()
             + ext.allRequestedMatchPatterns.union(ext.requestedPermissionMatchPatterns).map(\.string).sorted()
     }
 
     private func missingPermissions(_ context: WKWebExtensionContext) -> [String] {
         let ext = context.webExtension
-        return ext.requestedPermissions.filter { !context.hasPermission($0) }.map(\.rawValue)
+        return ExtensionCompatibility.requiredPermissions(for: ext).filter { !ExtensionCompatibility.hasPermission($0, in: context) }.map(\.rawValue)
             + ext.allRequestedMatchPatterns.union(ext.requestedPermissionMatchPatterns)
                 .filter { context.permissionStatus(for: $0).rawValue < WKWebExtensionContext.PermissionStatus.grantedImplicitly.rawValue }.map(\.string)
     }
@@ -463,9 +463,10 @@ final class ExtensionManager: NSObject, ObservableObject {
             let missing = missingPermissions(context)
             guard missing.isEmpty || approve(records[index].name, missing.sorted()) else { return }
             let ext = context.webExtension
-            next[index].permissions = Array(Set(next[index].permissions).union(ext.requestedPermissions.map(\.rawValue))).sorted()
+            let permissions = ExtensionCompatibility.requiredPermissions(for: ext)
+            next[index].permissions = Array(Set(next[index].permissions).union(permissions.map(\.rawValue))).sorted()
             next[index].websites = Array(Set(next[index].websites).union(ext.allRequestedMatchPatterns.union(ext.requestedPermissionMatchPatterns).map(\.string))).sorted()
-            for permission in ext.requestedPermissions { context.setPermissionStatus(.grantedExplicitly, for: permission) }
+            for permission in permissions { context.setPermissionStatus(.grantedExplicitly, for: permission) }
             for pattern in ext.allRequestedMatchPatterns.union(ext.requestedPermissionMatchPatterns) {
                 context.setPermissionStatus(.grantedExplicitly, for: pattern)
             }
@@ -544,7 +545,7 @@ final class ExtensionManager: NSObject, ObservableObject {
         documents[document.id] = document
         controller.didOpenWindow(document)
         controller.didOpenTab(document)
-        document.web.load(URLRequest(url: url))
+        document.navigate(to: url)
         if presentsWindows {
             document.nativeWindow.center()
             if active { document.nativeWindow.makeKeyAndOrderFront(nil) }

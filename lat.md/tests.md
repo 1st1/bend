@@ -18,6 +18,28 @@ Splitting right and then below preserves leaf order. Closing panes collapses the
 
 [ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) verifies disabled imports, permission denial and approval, website scope, copied resources, enable/disable behavior, and stable extension identity and grants after restoration.
 
+## Enabled extension restoration
+
+[ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) recreates the extension host with an isolated persistent profile, verifying enabled state, stable origin, restored grants, and successive storage writes without the original package source.
+
+The fixture unloads runtime contexts without disabling the saved preference. Four iterations read the previous iteration's storage value. This exercises host recreation within one test process, not a signed-app upgrade or an authenticated password-manager session.
+
+## Extension startup content injection
+
+[ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) starts page navigation during extension restoration and verifies content-script injection and request blocking on a local fixture across four host recreations.
+
+## Firefox extension restoration smoke test
+
+[ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) optionally exercises Firefox 1Password from `BROWSE_TEST_FIREFOX_PACKAGE`, checking enablement, origin, background loading, and toolbar actions across three host recreations in isolated storage.
+
+The smoke test waits for background errors, invokes the toolbar action, and verifies that the resulting document renders 1Password's welcome page. It uses a fake notification provider and does not display windows, sign in, read a real vault, or verify authenticated autofill. Host recreation within one process is not a signed-app upgrade test.
+
+## Build bundle publication
+
+[test-build-app.sh](../scripts/test-build-app.sh) runs the packaging script with isolated compiler and signing stand-ins, verifying failure preservation and replacement without changing an open descriptor to the previous executable.
+
+Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files; these checks do not exercise macOS signing or WebKit runtime behavior.
+
 ## Catalog download integrity and identity
 
 [ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) rejects modified, empty, oversized, non-HTTPS, or unsuccessful catalog downloads and mismatched package identities before installation.
@@ -56,7 +78,19 @@ A declared web-accessible iframe communicates with its background, while a priva
 
 [ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) optionally loads a real Firefox 1Password package through Browse's production extension manager in an isolated, windowless profile.
 
-Set `BROWSE_TEST_FIREFOX_PACKAGE` to a local official XPI to run this network-dependent test. It verifies action-driven onboarding, declines the three optional onboarding choices in disposable data, and follows Sign in to the official account page's email form. The website view has a normal pane-sized viewport even though no window is displayed. It enters no credentials and does not establish authenticated sign-in, desktop-app integration, autofill, or account persistence. Without the environment variable, this smoke test returns without loading a real package.
+Set `BROWSE_TEST_FIREFOX_PACKAGE` to a local official XPI to run this network-dependent test. It verifies action-driven onboarding, declines three optional choices in disposable data, and follows Sign in to the official email form in the same logical tab. An extension-authorized return reuses the original view and skips the already-answered choices. It enters no credentials and does not establish authenticated sign-in, desktop integration, autofill, or account persistence. Without the environment variable, it returns without loading a real package.
+
+## Extension privacy settings and restored startup
+
+[ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) verifies privacy approval, persistent grants, disabled saver settings, callback errors, revocation, and startup calls gated on saved configuration across host recreations.
+
+The fixture stores a configured flag before restarting its host, then uses the password-saving and autofill settings during background startup before answering messages. It uses no credentials or real vault. Unsupported enabling is rejected rather than claiming to implement a built-in saver.
+
+## Extension document authentication round trip
+
+[ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) verifies that same-tab extension-to-website-to-extension navigation preserves session storage and tab identity without giving the website extension privileges.
+
+A local website cannot read the extension's session storage, call the compatibility bridge, or authorize its own return to a privileged document. An explicit extension tab update returns to the retained view with the original setup marker; the flow creates no extra browser pane.
 
 ## Dark Reader compatibility smoke test
 

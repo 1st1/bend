@@ -62,6 +62,126 @@ private func extensionFixture(at root: URL) throws -> URL {
     #expect(!restored.isEnabled(record.id))
 }
 
+// @lat: [[tests#Enabled extension restoration]]
+@Test @MainActor func enabledExtensionRestoration() async throws {
+    guard #available(macOS 15.4, *) else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseExtensionRestart-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = try extensionFixture(at: root)
+    let storageID = UUID()
+    let websiteStore = WKWebsiteDataStore(forIdentifier: UUID())
+    let installed = root.appendingPathComponent("installed")
+    var manager = ExtensionManager(root: installed, storageIdentifier: storageID, websiteDataStore: websiteStore, notifications: TestNotifications())
+    try await manager.importExtension(from: source)
+    let id = try #require(manager.records.first?.id)
+    try await manager.enable(true, id: id) { _, _ in true }
+    let origin = try #require(manager.contexts[id]?.baseURL)
+    try FileManager.default.removeItem(at: source)
+    for launch in 0..<4 {
+        let context = try #require(manager.contexts[id])
+        #expect(manager.records.first?.enabled == true)
+        #expect(manager.isEnabled(id))
+        #expect(manager.failures.isEmpty)
+        #expect(context.baseURL == origin)
+        var web: WKWebView? = WKWebView(frame: .zero, configuration: try #require(context.webViewConfiguration))
+        let navigation = ExtensionTestNavigation()
+        web?.navigationDelegate = navigation
+        try await navigation.load(try #require(web), url: try #require(context.optionsPageURL))
+        let result = try await web?.callAsyncJavaScript("""
+            const saved = (await browser.storage.local.get('restartMarker')).restartMarker;
+            await browser.storage.local.set({restartMarker: iteration});
+            return saved ?? -1;
+            """, arguments: ["iteration": launch], in: nil, contentWorld: .page)
+        #expect(result as? Int == launch - 1)
+        web = nil
+        // End runtime without disabling the persisted user preference.
+        try manager.controller.unload(context)
+        manager = ExtensionManager(root: installed, storageIdentifier: storageID, websiteDataStore: websiteStore, notifications: TestNotifications())
+        manager.start()
+        await manager.restorationTask?.value
+    }
+    try await manager.uninstall(id)
+}
+
+// @lat: [[tests#Extension startup content injection]]
+@Test @MainActor func extensionStartupContentInjection() async throws {
+    guard #available(macOS 15.4, *) else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseExtensionStartup-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = try extensionFixture(at: root)
+    let installed = root.appendingPathComponent("installed")
+    let setup = ExtensionManager(root: installed, persistent: false)
+    try await setup.importExtension(from: source)
+    let id = try #require(setup.records.first?.id)
+    try await setup.enable(true, id: id) { _, _ in true }
+    try setup.controller.unload(try #require(setup.contexts[id]))
+    let server = try await ExtensionHTTPFixture.start()
+    defer { server.listener.cancel() }
+    for _ in 0..<4 {
+        let manager = ExtensionManager(root: installed, persistent: false)
+        let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
+        store.newTab(address: "http://127.0.0.1:\(server.port)/")
+        let page = store.controller(for: store.selectedTab.pages[0])
+        for _ in 0..<100 {
+            if (try? await page.webView.evaluateJavaScript("document.body?.dataset.browseExtension")) as? String == "active" { break }
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        await manager.restorationTask?.value
+        #expect(manager.isEnabled(id))
+        #expect(try await page.webView.evaluateJavaScript("document.body.dataset.browseExtension") as? String == "active")
+        #expect(try await page.webView.evaluateJavaScript("window.blockedScriptRan === true") as? Bool == false)
+        try manager.controller.unload(try #require(manager.contexts[id]))
+    }
+}
+
+// @lat: [[tests#Firefox extension restoration smoke test]]
+@Test @MainActor func firefoxExtensionRestorationSmoke() async throws {
+    guard #available(macOS 15.4, *), let path = ProcessInfo.processInfo.environment["BROWSE_TEST_FIREFOX_PACKAGE"] else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseFirefoxRestart-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let storageID = UUID()
+    let websiteStore = WKWebsiteDataStore(forIdentifier: UUID())
+    let installed = root.appendingPathComponent("installed")
+    var manager = ExtensionManager(root: installed, storageIdentifier: storageID, websiteDataStore: websiteStore, notifications: TestNotifications())
+    manager.presentsWindows = false
+    try await manager.importExtension(from: URL(fileURLWithPath: path))
+    let id = try #require(manager.records.first?.id)
+    try await manager.enable(true, id: id) { _, _ in true }
+    let origin = try #require(manager.contexts[id]?.baseURL)
+    try manager.controller.unload(try #require(manager.contexts[id]))
+    for _ in 0..<3 {
+        manager = ExtensionManager(root: installed, storageIdentifier: storageID, websiteDataStore: websiteStore, notifications: TestNotifications())
+        manager.presentsWindows = false
+        let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
+        await manager.restorationTask?.value
+        _ = store.controller(for: store.selectedTab.pages[0])
+        let context = try #require(manager.contexts[id])
+        #expect(manager.records.first?.enabled == true)
+        #expect(manager.isEnabled(id))
+        #expect(manager.failures.isEmpty)
+        #expect(context.baseURL == origin)
+        try await context.loadBackgroundContent()
+        try await Task.sleep(for: .seconds(8))
+        #expect(context.errors.isEmpty)
+        manager.performAction(id, pageID: store.selectedTab.focusedPane)
+        for _ in 0..<100 where manager.documents.isEmpty { try await Task.sleep(for: .milliseconds(100)) }
+        let document = try #require(manager.documents.values.first)
+        var onboardingVisible = false
+        for _ in 0..<100 {
+            let text = (try? await document.web.evaluateJavaScript("document.body?.innerText")) as? String ?? ""
+            if text.contains("Welcome to 1Password") { onboardingVisible = true; break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(onboardingVisible)
+        manager.closeDocuments(for: context)
+        try manager.controller.unload(context)
+    }
+    try await manager.uninstall(id)
+}
+
 // @lat: [[tests#Extension content injection and blocking]]
 @Test @MainActor func extensionContentAndBlocking() async throws {
     guard #available(macOS 15.4, *) else { return }
@@ -390,4 +510,15 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
         }
         return server
     }
+}
+
+// @lat: [[tests#Build bundle publication]]
+@Test func buildBundlePublication() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/bash")
+    process.arguments = [root.appendingPathComponent("scripts/test-build-app.sh").path]
+    try process.run()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0)
 }

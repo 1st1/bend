@@ -31,6 +31,21 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
         }
     }
 
+    static func requiredPermissions(for ext: WKWebExtension) -> Set<WKWebExtension.Permission> {
+        var result = ext.requestedPermissions
+        if (ext.manifest["permissions"] as? [String])?.contains("privacy") == true {
+            result.insert(.init(rawValue: "privacy"))
+        }
+        return result
+    }
+
+    static func hasPermission(_ permission: WKWebExtension.Permission, in context: WKWebExtensionContext) -> Bool {
+        // WebKit filters unsupported permissions out of hasPermission(), but
+        // retains explicit grants (including expiry/revocation) in this map.
+        if permission.rawValue == "privacy" { return context.grantedPermissions[permission] != nil }
+        return context.hasPermission(permission)
+    }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
         replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void) {
         guard let (id, context) = authorizedContext(origin: message.frameInfo.securityOrigin, mainFrame: message.frameInfo.isMainFrame),
@@ -43,6 +58,14 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
             pages[id]?.add(web)
         }
         if operation == "register" { replyHandler(true, nil); return }
+        if operation == "privacySetting" {
+            guard Self.hasPermission(.init(rawValue: "privacy"), in: context) else {
+                replyHandler(nil, "The extension does not have privacy permission."); return
+            }
+            do { replyHandler(try privacySetting(body), nil) }
+            catch { replyHandler(nil, error.localizedDescription) }
+            return
+        }
         guard context.hasPermission(.init(rawValue: "notifications")) else {
             replyHandler(nil, "The extension does not have notifications permission."); return
         }
@@ -52,6 +75,30 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
                 guard context.isLoaded else { replyHandler(nil, "The extension was disabled."); return }
                 replyHandler(result, nil)
             } catch { replyHandler(nil, error.localizedDescription) }
+        }
+    }
+
+    func privacySetting(_ body: [String: Any]) throws -> Any? {
+        func failure(_ message: String) -> NSError { NSError(domain: "Browse.Extensions", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+        guard let name = body["setting"] as? String,
+              ["passwordSavingEnabled", "autofillEnabled", "autofillAddressEnabled", "autofillCreditCardEnabled"].contains(name),
+              let action = body["action"] as? String, let details = body["details"] as? [String: Any] else {
+            throw failure("Unsupported privacy setting.")
+        }
+        if details["incognito"] as? Bool == true || (details["scope"] as? String).map({ !["regular", "regular_only"].contains($0) }) == true {
+            throw failure("Private browsing settings are not supported.")
+        }
+        // Browse has no built-in password/address/card saver. This describes
+        // Browse's actual behavior; it must never change Safari preferences.
+        switch action {
+        case "get": return ["value": false, "levelOfControl": "not_controllable"] as [String: Any]
+        case "clear": return nil
+        case "set":
+            guard let value = details["value"] as? Bool, !value else {
+                throw failure("Browse does not provide built-in password or address/card saving.")
+            }
+            return nil
+        default: throw failure("Unsupported privacy operation.")
         }
     }
 
@@ -188,6 +235,20 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
         }
         let lastError;
         const requested = native.runtime.getManifest().permissions || [];
+        let privacy = native.privacy;
+        if (!privacy && requested.includes('privacy')) {
+            const setting = name => ({
+                get(details, callback) { return callbackResult(call('privacySetting', {setting:name, action:'get', details}), callback); },
+                set(details, callback) {
+                    if (typeof details?.value !== 'boolean') throw new TypeError('A boolean value is required');
+                    return callbackResult(call('privacySetting', {setting:name, action:'set', details}).then(() => undefined), callback);
+                },
+                clear(details, callback) { return callbackResult(call('privacySetting', {setting:name, action:'clear', details}).then(() => undefined), callback); },
+                onChange: event('privacy.services.' + name + '.onChange')
+            });
+            privacy = {services: Object.fromEntries(['passwordSavingEnabled', 'autofillEnabled', 'autofillAddressEnabled', 'autofillCreditCardEnabled'].map(name => [name, setting(name)]))};
+            native.privacy = privacy;
+        }
         let notifications = native.notifications;
         if (!notifications && requested.includes('notifications')) {
             notifications = {
@@ -244,6 +305,7 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
         // Leave browser intact so WebKit can deliver its native events. Chrome's
         // namespace supplies the additional APIs used by Firefox 1Password.
         globalThis.chrome = new Proxy(native, {get(target, property) {
+            if (property === 'privacy') return privacy;
             if (property === 'notifications') return notifications;
             if (property === 'webNavigation') return navigation;
             if (property === 'runtime') return runtime;
