@@ -119,22 +119,28 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
                 adaptiveScores[choice.url] = max(adaptiveScores[choice.url] ?? 0, score)
             }
         }
-        let ranked = grouped.compactMap { url, visits -> (HistorySuggestion, Double, Int, Double)? in
+        let ranked = grouped.compactMap { url, visits -> (HistorySuggestion, Int, Double)? in
             guard let latest = visits.max(by: { $0.date < $1.date }),
                   Self.matches(query, title: latest.title, url: url) else { return nil }
             let suggestion = HistorySuggestion(url: url, title: latest.title, lastVisited: latest.date, visitCount: visits.count)
             let adaptive = adaptiveScores[url] ?? 0
-            let host = Self.fold(URL(string: url)?.host ?? "")
+            let components = URLComponents(string: url)
+            let host = Self.fold(components?.host ?? "")
             let display = Self.fold(suggestion.displayURL)
-            let match = query.isEmpty ? 0 : (host == query || Self.fold(url) == query ? 3
+            var match = query.isEmpty ? 0 : (host == query || Self.fold(url) == query ? 3
                 : (host.hasPrefix(query) || display.hasPrefix(query) || Self.fold(url).hasPrefix(query) ? 2 : 1))
+            // A host prefix should favor its visited home page over a deep link.
+            let isHomePage = (components?.path.isEmpty == true || components?.path == "/")
+                && components?.query == nil && components?.fragment == nil
+            if isHomePage, match >= 2 { match += 1 }
             let frecency = visits.reduce(0.0) { $0 + pow(0.5, max(0, now.timeIntervalSince($1.date)) / (30 * 86400)) }
-            return (suggestion, adaptive, match, frecency)
+            // Learned choices help break ties, but cannot permanently override
+            // stronger URL matches or an accumulating history of other visits.
+            return (suggestion, match, frecency + min(6, adaptive * 3))
         }
         return ranked.sorted {
             if $0.1 != $1.1 { return $0.1 > $1.1 }
             if $0.2 != $1.2 { return $0.2 > $1.2 }
-            if $0.3 != $1.3 { return $0.3 > $1.3 }
             if $0.0.lastVisited != $1.0.lastVisited { return $0.0.lastVisited > $1.0.lastVisited }
             return $0.0.url < $1.0.url
         }.prefix(max(0, limit)).map(\.0)

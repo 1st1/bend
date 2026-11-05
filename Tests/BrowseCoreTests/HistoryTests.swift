@@ -83,3 +83,32 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(history.suggestions(for: "page").isEmpty)
     #expect(history.isValid)
 }
+
+// @lat: [[tests#Home page suggestion ranking]]
+@Test func homePageSuggestionRanking() {
+    var history = BrowsingHistory()
+    let home = "https://github.com/"
+    let issue = "https://github.com/postmanlabs/postman-app-support/issues/14370"
+    history.record(url: issue, title: "Issue", at: historyNow.addingTimeInterval(-86400))
+    history.recordChoice(url: issue, query: "github.com", at: historyNow)
+    for index in 0..<35 {
+        history.record(url: home, title: "GitHub", at: historyNow.addingTimeInterval(Double(-index * 60)))
+    }
+    for query in ["github", "github.com", "https://github", "github.com/"] {
+        let results = history.suggestions(for: query, now: historyNow)
+        #expect(results.first?.url == home)
+        #expect(results.first?.visitCount == 35)
+        #expect(results.contains { $0.url == issue })
+    }
+    #expect(history.suggestions(for: "github.com/postman", now: historyNow).first?.url == issue)
+    #expect(history.suggestions(for: "issue", now: historyNow).first?.url == issue)
+
+    // Even many selections are a bounded boost, not a permanent veto on visits.
+    let frequent = "https://github.com/frequent"
+    for index in 0..<20 {
+        history.recordChoice(url: issue, query: "repository", at: historyNow)
+        history.record(url: frequent, title: "Repository", at: historyNow.addingTimeInterval(Double(-index * 60)))
+    }
+    history.updateTitle("Repository issue", for: issue)
+    #expect(history.suggestions(for: "repository", now: historyNow).first?.url == frequent)
+}

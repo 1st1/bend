@@ -88,3 +88,35 @@ private final class HistoryWebView: FocusWebView {
     controller.webView(web, didFinish: nil)
     #expect(visits.count == 2)
 }
+
+// @lat: [[tests#Remove address suggestion]]
+@Test @MainActor func removeAddressSuggestion() throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseRemoveSuggestion-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("session.json")
+    let store = BrowserStore(sessionFile: file, persistentExtensions: false)
+    let url = "https://example.com/unwanted"
+    store.recordVisit(url: url, title: "Unwanted")
+    store.recordHistoryChoice(url: url, query: "example")
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 900, height: 700),
+        styleMask: [.titled], backing: .buffered, defer: false)
+    window.orderFront(nil)
+    defer { window.orderOut(nil) }
+    let panel = AddressPanelController(store: store, parentWindow: window)
+    panel.show(for: store.selectedTab.focusedPane)
+    defer { panel.dismiss(restoreFocus: false) }
+    let table = NSTableView()
+    #expect(panel.numberOfRows(in: table) == 1)
+    let cell = try #require(panel.tableView(table, viewFor: nil, row: 0))
+    let button = try #require(cell.subviews.compactMap { $0 as? NSButton }.first)
+    #expect(button.toolTip == "Remove from history")
+    #expect(window.childWindows?.count == 1)
+    button.performClick(nil)
+    #expect(window.childWindows?.count == 1)
+    #expect(panel.numberOfRows(in: table) == 0)
+    #expect(store.history.visits.isEmpty)
+    #expect(store.history.suggestions(for: "example").isEmpty)
+    #expect(BrowserStore(sessionFile: file, persistentExtensions: false).history == store.history)
+    #expect(store.selectedTab.pages[0].address == "browse://start")
+}

@@ -316,6 +316,11 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         submit()
     }
 
+    @objc private func removeHistoryResult(_ sender: NSButton) {
+        guard let url = sender.identifier?.rawValue else { return }
+        store.removeHistory(url: url)
+    }
+
     func numberOfRows(in tableView: NSTableView) -> Int { results.count }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
@@ -335,7 +340,15 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = .secondaryLabelColor
         detail.lineBreakMode = .byTruncatingMiddle
-        for child in [icon, title, detail] {
+        let remove = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)!,
+            target: self, action: #selector(removeHistoryResult(_:)))
+        remove.isBordered = false
+        remove.contentTintColor = .secondaryLabelColor
+        remove.identifier = NSUserInterfaceItemIdentifier(result.address)
+        remove.toolTip = "Remove from history"
+        remove.setAccessibilityLabel("Remove \(result.title) from history")
+        remove.isHidden = result.history == nil
+        for child in [icon, title, detail, remove] {
             child.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(child)
         }
@@ -344,11 +357,15 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             icon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 16),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-            title.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            title.trailingAnchor.constraint(equalTo: remove.leadingAnchor, constant: -8),
             title.topAnchor.constraint(equalTo: view.topAnchor, constant: 7),
             detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
             detail.trailingAnchor.constraint(equalTo: title.trailingAnchor),
-            detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2)
+            detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),
+            remove.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
+            remove.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            remove.widthAnchor.constraint(equalToConstant: 24),
+            remove.heightAnchor.constraint(equalToConstant: 24)
         ])
         view.textField = title
         return view

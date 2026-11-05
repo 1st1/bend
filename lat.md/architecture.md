@@ -272,7 +272,7 @@ The History menu and Command-Y open `browse://history`, reusing an existing hist
 
 Matching ignores case and diacritics and requires every query word to occur in the title or decoded URL. URL-prefix completions preserve the typed prefix; whitespace-containing queries do not receive inline completions.
 
-Suggestions combine visits into one result per URL. Ranking prefers learned query choices, then exact or prefix URL matches, then frequency with a 30-day recency half-life. Learned choices are bounded to 1,000 query/URL pairs and decay over time. Matching runs locally without sending partial queries to a search engine or preloading pages.
+Suggestions combine visits into one result per URL. Ranking prefers URL match strength, with visited home pages ahead of deep links for host-prefix queries, then frequency with a 30-day recency half-life plus a bounded learned-choice bonus. A single previous choice cannot permanently outrank repeated visits; path queries still find matching deep links. Learned choices are bounded to 1,000 query/URL pairs and decay over time. Matching runs locally without sending partial queries to a search engine or preloading pages.
 
 The interaction draws on [Firefox's address-bar matching](https://support.mozilla.org/en-US/kb/address-bar-autocomplete-firefox), its [frequency/recency and adaptive-input ranking](https://firefox-source-docs.mozilla.org/browser/urlbar/ranking.html), and [Safari's combined search field](https://support.apple.com/en-ie/guide/safari/sfrid73436cb/mac). Browse implements its own bounded ranking over recorded visits.
 
@@ -292,7 +292,7 @@ Command-L and the start-page location button open the popup for a specific pane,
 
 [AddressPanelController.swift](../Sources/Browse/AddressPanelController.swift) displays [[architecture#History suggestions]] beneath the input. Arrow keys select results, Return opens the selection, and clicking a result opens it. Eligible URL prefixes autocomplete with the added suffix selected; deletion, marked text input, and edits away from the end suppress autofill.
 
-Opening the popup shows frequent/recent pages while retaining the current address selected for editing. Typing shows up to six history matches alongside an explicit visit/search action. Inline URL matches become the selected top result; other queries keep the explicit action selected. History updates preserve selection when possible, and deletion removes stale suggestions immediately. Results sit directly beneath the input with compact spacing; validation errors reserve extra space only while visible.
+Opening the popup shows frequent/recent pages while retaining the current address selected for editing. Typing shows up to six history matches alongside an explicit visit/search action. Inline URL matches become the selected top result; other queries keep the explicit action selected. History updates preserve selection when possible. Each history row has a Remove from history button that deletes all visits and learned choices for its URL, saves immediately, and removes stale suggestions without navigating or closing the popup. Results sit directly beneath the input with compact spacing; validation errors reserve extra space only while visible.
 
 The popup is a borderless child panel positioned near the main window's upper center. It uses native HUD material with a 50% black background scrim, accepts keyboard focus without becoming the main window, supports full-screen use, and hides when the app deactivates.
 

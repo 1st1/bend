@@ -315,3 +315,11 @@ Success contents are excluded entirely, unknown enum values become a generic lab
 ## UI preference persistence
 
 [AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies legacy session defaults, preference persistence across store recreation, preserved tab identity, and dimming bounds and nonfinite-value handling.
+
+## Home page suggestion ranking
+
+[HistoryTests.swift](../Tests/BrowseCoreTests/HistoryTests.swift) reproduces a deep link with one learned choice competing with 35 home-page visits. Host prefixes prefer the home page, path searches retain deep links, and frequent visits can outweigh learned choices.
+
+## Remove address suggestion
+
+[HistoryStoreTests.swift](../Tests/BrowseTests/HistoryStoreTests.swift) exercises a popup row’s removal button and verifies immediate result refresh, persisted removal of visits and learned choices, and no navigation.
