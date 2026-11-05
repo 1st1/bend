@@ -102,7 +102,7 @@ The fixture stores a configured flag before restarting its host, then uses the p
 
 [ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) verifies that same-tab extension-to-website-to-extension navigation preserves session storage and tab identity without giving the website extension privileges.
 
-A local website cannot read the extension's session storage, call the compatibility bridge, or authorize its own return to a privileged document. An explicit extension tab update returns to the retained view with the original setup marker; the flow creates no extra browser pane.
+A local website cannot read the extension's session storage, call the compatibility bridge, or authorize its own return to a privileged document. An explicit extension tab update returns to the retained view with the original setup marker; the flow creates no extra browser pane. Navigation triggers use synchronous JavaScript evaluation so the test does not depend on an injected async function surviving a document transition.
 
 ## Dark Reader compatibility smoke test
 
@@ -361,3 +361,17 @@ Window/header glass preferences persist independently, preserve legacy defaults,
 [PaneTransferTests.swift](../Tests/BrowseCoreTests/PaneTransferTests.swift) verifies joins preserve both split trees, page identities, destination title, and source focus, remove the source tab, and survive serialization.
 
 Same-workspace and cross-workspace joins retain valid sessions, including replacement of an emptied workspace. Self-joins and missing endpoints leave the session unchanged.
+
+## Independent browser windows
+
+[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) checks independent tabs and address panels, shared history updates and preferences, live glass propagation, and preservation of the other window's controllers and extension adapters on close.
+
+## Browser window restoration
+
+[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies per-window layouts and selection survive quit, closing one window removes it from restoration, final-window closure preserves it, and preferences persist after the primary closes.
+
+The test also closes every registered extension window and opens a new one, checking that retired adapters stay detached and the shared manager registers the new window correctly.
+
+## New window keyboard command
+
+[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) dispatches Command-N through the native menu, checks that it creates a separate blank browser window, and verifies tab commands follow focus between both windows.

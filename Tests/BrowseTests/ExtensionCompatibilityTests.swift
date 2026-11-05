@@ -383,7 +383,11 @@ import Network
     let server = try await ExtensionHTTPFixture.start()
     defer { server.listener.cancel() }
     let address = "http://127.0.0.1:\(server.port)/"
-    _ = try await document.web.callAsyncJavaScript("location.href = address", arguments: ["address": address], in: nil, contentWorld: .page)
+    // Navigation is synchronous JavaScript. Do not await an injected async
+    // function's promise across a document/view transition: WebKit can collect
+    // its completion handler even though the navigation succeeds.
+    let websiteLiteral = String(decoding: try JSONEncoder().encode(address), as: UTF8.self)
+    _ = try await document.web.evaluateJavaScript("location.href = \(websiteLiteral)")
     for _ in 0..<100 {
         if document.web.url?.host == "127.0.0.1", !document.web.isLoading { break }
         try await Task.sleep(for: .milliseconds(30))
@@ -393,7 +397,8 @@ import Network
     #expect(try await document.web.evaluateJavaScript("sessionStorage.getItem('setupAnswered') === null && !globalThis.browser?.runtime?.id && typeof chrome === 'undefined'") as? Bool == true)
     #expect(try await document.web.callAsyncJavaScript("try { await webkit.messageHandlers.browseExtension.postMessage({operation:'privacySetting', setting:'passwordSavingEnabled', action:'get', details:{}}); return false; } catch { return true; }", arguments: [:], in: nil, contentWorld: .page) as? Bool == true)
     // A website cannot authorize its own promotion into an extension document.
-    _ = try await document.web.callAsyncJavaScript("location.href = address", arguments: ["address": url.absoluteString], in: nil, contentWorld: .page)
+    let extensionLiteral = String(decoding: try JSONEncoder().encode(url.absoluteString), as: UTF8.self)
+    _ = try await document.web.evaluateJavaScript("location.href = \(extensionLiteral)")
     try await Task.sleep(for: .milliseconds(150))
     #expect(document.web.url?.host == "127.0.0.1")
     _ = try await control.callAsyncJavaScript("return await browser.tabs.update(tabID, {url: address})", arguments: ["tabID": tabID, "address": url.absoluteString], in: nil, contentWorld: .page)

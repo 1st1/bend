@@ -29,7 +29,7 @@ final class BrowserWindowGlass: NSGlassEffectView {
         // background so foreground controls and websites remain undimmed.
         cornerRadius = 0
         contentView = content
-        observation = store.$session.map { ($0.windowGlass ?? .windowDefault).normalized(defaultDarkening: 0) }
+        observation = store.preferencesStore.$session.map { ($0.windowGlass ?? .windowDefault).normalized(defaultDarkening: 0) }
             .removeDuplicates().sink { [weak self] appearance in
                 self?.style = appearance.clear ? .clear : .regular
                 self?.tintColor = appearance.tint?.nsColor

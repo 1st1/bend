@@ -23,8 +23,22 @@ final class BrowserStore: ObservableObject {
         return manager
     }
     @Published var persistenceError: String?
-    @Published private(set) var history = BrowsingHistory()
-    @Published private(set) var historyError: String?
+    @Published private var localHistory = BrowsingHistory()
+    @Published private var localHistoryError: String?
+    let sharedStore: BrowserStore?
+    private var sharedObservation: AnyCancellable?
+    var preferencesStore: BrowserStore { sharedStore?.preferencesStore ?? self }
+    var historyPublisher: AnyPublisher<BrowsingHistory, Never> {
+        sharedStore?.historyPublisher ?? $localHistory.eraseToAnyPublisher()
+    }
+    private(set) var history: BrowsingHistory {
+        get { sharedStore?.history ?? localHistory }
+        set { localHistory = newValue }
+    }
+    private(set) var historyError: String? {
+        get { sharedStore?.historyError ?? localHistoryError }
+        set { localHistoryError = newValue }
+    }
     private var browsers: [UUID: PageController] = [:]
     private var diagnosticPaneTabs: [UUID: UUID] = [:]
     private struct ClosedItem {
@@ -46,8 +60,9 @@ final class BrowserStore: ObservableObject {
     private var historyDirty = false
     private var historyWritable = true
 
-    init(sessionFile: URL? = nil, persistentExtensions: Bool = true, extensionManager: AnyObject? = nil) {
-        self.persistentExtensions = persistentExtensions
+    init(sessionFile: URL? = nil, persistentExtensions: Bool = true, extensionManager: AnyObject? = nil, sharedStore: BrowserStore? = nil) {
+        self.sharedStore = sharedStore
+        self.persistentExtensions = sharedStore?.persistentExtensions ?? persistentExtensions
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BrowsePrototype", isDirectory: true)
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
@@ -62,7 +77,7 @@ final class BrowserStore: ObservableObject {
             session.workspaces = [session.workspaces[0]]
             session.workspaces[0].tabs = tabs
         }
-        if FileManager.default.fileExists(atPath: historyFile.path) {
+        if sharedStore == nil, FileManager.default.fileExists(atPath: historyFile.path) {
             do {
                 let restored = try JSONDecoder().decode(BrowsingHistory.self, from: Data(contentsOf: historyFile))
                 guard restored.isValid else { throw CocoaError(.fileReadCorruptFile) }
@@ -74,7 +89,11 @@ final class BrowserStore: ObservableObject {
         }
         tracePaneMembership()
         extensionStorage = extensionManager
-        if #available(macOS 15.4, *), let manager = extensionManager as? ExtensionManager {
+        if let sharedStore {
+            sharedObservation = sharedStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
+            if #available(macOS 15.4, *) { extensionStorage = sharedStore.extensions }
+        }
+        if sharedStore == nil, #available(macOS 15.4, *), let manager = extensionManager as? ExtensionManager {
             manager.store = self
             manager.start()
         }
@@ -95,8 +114,9 @@ final class BrowserStore: ObservableObject {
 
     // @lat: [[architecture#UI preferences]]
     var commandClickOpensNewTab: Bool {
-        get { session.commandClickOpensNewTab ?? false }
+        get { sharedStore?.commandClickOpensNewTab ?? session.commandClickOpensNewTab ?? false }
         set {
+            if let sharedStore { sharedStore.commandClickOpensNewTab = newValue; return }
             session.commandClickOpensNewTab = newValue
             saveSoon()
         }
@@ -104,10 +124,12 @@ final class BrowserStore: ObservableObject {
 
     var inactivePaneDimAmount: Double {
         get {
+            if let sharedStore { return sharedStore.inactivePaneDimAmount }
             let amount = session.inactivePaneDimAmount ?? 0.08
             return amount.isFinite ? min(1, max(0, amount)) : 0.08
         }
         set {
+            if let sharedStore { sharedStore.inactivePaneDimAmount = newValue; return }
             guard newValue.isFinite else { return }
             session.inactivePaneDimAmount = min(1, max(0, newValue))
             saveSoon()
@@ -120,13 +142,13 @@ final class BrowserStore: ObservableObject {
     }
 
     var windowGlass: GlassAppearance {
-        get { (session.windowGlass ?? .windowDefault).normalized(defaultDarkening: 0) }
-        set { session.windowGlass = newValue.normalized(defaultDarkening: 0); saveSoon() }
+        get { if let sharedStore { return sharedStore.windowGlass }; return (session.windowGlass ?? .windowDefault).normalized(defaultDarkening: 0) }
+        set { if let sharedStore { sharedStore.windowGlass = newValue; return }; session.windowGlass = newValue.normalized(defaultDarkening: 0); saveSoon() }
     }
 
     var paneHeaderGlass: GlassAppearance {
-        get { (session.paneHeaderGlass ?? .headerDefault).normalized(defaultDarkening: 0.5) }
-        set { session.paneHeaderGlass = newValue.normalized(defaultDarkening: 0.5); saveSoon() }
+        get { if let sharedStore { return sharedStore.paneHeaderGlass }; return (session.paneHeaderGlass ?? .headerDefault).normalized(defaultDarkening: 0.5) }
+        set { if let sharedStore { sharedStore.paneHeaderGlass = newValue; return }; session.paneHeaderGlass = newValue.normalized(defaultDarkening: 0.5); saveSoon() }
     }
 
     func resizeSidebar(to width: CGFloat) {
@@ -289,22 +311,26 @@ final class BrowserStore: ObservableObject {
     }
 
     func recordVisit(url: String, title: String, at date: Date = Date()) {
+        if let sharedStore { sharedStore.recordVisit(url: url, title: title, at: date); return }
         guard history.record(url: url, title: title, at: date) else { return }
         saveHistorySoon()
     }
 
     func recordHistoryChoice(url: String, query: String) {
+        if let sharedStore { sharedStore.recordHistoryChoice(url: url, query: query); return }
         history.recordChoice(url: url, query: query)
         saveHistorySoon()
     }
 
     func removeHistory(url: String) {
+        if let sharedStore { sharedStore.removeHistory(url: url); return }
         history.remove(url: url)
         historyDirty = true
         saveHistory()
     }
 
     func clearHistory() {
+        if let sharedStore { sharedStore.clearHistory(); return }
         history.clear()
         historyWritable = true
         historyDirty = true
@@ -321,6 +347,7 @@ final class BrowserStore: ObservableObject {
     }
 
     func saveHistory() {
+        if let sharedStore { sharedStore.saveHistory(); return }
         pendingHistorySave?.cancel()
         pendingHistorySave = nil
         guard historyDirty, historyWritable else { return }
@@ -430,8 +457,9 @@ final class BrowserStore: ObservableObject {
         controller.onVisit = { [weak self] url, title in self?.recordVisit(url: url, title: title) }
         controller.onHistoryTitleChanged = { [weak self] url, title in
             guard let self else { return }
-            self.history.updateTitle(title, for: url)
-            self.saveHistorySoon()
+            let owner = self.sharedStore ?? self
+            owner.history.updateTitle(title, for: url)
+            owner.saveHistorySoon()
         }
         browsers[page.id] = controller
         if #available(macOS 15.4, *), let extensionURL {
@@ -452,6 +480,14 @@ final class BrowserStore: ObservableObject {
     }
 
     func existingController(for pageID: UUID) -> PageController? { browsers[pageID] }
+
+    func stopWindow() {
+        save()
+        pendingSave?.cancel(); pendingSave = nil
+        for page in browsers.values { page.webView.stopLoading() }
+        browsers.removeAll()
+        onAddressRequested = nil; onSettingsRequested = nil
+    }
 
     func revealPage(_ id: UUID) {
         guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == id } }) else { return }

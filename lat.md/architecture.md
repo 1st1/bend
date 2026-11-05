@@ -1,6 +1,6 @@
 # Architecture
 
-Browse is a native macOS prototype combining SwiftUI browser chrome, an AppKit window, and system WebKit pages in nested tiling layouts.
+Browse is a native macOS prototype combining SwiftUI browser chrome, AppKit windows, and system WebKit pages in nested tiling layouts.
 
 ## Development signing
 
@@ -12,7 +12,7 @@ Packaging creates a separate bundle in a temporary directory under `dist`, then 
 
 ## Application shell
 
-[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) owns the native window, menus, keyboard shortcuts, and application lifetime. [BrowserView.swift](../Sources/Browse/BrowserView.swift) renders a dark sidebar, vertical tabs, pane controls, and start pages.
+[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) owns menus, keyboard shortcuts, and application lifetime. [BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) owns the browser windows. [BrowserView.swift](../Sources/Browse/BrowserView.swift) renders a dark sidebar, vertical tabs, pane controls, and start pages.
 
 The sidebar presents one continuous column of tabs without group headings or group creation. Each tab contains one or more browser panes. Selection changes the displayed tab; closing the final tab creates a replacement. The sidebar can be resized or hidden, with session-save errors shown at the bottom only when needed.
 
@@ -20,7 +20,15 @@ The sidebar header places a new-tab button beside a right-aligned sidebar toggle
 
 Each pane has one compact title row with extensions, reload/stop, split, zoom, and close controls, using shared [[architecture#Toolbar button styling]]. Reload focuses its pane and becomes stop while loading; it is disabled on start pages. The persistent address row is replaced by the [[architecture#Location popup]]. Back/forward remain available through the View menu and shortcuts; tab creation remains in the sidebar and File menu.
 
-[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) attaches an empty unified native toolbar to give the traffic lights standard toolbar-height spacing. AppKit manages their placement through resizing and full-screen transitions; the transparent titlebar has no separator or shared toolbar actions.
+[BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) attaches an empty unified native toolbar to give the traffic lights standard toolbar-height spacing. AppKit manages their placement through resizing and full-screen transitions; the transparent titlebar has no separator or shared toolbar actions.
+
+## Browser windows
+
+[BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) owns independent native browser windows. File → New Window and Command-N create a blank tab in a new window with its address popup focused.
+
+Each window owns its store, tab selection, pane controllers, sidebar sizing, zoom, closed-item stack, address panel, and saved frame. [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) routes tab, pane, navigation, and history commands to the key browser window, falling back to the last active browser while a popup or Settings is key. Closing a window stops and releases only its page controllers. Pane and sidebar drag targets remain confined to their source window.
+
+One retained root store owns history and UI preferences, including after its original window closes. Other [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) instances delegate reads and writes to it and forward observation, so live history results and appearance changes reach every window. Settings and the extension manager are shared; normal website views use WebKit's shared default data store. [[architecture#Session restoration]] preserves each window's layout independently.
 
 ## Sidebar sizing
 
@@ -46,7 +54,7 @@ Pane controls use regular 12-point symbols on a 24-point pitch, with a 22-point 
 
 The sidebar and exposed workspace share one native Liquid Glass base on macOS 26 and later. Selected tabs retain their capsule-shaped glass selection. Earlier systems use standard AppKit and SwiftUI materials.
 
-[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) hosts the entire SwiftUI workspace inside [BrowserWindowGlass](../Sources/Browse/GlassAppearance.swift), which observes the persisted window style and tint without replacing its content view. AppKit manages the glass/content geometry together; the transparent window supplies the outer corner clipping. The base spans the sidebar, titlebar area, and gaps around panes, including when the sidebar is hidden. A separate background scrim controls its darkening without dimming foreground content.
+[BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) hosts each SwiftUI workspace inside [BrowserWindowGlass](../Sources/Browse/GlassAppearance.swift), which observes the persisted window style and tint without replacing its content view. AppKit manages the glass/content geometry together; the transparent window supplies the outer corner clipping. The base spans the sidebar, titlebar area, and gaps around panes, including when the sidebar is hidden. A separate background scrim controls its darkening without dimming foreground content.
 
 [BrowserView.swift](../Sources/Browse/BrowserView.swift) omits the legacy sidebar and canvas backdrops on macOS 26 and later so they do not cover the shared glass. Earlier systems retain behind-window sidebar and under-window materials that follow the window's active state. Selection has no custom fill or border, and pane chrome retains its separate darkened material. Inactive tab hover adds a capsule filled with the shared 6% white button highlight and reveals a close button. The close-button space stays reserved to prevent title movement. Titles that exceed their available width fade to transparent over the trailing 24 points instead of showing an ellipsis; fitting titles remain fully visible. Hover fades over 100 ms, or changes immediately with Reduce Motion; selected tabs retain their glass selection.
 
@@ -151,7 +159,7 @@ Manual replacement installs a separate package revision and retains the extensio
 
 Enabling an extension asks for its requested capabilities and website access. Updated extensions that need additional grants stay unloaded until reviewed. Runtime requests prompt separately and are granted for the current app session. Private website-data access is not granted. Unreadable extension metadata is preserved and prevents writes. Disabling unloads the extension; existing page changes disappear after reload. Removing also deletes the extension's Browse data and managed resource copy, leaving the source app and Safari settings intact.
 
-[ExtensionBrowserBridge.swift](../Sources/Browse/ExtensionBrowserBridge.swift) maps every pane across workspaces to an extension tab and the browser window to an extension window. Focused panes are active tabs. The host reports creation, closure, focus, URL, title, and loading changes; tab queries do not instantiate unvisited web views. Web extensions can open web tabs, navigate, reload, activate, or close panes. The windows-create API, tab moves and grouping are not implemented.
+[ExtensionBrowserBridge.swift](../Sources/Browse/ExtensionBrowserBridge.swift) maps panes from all registered browser stores to extension tabs, with an extension-window adapter for each native browser window. Each window has its own active pane. Tab queries, navigation, activation, closure, and explicit new-tab window requests use the owning store; activation brings that native window forward. Closing a window unregisters only its tabs and adapter. The single shared manager retains installed extensions and their background contexts. The host reports creation, closure, focus, URL, title, and loading changes; tab queries do not instantiate unvisited web views. Web extensions can open web tabs, navigate, reload, activate, or close panes. The windows-create API, tab moves and grouping are not implemented.
 
 [ExtensionDocument.swift](../Sources/Browse/ExtensionDocument.swift) hosts extension-owned pages, including options and extension-created tabs, in separate windows using their required context configuration. These windows and pages participate in the extension window/tab APIs and close when the owning extension is disabled or removed.
 
@@ -247,11 +255,11 @@ The 1Password and Dark Reader downloads are pinned to reviewed Mozilla-hosted ve
 
 [SettingsWindowController.swift](../Sources/Browse/SettingsWindowController.swift) exposes link-opening, inactive-pane dimming, and independent window/header glass controls in Settings’ UI tab.
 
-[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) saves UI preferences with the session. Command-click opens an adjacent column to the right by default, with a new-tab option that applies to existing page controllers immediately. Ordinary new-window links continue opening tabs. Main-frame opener tracking is preserved for both destinations.
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) saves shared UI preferences in the root session file; secondary windows delegate to that store. Command-click opens an adjacent column to the right by default, with a new-tab option that applies to existing page controllers immediately. Ordinary new-window links continue opening tabs. Main-frame opener tracking is preserved for both destinations.
 
 Inactive-pane dimming ranges from 0% to 100%, defaults to 8%, and updates all mounted panes immediately. Values are clamped and nonfinite edits are ignored. [Session.swift](../Sources/BrowseCore/Session.swift) stores optional fields so older session files retain their tabs and receive the original defaults. [[tests#UI preference persistence]] and [[tests#Configurable link destination]] cover persistence and routing.
 
-On macOS 26 and later, Browser window and Pane headers each offer Regular/Clear style, optional custom sRGB tint, a 0–100% darkening slider, and an independent reset. Defaults preserve untinted Regular glass, with no window darkening and 50% header darkening. Changes apply live to the existing native window and mounted headers. [GlassAppearance.swift](../Sources/BrowseCore/GlassAppearance.swift) stores each appearance in optional session fields and normalizes numeric values; older sessions keep their content and receive defaults. Blur and refraction remain system-controlled. [[tests#Live window glass preferences]] covers native updates without content replacement.
+On macOS 26 and later, Browser window and Pane headers each offer Regular/Clear style, optional custom sRGB tint, a 0–100% darkening slider, and an independent reset. Defaults preserve untinted Regular glass, with no window darkening and 50% header darkening. Changes apply live to every existing native browser window and mounted header. [GlassAppearance.swift](../Sources/BrowseCore/GlassAppearance.swift) stores each appearance in optional session fields and normalizes numeric values; older sessions keep their content and receive defaults. Blur and refraction remain system-controlled. [[tests#Live window glass preferences]] covers native updates without content replacement.
 
 ## Mounted tab views
 
@@ -267,6 +275,8 @@ Tab and pane hosting views disable inherited safe-area regions: the window shell
 
 [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) debounces atomic JSON saves to the app’s Application Support directory and saves on normal termination. [Session.swift](../Sources/BrowseCore/Session.swift) checks restored tab, focus, and pane identity consistency before accepting state.
 
+[BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) saves the open window IDs in `windows.json`. The legacy primary layout and shared preferences remain in `session.json`; additional windows save separate `Windows/<UUID>.json` sessions. With no window manifest, startup restores the legacy window. Normal quit saves the whole open set before native teardown. Closing one of several windows removes it from the manifest; closing the final window retains it for the next launch. [[tests#Browser window restoration]] covers both paths.
+
 Persistence retains the workspace envelope for compatibility, plus selected tab, URLs, focused panes, and split trees. On load, [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) combines legacy workspaces into one in their existing tab order, preserving tab and pane identities, layouts, URLs, and selection. New sessions start with one workspace; group names are not displayed. Restarting recreates web views from URLs; in-page state and back-forward lists are only retained during the running process. Invalid session files fall back to the initial workspace. Save failures appear in the sidebar.
 
 ## Browsing history
@@ -277,7 +287,7 @@ Visits retain titles and timestamps, newest first, up to 10,000 visits. Consecut
 
 [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) records successful web navigations. Later URL changes on a completed, idle page create visits, while title changes update the latest matching visit. Internal pages and failed navigations are excluded.
 
-[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) persists visits and learned choices atomically in a separate history file beside the session file. Writes are debounced and flushed with session saves; removal and clearing save immediately. An unreadable history file is preserved until an explicit clear permits replacement, with errors exposed by the store.
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) persists visits and learned choices atomically in one root history file shared across windows. Secondary stores forward history writes and observations to the root owner, avoiding conflicting snapshots. Writes are debounced and flushed with session saves; removal and clearing save immediately. An unreadable history file is preserved until an explicit clear permits replacement, with errors exposed by the store.
 
 ## History interface
 

@@ -16,7 +16,41 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
         nativeMessaging.send(message, name: applicationIdentifier, context: context, reply: replyHandler)
     }
 
-    var pages: [Page] { store?.session.workspaces.flatMap(\.tabs).flatMap(\.pages) ?? [] }
+    var browserStores: [BrowserStore] {
+        hasRegisteredWindows ? browserWindows.compactMap(\.owningStore) : store.map { [$0] } ?? []
+    }
+    var pages: [Page] { browserStores.flatMap { $0.session.workspaces.flatMap(\.tabs).flatMap(\.pages) } }
+    func store(for pageID: UUID) -> BrowserStore? {
+        browserStores.first { $0.session.workspaces.flatMap(\.tabs).contains { $0.pages.contains { $0.id == pageID } } }
+    }
+    func window(for store: BrowserStore) -> ExtensionWindow {
+        browserWindows.first { $0.owningStore === store } ?? window
+    }
+    func attachWindow(_ native: NSWindow, store: BrowserStore) {
+        let adapter = hasRegisteredWindows ? ExtensionWindow(manager: self) : window
+        hasRegisteredWindows = true
+        adapter.owningStore = store; adapter.nativeWindow = native
+        browserWindows.append(adapter)
+        if adapter !== window { controller.didOpenWindow(adapter) }
+        synchronizeTabs()
+    }
+    func focusWindow(_ native: NSWindow) {
+        guard let adapter = browserWindows.first(where: { $0.nativeWindow === native }) else { return }
+        store = adapter.owningStore; browserWindow = native
+        synchronizeTabs()
+        controller.didFocusWindow(adapter)
+    }
+    func detachWindow(_ native: NSWindow) {
+        guard let adapter = browserWindows.first(where: { $0.nativeWindow === native }) else { return }
+        browserWindows.removeAll { $0 === adapter }
+        if browserWindow === native || store === adapter.owningStore {
+            store = browserWindows.last?.owningStore; browserWindow = browserWindows.last?.nativeWindow
+        }
+        synchronizeTabs()
+        controller.didCloseWindow(adapter)
+        adapter.owningStore = nil; adapter.nativeWindow = nil
+        adapter.manager = nil
+    }
 
     func synchronizeTabs() {
         let ids = Set(pages.map(\.id))
@@ -28,13 +62,18 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
             tabs[page.id] = tab
             controller.didOpenTab(tab)
         }
-        let selected = store?.selectedTab.focusedPane
-        if selected != activeID, let selected, let tab = tabs[selected] {
-            let previous = activeID.flatMap { tabs[$0] }
-            InputDiagnostics.transition(.extensionActivation, .changed, paneID: selected, relatedPaneID: activeID)
-            activeID = selected
+        let owners = browserStores
+        activePanes = activePanes.filter { key, _ in owners.contains { ObjectIdentifier($0) == key } }
+        for owner in owners {
+            let key = ObjectIdentifier(owner)
+            let selected = owner.selectedTab.focusedPane
+            guard selected != activePanes[key], let tab = tabs[selected] else { continue }
+            let previous = activePanes[key].flatMap { tabs[$0] }
+            InputDiagnostics.transition(.extensionActivation, .changed, paneID: selected, relatedPaneID: activePanes[key])
+            activePanes[key] = selected
             controller.didActivateTab(tab, previousActiveTab: previous)
         }
+        activeID = store?.selectedTab.focusedPane
     }
 
     func pageChanged(_ id: UUID) {
@@ -48,16 +87,19 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, openWindowsFor context: WKWebExtensionContext) -> [any WKWebExtensionWindow] {
-        [window] + documents.values.map { $0 as any WKWebExtensionWindow }
+        (hasRegisteredWindows ? browserWindows : [window]) + documents.values.map { $0 as any WKWebExtensionWindow }
     }
     func webExtensionController(_ controller: WKWebExtensionController, focusedWindowFor context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? {
         if let document = documents.values.first(where: { $0.nativeWindow.isKeyWindow }) { return document }
-        return browserWindow?.isKeyWindow == true || !presentsWindows ? window : nil
+        if let active = browserWindows.first(where: { $0.nativeWindow?.isKeyWindow == true }) { return active }
+        return !hasRegisteredWindows && (browserWindow?.isKeyWindow == true || !presentsWindows) ? window : nil
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, openNewTabUsing configuration: WKWebExtension.TabConfiguration,
         for context: WKWebExtensionContext, completionHandler: @escaping ((any WKWebExtensionTab)?, Error?) -> Void) {
-        guard let store else { completionHandler(nil, failure("The browser is closed.")); return }
+        guard let store = (configuration.window as? ExtensionWindow)?.store ?? store else {
+            completionHandler(nil, failure("The browser is closed.")); return
+        }
         let url = configuration.url ?? URL(string: "browse://start")!
         if url.scheme == context.baseURL.scheme, url.host == context.baseURL.host {
             do { completionHandler(try openDocument(url: url, context: context, active: configuration.shouldBeActive), nil) }
@@ -129,19 +171,23 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
 @MainActor
 final class ExtensionWindow: NSObject, WKWebExtensionWindow {
     weak var manager: ExtensionManager?
+    weak var owningStore: BrowserStore?
+    weak var nativeWindow: NSWindow?
+    var store: BrowserStore? { owningStore ?? manager?.store }
+    var native: NSWindow? { nativeWindow ?? manager?.browserWindow }
     init(manager: ExtensionManager) { self.manager = manager }
     func tabs(for context: WKWebExtensionContext) -> [any WKWebExtensionTab] {
-        manager?.pages.compactMap { manager?.tabs[$0.id] } ?? []
+        store?.session.workspaces.flatMap(\.tabs).flatMap(\.pages).compactMap { manager?.tabs[$0.id] } ?? []
     }
     func activeTab(for context: WKWebExtensionContext) -> (any WKWebExtensionTab)? {
-        guard let manager, let id = manager.store?.selectedTab.focusedPane else { return nil }
+        guard let manager, let id = store?.selectedTab.focusedPane else { return nil }
         return manager.tabs[id]
     }
-    func frame(for context: WKWebExtensionContext) -> CGRect { manager?.browserWindow?.frame ?? .zero }
-    func screenFrame(for context: WKWebExtensionContext) -> CGRect { manager?.browserWindow?.screen?.frame ?? .zero }
+    func frame(for context: WKWebExtensionContext) -> CGRect { native?.frame ?? .zero }
+    func screenFrame(for context: WKWebExtensionContext) -> CGRect { native?.screen?.frame ?? .zero }
     func focus(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-        InputDiagnostics.transition(.extensionWindowFocus, .requested, window: manager?.browserWindow, paneID: manager?.activeID)
-        manager?.browserWindow?.makeKeyAndOrderFront(nil); completionHandler(nil)
+        InputDiagnostics.transition(.extensionWindowFocus, .requested, window: native, paneID: store?.selectedTab.focusedPane)
+        native?.makeKeyAndOrderFront(nil); completionHandler(nil)
     }
 }
 
@@ -155,24 +201,29 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
     var lastLoading: Bool?
     init(id: UUID, manager: ExtensionManager) { self.id = id; self.manager = manager }
     var page: Page? { manager?.pages.first { $0.id == id } }
-    var pageController: PageController? { manager?.store?.existingController(for: id) }
-    func window(for context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? { manager?.window }
+    var store: BrowserStore? { manager?.store(for: id) }
+    var pageController: PageController? { store?.existingController(for: id) }
+    func window(for context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? {
+        guard let store else { return nil }; return manager?.window(for: store)
+    }
     func parentTab(for context: WKWebExtensionContext) -> (any WKWebExtensionTab)? {
-        guard let manager, let parent = manager.store?.linkOpeners[id] else { return nil }
+        guard let manager, let parent = store?.linkOpeners[id] else { return nil }
         return manager.tabs[parent]
     }
     func webView(for context: WKWebExtensionContext) -> WKWebView? { pageController?.webView }
     func title(for context: WKWebExtensionContext) -> String? { pageController?.title ?? page?.address }
     func url(for context: WKWebExtensionContext) -> URL? { (pageController?.address ?? page?.address).flatMap(URL.init(string:)) }
     func isLoadingComplete(for context: WKWebExtensionContext) -> Bool { !(pageController?.isLoading ?? false) }
-    func isSelected(for context: WKWebExtensionContext) -> Bool { manager?.store?.selectedTab.pages.contains { $0.id == id } ?? false }
+    func isSelected(for context: WKWebExtensionContext) -> Bool { store?.selectedTab.pages.contains { $0.id == id } ?? false }
     func activate(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["activate": true])
-        manager?.store?.revealPage(id); completionHandler(nil)
+        store?.revealPage(id)
+        if let store { manager?.window(for: store).native?.makeKeyAndOrderFront(nil) }
+        completionHandler(nil)
     }
     func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["load": true])
-        guard let page, let store = manager?.store else {
+        guard let page, let store else {
             completionHandler(manager?.failure("This URL cannot open in a browser pane.")); return
         }
         if context.isLoaded, url.scheme == context.baseURL.scheme, url.host == context.baseURL.host,
@@ -200,6 +251,6 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
     }
     func close(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["close": true])
-        manager?.store?.closePage(id); completionHandler(nil)
+        store?.closePage(id); completionHandler(nil)
     }
 }

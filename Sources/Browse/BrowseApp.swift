@@ -20,40 +20,23 @@ enum BrowseApp {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
-    private let store = BrowserStore()
-    private var window: NSWindow!
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
+    let browserWindows: BrowserWindows
+    private var store: BrowserStore { browserWindows.active?.store ?? browserWindows.sharedStore }
+    private var window: NSWindow? { browserWindows.active?.window }
+    private var addressPanel: AddressPanelController? { browserWindows.active?.addressPanel }
+
+    init(browserWindows: BrowserWindows = BrowserWindows()) {
+        self.browserWindows = browserWindows
+        super.init()
+    }
     private var clickMonitor: Any?
-    private var addressPanel: AddressPanelController!
     private var settingsWindow: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         InputDiagnostics.transition(.launch, .started)
-        window = BrowseWindow(contentRect: NSRect(x: 0, y: 0, width: 1420, height: 880),
-                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-                          backing: .buffered, defer: false)
-        window.title = "Browse"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        // Let AppKit position the traffic lights at the custom header's height,
-        // including during resize and full-screen transitions.
-        window.toolbarStyle = .unified
-        window.toolbar = NSToolbar(identifier: "BrowseTitlebar")
-        window.titlebarSeparatorStyle = .none
-        window.isMovableByWindowBackground = true
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.appearance = NSAppearance(named: .darkAqua)
-        window.minSize = NSSize(width: 780, height: 500)
-        window.contentView = makeWindowContent()
-        window.delegate = self
-        window.isReleasedWhenClosed = false
-        window.center()
-        window.setFrameAutosaveName("BrowseMainWindow")
-        addressPanel = AddressPanelController(store: store, parentWindow: window)
-        store.onAddressRequested = { [weak self] paneID in self?.addressPanel.show(for: paneID) }
-        store.onSettingsRequested = { [weak self] in self?.showSettings() }
-        if #available(macOS 15.4, *) { store.extensions.browserWindow = window }
+        browserWindows.onSettings = { [weak self] in self?.showSettings() }
+        browserWindows.restore()
         installMenus()
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { event in
             InputDiagnostics.record(.application, event: event)
@@ -73,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             }
             return event
         }
-        window.makeKeyAndOrderFront(nil)
+        window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         InputDiagnostics.transition(.launch, .finished, window: window)
     }
@@ -90,25 +73,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         InputDiagnostics.transition(.launch, .finished, window: window, flags: ["terminating": true])
         InputDiagnostics.flush()
         if #available(macOS 15.4, *) { store.extensions.diagnostics.record(.hostStopping) }
-        store.save()
+        browserWindows.prepareToQuit()
     }
-    func windowDidBecomeKey(_ notification: Notification) {
-        if #available(macOS 15.4, *) { store.extensions.controller.didFocusWindow(store.extensions.window) }
-    }
-    func windowDidResignKey(_ notification: Notification) {
-        if #available(macOS 15.4, *) { store.extensions.controller.didFocusWindow(nil) }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        browserWindows.prepareToQuit()
+        return .terminateNow
     }
 
-    // @lat: [[architecture#Sidebar materials]]
-    private func makeWindowContent() -> NSView {
-        let content = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
-        if #available(macOS 26.0, *) {
-            return BrowserWindowGlass(store: store, content: content)
-        }
-        return content
-    }
-
-    private func installMenus() {
+    func installMenus() {
         let main = NSMenu()
         let appMenu = NSMenu(title: "Browse")
         appMenu.addItem(withTitle: "About Browse", action: #selector(about), keyEquivalent: "").target = self
@@ -120,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         append(appMenu, to: main)
 
         let file = NSMenu(title: "File")
+        add("New Window", #selector(newWindow), "n", to: file)
         add("New Tab", #selector(newTab), "t", to: file)
         add("Open Location…", #selector(openLocation), "l", to: file)
         file.addItem(.separator())
@@ -159,24 +132,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var focused: PageController {
         store.controller(for: store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }!)
     }
+    @objc func newWindow() { browserWindows.newWindow() }
     @objc private func newTab() { store.newTab() }
     @objc private func showSettings() {
-        addressPanel.dismiss(restoreFocus: false)
-        if settingsWindow == nil { settingsWindow = SettingsWindowController(store: store) }
+        addressPanel?.dismiss(restoreFocus: false)
+        if settingsWindow == nil { settingsWindow = SettingsWindowController(store: browserWindows.sharedStore) }
         settingsWindow?.show()
     }
     @objc private func openLocation() { store.requestAddress() }
     @objc private func showHistory() {
-        addressPanel.dismiss(restoreFocus: false)
+        addressPanel?.dismiss(restoreFocus: false)
         store.showHistory()
-        window.makeKeyAndOrderFront(nil)
+        window?.makeKeyAndOrderFront(nil)
     }
     @objc private func closePane() { store.closePane(store.selectedTab.focusedPane) }
     @objc private func closeTab() { store.closeTab(store.selectedTab.id) }
     @objc private func reopenClosed() {
-        addressPanel.dismiss(restoreFocus: false)
+        addressPanel?.dismiss(restoreFocus: false)
         store.reopenClosed()
-        window.makeKeyAndOrderFront(nil)
+        window?.makeKeyAndOrderFront(nil)
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         menuItem.action == #selector(reopenClosed) ? store.canReopenClosed : true

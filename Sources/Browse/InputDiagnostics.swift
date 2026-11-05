@@ -19,7 +19,7 @@ final class InputDiagnostics {
         case paneConsumed, paneHandle, tabMonitor, tabMonitorConsumed, tabMonitorReturned, tabHandle, sidebarResize
     }
     enum Action: String {
-        case launch, appActivation, windowKey, windowClose, firstResponder
+        case launch, appActivation, windowOpen, windowKey, windowClose, firstResponder
         case monitorFocus, webFocus, webAttachment, webReplacement, webLoad, webProcessExit
         case paneOwnership, paneHandleLifetime, paneDrag, paneDrop, paneHoverSelection
         case tabHandleLifetime, tabDrag, tabDrop, tabMonitorLifetime, sidebarResizeLifetime, dividerResize

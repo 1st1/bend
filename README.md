@@ -22,12 +22,13 @@ The signing certificate's Apple intermediate must also be installed locally. If 
 
 ## Use
 
-The sidebar groups vertical tabs into workspaces. Each tab holds its own nested pane layout. Click the sidebar’s top `+` to create a workspace, or the `+` next to a workspace to add a tab there.
+Each window has a sidebar of vertical tabs, and each tab holds its own nested pane layout. Click the sidebar’s top `+` to add a tab. Command-N opens a separate browser window with a blank tab. Windows share history, settings, extensions, and website data; their tabs and pane layouts restore independently on relaunch.
 
 The sidebar and exposed workspace share a native Liquid Glass base on macOS 26 and later. Selected tabs and browser pane frames also use Liquid Glass, with standard material fallbacks on older systems. The focused pane has a brighter neutral header indicator, without a colored border. Pane chrome uses a 50% black scrim to soften the glass effect; web content scrolls behind the compact title row on macOS 26 and later.
 
 | Action | Shortcut |
 | --- | --- |
+| New window | ⌘N |
 | New tab | ⌘T |
 | Open link in a new pane to its right | ⌘-click link |
 | Open location popup | ⌘L |

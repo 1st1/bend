@@ -192,7 +192,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             resultsTop,
             resultsHeight
         ])
-        historyObservation = store.$history.dropFirst().sink { [weak self] history in
+        historyObservation = store.historyPublisher.dropFirst().sink { [weak self] history in
             guard let self, self.targetPane != nil else { return }
             self.updateResults(history: history, preserveSelection: true)
         }

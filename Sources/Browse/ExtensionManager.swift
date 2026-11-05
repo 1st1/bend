@@ -43,7 +43,10 @@ final class ExtensionManager: NSObject, ObservableObject {
     private(set) var contexts: [UUID: WKWebExtensionContext] = [:]
     var tabs: [UUID: ExtensionTab] = [:]
     lazy var window = ExtensionWindow(manager: self)
+    var browserWindows: [ExtensionWindow] = []
+    var hasRegisteredWindows = false
     var activeID: UUID?
+    var activePanes: [ObjectIdentifier: UUID] = [:]
     private var started = false
     private(set) var restorationTask: Task<Void, Never>?
     private var writable = true
@@ -604,12 +607,12 @@ final class ExtensionManager: NSObject, ObservableObject {
         nativeMessaging.stop(context)
         if let id = UUID(uuidString: context.uniqueIdentifier) { compatibility.stop(id) }
         for document in Array(documents.values) where document.context === context { document.nativeWindow.close() }
-        for page in pages { store?.existingController(for: page.id)?.unloadExtension(at: context.baseURL) }
+        for page in pages { store(for: page.id)?.existingController(for: page.id)?.unloadExtension(at: context.baseURL) }
     }
 
     func performAction(_ id: UUID, pageID: UUID) {
         guard let context = contexts[id], context.isLoaded, let tab = tabs[pageID] else { return }
-        store?.revealPage(pageID)
+        store(for: pageID)?.revealPage(pageID)
         context.userGesturePerformed(in: tab)
         context.performAction(for: tab)
     }
