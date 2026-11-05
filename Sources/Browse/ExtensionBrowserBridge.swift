@@ -4,6 +4,18 @@ import BrowseCore
 
 @available(macOS 15.4, *)
 extension ExtensionManager: WKWebExtensionControllerDelegate {
+    func webExtensionController(_ controller: WKWebExtensionController, connectUsing port: WKWebExtension.MessagePort,
+        for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        do { try nativeMessaging.connect(port, context: context); completionHandler(nil) }
+        catch { completionHandler(error) }
+    }
+
+    func webExtensionController(_ controller: WKWebExtensionController, sendMessage message: Any,
+        toApplicationWithIdentifier applicationIdentifier: String?, for context: WKWebExtensionContext,
+        replyHandler: @escaping (Any?, Error?) -> Void) {
+        nativeMessaging.send(message, name: applicationIdentifier, context: context, reply: replyHandler)
+    }
+
     var pages: [Page] { store?.session.workspaces.flatMap(\.tabs).flatMap(\.pages) ?? [] }
 
     func synchronizeTabs() {

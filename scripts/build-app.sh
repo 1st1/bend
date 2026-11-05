@@ -35,7 +35,7 @@ cat > "$candidate/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 # @lat: [[architecture#Development signing]]
-codesign --force --sign "${BROWSE_SIGNING_IDENTITY:-Apple Development: Yury Selivanov (H8TFDJMW7E)}" "$candidate"
+codesign --force --options runtime --sign "${BROWSE_SIGNING_IDENTITY:-Apple Development: Yury Selivanov (H8TFDJMW7E)}" "$candidate"
 codesign --verify --strict "$candidate"
 # Never overwrite or re-sign files mapped by a running Browse process.
 # Publish only after signing succeeds; keep the old bundle for rollback.

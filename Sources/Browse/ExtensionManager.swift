@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import CryptoKit
 import WebKit
+import Security
 
 struct ExtensionRecord: Codable, Identifiable {
     var id: UUID
@@ -33,6 +34,9 @@ final class ExtensionManager: NSObject, ObservableObject {
     @Published private(set) var failures: [UUID: String] = [:]
     let controller: WKWebExtensionController
     let compatibility: ExtensionCompatibility
+    let nativeMessaging = ExtensionNativeMessaging()
+    let diagnostics: ExtensionDiagnostics
+    var diagnosticErrors: [UUID: Set<String>] = [:]
     let root: URL
     weak var store: BrowserStore?
     weak var browserWindow: NSWindow?
@@ -51,6 +55,7 @@ final class ExtensionManager: NSObject, ObservableObject {
     init(root: URL, persistent: Bool = true, storageIdentifier: UUID? = nil,
          websiteDataStore: WKWebsiteDataStore? = nil, notifications: (any ExtensionNotificationDelivering)? = nil) {
         self.root = root
+        diagnostics = ExtensionDiagnostics(root: root)
         compatibility = ExtensionCompatibility(notifications: notifications ?? ExtensionNotifications())
         let configuration: WKWebExtensionController.Configuration
         if !persistent { configuration = .nonPersistent() }
@@ -64,9 +69,20 @@ final class ExtensionManager: NSObject, ObservableObject {
         controller = WKWebExtensionController(configuration: configuration)
         super.init()
         compatibility.manager = self
+        nativeMessaging.manager = self
+        diagnostics.changed = { [weak self] in self?.objectWillChange.send() }
+        diagnostics.record(.hostStarted, fields: [
+            "extensionStoragePersistent": String(persistent), "extensionStore": storageIdentifier?.uuidString ?? "default",
+            "os": ProcessInfo.processInfo.operatingSystemVersionString,
+            "executableModified": Bundle.main.executableURL.flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }.map { ISO8601DateFormatter().string(from: $0) } ?? "unknown"
+        ])
+        diagnostics.record(.signingPreflight, fields: OnePasswordSigningStatus.current.fields)
         controller.delegate = self
         errorObservation = NotificationCenter.default.publisher(for: WKWebExtensionContext.errorsDidUpdateNotification)
-            .receive(on: RunLoop.main).sink { [weak self] _ in self?.objectWillChange.send() }
+            .receive(on: RunLoop.main).sink { [weak self] notification in
+                if let context = notification.object as? WKWebExtensionContext { self?.logRuntimeErrors(context) }
+                self?.objectWillChange.send()
+            }
         let file = root.appendingPathComponent("extensions.json")
         if FileManager.default.fileExists(atPath: file.path) {
             do {
@@ -75,6 +91,7 @@ final class ExtensionManager: NSObject, ObservableObject {
                     throw CocoaError(.fileReadCorruptFile)
                 }
             } catch {
+                diagnostics.record(.metadataReadFailed, fields: ExtensionDiagnostics.errorFields(error))
                 records = []; writable = false
                 self.error = "Saved extensions could not be read. The original file has been preserved."
             }
@@ -84,10 +101,11 @@ final class ExtensionManager: NSObject, ObservableObject {
     func start() {
         guard !started else { return }
         started = true
+        diagnostics.record(.restoreStarted, fields: ["records": String(records.count)])
         synchronizeTabs()
         controller.didOpenWindow(window)
         controller.didFocusWindow(window)
-        guard !records.isEmpty else { return }
+        guard !records.isEmpty else { diagnostics.record(.restoreFinished); return }
         busy = true
         restorationTask = Task {
             for saved in records {
@@ -113,8 +131,13 @@ final class ExtensionManager: NSObject, ObservableObject {
                             failures[record.id] = "New permissions are required. Turn the extension on to review them."
                         } else { try controller.load(context) }
                     }
-                } catch { failures[saved.id] = error.localizedDescription }
+                    logSnapshot(.extensionRestored, context: context)
+                } catch {
+                    failures[saved.id] = error.localizedDescription
+                    diagnostics.record(.extensionLoadFailed, extensionID: saved.id, fields: ExtensionDiagnostics.errorFields(error))
+                }
             }
+            diagnostics.record(.restoreFinished, fields: ["loaded": String(contexts.values.filter(\.isLoaded).count)])
             busy = false
         }
     }
@@ -266,6 +289,7 @@ final class ExtensionManager: NSObject, ObservableObject {
             record.name = context.webExtension.displayName ?? record.name
             try persist(records + [record])
             contexts[record.id] = context
+            diagnostics.record(.extensionImported, extensionID: record.id)
         } catch {
             discardPackage(record.source, id: record.id)
             throw error
@@ -405,6 +429,7 @@ final class ExtensionManager: NSObject, ObservableObject {
         committed = true
         closeDocuments(for: oldContext); popup?.close()
         contexts[id] = context
+        logSnapshot(.extensionUpdated, context: context)
         failures[id] = old.enabled && needsApproval ? "The update needs additional permissions. Turn the extension on to review them." : nil
         discardPackage(old.source, id: id)
     }
@@ -421,7 +446,12 @@ final class ExtensionManager: NSObject, ObservableObject {
     func compatibilityNotice(_ id: UUID) -> String? {
         guard let record = records.first(where: { $0.id == id }) else { return nil }
         if record.packageIdentifier == "gecko:{d634138d-c276-4fc8-924b-40a0ea21d284}" {
-            return "Experimental 1Password support. Sign in directly to your account; connection to the desktop app is not available. Unlock and autofill still need testing."
+            let signing = OnePasswordSigningStatus.current
+            if signing.certificateStatus != errSecSuccess {
+                return "This build’s certificate does not meet 1Password’s desktop-integration signing requirement. Sign Browse with a Developer ID Application certificate; reinstalling the extension will not fix this. Standalone sign-in remains available."
+            }
+            if !signing.hardenedRuntime { return "1Password desktop integration requires Browse to be signed with Hardened Runtime enabled." }
+            return "Experimental 1Password support. Desktop connection requires adding the signed Browse app in 1Password Settings → Browser → Add Browser, and enabling desktop integration in the extension. Touch ID needs end-to-end verification."
         }
         if record.isBundle, Bundle(url: record.source)?.bundleIdentifier == "com.1password.safari.extension" {
             return "1Password for Safari is not supported in Browse yet. Its native app connection fails, so enabling it does not mean unlocking or autofill will work."
@@ -483,6 +513,7 @@ final class ExtensionManager: NSObject, ObservableObject {
             throw error
         }
         failures[id] = nil
+        logSnapshot(enabled ? .extensionLoaded : .extensionDisabled, context: context)
     }
 
     func remove(_ id: UUID) {
@@ -507,6 +538,7 @@ final class ExtensionManager: NSObject, ObservableObject {
             if context.isLoaded { try controller.unload(context) }
             if let data { await controller.removeData(ofTypes: WKWebExtensionController.allExtensionDataTypes, from: [data]) }
         }
+        diagnostics.record(.extensionRemoved, extensionID: id)
         try persist(records.filter { $0.id != id })
         contexts[id] = nil; failures[id] = nil
         try? FileManager.default.removeItem(at: root.appendingPathComponent(id.uuidString))
@@ -555,6 +587,7 @@ final class ExtensionManager: NSObject, ObservableObject {
     }
 
     func closeDocuments(for context: WKWebExtensionContext) {
+        nativeMessaging.stop(context)
         if let id = UUID(uuidString: context.uniqueIdentifier) { compatibility.stop(id) }
         for document in Array(documents.values) where document.context === context { document.nativeWindow.close() }
         for page in pages { store?.existingController(for: page.id)?.unloadExtension(at: context.baseURL) }

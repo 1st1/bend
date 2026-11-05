@@ -37,7 +37,7 @@ struct CatalogExtension: Identifiable, Sendable {
                 storeURL: URL(string: "https://apps.apple.com/app/ublock-origin-lite/id6745342698")!)),
         .init(id: "1password", name: "1Password", publisher: "1Password", category: "Passwords",
             summary: "Keep passwords and vault items close at hand as you browse.",
-            compatibility: "Sign in directly to your 1Password account. Vault items have been confirmed in Browse; autofill still needs testing. Desktop-app unlock is unavailable. Use this version instead of 1Password for Safari.",
+            compatibility: "Sign in directly to your 1Password account. Vault items have been confirmed in Browse; autofill still needs testing. Desktop connection requires adding Browse in 1Password’s trusted browsers; Touch ID remains unverified. Use this version instead of 1Password for Safari.",
             experimental: true, symbol: "key.fill",
             packageIdentifier: "gecko:{d634138d-c276-4fc8-924b-40a0ea21d284}",
             website: URL(string: "https://addons.mozilla.org/firefox/addon/1password-x-password-manager/")!,

@@ -94,6 +94,33 @@ private func extensionFixture(at root: URL) throws -> URL {
             return saved ?? -1;
             """, arguments: ["iteration": launch], in: nil, contentWorld: .page)
         #expect(result as? Int == launch - 1)
+        let encrypted = try await web?.callAsyncJavaScript(#"""
+            const db = await new Promise((resolve, reject) => {
+                const request = indexedDB.open('browse-fixture-persistence', 1);
+                request.onupgradeneeded = () => request.result.createObjectStore('state');
+                request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+            });
+            const previous = await new Promise((resolve, reject) => {
+                const request = db.transaction('state').objectStore('state').get('encrypted');
+                request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+            });
+            let decrypted = -1;
+            if (previous) decrypted = Number(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM', iv:previous.iv}, previous.key, previous.data)));
+            const key = previous?.key ?? await crypto.subtle.generateKey({name:'AES-GCM',length:256}, false, ['encrypt','decrypt']);
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const data = await crypto.subtle.encrypt({name:'AES-GCM',iv}, key, new TextEncoder().encode(String(iteration)));
+            await new Promise((resolve, reject) => {
+                const transaction = db.transaction('state','readwrite');
+                transaction.objectStore('state').put({key,iv,data}, 'encrypted');
+                transaction.oncomplete = resolve; transaction.onerror = () => reject(transaction.error);
+            });
+            db.close();
+            const local = Number(localStorage.getItem('fixture-marker') ?? -1);
+            localStorage.setItem('fixture-marker', String(iteration));
+            return {decrypted,local};
+            """#, arguments: ["iteration": launch], in: nil, contentWorld: .page) as? [String: Int]
+        #expect(encrypted?["decrypted"] == launch - 1)
+        #expect(encrypted?["local"] == launch - 1)
         web = nil
         // End runtime without disabling the persisted user preference.
         try manager.controller.unload(context)
@@ -147,6 +174,7 @@ private func extensionFixture(at root: URL) throws -> URL {
     let installed = root.appendingPathComponent("installed")
     var manager = ExtensionManager(root: installed, storageIdentifier: storageID, websiteDataStore: websiteStore, notifications: TestNotifications())
     manager.presentsWindows = false
+    manager.nativeMessaging.resolve = { _, _ in NativeHost(executable: URL(fileURLWithPath: "/usr/bin/true"), arguments: []) }
     try await manager.importExtension(from: URL(fileURLWithPath: path))
     let id = try #require(manager.records.first?.id)
     try await manager.enable(true, id: id) { _, _ in true }
@@ -155,6 +183,7 @@ private func extensionFixture(at root: URL) throws -> URL {
     for _ in 0..<3 {
         manager = ExtensionManager(root: installed, storageIdentifier: storageID, websiteDataStore: websiteStore, notifications: TestNotifications())
         manager.presentsWindows = false
+        manager.nativeMessaging.resolve = { _, _ in NativeHost(executable: URL(fileURLWithPath: "/usr/bin/true"), arguments: []) }
         let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
         await manager.restorationTask?.value
         _ = store.controller(for: store.selectedTab.pages[0])
@@ -451,7 +480,8 @@ private final class ExtensionTestNavigation: NSObject, WKNavigationDelegate {
     } catch { }
     #expect(manager.records.isEmpty)
     let leftovers = FileManager.default.enumerator(at: manager.root, includingPropertiesForKeys: [.isRegularFileKey])?.allObjects as? [URL] ?? []
-    #expect(try leftovers.allSatisfy { try $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile != true })
+    #expect(try leftovers.filter { $0.standardizedFileURL != manager.diagnostics.file.standardizedFileURL }
+        .allSatisfy { try $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile != true })
     try await manager.importExtension(from: source, expectedIdentifier: "gecko:browse-fixture@example.test")
     let record = try #require(manager.records.first)
     #expect(!manager.isEnabled(record.id))

@@ -6,6 +6,10 @@ import BrowseCore
 @MainActor
 enum BrowseApp {
     static func main() {
+        if CommandLine.arguments.dropFirst().elementsEqual(["--diagnose-1password"]) {
+            OnePasswordConnectionProbe.run()
+            return
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -64,7 +68,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-    func applicationWillTerminate(_ notification: Notification) { store.save() }
+    func applicationWillTerminate(_ notification: Notification) {
+        if #available(macOS 15.4, *) { store.extensions.diagnostics.record(.hostStopping) }
+        store.save()
+    }
     func windowDidBecomeKey(_ notification: Notification) {
         if #available(macOS 15.4, *) { store.extensions.controller.didFocusWindow(store.extensions.window) }
     }

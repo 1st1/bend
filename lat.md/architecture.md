@@ -6,7 +6,7 @@ Browse is a native macOS prototype combining SwiftUI browser chrome, an AppKit w
 
 [build-app.sh](../scripts/build-app.sh) packages and signs Browse.app, using `BROWSE_SIGNING_IDENTITY` when set and Yury's Apple Development certificate otherwise.
 
-The script verifies the signature before reporting success and does not fall back to ad-hoc or self-signed signing. Apple-issued development or Developer ID signing uses a stable team partition for Keychain access; switching identities can still require one new approval. A self-signed identity supplied explicitly through the override does not prevent recurring WebCrypto prompts because macOS assigns it a per-build code-hash partition. The build does not alter Keychain access lists or key data.
+The script enables Hardened Runtime and verifies the signature before reporting success and does not fall back to ad-hoc or self-signed signing. Apple-issued development or Developer ID signing uses a stable team partition for Keychain access; switching identities can still require one new approval. A self-signed identity supplied explicitly through the override does not prevent recurring WebCrypto prompts because macOS assigns it a per-build code-hash partition. The build does not alter Keychain access lists or key data.
 
 Packaging creates a separate bundle in a temporary directory under `dist`, then signs and verifies it before replacing the installed bundle by rename. It does not overwrite the executable mapped by a running Browse process. Signing or verification failure leaves the previous build intact; publication failure restores the previous bundle. The script leaves Browse running and asks for a restart to use the new build. Extension packages, enablement, grants, and WebKit data remain outside the app bundle.
 
@@ -128,7 +128,7 @@ All extension packages, including Safari bundles, are copied into Browse's exten
 
 Manual replacement installs a separate package revision and retains the extension origin and storage. Replacement checks bundle identifiers, declared Gecko identifiers, or manifest keys when present; otherwise it requires the same display name. These checks identify user-selected local packages, not authenticated publisher updates. Invalid or mismatched replacements leave the installed version intact. Additional access keeps an update unloaded until approved. Package folders preserve internal relative symbolic links used by signed frameworks, but reject absolute or escaping links and special files. Removing an extension deletes its managed copy, never its original source.
 
-Native messaging is left to WebKit's default app-extension handling; Browse implements no custom native messaging bridge. This does not establish companion-app compatibility: 1Password for Safari's native OS-version request fails with “Native messaging is not supported” in Browse. Its bundle can load, but unlock and autofill are not supported. Loading SafariServices does not resolve this failure.
+[[architecture#Native extension messaging]] connects Firefox packages to installed desktop helpers. Safari app-extension handlers remain unsupported: 1Password for Safari's bundle can load, but its native connection, unlock, and autofill do not work. Loading SafariServices does not resolve this failure.
 
 [probe-native-extension.sh](../scripts/probe-native-extension.sh) builds a temporary, windowless diagnostic app that resolves a native extension through the Foundation API used by WebKit. It sends no native messages. The default runs without extra entitlements; setting `BROWSE_PROBE_HOST_ENTITLEMENT=1` signs only the probe with `com.apple.private.can-load-any-content-blocker`. On the tested Mac, PlugInKit rejects the default host for lacking that entitlement, while macOS kills the entitled probe before execution with “No matching profile found.” Browse's build does not claim this entitlement. See the [reproduction and limitations](../docs/extension-support-research.md).
 
@@ -148,6 +148,16 @@ Each browser web view receives the shared extension controller before creation. 
 
 Importing Chrome or Firefox resources does not establish full compatibility with those browsers. [[architecture#Extension compatibility adapters]] support Firefox 1Password onboarding without modifying its package. The user has confirmed vault items in its toolbar; authenticated inline autofill and desktop integration remain unverified.
 
+## Native extension messaging
+
+[ExtensionNativeMessaging.swift](../Sources/Browse/ExtensionNativeMessaging.swift) bridges WebKit native-message delegates to Firefox-compatible desktop helpers without sharing Safari's extension state.
+
+The host resolves user then system Mozilla NativeMessagingHosts manifests, validates names, stdio transport, executable paths, and the requesting Gecko ID against allowed_extensions. Only loaded, registered contexts with nativeMessaging permission can connect. Launch arguments contain the real manifest path and extension ID; Browse remains the parent application with its own signature.
+
+Persistent ports and one-shot replies use length-prefixed UTF-8 JSON over pipes. Frames are limited to 1 MiB, queued writes to 4 MiB, and concurrent connections to sixteen per context. Reads handle fragmented frames without waiting for the pipe to fill. Invalid input, EOF, write failures, and one-shot timeouts close the session. Payloads and helper stderr are not logged. Disable, removal, replacement, port disconnection, and permission revocation tear down connections and terminate helpers.
+
+The installed 1Password helper is discovered through its Firefox manifest. Desktop unlock requires a qualifying distribution signature and the Browse app to be added through 1Password Settings → Browser → Add Browser, plus desktop integration enabled in the extension. Browse does not alter the trusted-browser list or impersonate Firefox. The transport and real extension's connection request are tested. The installed helper rejects the current Apple Development build; authenticated desktop unlocking and Touch ID remain unverified. Safari's proprietary app-extension route is not implemented.
+
 ## Extension compatibility adapters
 
 [ExtensionCompatibility.swift](../Sources/Browse/ExtensionCompatibility.swift) adds notifications, limited privacy settings, and main-frame navigation-target events while preserving WebKit's native event delivery and permission checks.
@@ -164,6 +174,34 @@ The privacy adapter implements password saving and legacy/address/card autofill 
 
 The [compatibility regression tests](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) exercise native messaging alongside the adapter, notification scoping and revocation, rejection of website callers, cleanup, and navigation-event identity. The opt-in real-package test follows Firefox 1Password onboarding without entering credentials.
 
+## Extension diagnostic log
+
+[ExtensionDiagnostics.swift](../Sources/Browse/ExtensionDiagnostics.swift) records bounded, structured extension lifecycle and desktop-transport metadata across browser restarts without recording account data or message contents.
+
+Each host run and native connection has a correlation UUID. Events identify extension import, restoration, loading, disabling, updates, removal, storage persistence and origin consistency, native-host resolution, process launch/exit, first queued/supplied messages, and final message counts. Process exit status and sanitized error categories distinguish missing helpers, permission failures, framing errors, disconnects, and initialization failures. A launched helper does not establish authenticated desktop integration.
+
+[ExtensionCompatibility.swift](../Sources/Browse/ExtensionCompatibility.swift) reports extension-page API availability and categorizes error/rejection events before crossing the native bridge. The host validates the finite category set, rejects website callers, and deduplicates error categories per extension/run. WebKit errors are reduced to known domains, numeric codes, and fixed categories; raw error strings, stacks, URLs, helper stderr, and native-message payloads are excluded from the log and export.
+
+The log lives beside extension metadata as diagnostics.jsonl, with one rotated predecessor; each file is capped at 256 KiB and created with owner-only permissions. Writes happen when events occur so a later process can inspect startup and shutdown. Failed disk writes retain a bounded in-memory fallback and surface a Settings warning. [SettingsWindowController.swift](../Sources/Browse/SettingsWindowController.swift) offers Copy Diagnostics, including fresh context snapshots and up to a thousand recent events, plus current native-helper status. The export contains metadata from all installed extensions so reinstall-generated identities can be correlated.
+
+## Extension WASM diagnostics
+
+[ExtensionWasmDiagnostics.swift](../Sources/Browse/ExtensionWasmDiagnostics.swift) observes WASM resource fetches and asynchronous compilation/instantiation inside extension pages, distinguishing the original failure from later core-not-initialized errors.
+
+The adapter observes only same-extension .wasm fetches and WebAssembly's asynchronous compile/instantiate methods. It forwards fulfillment values and rejection objects, never consumes response bodies, and does not supply a MIME workaround or retry. Observers add a promise continuation; they do not diagnose vendor initialization after instantiation completes. Each page emits at most 96 observations. The host validates finite metadata values and deduplicates identical observations per context/run before recording wasmOperation events in [[architecture#Extension diagnostic log]].
+
+Metadata includes background versus other extension page, operation/stage, response type, success flag, MIME category, and classified failures such as MIME rejection, CSP, compilation, linking, and runtime traps. URLs, resource names, module contents, exports, stacks, and raw errors never cross the diagnostic bridge. [[tests#Firefox WASM process restart]] exercises fresh and restored account-free startup with separate test processes; authenticated startup and desktop unlock are outside its coverage.
+
+## 1Password connection probe
+
+[OnePasswordConnectionProbe.swift](../Sources/Browse/OnePasswordConnectionProbe.swift) provides a status-only diagnostic invocation under Browse's own signed identity and application path, without creating browser windows or opening the user profile.
+
+Running the built Browse executable with --diagnose-1password launches the registered helper and requests native-autofill feature status. It does not request accounts, credentials, delegated sessions, or unlocking. The probe waits up to ten seconds and prints only response types and allowlisted protocol error names, exiting successfully only for a matching Success response. It does not change the desktop app's trust configuration.
+
+The same summary is included in production nativeProtocolStatus events for 1Password connections. It exposes known protocol types/error names and bounded, validated browser bundle identities from browser_state, never Success contents, callback IDs, account fields, or arbitrary error prose. These events distinguish protocol rejection from a pipe failure.
+
+The probe and Settings perform a certificate preflight against the Apple distribution-certificate requirement observed in the installed 1Password helper, and inspect the Hardened Runtime flag. The available Apple Development identity fails that requirement. Status-only probes report UnknownBrowser from dist and BrowserSignatureInvalid from an unchanged Applications copy; enabling Hardened Runtime alone leaves the signature rejection. Settings explains the certificate blocker rather than suggesting reinstalling. Developer ID signing can be selected through the existing build override, but its end-to-end desktop result is not yet verified. The preflight does not replace 1Password's own validation or change its trust settings.
+
 ## Extension runtime diagnostics
 
 [runtime.swift](../Tools/ExtensionProbe/runtime.swift) exercises real extension startup, actions, and extension-owned pages in a windowless app with temporary WebKit storage. It is separate from the production extension host.
@@ -178,7 +216,7 @@ The [Firefox 1Password reproduction](../scripts/probe-onepassword-firefox.sh) ve
 
 Settings opens to [[architecture#Curated extension catalog|Discover]], with an Installed view for managing packages, permissions, enablement, options, manual updates, and removal. Install from File accepts ZIP, XPI, CRX, or unpacked packages. A collapsed import section offers copies of Safari Web Extensions found in Applications. Updates are manual; automatic updates and general store browsing are not implemented. Load and runtime errors remain visible. Earlier macOS versions show the minimum version needed for extension support.
 
-The enable switch reflects whether WebKit loaded the context, not whether every extension feature works. Settings identifies the Safari 1Password bundle and displays its known native-connection limitation. The Firefox package is marked experimental, with standalone sign-in instructions and an explicit desktop-integration and autofill limitation.
+The enable switch reflects whether WebKit loaded the context, not whether every extension feature works. Settings identifies the Safari 1Password bundle and displays its known native-connection limitation. The Firefox package is marked experimental, with desktop trust-registration instructions and an explicit unverified Touch ID limitation.
 
 ## Curated extension catalog
 

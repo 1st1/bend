@@ -57,7 +57,38 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
             if pages[id] == nil { pages[id] = NSHashTable.weakObjects() }
             pages[id]?.add(web)
         }
-        if operation == "register" { replyHandler(true, nil); return }
+        if operation == "register" {
+            var fields: [String: String] = [:]
+            for key in ["wasmAvailable", "indexedDBAvailable", "cryptoAvailable"] {
+                if let value = body[key] as? Bool { fields[key] = String(value) }
+            }
+            manager?.diagnostics.record(.extensionPageReady, extensionID: id, fields: fields)
+            replyHandler(true, nil); return
+        }
+        if operation == "diagnostic" {
+            guard let kind = body["kind"] as? String, ["error", "unhandledrejection"].contains(kind),
+                  let category = body["category"] as? String, ["wasm", "indexeddb", "webcrypto", "native-messaging", "other"].contains(category),
+                  let name = body["errorName"] as? String, ["Error", "TypeError", "ReferenceError", "SyntaxError", "RangeError", "DOMException", "CompileError", "LinkError", "RuntimeError", "other"].contains(name) else {
+                replyHandler(nil, "Invalid diagnostic category."); return
+            }
+            let key = "js:" + kind + ":" + category + ":" + name
+            if manager?.diagnosticErrors[id, default: []].insert(key).inserted == true {
+                manager?.diagnostics.record(.javascriptError, extensionID: id, fields: ["kind": kind, "category": category, "errorName": name])
+            }
+            replyHandler(true, nil); return
+        }
+        if operation == "wasmDiagnostic" {
+            guard let fields = Self.wasmDiagnosticFields(body) else {
+                replyHandler(nil, "Invalid WASM diagnostic."); return
+            }
+            // Finite metadata combinations only, once per context/run. No URLs,
+            // module bytes, export names, error prose, or stacks cross the bridge.
+            let key = "wasm:" + fields.keys.sorted().map { $0 + "=" + fields[$0]! }.joined(separator: ",")
+            if manager?.diagnosticErrors[id, default: []].insert(key).inserted == true {
+                manager?.diagnostics.record(.wasmOperation, extensionID: id, fields: fields)
+            }
+            replyHandler(true, nil); return
+        }
         if operation == "privacySetting" {
             guard Self.hasPermission(.init(rawValue: "privacy"), in: context) else {
                 replyHandler(nil, "The extension does not have privacy permission."); return
@@ -76,6 +107,25 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
                 replyHandler(result, nil)
             } catch { replyHandler(nil, error.localizedDescription) }
         }
+    }
+
+    static func wasmDiagnosticFields(_ body: [String: Any]) -> [String: String]? {
+        let allowed: [String: Set<String>] = [
+            "phase": ["fetch", "compile", "compileStreaming", "instantiate", "instantiateStreaming"],
+            "stage": ["started", "succeeded", "failed"],
+            "page": ["background", "extension-page"],
+            "errorName": ["none", "Error", "TypeError", "RangeError", "CompileError", "LinkError", "RuntimeError", "other"],
+            "category": ["none", "mime-type", "csp", "out-of-memory", "compile", "link", "runtime-trap", "fetch", "other"],
+            "mime": ["wasm", "other", "missing", "not-response"],
+            "responseType": ["basic", "cors", "default", "error", "opaque", "opaqueredirect", "not-response"],
+            "responseOK": ["true", "false", "not-response"]
+        ]
+        var fields: [String: String] = [:]
+        for (key, values) in allowed {
+            guard let value = body[key] as? String, values.contains(value) else { return nil }
+            fields[key] = value
+        }
+        return fields
     }
 
     func privacySetting(_ body: [String: Any]) throws -> Any? {
@@ -175,6 +225,7 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
 
     var script: String {
         Self.javascript.replacingOccurrences(of: "__DISPATCHER__", with: dispatcher)
+            .replacingOccurrences(of: "__WASM_DIAGNOSTICS__", with: ExtensionWasmDiagnostics.javascript)
     }
 
     static let javascript = #"""
@@ -312,7 +363,22 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
             const value = Reflect.get(target, property, target);
             return typeof value === 'function' ? value.bind(target) : value;
         }});
-        call('register').catch(error => console.error('Browse extension bridge:', String(error)));
+        __WASM_DIAGNOSTICS__
+        const reportError = (kind, value) => {
+            // Classify in the extension process; never send error text or stacks.
+            let text = '', errorName = 'other';
+            try { text = String(value?.message ?? value).toLowerCase(); errorName = value?.name; } catch (_) {}
+            const category = /wasm|webassembly/.test(text) || ['CompileError','LinkError','RuntimeError'].includes(errorName) ? 'wasm'
+                : /indexeddb|database/.test(text) ? 'indexeddb'
+                : /crypto/.test(text) ? 'webcrypto'
+                : /native.*messag|connectnative/.test(text) ? 'native-messaging' : 'other';
+            if (!['Error','TypeError','ReferenceError','SyntaxError','RangeError','DOMException','CompileError','LinkError','RuntimeError'].includes(errorName)) errorName = 'other';
+            call('diagnostic', {kind, category, errorName}).catch(() => {});
+        };
+        window.addEventListener('error', event => reportError('error', event.error ?? event.message));
+        window.addEventListener('unhandledrejection', event => reportError('unhandledrejection', event.reason));
+        call('register', {wasmAvailable: typeof WebAssembly === 'object', indexedDBAvailable: !!globalThis.indexedDB,
+            cryptoAvailable: !!globalThis.crypto?.subtle}).catch(error => console.error('Browse extension bridge:', String(error)));
     })();
     """#
 }

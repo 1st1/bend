@@ -14,6 +14,9 @@ SH
 cat > "$root/bin/codesign" <<'SH'
 #!/bin/bash
 if [[ "${BROWSE_BUILD_TEST_FAIL:-}" == "$1" ]]; then exit 1; fi
+if [[ "$1" == "--force" ]]; then
+  [[ "$*" == *"--options runtime"* ]] || exit 2
+fi
 SH
 chmod +x "$root/bin/swift" "$root/bin/codesign"
 printf 'previous executable\n' > "$root/dist/Browse.app/Contents/MacOS/Browse"

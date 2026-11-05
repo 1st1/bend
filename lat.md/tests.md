@@ -22,7 +22,7 @@ Splitting right and then below preserves leaf order. Closing panes collapses the
 
 [ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) recreates the extension host with an isolated persistent profile, verifying enabled state, stable origin, restored grants, and successive storage writes without the original package source.
 
-The fixture unloads runtime contexts without disabling the saved preference. Four iterations read the previous iteration's storage value. This exercises host recreation within one test process, not a signed-app upgrade or an authenticated password-manager session.
+The fixture unloads runtime contexts without disabling the saved preference. Four iterations read the previous iteration's extension storage, localStorage, and IndexedDB values, including decrypting a fixture ciphertext with a persisted nonextractable WebCrypto key. This exercises host recreation within one test process, not a signed-app upgrade or an authenticated password-manager session.
 
 ## Extension startup content injection
 
@@ -58,7 +58,7 @@ Set `BROWSE_TEST_CATALOG_DOWNLOAD=1` to exercise the real catalog network path. 
 
 ## Extension compatibility permissions and notifications
 
-[ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) verifies native messaging survives the adapters, notification IDs are isolated, callbacks report errors, permission revocation is enforced, and websites cannot call the bridge.
+[ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) verifies WebKit extension messaging survives the adapters, notification IDs are isolated, callbacks report errors, permission revocation is enforced, and websites cannot call the bridge.
 
 An injected notification backend exercises create, enumeration, click routing, clear, and disable cleanup without displaying system notifications or changing system authorization. The fixture uses its own ephemeral website data store.
 
@@ -73,6 +73,18 @@ Unrelated tab creation and subframe openings do not produce a fabricated main-fr
 [ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) verifies embedded extension messaging and website-to-extension tab updates with local, account-free fixtures.
 
 A declared web-accessible iframe communicates with its background, while a private resource cannot run in the website. Website-initiated top-level extension navigation is rejected. An extension's tab update loads its own document with the same tab identity; a saved pane restores after its extension loads. Disabling tears down that document, and following a web URL returns to an ordinary view without privileged extension APIs.
+
+## Extension WASM diagnostic behavior
+
+[ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) checks real WASM MIME rejection, ArrayBuffer fallback, invalid-module errors, observer failure isolation, and redaction in an isolated WebKit extension page.
+
+The observer preserves results and the original rejection object, does not consume fetched module bodies, excludes sentinel resource/error text from metadata, and rejects invalid diagnostic enums at the native bridge.
+
+## Firefox WASM process restart
+
+[ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) optionally verifies real Firefox 1Password WASM startup and account-free onboarding across two separate test processes using shared, unique persistent stores.
+
+Run [test-extension-wasm-restart.sh](../scripts/test-extension-wasm-restart.sh) with BROWSE_TEST_FIREFOX_PACKAGE pointing to a local official XPI. The install phase saves store identifiers and extension origin; the restore phase must instantiate background WASM, retain the origin, and open onboarding without context errors. Both phases decline optional onboarding choices. A dummy native helper prevents desktop-app access. This does not test authenticated accounts, unlock, Touch ID, or the user's existing profile.
 
 ## Firefox onboarding smoke test
 
@@ -277,3 +289,21 @@ Explicit requests for an existing pane focus that pane; invalid identities produ
 [PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) moves the same live pane between two surviving tabs 24 times per layout, using normal and scrolling layouts to check the third drag and later round trips.
 
 The first twenty transfers in each layout hover to select the destination before dropping onto a pane; the remainder drop directly onto the tab row. Each press must reach exactly one visible handle with current tab ownership. The window must consume every mouse event in that gesture and return to idle after release. Synthetic window events verify retained page controllers, document tokens, unsaved form contents, and unique model ownership while both tab trees remain mounted.
+
+## Native extension messaging
+
+[ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) exercises real WebKit native-message calls with an isolated Python echo helper, including restoration, revocation, disconnects, and invalid frames.
+
+One-shot and persistent messages cross the delegate boundary and handle fragmented JSON replies. Recreated managers restore permission and reconnect; permission denial and context teardown empty the connection registry. Host crashes and oversized frames reject promises. Unit checks cover Unicode, concatenated frames, manifest allowlists, missing hosts, and traversal rejection. The opt-in Firefox onboarding smoke verifies the real 1Password package requests its registered helper, while an injected resolver prevents access to the user's desktop vault. Touch ID and authenticated desktop unlocking require a separate manual test.
+
+## Extension diagnostic logging
+
+[ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) verifies diagnostic persistence across logger instances, bounded rotation, owner-only files, safe error categories, and a memory fallback when disk writes fail.
+
+Native-message integration checks require request, resolution, launch, first-send/receive, disconnect, rejection, and exit events, while excluding fixture payloads and Gecko IDs. An extension-page error containing a synthetic secret must emit only its category and error type; arbitrary categories are rejected. These diagnostics do not assert that the user's 1Password account or desktop handshake succeeds.
+
+## 1Password protocol diagnostic redaction
+
+[ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) verifies that native response summaries expose only known protocol types and error names, never arbitrary response fields or synthetic account secrets.
+
+Success contents are excluded entirely, unknown enum values become a generic label, recognized failure names survive redaction without callback IDs or error prose, and browser identities are decoded only from the protocol's browser_state field with bounded identifier validation. These unit checks do not establish desktop authentication or Touch ID compatibility.

@@ -112,6 +112,13 @@ private struct ExtensionSettingsView: View {
                 Label(notice, systemImage: "exclamationmark.triangle")
                     .font(.callout).foregroundStyle(.orange).textSelection(.enabled)
             }
+            if let context, context.hasPermission(.init(rawValue: "nativeMessaging")) {
+                Text(manager.nativeMessaging.status(for: context)).font(.caption).foregroundStyle(.secondary)
+            }
+            if manager.diagnostics.writeFailed {
+                Text("Diagnostic log could not be saved. Copy Diagnostics still includes this session.")
+                    .font(.caption).foregroundStyle(.orange)
+            }
             if let errors = context?.errors, !errors.isEmpty {
                 Text(errors.map(\.localizedDescription).joined(separator: "\n")).font(.caption).foregroundStyle(.orange)
             }
@@ -127,6 +134,11 @@ private struct ExtensionSettingsView: View {
                 if context?.webExtension.hasOptionsPage == true {
                     Button("Extension Settings…") { manager.showOptions(record.id) }.disabled(!manager.isEnabled(record.id))
                 }
+                Button("Copy Diagnostics") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(manager.diagnosticReport(), forType: .string)
+                }
+                .help("Copy extension lifecycle and desktop connection events across restarts. No passwords or message contents.")
                 Spacer()
                 Button("Update from File…") { manager.chooseUpdate(record.id) }.disabled(manager.busy)
                 Button("Remove…") { manager.remove(record.id) }.disabled(manager.busy)
