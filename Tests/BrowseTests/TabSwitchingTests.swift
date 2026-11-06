@@ -98,7 +98,7 @@ import BrowseCore
     #expect(web.window === window)
     if #available(macOS 26.0, *) {
         let rect = web.convert(web.bounds, to: host)
-        #expect(abs(host.bounds.maxY - rect.maxY - 1) < 1)
+        #expect(abs(host.bounds.maxY - rect.maxY) < 1)
     }
     #expect(host.mounted.count == 1)
     #expect(store.existingController(for: second.pages[0].id) == nil)

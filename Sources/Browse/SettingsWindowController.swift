@@ -360,11 +360,52 @@ private struct UISettingsView: View {
             } header: {
                 Text("Panes")
             }
+            PaneBorderSettingsSection(title: "Header separator", line: $store.paneBorders.separator,
+                                      defaults: PaneBorders().separator)
             if #available(macOS 26.0, *) {
                 GlassSettingsSection(title: "Browser window", appearance: $store.windowGlass, defaults: .windowDefault)
                 GlassSettingsSection(title: "Pane headers", appearance: $store.paneHeaderGlass, defaults: .headerDefault)
             }
         }.formStyle(.grouped)
+    }
+}
+
+private struct PaneBorderSettingsSection: View {
+    let title: String
+    @Binding var line: PaneBorders.Line
+    let defaults: PaneBorders.Line
+
+    var body: some View {
+        Section {
+            Toggle("Show \(title.lowercased())", isOn: $line.enabled)
+            Group {
+                ColorPicker("Color", selection: Binding(
+                    get: { line.color.color },
+                    set: { if let color = GlassAppearance.Tint(color: $0) { line.color = color } }
+                ), supportsOpacity: false)
+                VStack(spacing: 10) {
+                    HStack {
+                        Text("Opacity")
+                        Spacer()
+                        Text(line.opacity, format: .percent.precision(.fractionLength(0)))
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    Slider(value: $line.opacity, in: 0...1) { Text("Opacity") }.labelsHidden()
+                }
+                VStack(spacing: 10) {
+                    HStack {
+                        Text("Width")
+                        Spacer()
+                        Text("\(line.width, specifier: "%.1f") pt")
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    Slider(value: $line.width, in: 0.5...4, step: 0.5) { Text("Width") }.labelsHidden()
+                }
+            }.disabled(!line.enabled)
+            Button("Reset to Defaults") { line = defaults }.disabled(line == defaults)
+        } header: {
+            Text(title)
+        }
     }
 }
 

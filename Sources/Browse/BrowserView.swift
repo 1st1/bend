@@ -356,7 +356,6 @@ private struct BrowserPane: View {
 
     private var decoratedPane: some View {
         paneContent
-        .padding(1)
         .overlay {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.black)
@@ -441,11 +440,12 @@ private struct BrowserPane: View {
         }
         .overlay(alignment: .bottom) {
             ZStack(alignment: .topLeading) {
-                Rectangle().fill(.white.opacity(0.06)).frame(height: 1)
+                Rectangle().fill(store.paneBorders.separator.color.color.opacity(store.paneBorders.separator.opacity))
+                    .frame(height: store.paneBorders.separator.visibleWidth)
                 if controller.isLoading {
                     GeometryReader { geo in Rectangle().fill(Color(nsColor: .controlAccentColor)).frame(width: geo.size.width * controller.progress, height: 2) }
                 }
-            }.frame(height: 2)
+            }.frame(height: max(2, store.paneBorders.separator.visibleWidth))
         }
     }
 
@@ -522,10 +522,6 @@ final class ClippedPaneHost: PaneDropHost {
         layer?.cornerRadius = 12
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
-        // Keep glass specular highlights and the page's edge antialiasing
-        // behind an opaque neutral rim, on the same curve as the native clip.
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor(calibratedWhite: 0.15, alpha: 1).cgColor
         content.sizingOptions = []
         content.safeAreaRegions = []
         content.frame = bounds

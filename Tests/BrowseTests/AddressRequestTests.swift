@@ -59,6 +59,7 @@ import BrowseCore
     #expect(store.paneHeaderGlass == .headerDefault)
     #expect(store.paneHighlight == PaneHighlight())
     #expect(store.paneHighlight.style == .none)
+    #expect(store.paneBorders == PaneBorders())
     store.commandClickDestination = .newTab
     store.inactivePaneDimAmount = 0.35
     store.windowGlass = GlassAppearance(clear: true, tint: .init(red: 0.2, green: 0.4, blue: 0.8), darkening: 0.15)
@@ -86,6 +87,25 @@ import BrowseCore
     store.save()
     let unhighlighted = BrowserStore(sessionFile: file, persistentExtensions: false)
     #expect(unhighlighted.paneHighlight == highlight)
+    var borders = PaneBorders()
+    borders.separator.enabled = false
+    borders.separator.color = .init(red: 0.2, green: 0.6, blue: 0.9)
+    borders.separator.opacity = 0.4
+    borders.separator.width = 2.5
+    store.paneBorders = borders
+    store.save()
+    let borderRestore = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(borderRestore.paneBorders == borders)
+    borders.separator.width = .nan
+    borders.separator.opacity = 2
+    borders.separator.color = .init(red: .nan, green: 0, blue: 0)
+    store.paneBorders = borders
+    #expect(store.paneBorders.separator.width == 1)
+    #expect(store.paneBorders.separator.opacity == 1)
+    #expect(store.paneBorders.separator.color == PaneBorders().separator.color)
+    store.paneBorders = PaneBorders()
+    store.save()
+    #expect(BrowserStore(sessionFile: file, persistentExtensions: false).paneBorders == PaneBorders())
     var oldHighlight = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(highlight)) as? [String: Any])
     oldHighlight["style"] = "glow"
     oldHighlight.removeValue(forKey: "titleTintColor")

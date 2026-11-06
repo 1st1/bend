@@ -176,6 +176,11 @@ final class BrowserStore: ObservableObject {
         set { if let sharedStore { sharedStore.paneHeaderGlass = newValue; return }; session.paneHeaderGlass = newValue.normalized(defaultDarkening: 0.5); saveSoon() }
     }
 
+    var paneBorders: PaneBorders {
+        get { if let sharedStore { return sharedStore.paneBorders }; return (session.paneBorders ?? PaneBorders()).normalized() }
+        set { if let sharedStore { sharedStore.paneBorders = newValue; return }; session.paneBorders = newValue.normalized(); saveSoon() }
+    }
+
     var paneHighlight: PaneHighlight {
         get { if let sharedStore { return sharedStore.paneHighlight }; return (session.paneHighlight ?? PaneHighlight()).normalized() }
         set { if let sharedStore { sharedStore.paneHighlight = newValue; return }; session.paneHighlight = newValue.normalized(); saveSoon() }
