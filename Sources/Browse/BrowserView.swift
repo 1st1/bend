@@ -535,47 +535,6 @@ private struct WebSurface: NSViewRepresentable {
     }
 }
 
-// SwiftUI's shape clip does not reliably clip WebKit's native composited layers.
-// Keep the clip on an AppKit ancestor, outside WebKit's own layer management.
-private final class WebSurfaceHost: NSView {
-    private weak var hostedWebView: WKWebView?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.cornerRadius = 11
-        layer?.cornerCurve = .continuous
-        layer?.masksToBounds = true
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    func update(webView: WKWebView, topContentInset: CGFloat) {
-        if hostedWebView !== webView {
-            if let old = hostedWebView { InputDiagnostics.transition(.surfaceAttachment, .detached, view: old) }
-            hostedWebView?.removeFromSuperview()
-            hostedWebView = webView
-            webView.frame = bounds
-            webView.autoresizingMask = [.width, .height]
-            addSubview(webView)
-            InputDiagnostics.transition(.surfaceAttachment, .attached, view: webView)
-        }
-        // In the stacked layout the page only touches the pane's bottom corners.
-        layer?.maskedCorners = topContentInset > 0
-            ? [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
-            : [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        if #available(macOS 26.0, *) {
-            // Reserve the visible viewport for the page while allowing its
-            // scrolled content to render behind the overlaid glass header.
-            let inset = max(0, topContentInset)
-            if webView.obscuredContentInsets.top != inset {
-                InputDiagnostics.transition(.surfaceInset, .changed, view: webView, flags: ["obscured": inset > 0])
-                webView.obscuredContentInsets = NSEdgeInsets(top: inset, left: 0, bottom: 0, right: 0)
-            }
-        }
-    }
-}
-
 private struct StartPage: View {
     let isGuide: Bool
     let navigate: (String) -> Void

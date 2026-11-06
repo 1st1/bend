@@ -105,6 +105,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
             edit.addItem(withTitle: title, action: Selector(action), keyEquivalent: key)
         }
+        edit.addItem(.separator())
+        for (title, action, key, modifiers) in [
+            ("Find in Page…", NSTextFinder.Action.showFindInterface, "f", NSEvent.ModifierFlags.command),
+            ("Find Next", .nextMatch, "g", .command),
+            ("Find Previous", .previousMatch, "g", [.command, .shift])
+        ] {
+            add(title, #selector(findInPage(_:)), key, modifiers: modifiers, to: edit)
+            edit.items.last?.tag = Int(action.rawValue)
+        }
         append(edit, to: main)
 
         let view = NSMenu(title: "View")
@@ -140,6 +149,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         settingsWindow?.show()
     }
     @objc private func openLocation() { store.requestAddress() }
+    private var findSurface: WebSurfaceHost? {
+        guard let context = browserWindows.active,
+              NSApp.keyWindow == nil || NSApp.keyWindow === context.window,
+              let page = context.store.existingController(for: context.store.selectedTab.focusedPane),
+              !page.isStartPage, page.error == nil,
+              let surface = page.webView.superview as? WebSurfaceHost,
+              !surface.isHiddenOrHasHiddenAncestor else { return nil }
+        return surface
+    }
+    @objc func findInPage(_ sender: NSMenuItem) {
+        guard let action = NSTextFinder.Action(rawValue: sender.tag) else { return }
+        findSurface?.performFindAction(action)
+    }
     @objc private func showHistory() {
         addressPanel?.dismiss(restoreFocus: false)
         store.showHistory()
@@ -157,7 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         window?.makeKeyAndOrderFront(nil)
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        menuItem.action == #selector(reopenClosed) ? store.canReopenClosed : true
+        if menuItem.action == #selector(findInPage(_:)) { return findSurface != nil }
+        return menuItem.action == #selector(reopenClosed) ? store.canReopenClosed : true
     }
     @objc private func splitRight() { store.split(.horizontal) }
     @objc private func splitBelow() { store.split(.vertical) }

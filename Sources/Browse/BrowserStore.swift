@@ -622,6 +622,11 @@ final class BrowserStore: ObservableObject {
 class FocusWebView: WKWebView {
     var diagnosticPaneID: UUID?
     var onFocus: (() -> Void)?
+    override func cancelOperation(_ sender: Any?) {
+        if let surface = superview as? WebSurfaceHost, surface.isFindBarVisible {
+            surface.performFindAction(.hideFindInterface)
+        } else { super.cancelOperation(sender) }
+    }
     override func mouseDown(with event: NSEvent) {
         InputDiagnostics.record(.webView, event: event, view: self)
         defer { InputDiagnostics.record(.webViewReturned, event: event, view: self) }
@@ -823,6 +828,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        (webView.superview as? WebSurfaceHost)?.hideFindBar(restoreFocus: false)
         InputDiagnostics.transition(.webLoad, .started, view: webView)
         resetFavicon()
         completedAddress = nil

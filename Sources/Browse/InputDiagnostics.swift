@@ -27,6 +27,7 @@ final class InputDiagnostics {
         case mountedTab, mountedTabRoot, mountedTabVisibility, mountedTabFocus
         case canvasScroll, paneRoot, paneMembership, paneMove, paneGeometry, paneVisibility, surfaceAttachment, surfaceInset
         case navigationPolicy, commandLink, newWindowLink, javascriptDialog
+        case findBar, findAction
         case extensionConfiguration, extensionActivation, extensionPopup, extensionPermission, extensionWindowFocus, extensionTabAction
     }
     enum Outcome: String {

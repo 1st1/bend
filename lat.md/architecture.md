@@ -269,6 +269,14 @@ Inactive-pane dimming, available in Transparency mode, ranges from 0% to 100%, d
 
 On macOS 26 and later, Browser window and Pane headers each offer Regular/Clear style, optional custom sRGB tint, a 0–100% darkening slider, and an independent reset. Defaults preserve untinted Regular glass, with no window darkening and 50% header darkening. Changes apply live to every existing native browser window and mounted header. [GlassAppearance.swift](../Sources/BrowseCore/GlassAppearance.swift) stores each appearance in optional session fields and normalizes numeric values; older sessions keep their content and receive defaults. Blur and refraction remain system-controlled. [[tests#Live window glass preferences]] covers native updates without content replacement.
 
+## Find in page
+
+[WebSurfaceHost.swift](../Sources/Browse/WebSurfaceHost.swift) hosts a compact AppKit search bar per web pane, using WebKit's public find API for matching, selection, and scrolling without injecting page scripts.
+
+[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) routes Command-F, Command-G, and Shift-Command-G to the focused pane of the active browser window, excluding other key windows. Internal start/history pages and error views disable these commands. The bar sits beneath the pane header and reserves page viewport space. Search is case-insensitive, updates while typing, wraps in both directions, and reports “Not found” for missing text. Return and Shift-Return advance forwards and backwards; Escape or the close button dismisses the bar and returns focus to the page. The last match remains an ordinary page selection.
+
+Each mounted pane retains its query and bar state. Navigation dismisses the bar; replacing its WebView invalidates pending results. Completion generations prevent stale results from changing current status. Find actions and bar visibility enter optional pane diagnostics without recording the query. [[tests#Find in page]] covers search and keyboard routing.
+
 ## Mounted tab views
 
 [MountedTabContent.swift](../Sources/Browse/MountedTabContent.swift) retains a native hosting view for each visited tab, hiding inactive containers instead of rebuilding the pane canvas on selection.

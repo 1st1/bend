@@ -409,3 +409,7 @@ Clicks from different source panes reuse the target, independent tabs receive in
 ## Command-click preference migration
 
 [LinkNavigationTests.swift](../Tests/BrowseTests/LinkNavigationTests.swift) verifies that both legacy link-opening choices survive loading and that the dedicated-pane choice persists without replacing existing tabs.
+
+## Find in page
+
+[FindInPageTests.swift](../Tests/BrowseTests/FindInPageTests.swift) exercises the Command-F menu against real WebKit documents, checking focused-pane routing, case-insensitive matches, next/previous wrapping, scrolling, header clearance, Escape dismissal, and disabled internal-page commands.
