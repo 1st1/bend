@@ -58,6 +58,7 @@ import BrowseCore
     #expect(store.windowGlass == .windowDefault)
     #expect(store.paneHeaderGlass == .headerDefault)
     #expect(store.paneHighlight == PaneHighlight())
+    #expect(store.paneHighlight.style == .none)
     store.commandClickDestination = .newTab
     store.inactivePaneDimAmount = 0.35
     store.windowGlass = GlassAppearance(clear: true, tint: .init(red: 0.2, green: 0.4, blue: 0.8), darkening: 0.15)
@@ -80,6 +81,11 @@ import BrowseCore
     #expect(restored.windowGlass == store.windowGlass)
     #expect(restored.paneHeaderGlass == store.paneHeaderGlass)
     #expect(restored.paneHighlight == highlight)
+    highlight.style = .none
+    store.paneHighlight = highlight
+    store.save()
+    let unhighlighted = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(unhighlighted.paneHighlight == highlight)
     var oldHighlight = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(highlight)) as? [String: Any])
     oldHighlight["style"] = "glow"
     oldHighlight.removeValue(forKey: "titleTintColor")

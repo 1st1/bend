@@ -268,6 +268,7 @@ private struct UISettingsView: View {
             }
             Section {
                 Picker("Active pane highlight", selection: $store.paneHighlight.style) {
+                    Text("None").tag(PaneHighlight.Style.none)
                     Text("Transparency").tag(PaneHighlight.Style.transparency)
                     Text("Outline").tag(PaneHighlight.Style.outline)
                     Text("Outline glow").tag(PaneHighlight.Style.glow)

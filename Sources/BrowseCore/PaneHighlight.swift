@@ -1,9 +1,9 @@
 import Foundation
 
 public struct PaneHighlight: Codable, Equatable, Sendable {
-    public enum Style: String, Codable, Sendable { case transparency, outline, glow, titleTint }
+    public enum Style: String, Codable, Sendable { case none, transparency, outline, glow, titleTint }
 
-    public var style: Style = .transparency
+    public var style: Style = .none
     public var outlineColor = GlassAppearance.Tint(red: 0.35, green: 0.65, blue: 1)
     public var outlineWidth: Double = 2
     public var glowColor = GlassAppearance.Tint(red: 0.35, green: 0.65, blue: 1)
