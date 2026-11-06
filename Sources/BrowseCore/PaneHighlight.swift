@@ -1,7 +1,7 @@
 import Foundation
 
 public struct PaneHighlight: Codable, Equatable, Sendable {
-    public enum Style: String, Codable, Sendable { case transparency, outline, glow }
+    public enum Style: String, Codable, Sendable { case transparency, outline, glow, titleTint }
 
     public var style: Style = .transparency
     public var outlineColor = GlassAppearance.Tint(red: 0.35, green: 0.65, blue: 1)
@@ -9,11 +9,13 @@ public struct PaneHighlight: Codable, Equatable, Sendable {
     public var glowColor = GlassAppearance.Tint(red: 0.35, green: 0.65, blue: 1)
     public var glowIntensity: Double = 0.6
     public var glowSpread: Double = 8
+    public var titleTintColor = GlassAppearance.Tint(red: 0.35, green: 0.65, blue: 1)
+    public var titleTintIntensity: Double = 0.3
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case style, outlineColor, outlineWidth, glowColor, glowIntensity, glowSpread
+        case style, outlineColor, outlineWidth, glowColor, glowIntensity, glowSpread, titleTintColor, titleTintIntensity
     }
 
     public init(from decoder: Decoder) throws {
@@ -26,6 +28,8 @@ public struct PaneHighlight: Codable, Equatable, Sendable {
         glowIntensity = try values.decodeIfPresent(Double.self, forKey: .glowIntensity) ?? glowIntensity
         // Preserve the former intensity-derived spread in existing sessions.
         glowSpread = try values.decodeIfPresent(Double.self, forKey: .glowSpread) ?? (2 + 8 * glowIntensity)
+        titleTintColor = try values.decodeIfPresent(GlassAppearance.Tint.self, forKey: .titleTintColor) ?? titleTintColor
+        titleTintIntensity = try values.decodeIfPresent(Double.self, forKey: .titleTintIntensity) ?? titleTintIntensity
     }
 
     public func normalized() -> Self {
@@ -36,6 +40,8 @@ public struct PaneHighlight: Codable, Equatable, Sendable {
         result.glowSpread = glowSpread.isFinite ? min(24, max(0, glowSpread)) : defaults.glowSpread
         result.outlineColor = GlassAppearance(tint: outlineColor).normalized(defaultDarkening: 0).tint ?? defaults.outlineColor
         result.glowColor = GlassAppearance(tint: glowColor).normalized(defaultDarkening: 0).tint ?? defaults.glowColor
+        result.titleTintIntensity = titleTintIntensity.isFinite ? min(1, max(0, titleTintIntensity)) : defaults.titleTintIntensity
+        result.titleTintColor = GlassAppearance(tint: titleTintColor).normalized(defaultDarkening: 0).tint ?? defaults.titleTintColor
         return result
     }
 }

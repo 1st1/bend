@@ -153,7 +153,7 @@ import BrowseCore
     // Hidden SwiftUI hosting roots must not steal either half of a page click.
     let inactiveHost = try #require(host.mounted[second.id])
     #expect(inactiveHost.isHidden)
-    for style in [PaneHighlight.Style.transparency, .outline, .glow] {
+    for style in [PaneHighlight.Style.transparency, .outline, .glow, .titleTint] {
         store.paneHighlight.style = style
         update()
         try await settle()

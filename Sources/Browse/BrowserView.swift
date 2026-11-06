@@ -421,6 +421,13 @@ private struct BrowserPane: View {
                 iconButton("xmark", "Close pane · ⌘W") { store.closePane(pageID) }
             }
         }.padding(.horizontal, 12).frame(height: 36)
+        .background {
+            store.paneHighlight.titleTintColor.color
+                .opacity(focused && store.paneHighlight.style == .titleTint ? store.paneHighlight.titleTintIntensity : 0)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
         .overlay(alignment: .bottom) {
             ZStack(alignment: .topLeading) {
                 Rectangle().fill(.white.opacity(0.06)).frame(height: 1)

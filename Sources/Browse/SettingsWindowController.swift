@@ -271,6 +271,7 @@ private struct UISettingsView: View {
                     Text("Transparency").tag(PaneHighlight.Style.transparency)
                     Text("Outline").tag(PaneHighlight.Style.outline)
                     Text("Outline glow").tag(PaneHighlight.Style.glow)
+                    Text("Title tint").tag(PaneHighlight.Style.titleTint)
                 }
                 if store.paneHighlight.style == .transparency {
                     VStack(alignment: .leading, spacing: 12) {
@@ -305,7 +306,7 @@ private struct UISettingsView: View {
                             Text("Outline width")
                         }.labelsHidden()
                     }
-                } else {
+                } else if store.paneHighlight.style == .glow {
                     ColorPicker("Glow color", selection: Binding(
                         get: { store.paneHighlight.glowColor.color },
                         set: { if let color = GlassAppearance.Tint(color: $0) { store.paneHighlight.glowColor = color } }
@@ -330,6 +331,22 @@ private struct UISettingsView: View {
                         }
                         Slider(value: $store.paneHighlight.glowSpread, in: 0...24, step: 1) {
                             Text("Glow spread")
+                        }.labelsHidden()
+                    }
+                } else if store.paneHighlight.style == .titleTint {
+                    ColorPicker("Tint color", selection: Binding(
+                        get: { store.paneHighlight.titleTintColor.color },
+                        set: { if let color = GlassAppearance.Tint(color: $0) { store.paneHighlight.titleTintColor = color } }
+                    ), supportsOpacity: false)
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("Tint intensity")
+                            Spacer()
+                            Text(store.paneHighlight.titleTintIntensity, format: .percent.precision(.fractionLength(0)))
+                                .monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        Slider(value: $store.paneHighlight.titleTintIntensity, in: 0...1) {
+                            Text("Tint intensity")
                         }.labelsHidden()
                     }
                 }

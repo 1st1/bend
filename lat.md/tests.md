@@ -367,7 +367,7 @@ Success contents are excluded entirely, unknown enum values become a generic lab
 
 Window/header glass preferences persist independently, preserve legacy defaults, and support resetting both appearances.
 
-Highlight settings preserve separate colors, width, intensity, spread, and mode across restart; absent highlight settings retain Transparency. Older records without spread decode with their previous intensity-derived radius. Invalid colors and nonfinite numeric values normalize to defaults, and out-of-range values are bounded.
+Highlight settings preserve separate colors, width, intensity, spread, and mode across restart, including title-tint color and intensity; absent highlight settings retain Transparency. Older records without spread decode with their previous intensity-derived radius; records without title-tint fields receive the default color and intensity. Invalid colors and nonfinite numeric values normalize to defaults, and out-of-range values are bounded.
 
 ## Home page suggestion ranking
 

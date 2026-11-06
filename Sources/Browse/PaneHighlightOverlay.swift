@@ -12,7 +12,7 @@ struct PaneHighlightOverlay: View {
     var body: some View {
         Group {
             switch appearance.style {
-            case .transparency:
+            case .transparency, .titleTint:
                 Color.clear
             case .outline:
                 RoundedRectangle(cornerRadius: 12 + appearance.outlineWidth + 1 / max(1, displayScale), style: .continuous)
