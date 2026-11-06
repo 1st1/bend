@@ -98,7 +98,7 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
         window = BrowseWindow(contentRect: NSRect(x: 0, y: 0, width: 1420, height: 880),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
-        window.title = "Browse"
+        window.title = "Bend"
         window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified; window.toolbar = NSToolbar(identifier: "BrowseTitlebar")
         window.titlebarSeparatorStyle = .none

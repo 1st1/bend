@@ -1,4 +1,4 @@
-# Browse
+# Bend
 
 A native macOS browser prototype with a Rex-inspired vertical tab sidebar and tiled browsing. Built with SwiftUI, AppKit, and the system WebKit framework; no dependencies or Xcode project required.
 
@@ -10,13 +10,15 @@ Requires macOS 14 or newer and a Swift 6 toolchain (Xcode or Command Line Tools)
 ./scripts/build-app.sh --open
 ```
 
-This builds `dist/Browse.app` and defaults to `Apple Development: Yury Selivanov (H8TFDJMW7E)`. The build fails if signing or signature verification fails. Apple-issued signing supplies a stable team partition for WebCrypto Keychain access across rebuilds. The former self-signed `Browse Dev` identity used separate code-hash partitions and could prompt again after each rebuild. On another Mac, create an Apple-issued development certificate through [Xcode's certificate manager](https://help.apple.com/xcode/mac/current/en.lproj/dev154b28f09.html), then select its installed signing identity:
+This builds `dist/Bend.app` and defaults to `Apple Development: Yury Selivanov (H8TFDJMW7E)`. The build fails if signing or signature verification fails. Apple-issued signing supplies a stable team partition for WebCrypto Keychain access across rebuilds. The former self-signed `Browse Dev` identity used separate code-hash partitions and could prompt again after each rebuild. On another Mac, create an Apple-issued development certificate through [Xcode's certificate manager](https://help.apple.com/xcode/mac/current/en.lproj/dev154b28f09.html), then select its installed signing identity:
 
 ```sh
-BROWSE_SIGNING_IDENTITY='Apple Development: Your Name (IDENTIFIER)' ./scripts/build-app.sh --open
+BEND_SIGNING_IDENTITY='Apple Development: Your Name (IDENTIFIER)' ./scripts/build-app.sh --open
 ```
 
-Switching to the Apple-issued identity may require a new Keychain approval once. The build never changes Keychain access controls or stored keys. You can also open `Package.swift` in Xcode, or run `swift run Browse` during development; those paths do not use the script's signing step.
+Switching to the Apple-issued identity may require a new Keychain approval once. The build never changes Keychain access controls or stored keys. You can also open `Package.swift` in Xcode, or run `swift run Bend` during development; those paths do not use the script's signing step.
+
+Bend retains the prototype's bundle identifier (`dev.yury.browse.prototype`) and `BrowsePrototype` data directory so existing sessions, settings, extensions, and website data continue to use the same profile. Internal Swift modules and `browse://` pages retain their existing identifiers. `BROWSE_SIGNING_IDENTITY` remains a fallback when `BEND_SIGNING_IDENTITY` is unset.
 
 The signing certificate's Apple intermediate must also be installed locally. If signing reports “unable to build chain to self-signed root,” follow [Apple's intermediate-certificate instructions](https://help.apple.com/xcode/mac/current/en.lproj/devc4c7101d8.html); this Apple Development identity uses Worldwide Developer Relations G3. `security find-identity -v -p codesigning` should list the identity as valid.
 
@@ -62,13 +64,13 @@ Tabs, workspace names, URLs, focus, and split proportions restore from `~/Librar
 
 ## Scope
 
-On macOS 15.4 or newer, Browse → Settings (⌘,) installs and manages Browse's own extension copies. Use **Install from File** for downloaded ZIP, Firefox XPI, Chrome CRX, or unpacked packages. Safari Web Extensions can also be imported as independent resource copies. Review requested access before enabling. **Update from File** replaces a package while retaining its Browse identity and data; additional permissions require approval. Updates are manual, and importing a package does not establish full browser API compatibility or verify its publisher. The puzzle-piece menu opens extension actions; Settings exposes options pages. Reload open pages after enabling or disabling extensions. Native Safari App Extensions are not supported.
+On macOS 15.4 or newer, Bend → Settings (⌘,) installs and manages Bend's own extension copies. Use **Install from File** for downloaded ZIP, Firefox XPI, Chrome CRX, or unpacked packages. Safari Web Extensions can also be imported as independent resource copies. Review requested access before enabling. **Update from File** replaces a package while retaining its Bend identity and data; additional permissions require approval. Updates are manual, and importing a package does not establish full browser API compatibility or verify its publisher. The puzzle-piece menu opens extension actions; Settings exposes options pages. Reload open pages after enabling or disabling extensions. Native Safari App Extensions are not supported.
 
 **Discover** offers a curated, searchable collection with installation and compatibility notes. uBlock Origin Lite imports the Safari package from this Mac, or links to its official App Store listing if missing. 1Password downloads the reviewed Firefox package from Mozilla and verifies its pinned checksum and package identity. Both start disabled; use **Enable** to review permissions. **Installed** retains the full management controls. Catalog additions and updates are curated in the app, not fetched from a live store feed.
 
-**1Password for Safari is not currently supported.** Its web extension bundle loads, but its native companion connection fails in Browse with “Native messaging is not supported.” Enabling the extension does not establish working unlock or autofill. Settings displays this limitation alongside its runtime errors.
+**1Password for Safari is not currently supported.** Its web extension bundle loads, but its native companion connection fails in Bend with “Native messaging is not supported.” Enabling the extension does not establish working unlock or autofill. Settings displays this limitation alongside its runtime errors.
 
-**Firefox 1Password has experimental standalone support.** Install it from **Settings → Discover**, turn off the Safari 1Password copy in Browse, then enable it and approve its requested access. Choose it from a pane's puzzle-piece menu, complete onboarding, and choose **Sign in**. Initial startup can take roughly 20–30 seconds while desktop-app connection attempts time out. Toolbar vault items have been confirmed after sign-in; autofill, save, and account persistence still need testing. Desktop-app unlock is unavailable. Browse's adapters leave the downloaded package unchanged.
+**Firefox 1Password has experimental standalone support.** Install it from **Settings → Discover**, turn off the Safari 1Password copy in Bend, then enable it and approve its requested access. Choose it from a pane's puzzle-piece menu, complete onboarding, and choose **Sign in**. Initial startup can take roughly 20–30 seconds while desktop-app connection attempts time out. Toolbar vault items have been confirmed after sign-in; autofill, save, and account persistence still need testing. Desktop-app unlock is unavailable. Bend's adapters leave the downloaded package unchanged.
 
 This embeds **system WebKit**, the engine Safari uses. macOS has no supported API for embedding the Safari app itself into arbitrary tiled views. Safari extensions, Safari profiles, Safari tab sync, and existing Safari logins are not inherited.
 

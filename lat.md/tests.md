@@ -38,7 +38,7 @@ The smoke test waits for background errors, invokes the toolbar action, and veri
 
 [test-build-app.sh](../scripts/test-build-app.sh) runs the packaging script with isolated compiler and signing stand-ins, verifying failure preservation and replacement without changing an open descriptor to the previous executable.
 
-Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files; these checks do not exercise macOS signing or WebKit runtime behavior.
+Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files. The test checks Bend's bundle name and executable, the retained profile identifier, and precedence of the new signing override over the legacy override. These checks do not exercise macOS signing or WebKit runtime behavior.
 
 ## Catalog download integrity and identity
 
@@ -88,7 +88,7 @@ Run [test-extension-wasm-restart.sh](../scripts/test-extension-wasm-restart.sh) 
 
 ## Firefox onboarding smoke test
 
-[ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) optionally loads a real Firefox 1Password package through Browse's production extension manager in an isolated, windowless profile.
+[ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) optionally loads a real Firefox 1Password package through Bend's production extension manager in an isolated, windowless profile.
 
 Set `BROWSE_TEST_FIREFOX_PACKAGE` to a local official XPI to run this network-dependent test. It verifies action-driven onboarding, declines three optional choices in disposable data, and follows Sign in to the official email form in the same logical tab. An extension-authorized return reuses the original view and skips the already-answered choices. It enters no credentials and does not establish authenticated sign-in, desktop integration, autofill, or account persistence. Without the environment variable, it returns without loading a real package.
 
@@ -106,7 +106,7 @@ A local website cannot read the extension's session storage, call the compatibil
 
 ## Dark Reader compatibility smoke test
 
-[DarkReaderTests.swift](../Tests/BrowseTests/DarkReaderTests.swift) exercises the official Firefox Dark Reader package through Browse's production extension host with temporary storage and a local HTTP page.
+[DarkReaderTests.swift](../Tests/BrowseTests/DarkReaderTests.swift) exercises the official Firefox Dark Reader package through Bend's production extension host with temporary storage and a local HTTP page.
 
 Set `BROWSE_TEST_DARK_READER_PACKAGE` to the official 4.9.134 XPI. The test verifies the pinned SHA-256 and package identity, computed dark colors, popup global and per-site toggles, and disable/re-enable with page reloads. The popup runs windowlessly; this checks its DOM controls and messaging, not native popover placement. It does not touch the user's profile or establish compatibility across arbitrary websites. Without the environment variable, the package test is skipped.
 
@@ -152,7 +152,7 @@ Opening a link splits its source pane to the right even when another pane is foc
 
 [TabSwitchingTests.swift](../Tests/BrowseTests/TabSwitchingTests.swift) switches between real offscreen WebKit tabs and verifies native parents, document identity, unsaved input, and scroll position survive.
 
-The test uses local HTTP fixtures and ephemeral storage in a full-content window with a unified toolbar. It checks that the titlebar adds no extra top inset. Narrowing and widening columns verifies CSS viewport width matches the native web view, media queries switch layouts, and resize events fire. Both the HTTP request received by the fixture and JavaScript expose Safari-compatible product tokens plus Browse’s identifier. Unvisited tabs remain uncreated, hidden tabs keep their viewport and ignore other tabs' zoom, selection resizes the active host, and tab or background-pane closure removes retained content.
+The test uses local HTTP fixtures and ephemeral storage in a full-content window with a unified toolbar. It checks that the titlebar adds no extra top inset. Narrowing and widening columns verifies CSS viewport width matches the native web view, media queries switch layouts, and resize events fire. Both the HTTP request received by the fixture and JavaScript expose Safari-compatible product tokens plus Bend’s identifier. Unvisited tabs remain uncreated, hidden tabs keep their viewport and ignore other tabs' zoom, selection resizes the active host, and tab or background-pane closure removes retained content.
 
 After switching back beneath a later-mounted hidden tab, the test verifies the inactive hosting root rejects hit tests and each visible pane's center resolves to its web view in Transparency, Outline, and Outline glow modes. Switching highlight styles preserves the same WebView and native parent. The test also sends a complete mouse gesture through the window: header press, drag across nine interior points of a real web view, and release. Each point activates the target preview; release rearranges the panes and removes the drag surface while preserving native WebKit parents, document identity, and unsaved input.
 

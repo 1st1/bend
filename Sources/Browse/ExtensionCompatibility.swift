@@ -138,14 +138,14 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
         if details["incognito"] as? Bool == true || (details["scope"] as? String).map({ !["regular", "regular_only"].contains($0) }) == true {
             throw failure("Private browsing settings are not supported.")
         }
-        // Browse has no built-in password/address/card saver. This describes
-        // Browse's actual behavior; it must never change Safari preferences.
+        // Bend has no built-in password/address/card saver. This describes
+        // Bend's actual behavior; it must never change Safari preferences.
         switch action {
         case "get": return ["value": false, "levelOfControl": "not_controllable"] as [String: Any]
         case "clear": return nil
         case "set":
             guard let value = details["value"] as? Bool, !value else {
-                throw failure("Browse does not provide built-in password or address/card saving.")
+                throw failure("Bend does not provide built-in password or address/card saving.")
             }
             return nil
         default: throw failure("Unsupported privacy operation.")
@@ -180,7 +180,7 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
         let options = operation == "update" ? (notices[id]?[notificationID] ?? [:]).merging(supplied) { _, new in new } : supplied
         guard options["type"] as? String == "basic", let title = options["title"] as? String,
               let message = options["message"] as? String, title.count <= 512, message.count <= 4096 else {
-            throw failure("Browse supports basic notifications with a title and message.")
+            throw failure("Bend supports basic notifications with a title and message.")
         }
         let buttonOptions = options["buttons"] as? [[String: Any]] ?? []
         let buttons = buttonOptions.compactMap { $0["title"] as? String }
@@ -378,7 +378,7 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
         window.addEventListener('error', event => reportError('error', event.error ?? event.message));
         window.addEventListener('unhandledrejection', event => reportError('unhandledrejection', event.reason));
         call('register', {wasmAvailable: typeof WebAssembly === 'object', indexedDBAvailable: !!globalThis.indexedDB,
-            cryptoAvailable: !!globalThis.crypto?.subtle}).catch(error => console.error('Browse extension bridge:', String(error)));
+            cryptoAvailable: !!globalThis.crypto?.subtle}).catch(error => console.error('Bend extension bridge:', String(error)));
     })();
     """#
 }

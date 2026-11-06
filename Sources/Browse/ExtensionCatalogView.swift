@@ -60,8 +60,8 @@ struct ExtensionCatalogView: View {
             Text(entry.compatibility).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if record == nil, case .safari = entry.installation {
                 Text(manager.catalogSource(entry) == nil
-                    ? "Get the app from the App Store, then return here to install its extension in Browse."
-                    : "Available on this Mac. Browse will install its own copy.")
+                    ? "Get the app from the App Store, then return here to install its extension in Bend."
+                    : "Available on this Mac. Bend will install its own copy.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             HStack {
@@ -79,7 +79,7 @@ struct ExtensionCatalogView: View {
                 } else if case .safari(_, let storeURL) = entry.installation, manager.catalogSource(entry) == nil {
                     Link("Get from App Store", destination: storeURL).buttonStyle(.bordered)
                 } else {
-                    Button("Install in Browse") { manager.installFromCatalog(entry) }
+                    Button("Install in Bend") { manager.installFromCatalog(entry) }
                         .buttonStyle(.borderedProminent).disabled(manager.busy)
                 }
             }

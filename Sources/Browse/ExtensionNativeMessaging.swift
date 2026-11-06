@@ -59,7 +59,7 @@ struct NativeMessageFrames {
     var isEmpty: Bool { buffer.isEmpty }
     static func encode(_ message: Any) throws -> Data {
         let payload = try JSONSerialization.data(withJSONObject: message, options: .fragmentsAllowed)
-        guard payload.count <= maximum else { throw NativeMessagingError("Native message exceeds Browse's 1 MiB limit.") }
+        guard payload.count <= maximum else { throw NativeMessagingError("Native message exceeds Bend's 1 MiB limit.") }
         var size = UInt32(payload.count).littleEndian
         return withUnsafeBytes(of: &size) { Data($0) } + payload
     }
@@ -136,7 +136,7 @@ final class NativeMessageConnection {
     }
     private func eof() {
         finish(NativeMessagingError(frames.isEmpty
-            ? "Native application disconnected. For 1Password, add Browse in desktop Settings → Browser → Add Browser."
+            ? "Native application disconnected. For 1Password, add Bend in desktop Settings → Browser → Add Browser."
             : "Native application sent an incomplete message."))
     }
     func send(_ message: Any) throws {

@@ -2,9 +2,9 @@
 import PackageDescription
 
 let package = Package(
-    name: "Browse",
+    name: "Bend",
     platforms: [.macOS(.v14)],
-    products: [.executable(name: "Browse", targets: ["Browse"])],
+    products: [.executable(name: "Bend", targets: ["Browse"])],
     targets: [
         .target(name: "BrowseCore"),
         .executableTarget(name: "Browse", dependencies: ["BrowseCore"]),

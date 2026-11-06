@@ -70,7 +70,7 @@ final class ExtensionDiagnostics {
             entries += data.split(separator: 10).compactMap { try? decoder.decode(Entry.self, from: Data($0)) }
         }
         if writeFailed { entries.removeAll { $0.run == run }; entries += recent }
-        return "Browse extension diagnostics v1\nPayloads, credentials, URLs, helper stderr, and raw error text are excluded.\nDisk logging: \(writeFailed ? "failed; current-session memory fallback included" : "active")\n" + entries.suffix(1000).compactMap {
+        return "Bend extension diagnostics v1\nPayloads, credentials, URLs, helper stderr, and raw error text are excluded.\nDisk logging: \(writeFailed ? "failed; current-session memory fallback included" : "active")\n" + entries.suffix(1000).compactMap {
             (try? encoder.encode($0)).flatMap { String(data: $0, encoding: .utf8) }
         }.joined(separator: "\n")
     }

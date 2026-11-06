@@ -31,7 +31,7 @@ final class ExtensionNotifications: NSObject, ExtensionNotificationDelivering, U
             _ = try await center.requestAuthorization(options: [.alert, .sound])
         }
         guard await permission() else {
-            throw NSError(domain: "Browse.Extensions", code: 1, userInfo: [NSLocalizedDescriptionKey: "Notifications are disabled for Browse in System Settings."])
+            throw NSError(domain: "Browse.Extensions", code: 1, userInfo: [NSLocalizedDescriptionKey: "Notifications are disabled for Bend in System Settings."])
         }
         let actions = buttons.enumerated().map { UNNotificationAction(identifier: "button:\($0.offset)", title: $0.element, options: [.foreground]) }
         categories[key] = UNNotificationCategory(identifier: key, actions: actions, intentIdentifiers: [], options: [.customDismissAction])

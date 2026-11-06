@@ -57,7 +57,7 @@ import BrowseCore
     for expression in ["navigator.userAgent", "window.requestUserAgent"] {
         let userAgent = try #require(try await web.evaluateJavaScript(expression) as? String)
         #expect(userAgent.contains(" Version/"))
-        #expect(userAgent.contains(" Safari/605.1.15 Browse/0.1"))
+        #expect(userAgent.contains(" Safari/605.1.15 Bend/0.1"))
     }
     func dragHandles(in view: NSView) -> [PaneDragSourceView] {
         (view as? PaneDragSourceView).map { [$0] } ?? view.subviews.flatMap { dragHandles(in: $0) }

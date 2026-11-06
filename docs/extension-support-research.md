@@ -1,6 +1,6 @@
 # Independent extensions on WebKit
 
-Browse can own extension installation, permissions, updates, and storage while retaining WebKit. Package management and runtime API compatibility are separate responsibilities. This document records research and proposed next steps, not a claim that 1Password works.
+Bend can own extension installation, permissions, updates, and storage while retaining WebKit. Package management and runtime API compatibility are separate responsibilities. This document records research and proposed next steps, not a claim that 1Password works.
 
 ## Other browsers
 
@@ -8,7 +8,7 @@ Browse can own extension installation, permissions, updates, and storage while r
 
 [Orion's 1Password integration](https://help.kagi.com/orion/browser-extensions/1password.html) involved collaboration with 1Password and requires desktop-app browser authorization. This demonstrates that WebKit is not inherently incompatible with 1Password; it does not establish compatibility for a different host. [1Password's additional-browser requirements](https://support.1password.com/additional-browsers/) describe Chrome/Firefox extension support and Apple code signing on macOS.
 
-[GNOME Web's extension manager](https://github.com/GNOME/epiphany/blob/master/src/webextension/ephy-web-extension-manager.c) installs XPI packages or copied folders into its profile. It owns background and popup views and dispatches extension calls to browser API handlers, including notifications, tabs, and runtime. This is a concrete open-source example of an independent extension host over WebKitGTK. Its GLib/GTK APIs are not directly interchangeable with Cocoa WKWebView. The source is GPL-3.0-or-later; this research does not copy its implementation into Browse.
+[GNOME Web's extension manager](https://github.com/GNOME/epiphany/blob/master/src/webextension/ephy-web-extension-manager.c) installs XPI packages or copied folders into its profile. It owns background and popup views and dispatches extension calls to browser API handlers, including notifications, tabs, and runtime. This is a concrete open-source example of an independent extension host over WebKitGTK. Its GLib/GTK APIs are not directly interchangeable with Cocoa WKWebView. The source is GPL-3.0-or-later; this research does not copy its implementation into Bend.
 
 ## Findings in the WebKit checkout
 
@@ -23,7 +23,7 @@ The inspected checkout is `/Users/yury/dev/WebKit`, revision `f91ce22de4`, dated
 
 ## Implemented ownership boundary
 
-Browse uses the system WebKit framework with its own app profile; it does not yet bundle a custom engine. All new imports are copied into Browse's extension directory. Existing externally referenced imports migrate to owned copies while retaining context identities and approved access. Source application updates no longer silently replace installed resources.
+Bend uses the system WebKit framework with its own app profile; it does not yet bundle a custom engine. All new imports are copied into Bend's extension directory. Existing externally referenced imports migrate to owned copies while retaining context identities and approved access. Source application updates no longer silently replace installed resources.
 
 Settings supports manual local-package installation, replacement, enablement, removal, and options pages. Updates preserve the extension origin and storage, validate replacement identity where available, and hold additional permissions for review. These are explicitly selected local imports, not authenticated browser-store installs or automatic updates. Declared manifest IDs and keys are identity hints, not publisher verification.
 
@@ -42,7 +42,7 @@ On macOS 27.0.1 (26A434), with installed 1Password for Safari 8.12.42 (manifest 
 
 With that entitlement set to true, signing and static signature verification succeed, but the process is killed before reaching main (exit 137). `amfid` reports `AppleMobileFileIntegrityError Code=-413 "No matching profile found"`. Repeating the control without the entitlement launches normally and reproduces the PlugInKit rejection. Neither configuration establishes a native connection.
 
-Adding the entitlement to Browse's ordinary build would therefore make this locally signed app fail to launch. [Apple's provisioning documentation](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles) explains that restricted entitlements require authorization in a provisioning profile. This experiment does not establish that Apple offers this private entitlement to third-party browser developers; a normal development certificate alone is not demonstrated to solve it. System security settings were not changed. This establishes a restriction in the default native transport, not the cause of every WASM or IndexedDB error, nor whether Safari 1Password can start without its native companion.
+Adding the entitlement to Bend's ordinary build would therefore make this locally signed app fail to launch. [Apple's provisioning documentation](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles) explains that restricted entitlements require authorization in a provisioning profile. This experiment does not establish that Apple offers this private entitlement to third-party browser developers; a normal development certificate alone is not demonstrated to solve it. System security settings were not changed. This establishes a restriction in the default native transport, not the cause of every WASM or IndexedDB error, nor whether Safari 1Password can start without its native companion.
 
 ## Firefox 1Password runtime reproduction
 
@@ -55,9 +55,9 @@ bash scripts/probe-onepassword-firefox.sh /absolute/path/to/1password-8.12.41.1.
 bash scripts/probe-onepassword-firefox.sh /absolute/path/to/1password-8.12.41.1.xpi --diagnostic-startup
 ```
 
-In the standalone probe without Browse's compatibility adapters, the unmodified package stops during startup with `chrome.notifications.onClicked` undefined. The installed WebKit does not expose the `WebExtensionNotificationsEnabled` feature listed in the source checkout. Merely setting that feature through the probe's optional feature lookup therefore cannot fix this system framework.
+In the standalone probe without Bend's compatibility adapters, the unmodified package stops during startup with `chrome.notifications.onClicked` undefined. The installed WebKit does not expose the `WebExtensionNotificationsEnabled` feature listed in the source checkout. Merely setting that feature through the probe's optional feature lookup therefore cannot fix this system framework.
 
-The diagnostic-startup mode deliberately changes only its disposable copy: it skips registration of the unsupported `webNavigation.onCreatedNavigationTarget` listener and supplies notifications event-registration placeholders. Actual notification operations throw errors. This is not an installable compatibility solution and is never injected by Browse's production host.
+The diagnostic-startup mode deliberately changes only its disposable copy: it skips registration of the unsupported `webNavigation.onCreatedNavigationTarget` listener and supplies notifications event-registration placeholders. Actual notification operations throw errors. This is not an installable compatibility solution and is never injected by Bend's production host.
 
 With those two diagnostic changes, observed behavior includes:
 
@@ -69,17 +69,17 @@ With those two diagnostic changes, observed behavior includes:
 
 The harness must grant private-data access to its own ephemeral store: WebKit classifies nonpersistent stores as private browsing and otherwise filters extension events. Early action-delivery and welcome-page failures without this grant were harness defects, not established Firefox-package incompatibilities. The probe now uses the same isolated store for the controller, background, and test tab; production private-data permissions are unchanged.
 
-This diagnostic result established that Firefox 1Password could reach onboarding in WebKit after bypassing two startup gaps. No real account or vault data was used, and the normal Browse profile was not modified.
+This diagnostic result established that Firefox 1Password could reach onboarding in WebKit after bypassing two startup gaps. No real account or vault data was used, and the normal Bend profile was not modified.
 
 ## Implemented Firefox onboarding support
 
-Browse's [compatibility adapters](../Sources/Browse/ExtensionCompatibility.swift) now supply notifications through a [macOS backend](../Sources/Browse/ExtensionNotifications.swift), and main-frame navigation-target events derived from actual link-created tabs. They do not modify the XPI or extension resources. The native `browser` namespace remains available to WebKit's event dispatcher; the `chrome` namespace supplies the additional navigation API. This is partial API coverage, not full Firefox compatibility.
+Bend's [compatibility adapters](../Sources/Browse/ExtensionCompatibility.swift) now supply notifications through a [macOS backend](../Sources/Browse/ExtensionNotifications.swift), and main-frame navigation-target events derived from actual link-created tabs. They do not modify the XPI or extension resources. The native `browser` namespace remains available to WebKit's event dispatcher; the `chrome` namespace supplies the additional navigation API. This is partial API coverage, not full Firefox compatibility.
 
-The opt-in [production-host smoke test](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) imports the verified, unmodified 8.12.41.1 XPI with Browse's actual manager and window/tab bridge. It reaches the welcome page, completes the three optional onboarding choices with “Don't enable” in disposable data, and follows **Sign in** to `https://start.1password.com/signin/?auth-only=1`. The official page renders its **Email → Continue** form. The test supplies a normal-sized viewport; a zero-size windowless website view did not render that form. The tested onboarding run reports no extension context errors. The earlier context-menu failure did not recur in this run; general context-menu compatibility is not established by that observation.
+The opt-in [production-host smoke test](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) imports the verified, unmodified 8.12.41.1 XPI with Bend's actual manager and window/tab bridge. It reaches the welcome page, completes the three optional onboarding choices with “Don't enable” in disposable data, and follows **Sign in** to `https://start.1password.com/signin/?auth-only=1`. The official page renders its **Email → Continue** form. The test supplies a normal-sized viewport; a zero-size windowless website view did not render that form. The tested onboarding run reports no extension context errors. The earlier context-menu failure did not recur in this run; general context-menu compatibility is not established by that observation.
 
 Desktop native messaging remains on WebKit's default transport and is unavailable for this resource package. Its attempts time out before standalone setup proceeds. The user has confirmed that the toolbar shows vault items after authentication. Inline fill, save, unlock after locking, and account persistence still require authenticated testing. The normal user's profile and credentials are not involved in automated tests. Settings describes the Firefox package as experimental and retains the separate unsupported notice for the Safari package.
 
-Two host navigation restrictions explain the reported stale sign-in page and empty inline menu. The verified package's post-authentication handler calls `tabs.update` on the web sign-in tab with its own `/app/app.html#/page/ready` URL; Browse previously rejected all extension URLs in pane updates. Its inline menu is a web-accessible extension iframe, which Browse's navigation delegate also rejected. The host now allows loaded extension subframes under WebKit's resource checks and transitions authorized tab updates to context-configured views while retaining tab identity. A normal WKWebView alone cannot load an extension top-level document: WebKit's `WebExtensionURLSchemeHandlerCocoa.mm` checks the configuration's required extension origin. Returning to a website therefore restores an ordinary view. Account-free regression tests reproduce both original failures and verify the transitions, messaging, resource boundary, restoration, and disable cleanup. They do not establish real vault-item filling.
+Two host navigation restrictions explain the reported stale sign-in page and empty inline menu. The verified package's post-authentication handler calls `tabs.update` on the web sign-in tab with its own `/app/app.html#/page/ready` URL; Bend previously rejected all extension URLs in pane updates. Its inline menu is a web-accessible extension iframe, which Bend's navigation delegate also rejected. The host now allows loaded extension subframes under WebKit's resource checks and transitions authorized tab updates to context-configured views while retaining tab identity. A normal WKWebView alone cannot load an extension top-level document: WebKit's `WebExtensionURLSchemeHandlerCocoa.mm` checks the configuration's required extension origin. Returning to a website therefore restores an ordinary view. Account-free regression tests reproduce both original failures and verify the transitions, messaging, resource boundary, restoration, and disable cleanup. They do not establish real vault-item filling.
 
 ## Proposed runtime work
 

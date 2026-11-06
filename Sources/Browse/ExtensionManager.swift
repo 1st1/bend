@@ -216,8 +216,8 @@ final class ExtensionManager: NSObject, ObservableObject {
 
     func chooseExtension() {
         let panel = NSOpenPanel()
-        panel.title = "Install Extension in Browse"
-        panel.message = "Choose a downloaded ZIP, XPI, or CRX package, an extension folder, or a Safari extension app. Browse installs its own copy."
+        panel.title = "Install Extension in Bend"
+        panel.message = "Choose a downloaded ZIP, XPI, or CRX package, an extension folder, or a Safari extension app. Bend installs its own copy."
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = false
@@ -233,7 +233,7 @@ final class ExtensionManager: NSObject, ObservableObject {
             do {
                 let sources = source.pathExtension == "app" ? Self.webExtensionBundles(in: source) : [source]
                 guard !sources.isEmpty else {
-                    throw failure("This app does not contain a Safari Web Extension. Native Safari App Extensions cannot run in Browse.")
+                    throw failure("This app does not contain a Safari Web Extension. Native Safari App Extensions cannot run in Bend.")
                 }
                 for url in sources { try await importExtension(from: url) }
                 discoverInstalled()
@@ -339,7 +339,7 @@ final class ExtensionManager: NSObject, ObservableObject {
         let sourcePath = source.resolvingSymlinksInPath().standardizedFileURL.path
         let rootPath = root.resolvingSymlinksInPath().standardizedFileURL.path
         guard rootPath != sourcePath, !rootPath.hasPrefix(sourcePath + "/") else {
-            throw failure("Choose an extension package, not a folder containing Browse’s extension storage.")
+            throw failure("Choose an extension package, not a folder containing Bend’s extension storage.")
         }
         func validateTree(_ source: URL) throws {
             try validate(source, within: source)
@@ -390,7 +390,7 @@ final class ExtensionManager: NSObject, ObservableObject {
         guard !busy, let record = records.first(where: { $0.id == id }) else { return }
         let panel = NSOpenPanel()
         panel.title = "Update \(record.name)"
-        panel.message = "Choose the replacement extension package or folder. Existing Browse settings and data are retained."
+        panel.message = "Choose the replacement extension package or folder. Existing Bend settings and data are retained."
         panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         busy = true
@@ -463,13 +463,13 @@ final class ExtensionManager: NSObject, ObservableObject {
         if record.packageIdentifier == "gecko:{d634138d-c276-4fc8-924b-40a0ea21d284}" {
             let signing = OnePasswordSigningStatus.current
             if signing.certificateStatus != errSecSuccess {
-                return "This build’s certificate does not meet 1Password’s desktop-integration signing requirement. Sign Browse with a Developer ID Application certificate; reinstalling the extension will not fix this. Standalone sign-in remains available."
+                return "This build’s certificate does not meet 1Password’s desktop-integration signing requirement. Sign Bend with a Developer ID Application certificate; reinstalling the extension will not fix this. Standalone sign-in remains available."
             }
-            if !signing.hardenedRuntime { return "1Password desktop integration requires Browse to be signed with Hardened Runtime enabled." }
-            return "Experimental 1Password support. Desktop connection requires adding the signed Browse app in 1Password Settings → Browser → Add Browser, and enabling desktop integration in the extension. Touch ID needs end-to-end verification."
+            if !signing.hardenedRuntime { return "1Password desktop integration requires Bend to be signed with Hardened Runtime enabled." }
+            return "Experimental 1Password support. Desktop connection requires adding the signed Bend app in 1Password Settings → Browser → Add Browser, and enabling desktop integration in the extension. Touch ID needs end-to-end verification."
         }
         if record.isBundle, Bundle(url: record.source)?.bundleIdentifier == "com.1password.safari.extension" {
-            return "1Password for Safari is not supported in Browse yet. Its native app connection fails, so enabling it does not mean unlocking or autofill will work."
+            return "1Password for Safari is not supported in Bend yet. Its native app connection fails, so enabling it does not mean unlocking or autofill will work."
         }
         return nil
     }
@@ -534,8 +534,8 @@ final class ExtensionManager: NSObject, ObservableObject {
     func remove(_ id: UUID) {
         guard !busy, let record = records.first(where: { $0.id == id }) else { return }
         let alert = NSAlert()
-        alert.messageText = "Remove \(record.name) from Browse?"
-        alert.informativeText = "Its Browse extension data will be deleted. The installed app and Safari settings are kept."
+        alert.messageText = "Remove \(record.name) from Bend?"
+        alert.informativeText = "Its Bend extension data will be deleted. The installed app and Safari settings are kept."
         alert.addButton(withTitle: "Remove"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         busy = true
@@ -564,7 +564,7 @@ final class ExtensionManager: NSObject, ObservableObject {
         InputDiagnostics.transition(.extensionPermission, .shown, window: browserWindow, paneID: activeID)
         defer { InputDiagnostics.transition(.extensionPermission, .hidden, window: browserWindow, paneID: activeID) }
         let alert = NSAlert()
-        alert.messageText = "Allow \(name) access in Browse?"
+        alert.messageText = "Allow \(name) access in Bend?"
         alert.informativeText = details.joined(separator: "\n")
         alert.addButton(withTitle: "Allow"); alert.addButton(withTitle: "Don’t Allow")
         return alert.runModal() == .alertFirstButtonReturn

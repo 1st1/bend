@@ -10,7 +10,7 @@ final class SettingsWindowController {
     init(store: BrowserStore) {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 650),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = "Browse Settings"
+        window.title = "Bend Settings"
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 620, height: 480)
         window.setFrameAutosaveName("BrowseSettings")
@@ -229,7 +229,7 @@ struct ExtensionManagementView: View {
                 Text("Installed version \(version)").font(.caption).foregroundStyle(.secondary)
             }
             if let failure = manager.failures[record.id] { Text(failure).font(.callout).foregroundStyle(.red) }
-            Text(manager.ownsPackage(record) ? "Installed in Browse · Updated manually" : "Import pending")
+            Text(manager.ownsPackage(record) ? "Installed in Bend · Updated manually" : "Import pending")
                 .font(.caption).foregroundStyle(.secondary)
             if let notice = manager.compatibilityNotice(record.id) {
                 Label(notice, systemImage: "exclamationmark.triangle")

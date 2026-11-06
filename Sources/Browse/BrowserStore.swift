@@ -699,7 +699,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         let safariVersion = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari")
             .flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String }
         let version = safariVersion.map { $0.split(separator: ".").prefix(2).joined(separator: ".") } ?? "17.0"
-        return "Version/\(version) Safari/605.1.15 Browse/0.1"
+        return "Version/\(version) Safari/605.1.15 Bend/0.1"
     }()
 
     init(address: String, paneID: UUID? = nil, webView suppliedWebView: FocusWebView? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
