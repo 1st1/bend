@@ -125,6 +125,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         add("Reload Page", #selector(reload), "r", to: view)
         add("Back", #selector(back), "[", to: view)
         add("Forward", #selector(forward), "]", to: view)
+        view.addItem(.separator())
+        for (title, key, direction) in [("Zoom In", "+", 1), ("Zoom Out", "-", -1), ("Actual Size", "0", 0)] {
+            add(title, #selector(zoomPage(_:)), key, to: view)
+            view.items.last?.tag = direction
+        }
+        // Also accept Command-= without requiring Shift on a US keyboard.
+        add("Zoom In", #selector(zoomPage(_:)), "=", to: view)
+        view.items.last?.tag = 1
+        view.items.last?.isHidden = true
+        view.items.last?.allowsKeyEquivalentWhenHidden = true
         append(view, to: main)
         let history = NSMenu(title: "History")
         add("Show History", #selector(showHistory), "y", to: history)
@@ -149,18 +159,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         settingsWindow?.show()
     }
     @objc private func openLocation() { store.requestAddress() }
-    private var findSurface: WebSurfaceHost? {
+    private var activeWebPage: PageController? {
         guard let context = browserWindows.active,
               NSApp.keyWindow == nil || NSApp.keyWindow === context.window,
               let page = context.store.existingController(for: context.store.selectedTab.focusedPane),
               !page.isStartPage, page.error == nil,
               let surface = page.webView.superview as? WebSurfaceHost,
               !surface.isHiddenOrHasHiddenAncestor else { return nil }
-        return surface
+        return page
     }
+    private var findSurface: WebSurfaceHost? { activeWebPage?.webView.superview as? WebSurfaceHost }
     @objc func findInPage(_ sender: NSMenuItem) {
         guard let action = NSTextFinder.Action(rawValue: sender.tag) else { return }
         findSurface?.performFindAction(action)
+    }
+
+    // @lat: [[architecture#Page zoom]]
+    private static let pageZoomLevels: [CGFloat] = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5]
+
+    private func pageZoomLevel(_ direction: Int, current: CGFloat) -> CGFloat {
+        if direction > 0 { return Self.pageZoomLevels.first { $0 > current + 0.001 } ?? Self.pageZoomLevels.last! }
+        if direction < 0 { return Self.pageZoomLevels.last { $0 < current - 0.001 } ?? Self.pageZoomLevels.first! }
+        return 1
+    }
+
+    @objc func zoomPage(_ sender: NSMenuItem) {
+        guard let page = activeWebPage else { return }
+        page.webView.pageZoom = pageZoomLevel(sender.tag, current: page.webView.pageZoom)
     }
     @objc private func showHistory() {
         addressPanel?.dismiss(restoreFocus: false)
@@ -180,6 +205,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(findInPage(_:)) { return findSurface != nil }
+        if menuItem.action == #selector(zoomPage(_:)) {
+            guard let page = activeWebPage else { return false }
+            return pageZoomLevel(menuItem.tag, current: page.webView.pageZoom) != page.webView.pageZoom
+        }
         return menuItem.action == #selector(reopenClosed) ? store.canReopenClosed : true
     }
     @objc private func splitRight() { store.split(.horizontal) }

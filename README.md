@@ -37,6 +37,7 @@ The sidebar and exposed workspace share a native Liquid Glass base on macOS 26 a
 | Show History | ⌘Y |
 | Find in page | ⌘F |
 | Next / previous match | ⌘G / ⌘⇧G |
+| Zoom page in / out / reset | ⌘+ (or ⌘=) / ⌘− / ⌘0 |
 | Settings / extensions | ⌘, |
 | Split focused pane right | ⌘D |
 | Split focused pane below | ⌘⇧D |

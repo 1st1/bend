@@ -410,6 +410,12 @@ Clicks from different source panes reuse the target, independent tabs receive in
 
 [LinkNavigationTests.swift](../Tests/BrowseTests/LinkNavigationTests.swift) verifies that both legacy link-opening choices survive loading and that the dedicated-pane choice persists without replacing existing tabs.
 
+## Page zoom shortcuts
+
+[PageZoomTests.swift](../Tests/BrowseTests/PageZoomTests.swift) invokes native menu shortcuts against two web panes to verify zoom-in aliases, zoom-out, reset, focused-pane isolation, bounds, and disabled internal or hidden pages.
+
+Changing page zoom preserves the document and form contents and leaves the independent pane-maximizing layout mode untouched.
+
 ## Find in page
 
 [FindInPageTests.swift](../Tests/BrowseTests/FindInPageTests.swift) exercises the Command-F menu against real WebKit documents, checking focused-pane routing, case-insensitive matches, next/previous wrapping, scrolling, header clearance, Escape dismissal, and disabled internal-page commands.

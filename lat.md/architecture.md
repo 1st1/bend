@@ -277,6 +277,12 @@ Inactive-pane dimming, available in Transparency mode, ranges from 0% to 100%, d
 
 On macOS 26 and later, Browser window and Pane headers each offer Regular/Clear style, optional custom sRGB tint, a 0–100% darkening slider, and an independent reset. Defaults preserve untinted Regular glass, with no window darkening and 50% header darkening. Changes apply live to every existing native browser window and mounted header. [GlassAppearance.swift](../Sources/BrowseCore/GlassAppearance.swift) stores each appearance in optional session fields and normalizes numeric values; older sessions keep their content and receive defaults. Blur and refraction remain system-controlled. [[tests#Live window glass preferences]] covers native updates without content replacement.
 
+## Page zoom
+
+[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) routes page zoom shortcuts to the focused visible web pane in the active browser window, using WebKit's native page zoom.
+
+Command-plus and Command-equals zoom in, Command-minus zooms out, and Command-zero resets to 100%. View menu actions use bounded steps from 25% to 500%, disabling at the limits. Start/history pages, errors, hidden panes, and unrelated key windows are excluded. Zoom affects page content without resizing browser chrome, reloading the document, or changing the separate Zoom Pane layout mode. Each live web view retains its own scale across navigation and tab switches; it is not persisted across app restarts. [[tests#Page zoom shortcuts]] covers keyboard routing and limits.
+
 ## Find in page
 
 [WebSurfaceHost.swift](../Sources/Browse/WebSurfaceHost.swift) hosts a compact AppKit search bar per web pane, using WebKit's public find API for matching, selection, and scrolling.
