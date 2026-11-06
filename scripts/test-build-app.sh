@@ -5,6 +5,8 @@ root="$(mktemp -d "${TMPDIR:-/tmp}/browse-build-test.XXXXXX")"
 trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/scripts" "$root/bin" "$root/dist/Bend.app/Contents/MacOS"
 cp "$(dirname "$0")/build-app.sh" "$root/scripts/build-app.sh"
+mkdir -p "$root/Assets"
+cp "$(dirname "$0")/../Assets/AppIcon.icns" "$root/Assets/AppIcon.icns"
 export BROWSE_BUILD_TEST_ROOT="$root"
 export PATH="$root/bin:$PATH"
 cat > "$root/bin/swift" <<'SH'
@@ -43,6 +45,8 @@ for key in CFBundleName CFBundleDisplayName CFBundleExecutable; do
   [[ "$(/usr/libexec/PlistBuddy -c "Print :$key" "$plist")" == Bend ]]
 done
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == dev.yury.browse.prototype ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$plist")" == AppIcon ]]
+cmp "$root/Assets/AppIcon.icns" "$root/dist/Bend.app/Contents/Resources/AppIcon.icns"
 BEND_SIGNING_IDENTITY='Bend test signer' BROWSE_SIGNING_IDENTITY='Legacy test signer' bash "$root/scripts/build-app.sh"
 [[ "$(sed -n '5p' "$root/signing-arguments")" == 'Bend test signer' ]]
 env -u BEND_SIGNING_IDENTITY BROWSE_SIGNING_IDENTITY='Legacy test signer' bash "$root/scripts/build-app.sh"

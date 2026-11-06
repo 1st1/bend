@@ -12,6 +12,12 @@ The script enables Hardened Runtime and verifies the signature before reporting 
 
 Packaging creates a separate bundle in a temporary directory under `dist`, then signs and verifies it before replacing the installed bundle by rename. It does not overwrite the executable mapped by a running Bend process. Signing or verification failure leaves the previous build intact; publication failure restores the previous bundle. The script leaves Bend running and asks for a restart to use the new build. Extension packages, enablement, grants, and WebKit data remain outside the app bundle.
 
+## Application icon
+
+The app uses the supplied painted Bend artwork, with the untouched 2048×2048 source preserved in [BendIcon-original.jpg](../Assets/BendIcon-original.jpg).
+
+[generate-app-icon.swift](../scripts/generate-app-icon.swift) renders the artwork with rounded corners, transparent margins, and a subtle shadow into standard and Retina icon sizes. Run `swift scripts/generate-app-icon.swift` on macOS to regenerate [AppIcon.png](../Assets/AppIcon.png) and [AppIcon.icns](../Assets/AppIcon.icns). [build-app.sh](../scripts/build-app.sh) copies the ICNS into bundle resources and sets the icon entry in Info.plist before signing.
+
 ## Application shell
 
 [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) owns menus, keyboard shortcuts, and application lifetime. [BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) owns the browser windows. [BrowserView.swift](../Sources/Browse/BrowserView.swift) renders a dark sidebar, vertical tabs, pane controls, and start pages.

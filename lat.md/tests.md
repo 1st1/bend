@@ -38,7 +38,7 @@ The smoke test waits for background errors, invokes the toolbar action, and veri
 
 [test-build-app.sh](../scripts/test-build-app.sh) runs the packaging script with isolated compiler and signing stand-ins, verifying failure preservation and replacement without changing an open descriptor to the previous executable.
 
-Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files. The test checks Bend's bundle name and executable, the retained profile identifier, and precedence of the new signing override over the legacy override. These checks do not exercise macOS signing or WebKit runtime behavior.
+Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files. The test checks Bend's bundle name and executable, the retained profile identifier, the icon resource and plist entry, and precedence of the new signing override over the legacy override. These checks do not exercise macOS signing or WebKit runtime behavior.
 
 ## Catalog download integrity and identity
 

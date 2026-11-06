@@ -15,7 +15,8 @@ cleanup() {
 }
 trap cleanup EXIT
 candidate="$staging/Bend.app"
-mkdir -p "$candidate/Contents/MacOS"
+mkdir -p "$candidate/Contents/MacOS" "$candidate/Contents/Resources"
+cp "$PWD/Assets/AppIcon.icns" "$candidate/Contents/Resources/AppIcon.icns"
 bin_dir="$(swift build -c release --show-bin-path)"
 cp "$bin_dir/Bend" "$candidate/Contents/MacOS/Bend"
 cat > "$candidate/Contents/Info.plist" <<'PLIST'
@@ -26,6 +27,7 @@ cat > "$candidate/Contents/Info.plist" <<'PLIST'
   <key>CFBundleDisplayName</key><string>Bend</string>
   <key>CFBundleIdentifier</key><string>dev.yury.browse.prototype</string>
   <key>CFBundleExecutable</key><string>Bend</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>CFBundleVersion</key><string>1</string>
