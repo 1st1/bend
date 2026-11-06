@@ -37,7 +37,6 @@ struct BrowserView: View {
                 Color.black.opacity(store.windowGlass.darkening).allowsHitTesting(false)
             }
         }
-        .foregroundStyle(Color.white.opacity(0.88))
         .preferredColorScheme(.dark)
     }
 

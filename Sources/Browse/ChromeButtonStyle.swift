@@ -5,7 +5,7 @@ private typealias ButtonState<Value> = SwiftUI.State<Value>
 
 // @lat: [[architecture#Toolbar button styling]]
 struct ChromeButtonStyle: ButtonStyle {
-    static let highlightBackground = Color.white.opacity(0.06)
+    static let highlightBackground = Color.primary.opacity(0.06)
     var prominent = false
 
     func makeBody(configuration: Configuration) -> some View {
@@ -18,20 +18,22 @@ struct ChromeButtonStyle: ButtonStyle {
         @ButtonState<Bool> private var hovered = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.colorSchemeContrast) private var contrast
 
         private var highlighted: Bool { enabled && (hovered || configuration.isPressed) }
-        private var iconColor: Color {
-            if prominent {
-                return highlighted ? Color(red: 0.87, green: 0.89, blue: 0.90) : Color(red: 0.67, green: 0.69, blue: 0.70)
-            }
-            return highlighted ? Color(red: 0.54, green: 0.56, blue: 0.59) : Color(red: 0.41, green: 0.43, blue: 0.46)
+        // Hierarchical styles retain the system's material/vibrancy treatment.
+        // Fixed RGB colors here made enabled controls resemble disabled ones.
+        private var iconStyle: HierarchicalShapeStyle {
+            if !enabled { return .tertiary }
+            return highlighted || contrast == .increased ? .primary : .secondary
         }
 
         var body: some View {
             configuration.label
                 .font(.system(size: prominent ? 14 : 12, weight: .regular))
                 .imageScale(.medium)
-                .foregroundStyle(iconColor.opacity(enabled ? 1 : 0.4))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(iconStyle)
                 .frame(width: prominent ? 28 : 24, height: prominent ? 28 : 24)
                 .background {
                     Circle()
