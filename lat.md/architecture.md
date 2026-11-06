@@ -26,6 +26,8 @@ The generated icon uses a top-aligned square crop that trims extra wall below an
 
 [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) owns menus, keyboard shortcuts, and application lifetime. [BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) owns the browser windows. [BrowserView.swift](../Sources/Browse/BrowserView.swift) renders a dark sidebar, vertical tabs, pane controls, and start pages.
 
+Both built-in start pages show a centered, muted-gray keyboard shortcut reference matching the browser's menus. Action labels and right-aligned keys form two columns, grouped by task with whitespace; shorter panes scroll the list. Tab, window, and pane shortcuts appear by default. A centered, subtle gray See more pill reveals navigation, find, page zoom, history, and settings shortcuts; See less collapses them again. Expansion and collapse smoothly resize the list, fade the extra groups, and rotate the chevron. The pill keeps a stable width and animates as one unit while its labels crossfade; Reduce Motion disables these animations.
+
 The sidebar presents one continuous column of tabs without group headings or group creation. Each tab contains one or more browser panes. Selection changes the displayed tab; closing the final tab creates a replacement. The sidebar can be resized or hidden, with session-save errors shown at the bottom only when needed.
 
 The sidebar header places a new-tab button beside a right-aligned sidebar toggle, without a brand label or a trailing new-tab row. Command-T and the File menu also create tabs. Panes use six-point outer margins and divider gaps, starting at the top window inset with no shared navigation bar. When the sidebar is hidden, the upper-left pane reserves space for window controls and exposes the sidebar toggle.
@@ -369,7 +371,7 @@ Bare hostnames containing dots use HTTPS, while localhost and loopback IPv4 addr
 
 [AddressPanelController.swift](../Sources/Browse/AddressPanelController.swift) owns a floating command-palette-style location panel. A rounded search field, compact history rows, and a shortcut footer sit within a frosted shell. URL entry remains separate from pane chrome.
 
-Command-L and the start-page location button open the popup for a specific pane, with its current URL selected (blank for start pages). Return navigates that pane using the [[architecture#Address handling|address resolver]]; invalid input stays open with an error that clears when editing resumes.
+Command-L opens the popup for the focused pane, with its current URL selected (blank for start pages). Return navigates that pane using the [[architecture#Address handling|address resolver]]; invalid input stays open with an error that clears when editing resumes.
 
 [AddressPanelController.swift](../Sources/Browse/AddressPanelController.swift) displays [[architecture#History suggestions]] beneath the input. Arrow keys select results, Return opens the selection, and clicking a result opens it. Eligible URL prefixes autocomplete with the added suffix selected; deletion, marked text input, and edits away from the end suppress autofill.
 

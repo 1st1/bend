@@ -458,8 +458,7 @@ private struct BrowserPane: View {
         } else if controller.address == "browse://history" {
             HistoryView(store: store, navigate: controller.navigate)
         } else if controller.isStartPage {
-            StartPage(isGuide: controller.address == "browse://guide", navigate: controller.navigate,
-                      split: { store.focus(pageID); store.split(.horizontal) }, focusAddress: { store.requestAddress(for: pageID) })
+            StartPage()
                 .onTapGesture { store.focus(pageID) }
         } else {
             WebSurface(webView: controller.webView)
@@ -535,86 +534,104 @@ private struct WebSurface: NSViewRepresentable {
     }
 }
 
+// @lat: [[architecture#Application shell]]
 private struct StartPage: View {
-    let isGuide: Bool
-    let navigate: (String) -> Void
-    let split: () -> Void
-    let focusAddress: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ViewState private var showsMore = false
+    @ViewState private var moreButtonHovered = false
+
+    private static let shortcutGroups: [[(String, String)]] = [
+        [
+            ("Open location", "⌘L"),
+            ("New tab", "⌘T"),
+            ("New window", "⌘N"),
+            ("Close pane", "⌘W"),
+            ("Close tab", "⇧⌘W"),
+            ("Reopen closed pane or tab", "⇧⌘T")
+        ],
+        [
+            ("Split right", "⌘D"),
+            ("Split below", "⇧⌘D"),
+            ("Zoom pane", "⇧⌘↩"),
+            ("Toggle sidebar", "⇧⌘S")
+        ],
+        [
+            ("Back", "⌘["),
+            ("Forward", "⌘]"),
+            ("Reload page", "⌘R"),
+            ("Find in page", "⌘F"),
+            ("Find next", "⌘G"),
+            ("Find previous", "⇧⌘G"),
+            ("Zoom in", "⌘+"),
+            ("Zoom out", "⌘−"),
+            ("Actual size", "⌘0")
+        ],
+        [
+            ("Show history", "⌘Y"),
+            ("Settings", "⌘,")
+        ]
+    ]
 
     var body: some View {
-        GeometryReader { geo in
+        GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 7) {
-                        Image(systemName: isGuide ? "rectangle.split.2x1" : "circle.hexagongrid")
-                        Text(isGuide ? "MAKE SPACE" : "A QUIETER INTERNET").tracking(2)
-                    }.font(.system(size: 9, weight: .medium)).foregroundStyle(Chrome.accent)
-                    .padding(.bottom, 27)
-
-                    Text(isGuide ? "Side by side.\nIn your flow." : "Room for\nyour curiosity.")
-                        .font(.system(size: geo.size.width < 420 ? 33 : 43, weight: .medium, design: .serif))
-                        .tracking(-1.5).lineSpacing(-2).fixedSize(horizontal: false, vertical: true)
-                    Text(isGuide ? "One tab. A whole workspace. Keep the pages you need together, right where you need them." : "Your browser, arranged around you.\nOpen a page and make yourself at home.")
-                        .font(.system(size: 12)).foregroundStyle(.white.opacity(0.46)).lineSpacing(5)
-                        .fixedSize(horizontal: false, vertical: true).padding(.top, 17).padding(.bottom, 30)
-
-                    if isGuide {
-                        shortcut("rectangle.split.2x1", "Split right", "⌘D")
-                        shortcut("rectangle.split.1x2", "Split below", "⌘⇧D")
-                        shortcut("arrow.up.left.and.arrow.down.right", "Focus one pane", "⌘⇧↩")
-                        shortcut("sidebar.left", "Toggle sidebar", "⌘⇧S")
-                        Button(action: split) {
-                            HStack { Text("Make another split"); Spacer(); Image(systemName: "arrow.right") }
-                                .font(.system(size: 12, weight: .medium)).foregroundStyle(Chrome.accent)
-                                .padding(14).background(Chrome.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                        }.buttonStyle(.plain).padding(.top, 22)
-                    } else {
-                        Button(action: focusAddress) {
-                            HStack {
-                                Image(systemName: "magnifyingglass"); Text("Where to?"); Spacer(); Text("⌘L").font(.system(size: 10))
-                            }.font(.system(size: 12)).foregroundStyle(.white.opacity(0.55))
-                                .padding(14).background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
-                                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.08)))
-                        }.buttonStyle(.plain).padding(.bottom, 26)
-                        Text("A FEW GOOD PLACES").font(.system(size: 8, weight: .semibold)).tracking(1.7).foregroundStyle(Chrome.muted).padding(.bottom, 10)
-                        destination("swift", "Swift", "Build something native", "https://www.swift.org")
-                        destination("book.closed", "Wikipedia", "Follow a rabbit hole", "https://en.wikipedia.org")
-                        destination("chevron.left.forwardslash.chevron.right", "Hacker News", "See what’s happening", "https://news.ycombinator.com")
+                VStack(spacing: 22) {
+                    ForEach(0..<(showsMore ? Self.shortcutGroups.count : 2), id: \.self) { group in
+                        VStack(spacing: 10) {
+                            ForEach(Self.shortcutGroups[group].indices, id: \.self) { index in
+                                let shortcut = Self.shortcutGroups[group][index]
+                                HStack(alignment: .firstTextBaseline, spacing: 24) {
+                                    Text(shortcut.0)
+                                    Spacer(minLength: 0)
+                                    Text(shortcut.1)
+                                        .monospaced()
+                                        .fixedSize()
+                                }
+                                .accessibilityElement(children: .combine)
+                            }
+                        }
+                        .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: -8)))
                     }
-                    HStack(spacing: 6) {
-                        Circle().fill(Chrome.accent.opacity(0.65)).frame(width: 4, height: 4)
-                        Text(isGuide ? "Drag any divider to find your balance." : "Native macOS. Powered by WebKit.")
-                    }.font(.system(size: 9)).foregroundStyle(.white.opacity(0.27)).padding(.top, 35)
+                    Button {
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
+                            showsMore.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            // Keep both labels mounted so their width and local
+                            // position stay stable while the whole pill moves.
+                            ZStack {
+                                Text("See more").opacity(showsMore ? 0 : 1)
+                                Text("See less").opacity(showsMore ? 1 : 0)
+                            }
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(showsMore ? "See less" : "See more")
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .medium))
+                                .rotationEffect(.degrees(showsMore ? 180 : 0))
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(moreButtonHovered ? 0.65 : 0.48))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.white.opacity(moreButtonHovered ? 0.08 : 0.045), in: Capsule())
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    // Animate the capsule and its contents in one coordinate space.
+                    .geometryGroup()
+                    .onHover { moreButtonHovered = $0 }
+                    .accessibilityValue(showsMore ? "Expanded" : "Collapsed")
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, geo.size.width < 420 ? 27 : 44)
-                .padding(.vertical, max(35, min(85, geo.size.height * 0.1)))
-                .frame(maxWidth: 590, alignment: .leading).frame(maxWidth: .infinity)
+                .font(.system(size: 13))
+                .foregroundStyle(Chrome.muted)
+                .frame(maxWidth: 320)
+                .padding(28)
+                .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                .contentShape(Rectangle())
             }
         }
-    }
-
-    private func shortcut(_ symbol: String, _ name: String, _ key: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: symbol).frame(width: 17).foregroundStyle(Chrome.muted)
-            Text(name); Spacer()
-            Text(key).font(.system(size: 10, design: .monospaced)).foregroundStyle(.white.opacity(0.5))
-                .padding(.horizontal, 7).padding(.vertical, 4).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 4))
-        }.font(.system(size: 12)).padding(.vertical, 10)
-            .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.055)).frame(height: 1) }
-    }
-
-    private func destination(_ symbol: String, _ title: String, _ subtitle: String, _ url: String) -> some View {
-        Button { navigate(url) } label: {
-            HStack(spacing: 13) {
-                Image(systemName: symbol).font(.system(size: 16)).foregroundStyle(Chrome.accent)
-                    .frame(width: 35, height: 35).background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.system(size: 12, weight: .medium))
-                    Text(subtitle).font(.system(size: 10)).foregroundStyle(Chrome.muted)
-                }
-                Spacer(); Image(systemName: "arrow.up.right").font(.system(size: 10)).foregroundStyle(Chrome.muted)
-            }.padding(.vertical, 9).contentShape(Rectangle())
-        }.buttonStyle(.plain)
     }
 }
 
