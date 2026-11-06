@@ -413,15 +413,15 @@ The test also closes every registered extension window and opens a new one, chec
 
 ## Canceling new tab entry
 
-[AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies that canceling initial blank-tab entry restores the previous tab and zoom without recording a closed item.
+[AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies that canceling initial blank-tab or split-pane entry restores the previous focus, layout, and zoom without recording a closed item.
 
-The saved session excludes the canceled tab. Existing tabs, completed entry, tabs with added panes, and tabs opened with a destination cannot be discarded through this path.
+Both split directions restore a non-first source pane, preserve its controller, and dispose of the provisional controller. The saved session excludes canceled panes and tabs; a pane that has navigated is retained. Existing tabs, completed entry, tabs with added panes, and tabs opened with a destination cannot be discarded through this path.
 
 ## New tab popup keyboard cancellation
 
-[AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) exercises Escape and Command-W through the native popup and application menu after creating a tab.
+[AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) exercises Escape and Command-W through the native popup and application menu after creating a tab or using Command-D and Shift-Command-D.
 
-Both commands dismiss the popup and remove the initial blank tab even after unsubmitted editing. Existing-tab Escape, outside dismissal, and successful submission retain their tabs. The placeholder explicitly uses light-gray text.
+Both commands dismiss the popup and remove the initial blank pane or tab even after unsubmitted editing. Existing-pane Escape, outside dismissal, and successful submission retain their content. The placeholder explicitly uses light-gray text.
 
 ## Dedicated Command-click pane
 

@@ -203,7 +203,7 @@ import BrowseCore
     store.toggleZoom(original.focusedPane)
     store.newTab()
     let blank = store.selectedTab.focusedPane
-    let cancelled = store.cancelNewTabEntry(for: blank)
+    let cancelled = store.cancelInitialAddressEntry(for: blank)
     #expect(cancelled)
     #expect(store.selectedTab.id == original.id && store.selectedTab.layout == original.layout)
     #expect(store.zoomedPane == original.focusedPane)
@@ -212,19 +212,44 @@ import BrowseCore
     store.save()
     let restored = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
     #expect(restored.session.selectedTab == original.id && restored.session.workspaces[0].tabs.count == 1)
+    // Cancel either split direction from a non-first pane, restoring its zoom.
+    let sourceID = original.pages.last!.id
+    let sourceController = store.controller(for: original.pages.last!)
+    for axis in [SplitAxis.horizontal, .vertical] {
+        store.focus(sourceID)
+        if store.zoomedPane != sourceID { store.toggleZoom(sourceID) }
+        let before = store.selectedTab
+        store.split(axis)
+        let provisional = store.selectedTab.focusedPane
+        _ = store.controller(for: store.selectedTab.pages.last!)
+        #expect(store.zoomedPane == nil)
+        #expect(store.cancelInitialAddressEntry(for: provisional))
+        #expect(store.selectedTab.layout == before.layout)
+        #expect(store.selectedTab.focusedPane == sourceID && store.zoomedPane == sourceID)
+        #expect(store.selectedTab.pages.map(\.id) == before.pages.map(\.id))
+        #expect(store.existingController(for: provisional) == nil)
+        #expect(store.existingController(for: sourceID) === sourceController)
+        #expect(!store.canReopenClosed)
+        store.save()
+        let reloaded = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+        #expect(reloaded.selectedTab.layout == before.layout)
+    }
     // Existing tabs, completed entry, and panes added to a new tab are never discarded.
-    #expect(!store.cancelNewTabEntry(for: original.focusedPane))
+    #expect(!store.cancelInitialAddressEntry(for: original.focusedPane))
     store.newTab()
     let kept = store.selectedTab.focusedPane
-    store.finishNewTabEntry(for: kept)
-    #expect(!store.cancelNewTabEntry(for: kept))
+    store.finishInitialAddressEntry(for: kept)
+    #expect(!store.cancelInitialAddressEntry(for: kept))
     store.newTab()
     let split = store.selectedTab.focusedPane
     store.split(.horizontal)
-    #expect(!store.cancelNewTabEntry(for: split))
+    #expect(!store.cancelInitialAddressEntry(for: split))
     #expect(store.selectedTab.pages.count == 2)
+    let newPane = store.selectedTab.focusedPane
+    store.controller(for: store.selectedTab.pages.last!).navigate("browse://guide")
+    #expect(!store.cancelInitialAddressEntry(for: newPane))
     store.newTab(address: "https://example.com")
-    #expect(!store.cancelNewTabEntry(for: store.selectedTab.focusedPane))
+    #expect(!store.cancelInitialAddressEntry(for: store.selectedTab.focusedPane))
 }
 
 // @lat: [[tests#New tab popup keyboard cancellation]]
@@ -289,10 +314,37 @@ import BrowseCore
         // key-window status. Its browser responder must still be restored.
         #expect(context.window.firstResponder === context.window.contentView)
     }
+    let beforeSplit = store.selectedTab
+    for below in [false, true] {
+        for useEscape in [true, false] {
+            let splitKey = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero,
+                modifierFlags: below ? [.command, .shift] : [.command],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: context.window.windowNumber,
+                context: nil, characters: "d", charactersIgnoringModifiers: "d", isARepeat: false, keyCode: 2))
+            #expect(try #require(NSApp.mainMenu).performKeyEquivalent(with: splitKey))
+            #expect(store.selectedTab.pages.count == beforeSplit.pages.count + 1)
+            let panel = try popup()
+            let content = try #require(panel.contentView)
+            let input = try #require(fields(content).first { $0.isEditable })
+            input.stringValue = "changed my mind"
+            if useEscape { try escape(panel) } else { try command("Close Pane") }
+            #expect(!panel.isVisible)
+            #expect(store.selectedTab.layout == beforeSplit.layout)
+            #expect(store.selectedTab.focusedPane == beforeSplit.focusedPane)
+            #expect(!store.canReopenClosed)
+        }
+    }
     // Escape in an existing tab only dismisses location entry.
     try command("Open Location…")
     try escape(try popup())
     #expect(store.session.selectedTab == original && store.session.workspaces[0].tabs.count == 1)
+    // Outside dismissal also commits a split pane.
+    store.split(.horizontal)
+    let keptPane = store.selectedTab.focusedPane
+    context.addressPanel.dismiss(restoreFocus: true)
+    store.requestAddress()
+    try escape(try popup())
+    #expect(store.selectedTab.pages.contains { $0.id == keptPane })
     // Outside dismissal commits the blank tab: reopening its popup must not delete it.
     try command("New Tab")
     let retained = store.session.selectedTab

@@ -201,7 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         guard let context else { return }
-        if context.addressPanel.cancelNewTabIfPresented() { return }
+        if context.addressPanel.cancelInitialEntryIfPresented() { return }
         context.addressPanel.dismiss(restoreFocus: false)
         let store = context.store
         if store.session.workspaces.flatMap(\.tabs).count == 1, store.selectedTab.pages.count == 1 {

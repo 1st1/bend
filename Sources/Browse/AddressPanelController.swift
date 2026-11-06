@@ -278,7 +278,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     func show(for paneID: UUID) {
         guard let parentWindow,
               let page = store.selectedTab.pages.first(where: { $0.id == paneID }) else { return }
-        if let targetPane, targetPane != paneID { store.finishNewTabEntry(for: targetPane) }
+        if let targetPane, targetPane != paneID { store.finishInitialAddressEntry(for: targetPane) }
         if targetPane != paneID || !panel.isVisible { topInsetFromWindow = nil }
         targetPane = paneID
         InputDiagnostics.transition(.addressPanel, .shown, window: panel, paneID: paneID)
@@ -316,7 +316,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             return
         }
         store.focus(targetPane)
-        store.finishNewTabEntry(for: targetPane)
+        store.finishInitialAddressEntry(for: targetPane)
         if let suggestion = result?.history {
             store.recordHistoryChoice(url: suggestion.url, query: showingFrequent ? "" : typedQuery)
         }
@@ -327,7 +327,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     func dismiss(restoreFocus: Bool) {
         guard let targetPane else { return }
         InputDiagnostics.transition(.addressPanel, .hidden, window: panel, paneID: targetPane, flags: ["restoreFocus": restoreFocus])
-        store.finishNewTabEntry(for: targetPane)
+        store.finishInitialAddressEntry(for: targetPane)
         self.targetPane = nil
         topInsetFromWindow = nil
         parentWindow?.removeChildWindow(panel)
@@ -343,8 +343,8 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     func windowDidResignKey(_ notification: Notification) { dismiss(restoreFocus: false) }
 
     @discardableResult
-    func cancelNewTabIfPresented() -> Bool {
-        guard let targetPane, store.cancelNewTabEntry(for: targetPane) else { return false }
+    func cancelInitialEntryIfPresented() -> Bool {
+        guard let targetPane, store.cancelInitialAddressEntry(for: targetPane) else { return false }
         dismiss(restoreFocus: true)
         return true
     }
@@ -517,7 +517,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            if !cancelNewTabIfPresented() { dismiss(restoreFocus: true) }
+            if !cancelInitialEntryIfPresented() { dismiss(restoreFocus: true) }
             return true
         }
         if commandSelector == #selector(NSResponder.moveDown(_:)) || commandSelector == #selector(NSResponder.moveUp(_:)) {

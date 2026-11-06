@@ -11,13 +11,17 @@ final class BrowserStore: ObservableObject {
     @Published private(set) var paneMoveRevision = 0
     var onAddressRequested: ((UUID) -> Void)?
     var onSettingsRequested: (() -> Void)?
-    private struct PendingTabEntry {
+    private struct PendingAddressEntry {
         let tabID: UUID
         let paneID: UUID
-        let previousTabID: UUID
+        enum Kind {
+            case tab(previousTabID: UUID)
+            case pane(previousPaneID: UUID)
+        }
+        let kind: Kind
         let previousZoom: UUID?
     }
-    private var pendingTabEntry: PendingTabEntry?
+    private var pendingAddressEntry: PendingAddressEntry?
     private var extensionStorage: AnyObject?
     private let persistentExtensions: Bool
     @available(macOS 15.4, *)
@@ -222,8 +226,11 @@ final class BrowserStore: ObservableObject {
         InputDiagnostics.transition(.storeFocus, .changed, paneID: id)
     }
     func split(_ axis: SplitAxis) {
+        let previousPaneID = selectedTab.focusedPane, previousZoom = zoomedPane
         zoomedPane = nil
         editTab { $0.split(axis: axis) }
+        pendingAddressEntry = PendingAddressEntry(tabID: selectedTab.id, paneID: selectedTab.focusedPane,
+            kind: .pane(previousPaneID: previousPaneID), previousZoom: previousZoom)
         requestAddress()
     }
 
@@ -354,36 +361,48 @@ final class BrowserStore: ObservableObject {
         let tab = BrowserTab(title: address == "browse://history" ? "History" : "New tab", pages: [Page(address: address)])
         if let linkOpener { linkOpeners[tab.pages[0].id] = linkOpener }
         session.workspaces[index].tabs.append(tab); select(tab.id)
-        pendingTabEntry = address == "browse://start" ? PendingTabEntry(tabID: tab.id, paneID: tab.pages[0].id,
-            previousTabID: previousTabID, previousZoom: previousZoom) : nil
+        pendingAddressEntry = address == "browse://start" ? PendingAddressEntry(tabID: tab.id, paneID: tab.pages[0].id,
+            kind: .tab(previousTabID: previousTabID), previousZoom: previousZoom) : nil
         if address == "browse://start" { requestAddress() }
     }
 
-    func finishNewTabEntry(for paneID: UUID) {
-        if pendingTabEntry?.paneID == paneID { pendingTabEntry = nil }
+    func finishInitialAddressEntry(for paneID: UUID) {
+        if pendingAddressEntry?.paneID == paneID { pendingAddressEntry = nil }
     }
 
     @discardableResult
-    func cancelNewTabEntry(for paneID: UUID) -> Bool {
-        guard let pending = pendingTabEntry, pending.paneID == paneID,
+    func cancelInitialAddressEntry(for paneID: UUID) -> Bool {
+        guard let pending = pendingAddressEntry, pending.paneID == paneID,
               session.selectedTab == pending.tabID,
               let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == pending.tabID } }),
-              let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == pending.tabID }),
-              session.workspaces[wi].tabs.count > 1 else { return false }
+              let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == pending.tabID }) else { return false }
         let tab = session.workspaces[wi].tabs[ti]
-        guard tab.pages.count == 1, tab.pages[0].id == paneID,
-              tab.pages[0].address == "browse://start",
+        guard let page = tab.pages.first(where: { $0.id == paneID }), page.address == "browse://start",
               (browsers[paneID]?.address ?? "browse://start") == "browse://start" else { return false }
-        pendingTabEntry = nil
+        switch pending.kind {
+        case .tab:
+            guard tab.pages.count == 1, session.workspaces[wi].tabs.count > 1 else { return false }
+        case .pane:
+            guard tab.pages.count > 1 else { return false }
+        }
+        pendingAddressEntry = nil
         browsers.removeValue(forKey: paneID)?.webView.stopLoading()
-        session.workspaces[wi].tabs.remove(at: ti)
-        let previous = session.workspaces.flatMap(\.tabs).first { $0.id == pending.previousTabID }
-        select(previous?.id ?? session.workspaces[wi].tabs[min(ti, session.workspaces[wi].tabs.count - 1)].id)
-        if let zoom = pending.previousZoom, previous?.pages.contains(where: { $0.id == zoom }) == true {
+        switch pending.kind {
+        case .tab(let previousTabID):
+            session.workspaces[wi].tabs.remove(at: ti)
+            let previous = session.workspaces.flatMap(\.tabs).first { $0.id == previousTabID }
+            select(previous?.id ?? session.workspaces[wi].tabs[min(ti, session.workspaces[wi].tabs.count - 1)].id)
+        case .pane(let previousPaneID):
+            editTab(tab.id) {
+                $0.closePane(paneID)
+                if $0.pages.contains(where: { $0.id == previousPaneID }) { $0.focusedPane = previousPaneID }
+            }
+        }
+        if let zoom = pending.previousZoom, selectedTab.pages.contains(where: { $0.id == zoom }) {
             zoomedPane = zoom
         }
         InputDiagnostics.transition(.addressCancel, .finished, paneID: paneID, tabID: pending.tabID,
-                                    flags: ["discardNewTab": true])
+            flags: ["discardNewTab": tab.pages.count == 1, "discardNewPane": tab.pages.count > 1])
         return true
     }
 
@@ -462,7 +481,7 @@ final class BrowserStore: ObservableObject {
     }
 
     func closeTab(_ id: UUID) {
-        if pendingTabEntry?.tabID == id { pendingTabEntry = nil }
+        if pendingAddressEntry?.tabID == id { pendingAddressEntry = nil }
         for wi in session.workspaces.indices {
             guard let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == id }) else { continue }
             let closed = snapshot(session.workspaces[wi].tabs[ti])
