@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import BrowseCore
 import Testing
 import WebKit
@@ -90,6 +91,16 @@ import WebKit
     #expect(hosts[0].isFindBarVisible)
     #expect(!hosts[1].isFindBarVisible)
     let bar = try #require(hosts[0].findBarView)
+    func buttonHosts(in view: NSView) -> [NSHostingView<FindToolbarButtons>] {
+        (view as? NSHostingView<FindToolbarButtons>).map { [$0] } ?? view.subviews.flatMap { buttonHosts(in: $0) }
+    }
+    let buttons = try #require(buttonHosts(in: bar).first)
+    func clickFindButton(_ index: Int) async throws {
+        let point = buttons.convert(NSPoint(x: 12 + 24 * index, y: 12), to: nil)
+        try sendPaneMouse(.leftMouseDown, at: point, to: context.window)
+        try sendPaneMouse(.leftMouseUp, at: point, to: context.window)
+        try await settle()
+    }
     let field = try #require(fields(bar).first { $0.isEditable })
     bar.layoutSubtreeIfNeeded()
     let emptyInputFrame = field.frame
@@ -150,6 +161,10 @@ import WebKit
         #expect(tint.layer?.backgroundColor == nil)
         #expect(bar.superview === glass.contentView)
     }
+    try await clickFindButton(1)
+    try await waitForSelection("first")
+    try await clickFindButton(0)
+    try await waitForSelection("third")
     // Return wraps forward from the last match while keeping the field active.
     field.selectText(nil)
     let enter = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
@@ -243,7 +258,9 @@ import WebKit
     frameEditor.insertText("frameword", replacementRange: NSRange(location: 0, length: frameEditor.string.utf16.count))
     try await waitForCount(2)
     #expect(try await pages[0].webView.evaluateJavaScript("frames[0].getSelection().toString().toLowerCase()") as? String == "frameword")
-    hosts[0].hideFindBar()
+    try await clickFindButton(2)
+    #expect(!hosts[0].isFindBarVisible)
+    #expect(context.window.firstResponder === pages[0].webView)
     for _ in 0..<40 {
         if try await pages[0].webView.evaluateJavaScript("frames[0].getSelection().toString()") as? String == "" { break }
         try await settle()

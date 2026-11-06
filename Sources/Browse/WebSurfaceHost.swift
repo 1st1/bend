@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import WebKit
 import WebKitFindSupport
 import BrowseCore
@@ -19,8 +20,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     private(set) var findBarView: NSView?
     private let searchField = FindSearchField()
     private var statusLabel: NSTextField { searchField.matchCountLabel }
-    private var previousButton: NSButton!
-    private var nextButton: NSButton!
+    private var findButtonsView: NSHostingView<FindToolbarButtons>?
     private var searchGeneration = 0
     private var searchQuery: String?
     private var findSupport: BendFindSupport?
@@ -97,28 +97,23 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         searchField.sendsWholeSearchString = false
         searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         searchField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        previousButton = NSButton(image: NSImage(systemSymbolName: "chevron.up", accessibilityDescription: "Previous match")!,
-                                  target: self, action: #selector(previousMatch))
-        nextButton = NSButton(image: NSImage(systemSymbolName: "chevron.down", accessibilityDescription: "Next match")!,
-                              target: self, action: #selector(nextMatch))
-        previousButton.toolTip = "Previous match · ⇧⌘G"
-        nextButton.toolTip = "Next match · ⌘G"
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close find bar")!,
-                             target: self, action: #selector(closeFindBar))
-        close.toolTip = "Close find bar · Escape"
-        for button in [previousButton!, nextButton!, close] {
-            button.bezelStyle = .texturedRounded
-            button.controlSize = .small
-            button.widthAnchor.constraint(equalToConstant: 26).isActive = true
-        }
-        let stack = NSStackView(views: [searchField, previousButton, nextButton, close])
+        let buttons = NSHostingView(rootView: FindToolbarButtons(canNavigate: false,
+            previous: { [weak self] in self?.search(backwards: true) },
+            next: { [weak self] in self?.search(backwards: false) },
+            close: { [weak self] in self?.hideFindBar() }))
+        buttons.sizingOptions = []
+        buttons.safeAreaRegions = []
+        buttons.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        buttons.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        findButtonsView = buttons
+        let stack = NSStackView(views: [searchField, buttons])
         stack.spacing = 4
         stack.alignment = .centerY
         stack.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 8),
-            stack.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -8),
+            stack.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -12),
             stack.centerYAnchor.constraint(equalTo: bar.centerYAnchor)
         ])
         findBarView = bar
@@ -179,13 +174,11 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         if let count {
             statusLabel.stringValue = count > 10000 ? "10,000+ matches" : "\(count) \(count == 1 ? "match" : "matches")"
         } else { statusLabel.stringValue = found == false ? "Not found" : "" }
-        previousButton?.isEnabled = !searchField.stringValue.isEmpty
-        nextButton?.isEnabled = !searchField.stringValue.isEmpty
+        let canNavigate = !searchField.stringValue.isEmpty
+        if findButtonsView?.rootView.canNavigate != canNavigate {
+            findButtonsView?.rootView.canNavigate = canNavigate
+        }
     }
-
-    @objc private func previousMatch() { search(backwards: true) }
-    @objc private func nextMatch() { search(backwards: false) }
-    @objc private func closeFindBar() { hideFindBar() }
 
     override func cancelOperation(_ sender: Any?) {
         if isFindBarVisible { hideFindBar() }

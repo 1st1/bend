@@ -443,6 +443,8 @@ Changing page zoom preserves the document and form contents and leaves the indep
 
 [FindInPageTests.swift](../Tests/BrowseTests/FindInPageTests.swift) exercises the Command-F menu against real WebKit documents, checking focused-pane routing, case-insensitive matches, next/previous wrapping, scrolling, header clearance, Escape dismissal, and disabled internal-page commands.
 
+Actual window mouse clicks on the shared-style find buttons navigate forwards and backwards and dismiss the bar, clearing highlights and returning focus to the web page.
+
 Layout assertions verify that the input keeps its frame across empty, pending, matching, and zero-result states, including at minimum pane width. The count stays right-aligned inside the field without overlapping the native text editor. Return and Find Next retain the count while navigating; editing the query immediately clears the old total.
 
 On macOS 26 and later, the find controls share the native title glass without a separate material. Opening and closing adjust the glass height and WebKit inset together; style and tint changes preserve the field editor and control parentage. Active-pane tint spans the combined header, covers the find row, stays absent from inactive panes, and clears without removing the controls.
