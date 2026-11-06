@@ -443,7 +443,7 @@ private struct BrowserPane: View {
             ZStack(alignment: .topLeading) {
                 Rectangle().fill(.white.opacity(0.06)).frame(height: 1)
                 if controller.isLoading {
-                    GeometryReader { geo in Rectangle().fill(Chrome.accent).frame(width: geo.size.width * controller.progress, height: 2) }
+                    GeometryReader { geo in Rectangle().fill(Color(nsColor: .controlAccentColor)).frame(width: geo.size.width * controller.progress, height: 2) }
                 }
             }.frame(height: 2)
         }
