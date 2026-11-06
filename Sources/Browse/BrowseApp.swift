@@ -192,7 +192,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         store.showHistory()
         window?.makeKeyAndOrderFront(nil)
     }
-    @objc private func closePane() {
+    @objc private func closePane() { closeFocusedWindow(NSApp.keyWindow) }
+
+    func closeFocusedWindow(_ keyWindow: NSWindow?) {
+        if let keyWindow, keyWindow !== window, addressPanel?.owns(keyWindow) != true {
+            keyWindow.performClose(nil)
+            return
+        }
         if addressPanel?.cancelNewTabIfPresented() == true { return }
         addressPanel?.dismiss(restoreFocus: false)
         store.closePane(store.selectedTab.focusedPane)

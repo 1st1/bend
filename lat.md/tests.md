@@ -437,3 +437,15 @@ Layout assertions verify that the input keeps its frame across empty, pending, m
 On macOS 26 and later, the find controls share the native title glass without a separate material. Opening and closing adjust the glass height and WebKit inset together; style and tint changes preserve the field editor and control parentage.
 
 Match-count assertions cover case-insensitive totals, hidden-text exclusion, zero and empty queries, and matches inside an iframe. Dismissal checks clear main-frame and iframe selections, preserve scroll, and reject late count results; reopening searches the retained query again. Repeated Escape presses after dismissal still reach page key listeners without crashing. Cancellation is also safe with no bar or before mounting a web view.
+
+## Settings close shortcut
+
+[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies Command-W closes the focused Settings window without changing browser panes, still closes a focused browser pane, and cancels a new tab from its address popup.
+
+The native Settings window hides the centered window title and keeps full-size content, with a transparent titlebar before content scrolls beneath the section heading.
+
+## Settings section toolbar
+
+[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies that the native Settings toolbar contains the section title and that sidebar selection updates the window title for UI, Extensions, and Development.
+
+The toolbar test scrolls overflowing detail content beneath the stationary title and back to the top, checking that native titlebar transparency changes with the overlap. It also verifies native toolbar insets and fixed width bounds across all sections while allowing vertical resizing.

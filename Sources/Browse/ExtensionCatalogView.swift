@@ -8,11 +8,8 @@ struct ExtensionCatalogView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Extensions").font(.title2.weight(.semibold))
-                        Text("A small collection, with compatibility notes for each extension.")
-                            .foregroundStyle(.secondary).font(.callout)
-                    }
+                    Text("A small collection, with compatibility notes for each extension.")
+                        .foregroundStyle(.secondary).font(.callout)
                     Spacer()
                     Button { manager.discoverInstalled() } label: { Image(systemName: "arrow.clockwise") }
                         .help("Refresh extensions available on this Mac").disabled(manager.busy)

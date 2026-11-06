@@ -5,6 +5,110 @@ import WebKit
 import BrowseCore
 @testable import Browse
 
+// @lat: [[tests#Settings section toolbar]]
+@Test @MainActor func settingsSectionToolbar() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSettingsToolbar-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let settings = SettingsWindowController(store: store)
+    settings.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+    settings.show()
+    defer { settings.window.close() }
+    try await Task.sleep(for: .milliseconds(300))
+    func table(in view: NSView) -> NSTableView? {
+        if let table = view as? NSTableView { return table }
+        return view.subviews.lazy.compactMap { table(in: $0) }.first
+    }
+    let content = try #require(settings.window.contentView)
+    let sidebar = try #require(table(in: content))
+    for (index, title) in ["UI", "Extensions", "Development"].enumerated() {
+        sidebar.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(settings.window.title == title)
+        #expect(settings.window.titlebarAppearsTransparent)
+        #expect(settings.window.minSize.width == 880)
+        #expect(settings.window.maxSize.width == settings.window.minSize.width)
+        #expect(settings.window.maxSize.height > settings.window.minSize.height)
+        let toolbar = try #require(settings.window.toolbar)
+        let titleItem = try #require(toolbar.items.first { $0.itemIdentifier.rawValue.contains("settings.sectionTitle") })
+        let titleView = try #require(titleItem.view)
+        let titleFrame = titleView.convert(titleView.bounds, to: nil)
+        #expect(titleFrame.minX >= sidebar.convert(sidebar.bounds, to: nil).maxX)
+        func scrollViews(in view: NSView) -> [NSScrollView] {
+            if let scroll = view as? NSScrollView { return [scroll] }
+            return view.subviews.flatMap { scrollViews(in: $0) }
+        }
+        let detail = try #require(scrollViews(in: content).first { $0 !== sidebar.enclosingScrollView })
+        #expect(detail.contentInsets.top > 0)
+        let originalOrigin = detail.contentView.bounds.origin
+        if let document = detail.documentView, document.bounds.height > detail.contentView.bounds.height {
+            detail.contentView.scroll(to: NSPoint(x: originalOrigin.x, y: originalOrigin.y + 100))
+            detail.reflectScrolledClipView(detail.contentView)
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(detail.contentView.bounds.origin.y > originalOrigin.y)
+            #expect(!settings.window.titlebarAppearsTransparent)
+            #expect(titleView.convert(titleView.bounds, to: nil) == titleFrame)
+            detail.contentView.scroll(to: originalOrigin)
+            detail.reflectScrolledClipView(detail.contentView)
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(detail.contentView.bounds.origin == originalOrigin)
+            #expect(settings.window.titlebarAppearsTransparent)
+        }
+    }
+}
+
+// @lat: [[tests#Settings close shortcut]]
+@Test @MainActor func settingsCloseShortcut() throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSettingsClose-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    let browser = try #require(owner.active)
+    browser.store.split(.horizontal)
+    browser.addressPanel.dismiss(restoreFocus: false)
+    let original = browser.store.selectedTab
+    browser.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+    browser.window.makeKeyAndOrderFront(nil)
+    let delegate = AppDelegate(browserWindows: owner)
+    let previousMenu = NSApp.mainMenu
+    delegate.installMenus()
+    let settings = SettingsWindowController(store: owner.sharedStore)
+    defer {
+        settings.window.close()
+        NSApp.mainMenu = previousMenu
+        owner.prepareToQuit()
+        for context in owner.windows { context.window.close() }
+    }
+    settings.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+    settings.show()
+    #expect(settings.window.styleMask.contains(.fullSizeContentView))
+    #expect(settings.window.titleVisibility == .hidden)
+    #expect(settings.window.titlebarAppearsTransparent)
+    func closeShortcut() throws {
+        let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: NSApp.keyWindow?.windowNumber ?? 0,
+            context: nil, characters: "w", charactersIgnoringModifiers: "w", isARepeat: false, keyCode: 13))
+        #expect(try #require(NSApp.mainMenu).performKeyEquivalent(with: event))
+    }
+    // Supply the focused native window directly: an offscreen NSWindow cannot
+    // become key in the headless runner. The menu action uses this same route.
+    delegate.closeFocusedWindow(settings.window)
+    #expect(!settings.window.isVisible)
+    #expect(browser.store.selectedTab.pages.map(\.id) == original.pages.map(\.id))
+    #expect(browser.store.selectedTab.focusedPane == original.focusedPane)
+    #expect(!browser.store.canReopenClosed)
+    browser.window.makeKeyAndOrderFront(nil)
+    delegate.closeFocusedWindow(browser.window)
+    #expect(browser.store.selectedTab.pages.count == original.pages.count - 1)
+    browser.store.newTab()
+    #expect(browser.addressPanel.owns(try #require(NSApp.keyWindow)))
+    try closeShortcut()
+    #expect(NSApp.keyWindow.map { browser.addressPanel.owns($0) } != true)
+    #expect(browser.store.session.workspaces.flatMap(\.tabs).count == 1)
+}
+
 // @lat: [[tests#Independent browser windows]]
 @Test @MainActor func independentBrowserWindows() throws {
     _ = NSApplication.shared

@@ -2,7 +2,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache"
-swift build -c release --disable-sandbox
+# SwiftPM's Swift Build backend can stamp the deployment target as the linked
+# SDK, which puts AppKit in legacy appearance mode. Supply the actual SDK while
+# retaining the package's macOS 14 deployment target.
+sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+swift build -c release --disable-sandbox \
+  -Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker "$sdk_version"
 app="$PWD/dist/Bend.app"
 mkdir -p "$PWD/dist"
 staging="$(mktemp -d "$PWD/dist/.build-app.XXXXXX")"

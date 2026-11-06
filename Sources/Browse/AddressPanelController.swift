@@ -65,6 +65,8 @@ private struct AddressResult {
 final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     private let store: BrowserStore
     private weak var parentWindow: NSWindow?
+    func owns(_ window: NSWindow) -> Bool { window === panel }
+
     private let panel = AddressEntryPanel(contentRect: .zero,
         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     private let input = NSTextField(string: "")

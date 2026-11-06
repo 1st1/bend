@@ -3,43 +3,165 @@ import SwiftUI
 import WebKit
 import BrowseCore
 
+private typealias ViewState<Value> = SwiftUI.State<Value>
+
 // @lat: [[architecture#Extension settings]]
 @MainActor
 final class SettingsWindowController {
-    private let window: NSWindow
+    let window: NSWindow
     init(store: BrowserStore) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 650),
-            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 880, height: 680),
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "Bend Settings"
+        window.titleVisibility = .hidden
+        if #available(macOS 15.0, *) {
+            window.titlebarAppearsTransparent = true
+            window.titlebarSeparatorStyle = .none
+        }
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 620, height: 480)
+        window.toolbarStyle = .unified
+        window.toolbar = NSToolbar(identifier: "BendSettingsTitlebar")
         window.setFrameAutosaveName("BrowseSettings")
-        window.contentView = NSHostingView(rootView: BrowserSettingsView(store: store))
+        let hosting = NSHostingController(rootView: BrowserSettingsView(store: store, onScrollUnderHeader: { [weak window] scrolled in
+            window?.titlebarAppearsTransparent = !scrolled
+            window?.titlebarSeparatorStyle = scrolled ? .automatic : .none
+        })
+            .frame(width: 880)
+            .frame(minHeight: 480))
+        // Derive both native bounds from the fixed-width layout so SwiftUI's
+        // sizing updates preserve the constraint after every section change.
+        hosting.sizingOptions = [.minSize, .maxSize]
+        hosting.sceneBridgingOptions = .all
+        window.contentViewController = hosting
+        window.minSize = NSSize(width: 880, height: 480)
+        window.maxSize = NSSize(width: 880, height: window.maxSize.height)
         window.center()
     }
     func show() { window.makeKeyAndOrderFront(nil) }
 }
 
+private enum SettingsSection: String, CaseIterable, Identifiable {
+    case ui = "UI"
+    case extensions = "Extensions"
+    case development = "Development"
+
+    var id: Self { self }
+    var symbol: String {
+        switch self {
+        case .ui: "slider.horizontal.3"
+        case .extensions: "puzzlepiece.extension.fill"
+        case .development: "hammer.fill"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .ui: .blue
+        case .extensions: .purple
+        case .development: .gray
+        }
+    }
+}
+
 struct BrowserSettingsView: View {
     @ObservedObject var store: BrowserStore
+    var onScrollUnderHeader: (Bool) -> Void = { _ in }
+    @ViewState<SettingsSection?> private var selection = .ui
+    @ViewState<Bool> private var contentUnderHeader = false
 
     var body: some View {
-        TabView {
-            UISettingsView(store: store)
-                .tabItem { Label("UI", systemImage: "slider.horizontal.3") }
-
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            List(SettingsSection.allCases, selection: $selection) { section in
+                HStack(spacing: 10) {
+                    Image(systemName: section.symbol)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 22, height: 22)
+                        .background(section.color.gradient, in: RoundedRectangle(cornerRadius: 5))
+                    Text(section.rawValue)
+                }
+                .padding(.vertical, 2)
+                .tag(section)
+            }
+            .listStyle(.sidebar)
+            .frame(minWidth: 180)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
             Group {
-                if #available(macOS 15.4, *) {
-                    ExtensionSettingsView(manager: store.extensions)
-                } else {
-                    Text("Web extensions require macOS 15.4 or later.").padding(40)
+                switch selection ?? .ui {
+                case .ui:
+                    UISettingsView(store: store)
+                case .extensions:
+                    if #available(macOS 15.4, *) {
+                        ExtensionSettingsView(manager: store.extensions)
+                    } else {
+                        Text("Web extensions require macOS 15.4 or later.")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                case .development:
+                    DevelopmentSettingsView()
                 }
             }
-            .tabItem { Label("Extensions", systemImage: "puzzlepiece.extension") }
+            .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
+            .scrollContentBackground(.visible)
+            .modifier(SettingsScrollEdge(contentUnderHeader: $contentUnderHeader))
+            .navigationTitle((selection ?? .ui).rawValue)
+            .toolbarBackground(headerBackgroundVisibility, for: .windowToolbar)
+            .toolbar {
+                if #available(macOS 26.0, *) {
+                    sectionTitle.sharedBackgroundVisibility(.hidden)
+                } else {
+                    sectionTitle
+                }
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: contentUnderHeader) { _, scrolled in onScrollUnderHeader(scrolled) }
+        .onChange(of: selection) { _, _ in contentUnderHeader = false }
+    }
 
-            DevelopmentSettingsView()
-                .tabItem { Label("Development", systemImage: "hammer") }
-        }.padding(16)
+    private var sectionTitle: some ToolbarContent {
+        ToolbarItem(id: "settings.sectionTitle", placement: .navigation) {
+            Text((selection ?? .ui).rawValue)
+                .font(.system(size: 17, weight: .semibold))
+                .padding(.leading, selection == .extensions ? 14 : 10)
+        }
+    }
+
+    private var headerBackgroundVisibility: Visibility {
+        if #available(macOS 15.0, *) {
+            contentUnderHeader ? .visible : .hidden
+        } else {
+            .automatic
+        }
+    }
+}
+
+private struct SettingsScrollEdge: ViewModifier {
+    @Binding var contentUnderHeader: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            tracked(content)
+                .scrollEdgeEffectStyle(.hard, for: .top)
+                .scrollEdgeEffectHidden(!contentUnderHeader, for: .top)
+        } else if #available(macOS 15.0, *) {
+            tracked(content)
+        } else {
+            content.toolbarBackground(.automatic, for: .windowToolbar)
+        }
+    }
+
+    @available(macOS 15.0, *)
+    private func tracked(_ content: Content) -> some View {
+        content.onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top > 0.5
+        } action: { _, underHeader in
+            withAnimation(.easeOut(duration: 0.12)) {
+                contentUnderHeader = underHeader
+            }
+        }
     }
 }
 
