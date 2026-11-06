@@ -16,6 +16,8 @@ Packaging creates a separate bundle in a temporary directory under `dist`, then 
 
 The app uses the supplied painted Bend artwork, with the untouched 2048×2048 source preserved in [BendIcon-original.jpg](../Assets/BendIcon-original.jpg).
 
+The generated icon uses a top-aligned square crop that trims extra wall below and equally at the sides, vertically centering the B's main body rather than its trailing brush stroke.
+
 [generate-app-icon.swift](../scripts/generate-app-icon.swift) renders the artwork with rounded corners, transparent margins, and a subtle shadow into standard and Retina icon sizes. Run `swift scripts/generate-app-icon.swift` on macOS to regenerate [AppIcon.png](../Assets/AppIcon.png) and [AppIcon.icns](../Assets/AppIcon.icns). [build-app.sh](../scripts/build-app.sh) copies the ICNS into bundle resources and sets the icon entry in Info.plist before signing.
 
 ## Application shell

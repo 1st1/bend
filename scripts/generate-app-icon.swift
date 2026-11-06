@@ -36,7 +36,14 @@ func render(pixels: Int) -> Data {
     shape.fill()
     NSGraphicsContext.restoreGraphicsState()
     shape.addClip()
-    artwork.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+    // Trim the extra wall below the painted letter and equally at the sides.
+    // NSImage source coordinates start at the bottom; this top-aligned square
+    // centers the B's main body rather than its long trailing brush stroke.
+    let sourceSize = artwork.size
+    let cropSide = sourceSize.height * 0.90625
+    let crop = NSRect(x: (sourceSize.width - cropSide) / 2,
+                      y: sourceSize.height - cropSide, width: cropSide, height: cropSide)
+    artwork.draw(in: rect, from: crop, operation: .sourceOver, fraction: 1)
     NSGraphicsContext.restoreGraphicsState()
     return bitmap.representation(using: .png, properties: [:])!
 }
