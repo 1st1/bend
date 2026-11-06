@@ -7,7 +7,8 @@ let package = Package(
     products: [.executable(name: "Bend", targets: ["Browse"])],
     targets: [
         .target(name: "BrowseCore"),
-        .executableTarget(name: "Browse", dependencies: ["BrowseCore"]),
+        .target(name: "WebKitFindSupport"),
+        .executableTarget(name: "Browse", dependencies: ["BrowseCore", "WebKitFindSupport"]),
         .testTarget(name: "BrowseCoreTests", dependencies: ["BrowseCore"]),
         .testTarget(name: "BrowseTests", dependencies: ["Browse"])
     ]

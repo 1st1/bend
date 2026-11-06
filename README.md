@@ -50,7 +50,7 @@ The sidebar and exposed workspace share a native Liquid Glass base on macOS 26 a
 
 Press ⌘L to open a Spotlight-style URL/search popup for the focused pane. Return opens the address; Escape or an outside click dismisses the popup. New blank panes and tabs open it automatically. After ⌘T, Escape or ⌘W cancels initial address entry and removes the new tab, returning to the previous tab. Reload/stop is in the top-right pane toolbar; back and forward use the shortcuts above.
 
-Press ⌘F to search within the focused web pane. The find bar searches as you type; use its arrows, Return / Shift-Return, or ⌘G / ⌘⇧G to move between matches. Escape or the close button closes the bar and returns focus to the page.
+Press ⌘F to search within the focused web pane. The find bar searches as you type; use its arrows, Return / Shift-Return, or ⌘G / ⌘⇧G to move between matches. A label shows the match total. Escape or the close button clears search highlighting and returns focus to the page.
 
 Settings → UI → Command-click offers a new pane to the right, one reusable dedicated pane per tab, or a new tab. Dedicated panes survive restart; closing one lets the next Command-click create a replacement.
 

@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import WebKitFindSupport
 
 // SwiftUI's shape clip does not reliably clip WebKit's native composited layers.
 // Keep the clip on an AppKit ancestor, outside WebKit's own layer management.
@@ -9,12 +10,15 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     private var topContentInset: CGFloat = 0
     private(set) var isFindBarVisible = false
     private(set) var foundMatch: Bool?
+    private(set) var matchCount: Int?
     private(set) var findBarView: NSView?
-    private let searchField = NSSearchField()
-    private let statusLabel = NSTextField(labelWithString: "")
+    private let searchField = FindSearchField()
+    private var statusLabel: NSTextField { searchField.matchCountLabel }
     private var previousButton: NSButton!
     private var nextButton: NSButton!
     private var searchGeneration = 0
+    private var searchQuery: String?
+    private var findSupport: BendFindSupport?
 
     func performFindAction(_ action: NSTextFinder.Action) {
         guard let web = hostedWebView else { return }
@@ -29,12 +33,15 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
             hideFindBar()
         case .nextMatch, .previousMatch:
             if searchField.stringValue.isEmpty { showFindBar() }
-            else { search(backwards: action == .previousMatch) }
+            else {
+                if !isFindBarVisible { showFindBar(refreshSearch: false) }
+                search(backwards: action == .previousMatch)
+            }
         default: break
         }
     }
 
-    private func showFindBar() {
+    private func showFindBar(refreshSearch: Bool = true) {
         if findBarView == nil { makeFindBar() }
         if let findBarView { addSubview(findBarView) }
         isFindBarVisible = true
@@ -42,12 +49,15 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         needsLayout = true
         layoutSubtreeIfNeeded()
         searchField.selectText(nil)
+        if refreshSearch, !searchField.stringValue.isEmpty { search(backwards: false) }
     }
 
     func hideFindBar(restoreFocus: Bool = true) {
         guard isFindBarVisible else { return }
         let fieldHadFocus = searchField.currentEditor().map { $0 === window?.firstResponder } ?? false
         searchGeneration += 1
+        findSupport?.clearSearch()
+        updateSearchStatus(nil)
         isFindBarVisible = false
         findBarView?.removeFromSuperview()
         InputDiagnostics.transition(.findBar, .hidden, view: hostedWebView)
@@ -71,9 +81,6 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         searchField.sendsWholeSearchString = false
         searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         searchField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        statusLabel.font = .systemFont(ofSize: 11)
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         previousButton = NSButton(image: NSImage(systemSymbolName: "chevron.up", accessibilityDescription: "Previous match")!,
                                   target: self, action: #selector(previousMatch))
         nextButton = NSButton(image: NSImage(systemSymbolName: "chevron.down", accessibilityDescription: "Next match")!,
@@ -88,8 +95,8 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
             button.controlSize = .small
             button.widthAnchor.constraint(equalToConstant: 26).isActive = true
         }
-        let stack = NSStackView(views: [searchField, statusLabel, previousButton, nextButton, close])
-        stack.spacing = 5
+        let stack = NSStackView(views: [searchField, previousButton, nextButton, close])
+        stack.spacing = 4
         stack.alignment = .centerY
         stack.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(stack)
@@ -126,22 +133,36 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         searchGeneration += 1
         let generation = searchGeneration
         let query = searchField.stringValue
-        updateSearchStatus(nil)
-        guard !query.isEmpty, let web = hostedWebView else { return }
+        // Moving to another match does not invalidate the displayed total.
+        // Refresh it in place when the new count arrives (the page may change).
+        if query != searchQuery || query.isEmpty { updateSearchStatus(nil) }
+        searchQuery = query
+        guard let web = hostedWebView else { return }
+        if query.isEmpty { findSupport?.clearSearch(); return }
+        if findSupport == nil { findSupport = BendFindSupport(webView: web) }
         let options = WKFindConfiguration()
         options.backwards = backwards
         options.caseSensitive = false
         options.wraps = true
         web.find(query, configuration: options) { [weak self] result in
             guard let self, self.searchGeneration == generation else { return }
-            self.updateSearchStatus(result.matchFound)
+            guard result.matchFound else { self.updateSearchStatus(false, count: 0); return }
+            self.foundMatch = true
+            self.findSupport?.countMatches(query) { [weak self] count in
+                MainActor.assumeIsolated {
+                    guard let self, self.searchGeneration == generation else { return }
+                    self.updateSearchStatus(true, count: count?.intValue)
+                }
+            }
         }
     }
 
-    private func updateSearchStatus(_ found: Bool?) {
+    private func updateSearchStatus(_ found: Bool?, count: Int? = nil) {
         foundMatch = found
-        statusLabel.stringValue = found == false ? "Not found" : ""
-        statusLabel.isHidden = found != false
+        matchCount = count
+        if let count {
+            statusLabel.stringValue = count > 10000 ? "10,000+ matches" : "\(count) \(count == 1 ? "match" : "matches")"
+        } else { statusLabel.stringValue = found == false ? "Not found" : "" }
         previousButton?.isEnabled = !searchField.stringValue.isEmpty
         nextButton?.isEnabled = !searchField.stringValue.isEmpty
     }
@@ -152,7 +173,8 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
 
     override func cancelOperation(_ sender: Any?) {
         if isFindBarVisible { hideFindBar() }
-        else { super.cancelOperation(sender) }
+        // NSView does not implement this optional responder action. An Escape
+        // with no find bar is a no-op, not a call to super.cancelOperation.
     }
 
     override init(frame frameRect: NSRect) {
@@ -168,6 +190,8 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     func update(webView: WKWebView, topContentInset: CGFloat) {
         if hostedWebView !== webView {
             hideFindBar(restoreFocus: false)
+            findSupport?.invalidate()
+            findSupport = nil
             searchGeneration += 1
             updateSearchStatus(nil)
             if let old = hostedWebView { InputDiagnostics.transition(.surfaceAttachment, .detached, view: old) }
@@ -208,3 +232,65 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     }
 }
 
+
+// Keep the native search-field bezel and clear button, with a trailing count
+// inside the field. The cell reserves the same space for drawing and editing.
+private final class FindSearchFieldCell: NSSearchFieldCell {
+    var countWidth: CGFloat = 0
+
+    func countRect(forBounds bounds: NSRect) -> NSRect {
+        let text = super.searchTextRect(forBounds: bounds)
+        let width = min(countWidth, text.width * 0.6)
+        return NSRect(x: text.maxX - width, y: text.minY, width: width, height: text.height)
+    }
+
+    override func searchTextRect(forBounds bounds: NSRect) -> NSRect {
+        var text = super.searchTextRect(forBounds: bounds)
+        text.size.width = max(0, countRect(forBounds: bounds).minX - text.minX - 6)
+        return text
+    }
+}
+
+private final class FindSearchField: NSSearchField {
+    let matchCountLabel = NSTextField(labelWithString: "")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        let searchCell = FindSearchFieldCell(textCell: "")
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        searchCell.countWidth = ceil(("10,000+ matches" as NSString).size(withAttributes: [.font: font]).width) + 2
+        cell = searchCell
+        isEditable = true
+        isSelectable = true
+        isBezeled = true
+        bezelStyle = .roundedBezel
+        drawsBackground = true
+        matchCountLabel.font = font
+        matchCountLabel.textColor = .secondaryLabelColor
+        matchCountLabel.alignment = .right
+        matchCountLabel.lineBreakMode = .byTruncatingTail
+        addSubview(matchCountLabel)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func textDidBeginEditing(_ notification: Notification) {
+        super.textDidBeginEditing(notification)
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
+    override func layout() {
+        super.layout()
+        guard let searchCell = cell as? FindSearchFieldCell else { return }
+        let rect = searchCell.countRect(forBounds: bounds)
+        let height = matchCountLabel.intrinsicContentSize.height
+        matchCountLabel.frame = NSRect(x: rect.minX, y: (bounds.height - height) / 2,
+                                      width: rect.width, height: height)
+        // AppKit's field-editor clip view otherwise uses the full native text
+        // area, ignoring the custom searchTextRect when editing begins.
+        if let editor = currentEditor(), let clip = editor.superview as? NSClipView {
+            clip.frame = searchCell.searchTextRect(forBounds: bounds)
+        }
+    }
+}

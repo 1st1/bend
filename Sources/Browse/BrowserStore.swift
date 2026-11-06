@@ -625,7 +625,10 @@ class FocusWebView: WKWebView {
     override func cancelOperation(_ sender: Any?) {
         if let surface = superview as? WebSurfaceHost, surface.isFindBarVisible {
             surface.performFindAction(.hideFindInterface)
-        } else { super.cancelOperation(sender) }
+        }
+        // WebKit calls this after offering Escape to the page. With no find
+        // bar, there is nothing to cancel; the superclass has no implementation
+        // of this optional responder action to call.
     }
     override func mouseDown(with event: NSEvent) {
         InputDiagnostics.record(.webView, event: event, view: self)

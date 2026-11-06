@@ -271,11 +271,19 @@ On macOS 26 and later, Browser window and Pane headers each offer Regular/Clear 
 
 ## Find in page
 
-[WebSurfaceHost.swift](../Sources/Browse/WebSurfaceHost.swift) hosts a compact AppKit search bar per web pane, using WebKit's public find API for matching, selection, and scrolling without injecting page scripts.
+[WebSurfaceHost.swift](../Sources/Browse/WebSurfaceHost.swift) hosts a compact AppKit search bar per web pane, using WebKit's public find API for matching, selection, and scrolling.
 
-[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) routes Command-F, Command-G, and Shift-Command-G to the focused pane of the active browser window, excluding other key windows. Internal start/history pages and error views disable these commands. The bar sits beneath the pane header and reserves page viewport space. Search is case-insensitive, updates while typing, wraps in both directions, and reports “Not found” for missing text. Return and Shift-Return advance forwards and backwards; Escape or the close button dismisses the bar and returns focus to the page. The last match remains an ordinary page selection.
+[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) routes Command-F, Command-G, and Shift-Command-G to the focused pane of the active browser window, excluding other key windows. Internal start/history pages and error views disable these commands. The bar sits beneath the pane header and reserves page viewport space. Search is case-insensitive, updates while typing, wraps in both directions, and displays a native match total (including zero). Counts above the bounded search limit display “10,000+ matches.” Return and Shift-Return advance forwards and backwards; Escape or the close button dismisses the bar and returns focus to the page. Dismissal and empty queries clear the native find indicator and search selection without resetting scroll. Reopening with a retained query searches again; next/previous commands also reopen a hidden bar.
 
-Each mounted pane retains its query and bar state. Navigation dismisses the bar; replacing its WebView invalidates pending results. Completion generations prevent stale results from changing current status. Find actions and bar visibility enter optional pane diagnostics without recording the query. [[tests#Find in page]] covers search and keyboard routing.
+[BendFindSupport.m](../Sources/WebKitFindSupport/BendFindSupport.m) isolates optional private WebKit selectors in a typed Objective-C adapter: native match counting, clearing the find selection with an empty native search, and hiding find UI. Counting uses the same case-insensitive engine across frames, excludes non-searchable text, and caps work at 10,000 matches. Runtime selector checks preserve public search if SPI is unavailable; the total is omitted instead of guessed. Cleanup falls back to clearing document selections in the main and same-origin frames if native clearing is unavailable. This adapter requires compatibility checks when WebKit changes and is not a public-SDK-only implementation.
+
+Each mounted pane retains its query and bar state. Navigation dismisses the bar; replacing its WebView invalidates pending results. Completion generations prevent stale search/count results from changing current status; count replies are paired with queued requests in query order. Replacement detaches the optional count delegate. Find actions and bar visibility enter optional pane diagnostics without recording the query. [[tests#Find in page]] covers search and keyboard routing.
+
+Escape delivered to the web pane dismisses an open find bar. With no bar, cancellation is a no-op, including for detached views. Neither native view calls the optional superclass cancellation action, which has no implementation. WebKit still delivers Escape key events to page content.
+
+The match count sits inside the search field, right-aligned before the native clear button. A custom search cell reserves trailing space for both drawn text and the field editor, even while results are pending. Monospaced digits keep counts stable; narrow fields limit the count area to preserve editable space.
+
+Moving between matches for the same query keeps the count visible while refreshing it for possible page changes. Editing the query clears the previous total until the new result arrives; dismissal and empty queries also clear it.
 
 ## Mounted tab views
 
