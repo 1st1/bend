@@ -35,13 +35,35 @@ final class SettingsWindowController {
         window.contentViewController = hosting
         window.minSize = NSSize(width: 880, height: 480)
         window.maxSize = NSSize(width: 880, height: window.maxSize.height)
-        window.center()
     }
-    func show() { window.makeKeyAndOrderFront(nil) }
+    func show(centeredOn screen: NSScreen? = nil) {
+        let screen = screen ?? NSApp.keyWindow?.screen ?? NSScreen.main
+        window.makeKeyAndOrderFront(nil)
+        window.contentView?.layoutSubtreeIfNeeded()
+        center(on: screen)
+        // The first SwiftUI toolbar/layout pass can still change the frame.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window.isVisible else { return }
+            if let content = self.window.contentView { FixedSettingsSidebar.lockWidth(in: content) }
+            self.window.contentView?.layoutSubtreeIfNeeded()
+            self.center(on: screen)
+        }
+    }
+
+    private func center(on screen: NSScreen?) {
+        guard let screen else { return }
+        let available = screen.visibleFrame
+        var frame = window.frame
+        frame.size.height = min(frame.height, available.height)
+        frame.origin = NSPoint(x: (available.midX - frame.width / 2).rounded(),
+            y: (available.midY - frame.height / 2).rounded())
+        window.setFrame(frame, display: false)
+    }
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case ui = "UI"
+    case websites = "Websites"
     case extensions = "Extensions"
     case development = "Development"
 
@@ -49,6 +71,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .ui: "slider.horizontal.3"
+        case .websites: "globe"
         case .extensions: "puzzlepiece.extension.fill"
         case .development: "hammer.fill"
         }
@@ -56,6 +79,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     var color: Color {
         switch self {
         case .ui: .blue
+        case .websites: .teal
         case .extensions: .purple
         case .development: .gray
         }
@@ -83,14 +107,17 @@ struct BrowserSettingsView: View {
                 .tag(section)
             }
             .listStyle(.sidebar)
-            .frame(minWidth: 180)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+            .frame(width: 200)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
+            .background(FixedSettingsSidebar(selection: selection?.rawValue ?? "UI"))
             .toolbar(removing: .sidebarToggle)
         } detail: {
             Group {
                 switch selection ?? .ui {
                 case .ui:
                     UISettingsView(store: store)
+                case .websites:
+                    WebsiteSettingsView(settings: store.websiteSettings)
                 case .extensions:
                     if #available(macOS 15.4, *) {
                         ExtensionSettingsView(manager: store.extensions)
@@ -133,6 +160,48 @@ struct BrowserSettingsView: View {
             contentUnderHeader ? .visible : .hidden
         } else {
             .automatic
+        }
+    }
+}
+
+// Enforce the native column bounds as well as the SwiftUI content width.
+private struct FixedSettingsSidebar: NSViewRepresentable {
+    var selection: String
+
+    static func lockWidth(in view: NSView) {
+        if let split = view as? NSSplitView,
+           let controller = split.delegate as? NSSplitViewController,
+           let sidebar = controller.splitViewItems.first {
+            sidebar.minimumThickness = 200
+            sidebar.maximumThickness = 200
+            sidebar.canCollapse = false
+            return
+        }
+        for child in view.subviews { lockWidth(in: child) }
+    }
+
+    func makeNSView(context: Context) -> SidebarConstraintView { SidebarConstraintView() }
+    func updateNSView(_ view: SidebarConstraintView, context: Context) {
+        // SwiftUI updates the native split items when selection changes.
+        DispatchQueue.main.async { [weak view] in view?.lockWidth() }
+    }
+
+    final class SidebarConstraintView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            DispatchQueue.main.async { [weak self] in self?.lockWidth() }
+        }
+
+        func lockWidth() {
+            var ancestor = superview
+            while let view = ancestor {
+                if let split = view as? NSSplitView,
+                   split.delegate is NSSplitViewController {
+                    FixedSettingsSidebar.lockWidth(in: split)
+                    return
+                }
+                ancestor = view.superview
+            }
         }
     }
 }

@@ -65,7 +65,7 @@ Drag a pane's title or the empty space beside it onto another pane in the same t
 
 Press ⌘⇧T to reopen closed panes and tabs, most recent first. Panes return to their original tab and split position where possible, preserving later edits. The last 50 closures are available during the current app session. Reopening reloads saved URLs; page forms and back-forward history are not retained after closing.
 
-Tabs, workspace names, URLs, focus, and split proportions restore from `~/Library/Application Support/BrowsePrototype/session.json`. Visited tabs keep their pane views and browser instances mounted while inactive, so switching does not rebuild the canvas or reload pages. Unvisited tabs load on first selection; after restarting, pages load again from saved URLs. WebKit stores website data in this app’s own persistent profile. The prototype does not access Safari’s data.
+Tabs, workspace names, URLs, focus, and split proportions restore from `~/Library/Application Support/BrowsePrototype/session.json`. Visited tabs keep their pane views and browser instances mounted while inactive, so switching does not rebuild the canvas or reload pages. Unvisited tabs load on first selection; after restarting, pages load again from saved URLs. WebKit stores website data in this app’s own persistent profile. The prototype does not access Safari’s data. Page zoom is remembered per hostname in `WebsiteSettings.db`, shared across windows and restored on navigation. Settings → Websites controls the default zoom and lets you filter, edit, or reset website overrides; clearing history leaves these preferences intact.
 
 ## Scope
 

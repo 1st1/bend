@@ -33,6 +33,7 @@ final class BrowserStore: ObservableObject {
     @Published private var localHistory = BrowsingHistory()
     @Published private var localHistoryError: String?
     let sharedStore: BrowserStore?
+    let websiteSettings: WebsiteSettingsStore
     private var sharedObservation: AnyCancellable?
     var preferencesStore: BrowserStore { sharedStore?.preferencesStore ?? self }
     var historyPublisher: AnyPublisher<BrowsingHistory, Never> {
@@ -75,6 +76,8 @@ final class BrowserStore: ObservableObject {
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BrowsePrototype", isDirectory: true)
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
+        websiteSettings = sharedStore?.websiteSettings ?? WebsiteSettingsStore(
+            file: self.sessionFile.deletingLastPathComponent().appendingPathComponent("WebsiteSettings.db"))
         historyFile = self.sessionFile.deletingLastPathComponent().appendingPathComponent("History.db")
         legacyHistoryFile = self.sessionFile.deletingLastPathComponent().appendingPathComponent("history.json")
         if let data = try? Data(contentsOf: self.sessionFile),
@@ -526,7 +529,7 @@ final class BrowserStore: ObservableObject {
     func controller(for page: Page) -> PageController {
         if let existing = browsers[page.id] { return existing }
         let extensionURL = URL(string: page.address).flatMap { $0.scheme == "webkit-extension" ? $0 : nil }
-        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, configure: { [weak self] configuration in
+        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, websiteSettings: websiteSettings, configure: { [weak self] configuration in
             if #available(macOS 15.4, *) { self?.extensions.configure(configuration) }
         })
         controller.onStateChanged = { [weak self] in
@@ -726,6 +729,9 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var completedAddress: String?
     private var lastReportedAddress = ""
     private var lastReportedTitle = ""
+    private let websiteSettings: WebsiteSettingsStore?
+    private var websiteSettingsObservation: AnyCancellable?
+    private var zoomURL: URL?
 
     // WebKit's default user agent omits Safari's product tokens. Some sites
     // consequently serve a legacy, fixed-width page to an otherwise modern engine.
@@ -736,8 +742,9 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         return "Version/\(version) Safari/605.1.15 Bend/0.1"
     }()
 
-    init(address: String, paneID: UUID? = nil, webView suppliedWebView: FocusWebView? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
+    init(address: String, paneID: UUID? = nil, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
+        self.websiteSettings = websiteSettings
         self.configure = configure
         let configuration = WKWebViewConfiguration()
         configuration.applicationNameForUserAgent = Self.websiteApplicationName
@@ -749,6 +756,21 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         InputDiagnostics.transition(.webReplacement, .created, view: webView)
         observeWebView()
         navigate(address)
+        websiteSettingsObservation = websiteSettings?.$values.sink { [weak self] values in
+            guard let self, let url = self.zoomURL, WebsiteSettings.hostname(for: url) != nil else { return }
+            self.webView.pageZoom = CGFloat(values.zoom(for: url))
+        }
+    }
+
+    func setPageZoom(_ zoom: CGFloat) {
+        guard PageZoom.isValid(Double(zoom)) else { return }
+        webView.pageZoom = zoom
+        if let zoomURL { websiteSettings?.setZoom(Double(zoom), for: zoomURL) }
+    }
+
+    private func applyWebsiteZoom(for url: URL) {
+        zoomURL = url
+        if let websiteSettings { webView.pageZoom = CGFloat(websiteSettings.values.zoom(for: url)) }
     }
 
     private func observeWebView() {
@@ -814,6 +836,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         error = nil; address = url.absoluteString
         completedAddress = nil
         isStartPage = url.scheme == "browse"
+        applyWebsiteZoom(for: url)
         if isStartPage {
             webView.stopLoading()
             title = address == "browse://history" ? "History" : (address == "browse://guide" ? "Tiling guide" : "New tab")
@@ -862,6 +885,11 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         resetFavicon()
         completedAddress = nil
         if !isStartPage { error = nil }
+    }
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        // The committed URL covers redirects, normal links, and back/forward.
+        // Subframe navigation never changes the top-level website's preference.
+        if !isStartPage, let url = webView.url { applyWebsiteZoom(for: url) }
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         InputDiagnostics.transition(.webLoad, .finished, view: webView)

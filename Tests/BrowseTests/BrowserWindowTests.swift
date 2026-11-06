@@ -13,19 +13,45 @@ import BrowseCore
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
     let settings = SettingsWindowController(store: store)
     settings.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
-    settings.show()
+    let initialScreen = try #require(NSScreen.main)
+    settings.show(centeredOn: initialScreen)
     defer { settings.window.close() }
     try await Task.sleep(for: .milliseconds(300))
+    #expect(abs(settings.window.frame.midX - initialScreen.visibleFrame.midX) <= 1)
+    #expect(abs(settings.window.frame.midY - initialScreen.visibleFrame.midY) <= 1)
+    for screen in NSScreen.screens {
+        settings.window.orderOut(nil)
+        settings.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+        settings.show(centeredOn: screen)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(abs(settings.window.frame.midX - screen.visibleFrame.midX) <= 1)
+        #expect(abs(settings.window.frame.midY - screen.visibleFrame.midY) <= 1)
+    }
+    settings.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
     func table(in view: NSView) -> NSTableView? {
         if let table = view as? NSTableView { return table }
         return view.subviews.lazy.compactMap { table(in: $0) }.first
     }
     let content = try #require(settings.window.contentView)
     let sidebar = try #require(table(in: content))
-    for (index, title) in ["UI", "Extensions", "Development"].enumerated() {
+    for (index, title) in ["UI", "Websites", "Extensions", "Development"].enumerated() {
         sidebar.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
         try await Task.sleep(for: .milliseconds(200))
         #expect(settings.window.title == title)
+        #expect(abs(sidebar.enclosingScrollView!.frame.width - 200) < 1)
+        var ancestor = sidebar.superview
+        while ancestor != nil, !(ancestor is NSSplitView) { ancestor = ancestor?.superview }
+        let split = try #require(ancestor as? NSSplitView)
+        let nativeSidebar = try #require((split.delegate as? NSSplitViewController)?.splitViewItems.first)
+        #expect(nativeSidebar.minimumThickness == 200)
+        #expect(nativeSidebar.maximumThickness == 200)
+        #expect(!nativeSidebar.canCollapse)
+        for position: CGFloat in [150, 260] {
+            split.setPosition(position, ofDividerAt: 0)
+            try await Task.sleep(for: .milliseconds(100))
+            content.layoutSubtreeIfNeeded()
+            #expect(abs(split.arrangedSubviews[0].frame.width - 200) < 1)
+        }
         #expect(settings.window.titlebarAppearsTransparent)
         #expect(settings.window.minSize.width == 880)
         #expect(settings.window.maxSize.width == settings.window.minSize.width)
@@ -256,4 +282,52 @@ import BrowseCore
     #expect(NSApp.sendAction(try #require(tabCommand.action), to: tabCommand.target, from: tabCommand))
     #expect(first.store.session.workspaces.flatMap(\.tabs).count == 2)
     #expect(second.store.session.workspaces.flatMap(\.tabs).count == 2)
+}
+
+// @lat: [[tests#Closing the last browser pane]]
+@Test @MainActor func closingLastBrowserPane() throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendLastPane-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    let first = try #require(owner.active)
+    let other = owner.newWindow(show: false)
+    let otherTab = other.store.selectedTab
+    let delegate = AppDelegate(browserWindows: owner)
+    defer { owner.prepareToQuit(); for context in owner.windows { context.window.close() } }
+    // Offscreen windows cannot reliably become key in the runner.
+    first.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: first.window))
+    let tab = BrowserTab(pages: [Page(), Page()])
+    first.store.session.workspaces = [Workspace(name: "Tabs", tabs: [tab])]
+    first.store.session.selectedTab = tab.id
+    delegate.closeFocusedWindow(first.window)
+    #expect(owner.windows.count == 2)
+    #expect(first.store.selectedTab.pages.count == 1)
+    let originalTabID = first.store.selectedTab.id
+    first.store.newTab(address: "browse://guide")
+    delegate.closeFocusedWindow(first.window)
+    #expect(owner.windows.count == 2)
+    #expect(first.store.selectedTab.id == originalTabID)
+    #expect(first.store.session.workspaces.flatMap(\.tabs).count == 1)
+    delegate.closeFocusedWindow(first.window)
+    #expect(owner.windows.count == 1)
+    #expect(owner.active === other)
+    #expect(other.store.selectedTab.id == otherTab.id)
+    #expect(other.store.selectedTab.pages.map(\.id) == otherTab.pages.map(\.id))
+    // A final blank pane also closes its window while its location popup is key.
+    other.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+    other.window.makeKeyAndOrderFront(nil)
+    other.addressPanel.show(for: otherTab.focusedPane)
+    let popup = try #require(other.window.childWindows?.first { other.addressPanel.owns($0) })
+    delegate.closeFocusedWindow(popup)
+    #expect(owner.windows.isEmpty)
+    #expect(other.store.selectedTab.id == otherTab.id)
+    #expect(other.store.selectedTab.pages.map(\.id) == otherTab.pages.map(\.id))
+    // With no browser left, another close command must not mutate the retained store.
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = .sortedKeys
+    let snapshot = try encoder.encode(owner.sharedStore.session)
+    delegate.closeFocusedWindow(nil)
+    #expect(try encoder.encode(owner.sharedStore.session) == snapshot)
 }

@@ -156,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func showSettings() {
         addressPanel?.dismiss(restoreFocus: false)
         if settingsWindow == nil { settingsWindow = SettingsWindowController(store: browserWindows.sharedStore) }
-        settingsWindow?.show()
+        settingsWindow?.show(centeredOn: browserWindows.active?.window.screen)
     }
     @objc private func openLocation() { store.requestAddress() }
     private var activeWebPage: PageController? {
@@ -175,7 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     // @lat: [[architecture#Page zoom]]
-    private static let pageZoomLevels: [CGFloat] = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5]
+    private static let pageZoomLevels = PageZoom.levels.map { CGFloat($0) }
 
     private func pageZoomLevel(_ direction: Int, current: CGFloat) -> CGFloat {
         if direction > 0 { return Self.pageZoomLevels.first { $0 > current + 0.001 } ?? Self.pageZoomLevels.last! }
@@ -185,7 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func zoomPage(_ sender: NSMenuItem) {
         guard let page = activeWebPage else { return }
-        page.webView.pageZoom = pageZoomLevel(sender.tag, current: page.webView.pageZoom)
+        page.setPageZoom(pageZoomLevel(sender.tag, current: page.webView.pageZoom))
     }
     @objc private func showHistory() {
         addressPanel?.dismiss(restoreFocus: false)
@@ -195,13 +195,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func closePane() { closeFocusedWindow(NSApp.keyWindow) }
 
     func closeFocusedWindow(_ keyWindow: NSWindow?) {
-        if let keyWindow, keyWindow !== window, addressPanel?.owns(keyWindow) != true {
+        let context = browserWindows.active
+        if let keyWindow, keyWindow !== context?.window, context?.addressPanel.owns(keyWindow) != true {
             keyWindow.performClose(nil)
             return
         }
-        if addressPanel?.cancelNewTabIfPresented() == true { return }
-        addressPanel?.dismiss(restoreFocus: false)
-        store.closePane(store.selectedTab.focusedPane)
+        guard let context else { return }
+        if context.addressPanel.cancelNewTabIfPresented() { return }
+        context.addressPanel.dismiss(restoreFocus: false)
+        let store = context.store
+        if store.session.workspaces.flatMap(\.tabs).count == 1, store.selectedTab.pages.count == 1 {
+            context.window.performClose(nil)
+        } else {
+            store.closePane(store.selectedTab.focusedPane)
+        }
     }
     @objc private func closeTab() { store.closeTab(store.selectedTab.id) }
     @objc private func reopenClosed() {

@@ -450,12 +450,38 @@ The native Settings window hides the centered window title and keeps full-size c
 
 ## Settings section toolbar
 
-[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies that the native Settings toolbar contains the section title and that sidebar selection updates the window title for UI, Extensions, and Development.
+[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies that the native Settings toolbar contains the section title and that sidebar selection updates the window title for UI, Websites, Extensions, and Development.
 
-The toolbar test scrolls overflowing detail content beneath the stationary title and back to the top, checking that native titlebar transparency changes with the overlap. It also verifies native toolbar insets and fixed width bounds across all sections while allowing vertical resizing.
+The toolbar test verifies reopening centers Settings on each available screen after moving it offscreen. It scrolls overflowing detail content beneath the stationary title and back to the top, checking that native titlebar transparency changes with the overlap. It also verifies native toolbar insets and fixed width bounds across all sections while allowing vertical resizing. The sidebar stays 200 points wide across section changes, including attempts to move the native divider in both directions.
 
 ## Pane-centered location popup
 
 [AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies that location popups center horizontally on their target pane, start one-fifth down it, and retain their initial top edge while open.
 
 The native-view regression covers separate left/right targets, result growth and shrinkage, validation errors, pane resizing and clipping, fresh placement after reopening, and retaining the fallback top when a pane mounts later.
+
+## Website setting identity
+
+[WebsiteSettingsTests.swift](../Tests/BrowseCoreTests/WebsiteSettingsTests.swift) verifies hostname normalization, path/scheme/port sharing, distinct subdomains, internal-page exclusion, and valid zoom bounds.
+
+## Website settings transactions
+
+[WebsiteSettingsTests.swift](../Tests/BrowseCoreTests/WebsiteSettingsTests.swift) verifies default and override persistence, atomic rollback after an injected write failure, retry, deletion, and invalid-value rejection.
+
+## Website settings storage protection
+
+[WebsiteSettingsTests.swift](../Tests/BrowseCoreTests/WebsiteSettingsTests.swift) verifies corrupt files are preserved and unrelated or newer databases are rejected without adopting their contents.
+
+## Website zoom navigation and sharing
+
+[WebsiteSettingsTests.swift](../Tests/BrowseTests/WebsiteSettingsTests.swift) verifies persisted zoom across panes, windows, and store recreation, using local HTTP pages with redirects, iframe loads, and back/forward navigation.
+
+Default changes, explicit 100% overrides, individual/all resets, and history clearing preserve the intended website preference boundaries. Existing pages update without reloading; internal pages stay at 100%.
+
+## Website settings failure recovery
+
+[WebsiteSettingsTests.swift](../Tests/BrowseTests/WebsiteSettingsTests.swift) verifies unreadable settings surface an error without overwriting the file, and retry restores persistence after storage is repaired.
+
+## Closing the last browser pane
+
+[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies Command-W closes panes and tabs until one remains, then closes only that browser window, including from its address popup, without creating a replacement tab.
