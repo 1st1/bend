@@ -6,6 +6,13 @@ lat:
 
 Model, store, and navigation-delegate tests cover pane layouts, persistence, link routing, navigation resolution, and location-popup requests without loading external websites.
 
+Run the test suite and documentation validation from the repository root:
+
+```sh
+CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache" swift test --disable-sandbox
+lat check
+```
+
 ## Nested splits and closing
 
 Splitting right and then below preserves leaf order. Closing panes collapses their parent branches, repairs focused-pane identity, and preserves the model’s final pane for the application layer to handle.

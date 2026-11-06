@@ -6,6 +6,20 @@ Bend is a native macOS prototype combining SwiftUI browser chrome, AppKit window
 
 [build-app.sh](../scripts/build-app.sh) packages and signs Bend.app, using `BEND_SIGNING_IDENTITY` when set and Yury's Apple Development certificate otherwise.
 
+Requires macOS 14 or newer and a Swift 6 toolchain (Xcode or Command Line Tools). From the repository root, build and open the signed app:
+
+```sh
+./scripts/build-app.sh --open
+```
+
+On another Mac, select an installed Apple-issued signing identity:
+
+```sh
+BEND_SIGNING_IDENTITY='Apple Development: Your Name (IDENTIFIER)' ./scripts/build-app.sh --open
+```
+
+The certificate's Apple intermediate must also be installed; `security find-identity -v -p codesigning` should list the identity as valid. For development without the packaging script's signing step, open [Package.swift](../Package.swift) in Xcode or run `swift run Bend`.
+
 The build explicitly supplies the installed SDK version to the linker while retaining macOS 14 as the deployment target. This prevents SwiftPM from stamping the deployment target as the linked SDK and making AppKit render legacy controls and toolbar chrome.
 
 The package and executable product are named Bend. The bundle retains `dev.yury.browse.prototype`, the `BrowsePrototype` data directory, and existing window autosave keys so renaming does not create a separate profile. Internal Swift module names and `browse://` addresses remain stable. The legacy `BROWSE_SIGNING_IDENTITY` override is honored when the Bend override is unset.
