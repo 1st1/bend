@@ -211,7 +211,7 @@ private struct UISettingsView: View {
                             Text(store.inactivePaneDimAmount, format: .percent.precision(.fractionLength(0)))
                                 .monospacedDigit().foregroundStyle(.secondary)
                         }
-                        Slider(value: $store.inactivePaneDimAmount, in: 0...1, step: 0.01) {
+                        Slider(value: $store.inactivePaneDimAmount, in: 0...1) {
                             Text("Inactive pane dimming")
                         }.labelsHidden().frame(maxWidth: .infinity)
                         HStack {
@@ -248,7 +248,7 @@ private struct UISettingsView: View {
                             Text(store.paneHighlight.glowIntensity, format: .percent.precision(.fractionLength(0)))
                                 .monospacedDigit().foregroundStyle(.secondary)
                         }
-                        Slider(value: $store.paneHighlight.glowIntensity, in: 0...1, step: 0.01) {
+                        Slider(value: $store.paneHighlight.glowIntensity, in: 0...1) {
                             Text("Glow intensity")
                         }.labelsHidden()
                     }
@@ -264,6 +264,12 @@ private struct UISettingsView: View {
                         }.labelsHidden()
                     }
                 }
+                Button("Reset to Defaults") {
+                    store.paneHighlight = PaneHighlight()
+                    store.inactivePaneDimAmount = BrowserStore.defaultInactivePaneDimAmount
+                }
+                .disabled(store.paneHighlight == PaneHighlight()
+                    && store.inactivePaneDimAmount == BrowserStore.defaultInactivePaneDimAmount)
             } header: {
                 Text("Panes")
             }
@@ -305,7 +311,7 @@ private struct GlassSettingsSection: View {
                     Text(appearance.darkening, format: .percent.precision(.fractionLength(0)))
                         .monospacedDigit().foregroundStyle(.secondary)
                 }
-                Slider(value: $appearance.darkening, in: 0...1, step: 0.01) {
+                Slider(value: $appearance.darkening, in: 0...1) {
                     Text("Darkening")
                 }.labelsHidden()
             }

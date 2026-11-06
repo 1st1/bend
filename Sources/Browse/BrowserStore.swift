@@ -142,11 +142,13 @@ final class BrowserStore: ObservableObject {
         }
     }
 
+    static let defaultInactivePaneDimAmount = 0.08
+
     var inactivePaneDimAmount: Double {
         get {
             if let sharedStore { return sharedStore.inactivePaneDimAmount }
-            let amount = session.inactivePaneDimAmount ?? 0.08
-            return amount.isFinite ? min(1, max(0, amount)) : 0.08
+            let amount = session.inactivePaneDimAmount ?? Self.defaultInactivePaneDimAmount
+            return amount.isFinite ? min(1, max(0, amount)) : Self.defaultInactivePaneDimAmount
         }
         set {
             if let sharedStore { sharedStore.inactivePaneDimAmount = newValue; return }
