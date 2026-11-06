@@ -18,10 +18,17 @@ public struct HistorySuggestion: Identifiable, Equatable, Sendable {
         url.replacingOccurrences(of: "^https?://", with: "", options: .regularExpression)
     }
 
+    fileprivate var displayURLWithoutWWW: String {
+        let display = displayURL
+        return display.lowercased().hasPrefix("www.") ? String(display.dropFirst(4)) : display
+    }
+
     public func completion(for query: String) -> String? {
         guard query.count >= 2, !query.contains(where: \.isWhitespace) else { return nil }
-        let candidate = query.contains("://") ? url : displayURL
-        guard candidate.lowercased().hasPrefix(query.lowercased()), candidate.count > query.count else { return nil }
+        let candidates = query.contains("://") ? [url] : [displayURL, displayURLWithoutWWW]
+        guard let candidate = candidates.first(where: {
+            $0.lowercased().hasPrefix(query.lowercased()) && $0.count > query.count
+        }) else { return nil }
         return String(candidate.prefix(query.count)) == query
             ? candidate : query + candidate.dropFirst(query.count)
     }
@@ -133,9 +140,12 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
             let adaptive = adaptiveScores[url] ?? 0
             let components = URLComponents(string: url)
             let host = Self.fold(components?.host ?? "")
+            let bareHost = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
             let display = Self.fold(suggestion.displayURL)
-            var match = query.isEmpty ? 0 : (host == query || Self.fold(url) == query ? 3
-                : (host.hasPrefix(query) || display.hasPrefix(query) || Self.fold(url).hasPrefix(query) ? 2 : 1))
+            let bareDisplay = Self.fold(suggestion.displayURLWithoutWWW)
+            var match = query.isEmpty ? 0 : (host == query || bareHost == query || Self.fold(url) == query ? 3
+                : (host.hasPrefix(query) || bareHost.hasPrefix(query) || display.hasPrefix(query)
+                    || bareDisplay.hasPrefix(query) || Self.fold(url).hasPrefix(query) ? 2 : 1))
             // A host prefix should favor its visited home page over a deep link.
             let isHomePage = (components?.path.isEmpty == true || components?.path == "/")
                 && components?.query == nil && components?.fragment == nil

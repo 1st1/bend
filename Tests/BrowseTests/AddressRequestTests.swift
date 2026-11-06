@@ -273,3 +273,81 @@ import BrowseCore
     try escape(try popup())
     #expect(store.session.selectedTab == submitted && store.session.workspaces[0].tabs.count == 3)
 }
+
+// @lat: [[tests#Pane-centered location popup]]
+@Test @MainActor func paneCenteredLocationPopup() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPanePopup-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    if store.selectedTab.pages.count < 2 { store.split(.horizontal) }
+    let pages = store.selectedTab.pages
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1200, height: 800),
+        styleMask: [.borderless], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    let content = NSView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800))
+    window.contentView = content
+    let left = PaneDropHost(frame: NSRect(x: 200, y: 20, width: 440, height: 760))
+    let right = PaneDropHost(frame: NSRect(x: 650, y: 20, width: 530, height: 760))
+    for (pane, page) in zip([left, right], pages) {
+        pane.store = store; pane.tabID = store.selectedTab.id; pane.pageID = page.id
+        content.addSubview(pane)
+    }
+    window.orderFront(nil)
+    let controller = AddressPanelController(store: store, parentWindow: window)
+    defer { controller.dismiss(restoreFocus: false); window.close() }
+    func verify(_ pane: NSView, fixedTop: CGFloat? = nil) throws {
+        let popup = try #require(window.childWindows?.first { controller.owns($0) })
+        let frame = window.convertToScreen(pane.convert(pane.visibleRect, to: nil))
+        #expect(abs(popup.frame.midX - frame.midX) <= 1)
+        let expectedTop = fixedTop ?? (frame.maxY - frame.height / 5).rounded()
+        #expect(popup.frame.maxY == expectedTop)
+        #expect(popup.frame.width <= frame.width - 32)
+        #expect(popup.frame.height <= frame.height - 32)
+        #expect(window.frame.contains(popup.frame))
+    }
+    controller.show(for: pages[0].id)
+    try verify(left)
+    controller.show(for: pages[1].id)
+    try verify(right)
+    let popup = try #require(window.childWindows?.first { controller.owns($0) })
+    let fixedTop = popup.frame.maxY
+    let emptyHeight = popup.frame.height
+    // Result growth and shrinkage leave the top edge exactly unchanged.
+    for index in 0..<8 {
+        store.recordVisit(url: "https://example.com/\(index)", title: "Page \(index)")
+    }
+    try verify(right, fixedTop: fixedTop)
+    #expect(popup.frame.height > emptyHeight)
+    for index in 0..<8 { store.removeHistory(url: "https://example.com/\(index)") }
+    try verify(right, fixedTop: fixedTop)
+    #expect(popup.frame.height == emptyHeight)
+    // Validation errors also grow downward without shifting the input.
+    func fields(in view: NSView) -> [NSTextField] {
+        (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap { fields(in: $0) }
+    }
+    let popupContent = try #require(popup.contentView)
+    let input = try #require(fields(in: popupContent).first { $0.isEditable })
+    input.stringValue = ""
+    let action = try #require(input.action)
+    #expect(input.sendAction(action, to: input.target))
+    try verify(right, fixedTop: fixedTop)
+    #expect(popup.frame.height > emptyHeight)
+    right.frame = NSRect(x: 650, y: 400, width: 530, height: 380)
+    try verify(right, fixedTop: fixedTop)
+    // Use the visible portion when part of a pane is outside the canvas viewport.
+    right.frame = NSRect(x: 650, y: -200, width: 530, height: 760)
+    try verify(right, fixedTop: fixedTop)
+    // Reopening takes a fresh one-fifth anchor from the pane's current bounds.
+    controller.dismiss(restoreFocus: false)
+    controller.show(for: pages[1].id)
+    try verify(right)
+    // Delayed mounting must not move a popup that was already placed using fallback bounds.
+    controller.dismiss(restoreFocus: false)
+    right.removeFromSuperview()
+    controller.show(for: pages[1].id)
+    let fallbackTop = popup.frame.maxY
+    content.addSubview(right)
+    try await Task.sleep(for: .milliseconds(100))
+    try verify(right, fixedTop: fallbackTop)
+}

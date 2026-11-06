@@ -276,6 +276,8 @@ Explicit requests for an existing pane focus that pane; invalid identities produ
 
 [HistoryTests.swift](../Tests/BrowseCoreTests/HistoryTests.swift) checks case- and accent-insensitive matching across titles and decoded URLs. Prefix completion handles explicit schemes and declines short, complete, or multiword queries.
 
+Regression coverage includes bare-host completion of www. URLs, typed-case preservation, explicit www./scheme prefixes, unchanged navigation URLs, and retaining other subdomains.
+
 ## History ranking and learned choices
 
 [HistoryTests.swift](../Tests/BrowseCoreTests/HistoryTests.swift) verifies recency, frequency, learned query choices, URL matching, and result limits so suggestions remain relevant and bounded.
@@ -364,6 +366,8 @@ Highlight settings preserve separate colors, width, intensity, spread, and mode 
 
 [HistoryTests.swift](../Tests/BrowseCoreTests/HistoryTests.swift) reproduces a deep link with one learned choice competing with 35 home-page visits. Host prefixes prefer the home page, path searches retain deep links, and frequent visits can outweigh learned choices.
 
+Bare-host prefixes also prefer a www. home page over a much more frequently visited article; omitting www. from a path query still finds and completes the deep link.
+
 ## Remove address suggestion
 
 [HistoryStoreTests.swift](../Tests/BrowseTests/HistoryStoreTests.swift) exercises a popup row’s removal button and verifies immediate result refresh, persisted removal of visits and learned choices, and no navigation.
@@ -449,3 +453,9 @@ The native Settings window hides the centered window title and keeps full-size c
 [BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies that the native Settings toolbar contains the section title and that sidebar selection updates the window title for UI, Extensions, and Development.
 
 The toolbar test scrolls overflowing detail content beneath the stationary title and back to the top, checking that native titlebar transparency changes with the overlap. It also verifies native toolbar insets and fixed width bounds across all sections while allowing vertical resizing.
+
+## Pane-centered location popup
+
+[AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies that location popups center horizontally on their target pane, start one-fifth down it, and retain their initial top edge while open.
+
+The native-view regression covers separate left/right targets, result growth and shrinkage, validation errors, pane resizing and clipping, fresh placement after reopening, and retaining the fallback top when a pane mounts later.

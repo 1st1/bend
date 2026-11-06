@@ -11,46 +11,45 @@ private final class AddressResultsTable: NSTableView {
     override var acceptsFirstResponder: Bool { false }
 }
 
-@available(macOS 26.0, *)
-private final class AddressSelectionGlass: NSGlassEffectView {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+private enum AddressPopupLayout {
+    static let rowHeight: CGFloat = 48
+    static let chromeHeight: CGFloat = 98
+}
+
+private final class AddressResultCell: NSTableCellView {
+    let icon = NSImageView()
+    let title = NSTextField(labelWithString: "")
+    let detail = NSTextField(labelWithString: "")
+    let remove = NSButton()
+
+    func setSelected(_ selected: Bool) {
+        title.textColor = selected ? .white : .labelColor
+        let secondary = selected ? NSColor.white.withAlphaComponent(0.75) : .secondaryLabelColor
+        detail.textColor = secondary
+        icon.contentTintColor = secondary
+        remove.contentTintColor = secondary
+    }
 }
 
 private final class AddressResultRow: NSTableRowView {
-    private let highlight: NSView
-
-    override init(frame frameRect: NSRect) {
-        if #available(macOS 26.0, *) {
-            let glass = AddressSelectionGlass()
-            glass.style = .clear
-            glass.cornerRadius = 8
-            highlight = glass
-        } else {
-            let background = NSView()
-            background.wantsLayer = true
-            background.layer?.cornerRadius = 8
-            background.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
-            highlight = background
-        }
-        super.init(frame: frameRect)
-        highlight.isHidden = true
-        addSubview(highlight, positioned: .below, relativeTo: nil)
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
     override var isSelected: Bool {
-        didSet { highlight.isHidden = !isSelected }
+        didSet {
+            needsDisplay = true
+            for case let cell as AddressResultCell in subviews { cell.setSelected(isSelected) }
+        }
     }
 
-    override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
-
-    override func layout() {
-        super.layout()
-        highlight.frame = bounds.insetBy(dx: 0, dy: 2)
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        (subview as? AddressResultCell)?.setSelected(isSelected)
     }
 
-    override func drawSelection(in dirtyRect: NSRect) {}
+    override var interiorBackgroundStyle: NSView.BackgroundStyle { isSelected ? .emphasized : .normal }
+
+    override func drawSelection(in dirtyRect: NSRect) {
+        NSColor.systemBlue.setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 2), xRadius: 12, yRadius: 12).fill()
+    }
 }
 
 private struct AddressResult {
@@ -82,6 +81,8 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     private var suppressAutofill = false
     private var showingFrequent = false
     private var historyObservation: AnyCancellable?
+    private var isLayingOut = false
+    private var topInsetFromWindow: CGFloat?
 
     init(store: BrowserStore, parentWindow: NSWindow) {
         self.store = store
@@ -99,7 +100,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         panel.title = "Open Location"
 
         let background = NSVisualEffectView()
-        background.material = .hudWindow
+        background.material = .popover
         background.blendingMode = .behindWindow
         background.state = .active
         // Mask the native backdrop and window shadow together, not only the backing layer.
@@ -116,9 +117,11 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
 
         let shade = NSView()
         shade.wantsLayer = true
-        shade.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.5).cgColor
+        shade.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.4).cgColor
         // The material mask does not clip subviews.
         shade.layer?.cornerRadius = radius
+        shade.layer?.borderWidth = 1
+        shade.layer?.borderColor = NSColor.white.withAlphaComponent(0.16).cgColor
         shade.layer?.masksToBounds = true
         shade.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(shade)
@@ -129,9 +132,9 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             shade.bottomAnchor.constraint(equalTo: background.bottomAnchor)
         ])
 
-        input.font = .systemFont(ofSize: 23)
+        input.font = .systemFont(ofSize: 17)
         input.placeholderAttributedString = NSAttributedString(string: "Search or enter address", attributes: [
-            .foregroundColor: NSColor(calibratedWhite: 0.75, alpha: 1), .font: NSFont.systemFont(ofSize: 23)
+            .foregroundColor: NSColor(calibratedWhite: 0.75, alpha: 1), .font: NSFont.systemFont(ofSize: 17)
         ])
         input.textColor = .labelColor
         input.isBordered = false
@@ -145,23 +148,56 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         input.setAccessibilityLabel("Search or enter address")
         input.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let go = NSButton(image: NSImage(systemSymbolName: "return", accessibilityDescription: "Open address")!,
-                          target: self, action: #selector(submit))
-        go.isBordered = false
-        go.contentTintColor = .secondaryLabelColor
-        go.toolTip = "Open · Return"
-        let row = NSStackView(views: [input, go])
+        let searchIcon = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!)
+        searchIcon.contentTintColor = .secondaryLabelColor
+        let row = NSStackView(views: [searchIcon, input])
         row.orientation = .horizontal
         row.alignment = .centerY
-        row.spacing = 16
-        go.widthAnchor.constraint(equalToConstant: 26).isActive = true
+        row.spacing = 8
+        searchIcon.widthAnchor.constraint(equalToConstant: 18).isActive = true
+        searchIcon.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        let searchField = NSView()
+        searchField.wantsLayer = true
+        searchField.layer?.cornerRadius = 15
+        searchField.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.12).cgColor
+        searchField.layer?.borderWidth = 1
+        searchField.layer?.borderColor = NSColor.white.withAlphaComponent(0.06).cgColor
+        searchField.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(searchField)
+        searchField.addSubview(row)
+
+        let footer = NSView()
+        footer.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(footer)
+        let separator = NSView()
+        separator.wantsLayer = true
+        separator.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        footer.addSubview(separator)
+        let shortcuts = NSStackView(views: [shortcutHint("Navigate", key: "↑↓"),
+            shortcutHint("Dismiss", key: "esc"), shortcutHint("Open", key: "↩")])
+        shortcuts.orientation = .horizontal
+        shortcuts.spacing = 16
+        shortcuts.translatesAutoresizingMaskIntoConstraints = false
+        footer.addSubview(shortcuts)
+        NSLayoutConstraint.activate([
+            footer.leadingAnchor.constraint(equalTo: background.leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: background.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: background.bottomAnchor),
+            footer.heightAnchor.constraint(equalToConstant: 32),
+            separator.leadingAnchor.constraint(equalTo: footer.leadingAnchor, constant: 1),
+            separator.trailingAnchor.constraint(equalTo: footer.trailingAnchor, constant: -1),
+            separator.topAnchor.constraint(equalTo: footer.topAnchor),
+            separator.heightAnchor.constraint(equalToConstant: 0.5),
+            shortcuts.trailingAnchor.constraint(equalTo: footer.trailingAnchor, constant: -14),
+            shortcuts.centerYAnchor.constraint(equalTo: footer.centerYAnchor)
+        ])
 
         errorLabel.font = .systemFont(ofSize: 12)
         errorLabel.textColor = .systemOrange
         errorLabel.isHidden = true
         row.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
-        background.addSubview(row)
         background.addSubview(errorLabel)
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("suggestion"))
@@ -170,7 +206,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         resultsTable.style = .plain
         resultsTable.headerView = nil
         resultsTable.backgroundColor = .clear
-        resultsTable.rowHeight = 50
+        resultsTable.rowHeight = AddressPopupLayout.rowHeight
         resultsTable.intercellSpacing = .zero
         resultsTable.dataSource = self
         resultsTable.delegate = self
@@ -183,16 +219,19 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         resultsScroll.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(resultsScroll)
         resultsHeight = resultsScroll.heightAnchor.constraint(equalToConstant: 0)
-        resultsTop = resultsScroll.topAnchor.constraint(equalTo: row.bottomAnchor, constant: 8)
+        resultsTop = resultsScroll.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 8)
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 24),
-            row.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -24),
-            row.topAnchor.constraint(equalTo: background.topAnchor, constant: 14),
-            row.heightAnchor.constraint(equalToConstant: 34),
+            searchField.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 8),
+            searchField.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -8),
+            searchField.topAnchor.constraint(equalTo: background.topAnchor, constant: 8),
+            searchField.heightAnchor.constraint(equalToConstant: 42),
+            row.leadingAnchor.constraint(equalTo: searchField.leadingAnchor, constant: 12),
+            row.trailingAnchor.constraint(equalTo: searchField.trailingAnchor, constant: -12),
+            row.centerYAnchor.constraint(equalTo: searchField.centerYAnchor),
             errorLabel.leadingAnchor.constraint(equalTo: input.leadingAnchor),
-            errorLabel.topAnchor.constraint(equalTo: row.bottomAnchor, constant: 4),
-            resultsScroll.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 12),
-            resultsScroll.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -12),
+            errorLabel.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 4),
+            resultsScroll.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 8),
+            resultsScroll.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -8),
             resultsTop,
             resultsHeight
         ])
@@ -200,13 +239,47 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             guard let self, self.targetPane != nil else { return }
             self.updateResults(history: history, preserveSelection: true)
         }
+        NotificationCenter.default.addObserver(self, selector: #selector(parentGeometryDidChange(_:)),
+            name: NSWindow.didResizeNotification, object: parentWindow)
+        NotificationCenter.default.addObserver(self, selector: #selector(parentGeometryDidChange(_:)),
+            name: NSView.frameDidChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(parentGeometryDidChange(_:)),
+            name: NSView.boundsDidChangeNotification, object: nil)
+    }
 
+    private func shortcutHint(_ title: String, key: String) -> NSView {
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabelColor
+        let keycap = NSTextField(labelWithString: key)
+        keycap.font = .systemFont(ofSize: 10, weight: .medium)
+        keycap.textColor = .secondaryLabelColor
+        keycap.alignment = .center
+        let outline = NSView()
+        outline.wantsLayer = true
+        outline.layer?.cornerRadius = 4
+        outline.layer?.borderWidth = 1
+        outline.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
+        keycap.translatesAutoresizingMaskIntoConstraints = false
+        outline.addSubview(keycap)
+        NSLayoutConstraint.activate([
+            outline.widthAnchor.constraint(equalToConstant: key == "esc" ? 28 : 24),
+            outline.heightAnchor.constraint(equalToConstant: 18),
+            keycap.centerXAnchor.constraint(equalTo: outline.centerXAnchor),
+            keycap.centerYAnchor.constraint(equalTo: outline.centerYAnchor)
+        ])
+        let hint = NSStackView(views: [label, outline])
+        hint.orientation = .horizontal
+        hint.alignment = .centerY
+        hint.spacing = 6
+        return hint
     }
 
     func show(for paneID: UUID) {
         guard let parentWindow,
               let page = store.selectedTab.pages.first(where: { $0.id == paneID }) else { return }
         if let targetPane, targetPane != paneID { store.finishNewTabEntry(for: targetPane) }
+        if targetPane != paneID || !panel.isVisible { topInsetFromWindow = nil }
         targetPane = paneID
         InputDiagnostics.transition(.addressPanel, .shown, window: panel, paneID: paneID)
         let controller = store.controller(for: page)
@@ -220,6 +293,11 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(input)
         input.selectText(nil)
+        // A new tab or split may mount its native pane after the location request.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.targetPane == paneID else { return }
+            self.layoutPanel()
+        }
     }
 
     @objc private func submit() {
@@ -251,6 +329,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         InputDiagnostics.transition(.addressPanel, .hidden, window: panel, paneID: targetPane, flags: ["restoreFocus": restoreFocus])
         store.finishNewTabEntry(for: targetPane)
         self.targetPane = nil
+        topInsetFromWindow = nil
         parentWindow?.removeChildWindow(panel)
         panel.orderOut(nil)
         if restoreFocus, let parentWindow {
@@ -308,16 +387,49 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     }
 
     private func layoutPanel() {
-        guard let parentWindow else { return }
+        guard let parentWindow, let content = parentWindow.contentView, targetPane != nil, !isLayingOut else { return }
+        isLayingOut = true
+        defer { isLayingOut = false }
+        content.layoutSubtreeIfNeeded()
+        let windowBounds = parentWindow.convertToScreen(content.convert(content.bounds, to: nil))
+        let pane = targetPaneView(in: content)
+        pane?.postsFrameChangedNotifications = true
+        let anchor = pane.map { parentWindow.convertToScreen($0.convert($0.visibleRect, to: nil)) } ?? windowBounds
+        let margin: CGFloat = 16
+        // Anchor the top once per presentation. Results, validation messages,
+        // and later pane geometry changes must not move the input vertically.
+        if topInsetFromWindow == nil {
+            topInsetFromWindow = parentWindow.frame.maxY - (anchor.maxY - anchor.height / 5).rounded()
+        }
+        let top = parentWindow.frame.maxY - topInsetFromWindow!
         let errorHeight: CGFloat = errorLabel.isHidden ? 0 : 20
         resultsTop.constant = 8 + errorHeight
-        let rowHeight = min(CGFloat(results.count) * 50, max(50, parentWindow.frame.height - 240))
+        let rowHeight = min(CGFloat(results.count) * AddressPopupLayout.rowHeight,
+            max(0, top - max(anchor.minY, windowBounds.minY) - margin - AddressPopupLayout.chromeHeight - errorHeight))
         resultsHeight.constant = results.isEmpty ? 0 : rowHeight
         resultsScroll.isHidden = results.isEmpty
-        let height: CGFloat = (results.isEmpty ? 64 : 64 + rowHeight) + errorHeight
-        let width = min(640, parentWindow.frame.width - 48)
-        panel.setFrame(NSRect(x: parentWindow.frame.midX - width / 2,
-                              y: parentWindow.frame.maxY - 102 - height, width: width, height: height), display: true)
+        let height = AddressPopupLayout.chromeHeight + rowHeight + errorHeight
+        let width = min(560, max(280, anchor.width - 2 * margin), windowBounds.width - 2 * margin)
+        let x = min(max(anchor.midX - width / 2, windowBounds.minX + margin), windowBounds.maxX - width - margin)
+        panel.setFrame(NSRect(x: x.rounded(), y: top - height, width: width, height: height), display: true)
+    }
+
+    private func targetPaneView(in view: NSView) -> PaneDropHost? {
+        guard !view.isHiddenOrHasHiddenAncestor else { return nil }
+        if let pane = view as? PaneDropHost, pane.pageID == targetPane,
+           pane.tabID == store.selectedTab.id, !pane.visibleRect.isEmpty {
+            return pane
+        }
+        return view.subviews.lazy.compactMap { self.targetPaneView(in: $0) }.first
+    }
+
+    @objc private func parentGeometryDidChange(_ notification: Notification) {
+        guard targetPane != nil else { return }
+        if let view = notification.object as? NSView {
+            guard view.window === parentWindow,
+                  view is NSClipView || (view as? PaneDropHost)?.pageID == targetPane else { return }
+        }
+        layoutPanel()
     }
 
     private func updateSelection() {
@@ -346,19 +458,23 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let result = results[row]
-        let view = NSTableCellView()
-        let icon = NSImageView(image: NSImage(systemSymbolName: result.history == nil ? "magnifyingglass" : "clock",
-                                             accessibilityDescription: nil)!)
+        let view = AddressResultCell()
+        let icon = view.icon
+        icon.image = NSImage(systemSymbolName: result.history == nil ? "magnifyingglass" : "clock", accessibilityDescription: nil)
         icon.contentTintColor = .secondaryLabelColor
-        let title = NSTextField(labelWithString: result.title)
-        title.font = .systemFont(ofSize: 13, weight: .medium)
+        let title = view.title
+        title.stringValue = result.title
+        title.font = .systemFont(ofSize: 14, weight: .medium)
         title.lineBreakMode = .byTruncatingTail
-        let detail = NSTextField(labelWithString: result.detail)
+        let detail = view.detail
+        detail.stringValue = result.detail
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = .secondaryLabelColor
         detail.lineBreakMode = .byTruncatingMiddle
-        let remove = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)!,
-            target: self, action: #selector(removeHistoryResult(_:)))
+        let remove = view.remove
+        remove.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)
+        remove.target = self
+        remove.action = #selector(removeHistoryResult(_:))
         remove.isBordered = false
         remove.contentTintColor = .secondaryLabelColor
         remove.identifier = NSUserInterfaceItemIdentifier(result.address)
@@ -385,6 +501,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             remove.heightAnchor.constraint(equalToConstant: 24)
         ])
         view.textField = title
+        view.setSelected(row == selectedResult)
         return view
     }
 

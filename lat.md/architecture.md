@@ -351,7 +351,7 @@ The History menu and Command-Y open `browse://history`, reusing an existing hist
 
 [History.swift](../Sources/BrowseCore/History.swift) groups visits by URL and ranks matching suggestions using prior choices, URL match strength, and visit frequency weighted by recency.
 
-Matching ignores case and diacritics and requires every query word to occur in the title or decoded URL. URL-prefix completions preserve the typed prefix; whitespace-containing queries do not receive inline completions.
+Matching ignores case and diacritics and requires every query word to occur in the title or decoded URL. URL-prefix completions preserve the typed prefix; whitespace-containing queries do not receive inline completions. Bare-host queries can omit a leading www. for both inline completion and home-page ranking. Explicit www. and scheme prefixes retain literal matching, and selecting the suggestion still navigates to its original recorded URL.
 
 Suggestions combine visits into one result per URL. Ranking prefers URL match strength, with visited home pages ahead of deep links for host-prefix queries, then frequency with a 30-day recency half-life plus a bounded learned-choice bonus. A single previous choice cannot permanently outrank repeated visits; path queries still find matching deep links. Learned choices are bounded to 1,000 query/URL pairs and decay over time. Matching runs locally without sending partial queries to a search engine or preloading pages.
 
@@ -367,7 +367,7 @@ Bare hostnames containing dots use HTTPS, while localhost and loopback IPv4 addr
 
 ## Location popup
 
-[AddressPanelController.swift](../Sources/Browse/AddressPanelController.swift) owns a floating, Spotlight-style native location panel. URL entry is separate from pane chrome. Its empty hint uses explicit light-gray text for contrast against the dark material.
+[AddressPanelController.swift](../Sources/Browse/AddressPanelController.swift) owns a floating command-palette-style location panel. A rounded search field, compact history rows, and a shortcut footer sit within a frosted shell. URL entry remains separate from pane chrome.
 
 Command-L and the start-page location button open the popup for a specific pane, with its current URL selected (blank for start pages). Return navigates that pane using the [[architecture#Address handling|address resolver]]; invalid input stays open with an error that clears when editing resumes.
 
@@ -375,11 +375,11 @@ Command-L and the start-page location button open the popup for a specific pane,
 
 Opening the popup shows frequent/recent pages while retaining the current address selected for editing. Typing shows up to six history matches alongside an explicit visit/search action. Inline URL matches become the selected top result; other queries keep the explicit action selected. History updates preserve selection when possible. Each history row has a Remove from history button that deletes all visits and learned choices for its URL, saves immediately, and removes stale suggestions without navigating or closing the popup. Results sit directly beneath the input with compact spacing; validation errors reserve extra space only while visible.
 
-The popup is a borderless child panel positioned near the main window's upper center. It uses native HUD material with a 50% black background scrim, accepts keyboard focus without becoming the main window, supports full-screen use, and hides when the app deactivates.
+The popup is a borderless child panel centered horizontally on its target pane's visible native bounds, including start pages. On opening, its top edge sits one-fifth down the pane. That top position stays fixed relative to the window's top for the entire presentation: result counts, validation messages, pane resizing, scrolling, and delayed mounting cannot shift the input vertically. Reopening or targeting another pane establishes a new top position. Its width adapts to the pane, with a readable minimum; long results scroll within the space below the anchored top. Until a pane is mounted, browser content bounds supply the initial fallback position. [[tests#Pane-centered location popup]] covers pane targeting, fixed-top resizing, validation errors, partial visibility, and delayed mounting. It uses native popover material with a darkening scrim and a subtle outer rim, accepts keyboard focus without becoming the main window, supports full-screen use, and hides when the app deactivates. A smaller search field includes a magnifying glass and a light-gray placeholder. The footer shows arrow-key navigation, Escape dismissal, and Return submission hints beneath a faint separator.
 
 A stretchable rounded material mask shapes both the backdrop and the native window shadow. The dark scrim uses the same corner radius, keeping it inside the material's outline as the popup width changes.
 
-Selected suggestions use a rounded native clear-glass background on macOS 26 and later, with a subtle translucent fill on earlier systems. The selection keeps the compact row alignment and leaves keyboard focus in the address input.
+Selected suggestions use a rounded blue background with white titles and lighter secondary text, icons, and history-removal buttons. Two-line rows retain both page titles and URLs. Selection leaves keyboard focus in the address input; the panel remains horizontally centered and resizes downward from its fixed top edge.
 
 Escape dismisses an existing tab’s popup and returns keyboard focus to the browser, as does successful submission. During a new blank tab’s initial address entry, Escape or Command-W discards both the popup and that tab, restores the preceding tab and zoom, and adds nothing to closed-item history. Typed but unsubmitted text still counts as initial entry. Successful submission or outside dismissal commits the tab; opening its popup again does not make it disposable. Split panes, new-window initial tabs, and last-tab replacements are retained. [[tests#Canceling new tab entry]] and [[tests#New tab popup keyboard cancellation]] cover the boundaries. Losing key-window status dismisses it without reclaiming focus, allowing outside clicks to select another pane or application normally.
 

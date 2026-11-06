@@ -41,6 +41,18 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(suggestion.completion(for: "cafe recipes") == nil)
     #expect(suggestion.completion(for: "e") == nil)
     #expect(suggestion.completion(for: suggestion.displayURL) == nil)
+
+    history.record(url: "https://www.nytimes.com/", title: "The New York Times", at: historyNow)
+    let times = history.suggestions(for: "nytim", now: historyNow).first!
+    #expect(times.completion(for: "nytim") == "nytimes.com/")
+    #expect(times.completion(for: "NYtim") == "NYtimes.com/")
+    #expect(times.completion(for: "www.nytim") == "www.nytimes.com/")
+    #expect(times.completion(for: "https://www.nytim") == times.url)
+    #expect(times.completion(for: "https://nytim") == nil)
+    #expect(times.completion(for: "nytimes.com/") == nil)
+    #expect(times.url == "https://www.nytimes.com/")
+    history.record(url: "https://news.example.com/", title: "News", at: historyNow)
+    #expect(history.suggestions(for: "news.example", now: historyNow).first?.completion(for: "example") == nil)
 }
 
 // @lat: [[tests#History ranking and learned choices]]
@@ -111,4 +123,17 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     }
     history.updateTitle("Repository issue", for: issue)
     #expect(history.suggestions(for: "repository", now: historyNow).first?.url == frequent)
+
+    let timesHome = "https://www.nytimes.com/"
+    let timesArticle = "https://www.nytimes.com/international/story"
+    history.record(url: timesHome, title: "The New York Times", at: historyNow)
+    for index in 0..<20 {
+        history.record(url: timesArticle, title: "Article", at: historyNow.addingTimeInterval(Double(-index * 60)))
+    }
+    for query in ["nytim", "nytimes.com", "nytimes.com/", "www.nytim", "https://www.nytim"] {
+        #expect(history.suggestions(for: query, now: historyNow).first?.url == timesHome)
+    }
+    let pathMatch = history.suggestions(for: "nytimes.com/int", now: historyNow).first
+    #expect(pathMatch?.url == timesArticle)
+    #expect(pathMatch?.completion(for: "nytimes.com/int") == "nytimes.com/international/story")
 }
