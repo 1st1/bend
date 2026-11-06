@@ -416,4 +416,6 @@ Clicks from different source panes reuse the target, independent tabs receive in
 
 Layout assertions verify that the input keeps its frame across empty, pending, matching, and zero-result states, including at minimum pane width. The count stays right-aligned inside the field without overlapping the native text editor. Return and Find Next retain the count while navigating; editing the query immediately clears the old total.
 
+On macOS 26 and later, the find controls share the native title glass without a separate material. Opening and closing adjust the glass height and WebKit inset together; style and tint changes preserve the field editor and control parentage.
+
 Match-count assertions cover case-insensitive totals, hidden-text exclusion, zero and empty queries, and matches inside an iframe. Dismissal checks clear main-frame and iframe selections, preserve scroll, and reject late count results; reopening searches the retained query again. Repeated Escape presses after dismissal still reach page key listeners without crashing. Cancellation is also safe with no bar or before mounting a web view.

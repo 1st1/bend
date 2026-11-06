@@ -1,6 +1,7 @@
 import AppKit
 import WebKit
 import WebKitFindSupport
+import BrowseCore
 
 // SwiftUI's shape clip does not reliably clip WebKit's native composited layers.
 // Keep the clip on an AppKit ancestor, outside WebKit's own layer management.
@@ -8,6 +9,9 @@ import WebKitFindSupport
 final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     private weak var hostedWebView: WKWebView?
     private var topContentInset: CGFloat = 0
+    private var headerGlass: NSView?
+    private var headerContent: NSView?
+    private var findBarContainer: NSView { headerContent ?? self }
     private(set) var isFindBarVisible = false
     private(set) var foundMatch: Bool?
     private(set) var matchCount: Int?
@@ -43,7 +47,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
 
     private func showFindBar(refreshSearch: Bool = true) {
         if findBarView == nil { makeFindBar() }
-        if let findBarView { addSubview(findBarView) }
+        if let findBarView { findBarContainer.addSubview(findBarView) }
         isFindBarVisible = true
         InputDiagnostics.transition(.findBar, .shown, view: hostedWebView)
         needsLayout = true
@@ -69,10 +73,17 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     }
 
     private func makeFindBar() {
-        let bar = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: bounds.width, height: 38))
-        bar.material = .headerView
-        bar.blendingMode = .withinWindow
-        bar.state = .active
+        let bar: NSView
+        if headerGlass != nil {
+            bar = NSView()
+        } else {
+            let material = NSVisualEffectView()
+            material.material = .headerView
+            material.blendingMode = .withinWindow
+            material.state = .active
+            bar = material
+        }
+        bar.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 38)
         searchField.placeholderString = "Find in page"
         searchField.setAccessibilityLabel("Find in page")
         searchField.controlSize = .small
@@ -187,7 +198,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func update(webView: WKWebView, topContentInset: CGFloat) {
+    func update(webView: WKWebView, topContentInset: CGFloat, headerAppearance: GlassAppearance? = nil) {
         if hostedWebView !== webView {
             hideFindBar(restoreFocus: false)
             findSupport?.invalidate()
@@ -199,8 +210,19 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
             hostedWebView = webView
             webView.frame = bounds
             webView.autoresizingMask = [.width, .height]
-            addSubview(webView)
+            addSubview(webView, positioned: .below, relativeTo: headerGlass)
             InputDiagnostics.transition(.surfaceAttachment, .attached, view: webView)
+        }
+        if #available(macOS 26.0, *), let headerAppearance {
+            let glass: PaneHeaderGlass
+            if let existing = headerGlass as? PaneHeaderGlass { glass = existing }
+            else {
+                glass = PaneHeaderGlass()
+                headerGlass = glass
+                headerContent = glass.chromeContent
+                addSubview(glass)
+            }
+            glass.apply(headerAppearance)
         }
         self.topContentInset = max(0, topContentInset)
         // In the stacked layout the page only touches the pane's bottom corners.
@@ -215,7 +237,9 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         super.layout()
         guard let webView = hostedWebView else { return }
         let barHeight = isFindBarVisible ? (findBarView?.frame.height ?? 0) : 0
-        findBarView?.frame.origin = NSPoint(x: 0, y: bounds.height - topContentInset - barHeight)
+        let chromeHeight = topContentInset + barHeight
+        headerGlass?.frame = NSRect(x: 0, y: bounds.height - chromeHeight, width: bounds.width, height: chromeHeight)
+        findBarView?.frame.origin = NSPoint(x: 0, y: headerGlass == nil ? bounds.height - chromeHeight : 0)
         findBarView?.frame.size.width = bounds.width
         if #available(macOS 26.0, *) {
             webView.frame = bounds
@@ -293,4 +317,37 @@ private final class FindSearchField: NSSearchField {
             clip.frame = searchCell.searchTextRect(forBounds: bounds)
         }
     }
+}
+
+@available(macOS 26.0, *)
+private final class PaneHeaderGlass: NSGlassEffectView {
+    let chromeContent = NSView()
+    private let scrim = HeaderScrim()
+
+    init() {
+        super.init(frame: .zero)
+        // WebSurfaceHost clips the shared header's top corners with the pane.
+        cornerRadius = 0
+        contentView = chromeContent
+        scrim.wantsLayer = true
+        scrim.autoresizingMask = [.width, .height]
+        chromeContent.addSubview(scrim)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func apply(_ appearance: GlassAppearance) {
+        style = appearance.clear ? .clear : .regular
+        tintColor = appearance.tint?.nsColor
+        scrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(appearance.darkening).cgColor
+    }
+
+    override func layout() {
+        super.layout()
+        scrim.frame = chromeContent.bounds
+    }
+}
+
+private final class HeaderScrim: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

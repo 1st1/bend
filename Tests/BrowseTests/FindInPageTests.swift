@@ -25,7 +25,7 @@ import WebKit
     for i in 0..<2 {
         hosts[i].frame.origin.x = CGFloat(i) * 600
         container.addSubview(hosts[i])
-        hosts[i].update(webView: pages[i].webView, topContentInset: 36)
+        hosts[i].update(webView: pages[i].webView, topContentInset: 36, headerAppearance: .headerDefault)
         pages[i].isStartPage = false
         pages[i].webView.loadHTMLString("""
             <p id="first">Findneedle first</p><div style="height:1000px"></div>
@@ -121,9 +121,21 @@ import WebKit
     try await waitForSelection("third")
     #expect((try await pages[0].webView.evaluateJavaScript("scrollY") as? Double ?? 0) > 0)
     #expect(try await pages[1].webView.evaluateJavaScript("getSelection().toString()") as? String == "")
-    #expect(bar.frame.maxY == hosts[0].bounds.maxY - 36)
+    #expect(bar.convert(bar.bounds, to: hosts[0]).maxY == hosts[0].bounds.maxY - 36)
     if #available(macOS 26.0, *) {
         #expect(pages[0].webView.obscuredContentInsets.top == 36 + bar.frame.height)
+        let glass = try #require(hosts[0].subviews.compactMap { $0 as? NSGlassEffectView }.first)
+        #expect(bar.superview === glass.contentView)
+        #expect(!(bar is NSVisualEffectView))
+        #expect(glass.frame.height == 36 + bar.frame.height)
+        #expect(glass.frame.maxY == hosts[0].bounds.maxY)
+        let editorBeforeAppearanceChange = context.window.firstResponder
+        hosts[0].update(webView: pages[0].webView, topContentInset: 36,
+                        headerAppearance: GlassAppearance(clear: true, tint: .init(red: 0.2, green: 0.4, blue: 0.8), darkening: 0.3))
+        #expect(glass.style == .clear)
+        #expect(glass.tintColor != nil)
+        #expect(context.window.firstResponder === editorBeforeAppearanceChange)
+        #expect(bar.superview === glass.contentView)
     }
     // Return wraps forward from the last match while keeping the field active.
     field.selectText(nil)
@@ -181,7 +193,10 @@ import WebKit
     context.window.sendEvent(escape)
     #expect(!hosts[0].isFindBarVisible)
     #expect(context.window.firstResponder === pages[0].webView)
-    if #available(macOS 26.0, *) { #expect(pages[0].webView.obscuredContentInsets.top == 36) }
+    if #available(macOS 26.0, *) {
+        #expect(pages[0].webView.obscuredContentInsets.top == 36)
+        #expect(hosts[0].subviews.compactMap { $0 as? NSGlassEffectView }.first?.frame.height == 36)
+    }
     // Escape clears both the native find selection and obsolete count replies,
     // even when it arrives immediately after a new query.
     try await waitForSelection("")

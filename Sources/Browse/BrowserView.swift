@@ -359,12 +359,11 @@ private struct BrowserPane: View {
     @ViewBuilder
     private var paneContent: some View {
         if #available(macOS 26.0, *), !controller.isStartPage, controller.error == nil {
-            WebSurface(webView: controller.webView, topContentInset: headerHeight)
+            WebSurface(webView: controller.webView, topContentInset: headerHeight,
+                       headerAppearance: store.paneHeaderGlass)
                 .background(PaneChromeBackground(cornerRadius: 12))
                 .overlay(alignment: .top) {
                     header
-                        .background(PaneChromeBackground(cornerRadius: 11, roundsBottomCorners: false,
-                                                        appearance: store.paneHeaderGlass))
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
                 }
         } else {
@@ -523,15 +522,16 @@ private final class ClippedPaneHost: PaneDropHost {
 private struct WebSurface: NSViewRepresentable {
     let webView: WKWebView
     var topContentInset: CGFloat = 0
+    var headerAppearance: GlassAppearance?
 
     func makeNSView(context: Context) -> WebSurfaceHost {
         let host = WebSurfaceHost()
-        host.update(webView: webView, topContentInset: topContentInset)
+        host.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance)
         return host
     }
 
     func updateNSView(_ nsView: WebSurfaceHost, context: Context) {
-        nsView.update(webView: webView, topContentInset: topContentInset)
+        nsView.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance)
     }
 }
 
