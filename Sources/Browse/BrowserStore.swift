@@ -63,6 +63,8 @@ final class BrowserStore: ObservableObject {
     private var pendingSave: Task<Void, Never>?
     private let sessionFile: URL
     private let historyFile: URL
+    private let legacyHistoryFile: URL
+    private var historyDatabase: HistoryDatabase?
     private var pendingHistorySave: Task<Void, Never>?
     private var historyDirty = false
     private var historyWritable = true
@@ -73,7 +75,8 @@ final class BrowserStore: ObservableObject {
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BrowsePrototype", isDirectory: true)
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
-        historyFile = self.sessionFile.deletingLastPathComponent().appendingPathComponent("history.json")
+        historyFile = self.sessionFile.deletingLastPathComponent().appendingPathComponent("History.db")
+        legacyHistoryFile = self.sessionFile.deletingLastPathComponent().appendingPathComponent("history.json")
         if let data = try? Data(contentsOf: self.sessionFile),
            let restored = try? JSONDecoder().decode(BrowserSession.self, from: data), restored.isValid {
             session = restored
@@ -84,11 +87,11 @@ final class BrowserStore: ObservableObject {
             session.workspaces = [session.workspaces[0]]
             session.workspaces[0].tabs = tabs
         }
-        if sharedStore == nil, FileManager.default.fileExists(atPath: historyFile.path) {
+        if sharedStore == nil {
             do {
-                let restored = try JSONDecoder().decode(BrowsingHistory.self, from: Data(contentsOf: historyFile))
-                guard restored.isValid else { throw CocoaError(.fileReadCorruptFile) }
-                history = restored
+                let database = try HistoryDatabase(file: historyFile, legacyFile: legacyHistoryFile)
+                historyDatabase = database
+                history = database.load()
             } catch {
                 historyWritable = false
                 historyError = "Saved history could not be read. Clear history to reset it."
@@ -400,7 +403,22 @@ final class BrowserStore: ObservableObject {
     func clearHistory() {
         if let sharedStore { sharedStore.clearHistory(); return }
         history.clear()
-        historyWritable = true
+        if !historyWritable {
+            do {
+                historyDatabase = nil
+                // Explicit Clear History is the only operation allowed to discard unreadable storage.
+                for file in [legacyHistoryFile, historyFile,
+                             URL(fileURLWithPath: historyFile.path + "-wal"),
+                             URL(fileURLWithPath: historyFile.path + "-shm")] {
+                    if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
+                }
+                historyDatabase = try HistoryDatabase(file: historyFile)
+                historyWritable = true
+            } catch {
+                historyError = "History could not be cleared: \(error.localizedDescription)"
+                return
+            }
+        }
         historyDirty = true
         saveHistory()
     }
@@ -420,8 +438,8 @@ final class BrowserStore: ObservableObject {
         pendingHistorySave = nil
         guard historyDirty, historyWritable else { return }
         do {
-            try FileManager.default.createDirectory(at: historyFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(history).write(to: historyFile, options: .atomic)
+            guard let historyDatabase else { return }
+            try historyDatabase.save(history)
             historyDirty = false
             historyError = nil
         } catch { historyError = "History could not be saved: \(error.localizedDescription)" }

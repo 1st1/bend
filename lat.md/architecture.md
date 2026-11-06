@@ -327,7 +327,17 @@ Visits retain titles and timestamps, newest first, up to 10,000 visits. Consecut
 
 [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) records successful web navigations. Later URL changes on a completed, idle page create visits, while title changes update the latest matching visit. Internal pages and failed navigations are excluded.
 
-[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) persists visits and learned choices atomically in one root history file shared across windows. Secondary stores forward history writes and observations to the root owner, avoiding conflicting snapshots. Writes are debounced and flushed with session saves; removal and clearing save immediately. An unreadable history file is preserved until an explicit clear permits replacement, with errors exposed by the store.
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) persists visits and learned choices through [[architecture#History database]] shared across windows. Secondary stores forward history writes and observations to the root owner, avoiding conflicting snapshots. Writes are debounced and flushed with session saves; removal and clearing save immediately. Unreadable history storage is preserved until an explicit clear permits replacement, with errors exposed by the store.
+
+## History database
+
+[HistoryDatabase.swift](../Sources/BrowseCore/HistoryDatabase.swift) uses macOS’s system SQLite library for Bend’s own `History.db`, separating URL records, individual visits, and learned address-bar choices.
+
+The database lives under `Application Support/BrowsePrototype`, alongside the primary session. It follows Safari’s URL/visit organization, without reading Safari’s database or depending on its private schema. Visit UUIDs and titles remain per visit; timestamps use seconds since January 1, 2001. Foreign keys link visits and choices to unique URLs. Time and URL indexes support lookup and cleanup.
+
+One root store owns the connection and cached snapshot. Saves apply only changed rows inside a transaction; deleted visits and choices are removed and unreferenced URLs collected. SQLite uses WAL, full synchronous commits, and secure deletion. The in-memory 10,000-visit bound and existing suggestion ranking remain unchanged. Website data stays in WebKit’s separate store.
+
+On first initialization, valid `history.json` visits and choices import in the same transaction as the schema version. JSON is removed only after the database loads successfully; a leftover JSON file is never reimported into an initialized database. Corrupt JSON, corrupt databases, and unsupported schema versions block ordinary persistence. Explicit Clear History may discard unreadable storage and initialize an empty database. Transaction failures leave the previous snapshot intact and pending changes available for retry.
 
 ## History interface
 

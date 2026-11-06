@@ -286,11 +286,23 @@ Explicit requests for an existing pane focus that pane; invalid identities produ
 
 ## History persistence and clearing
 
-[HistoryStoreTests.swift](../Tests/BrowseTests/HistoryStoreTests.swift) verifies that visits and learned choices survive reloading, and that removal and clearing persist independently of session data.
+[HistoryStoreTests.swift](../Tests/BrowseTests/HistoryStoreTests.swift) verifies that visits and learned choices survive reloading, that secondary windows share the root database, and that removal and clearing persist independently of session data.
 
 ## Unreadable history preservation
 
-[HistoryStoreTests.swift](../Tests/BrowseTests/HistoryStoreTests.swift) verifies that corrupt history is reported and preserved during ordinary saves. Explicit clearing permits a valid empty history file to replace it.
+[HistoryStoreTests.swift](../Tests/BrowseTests/HistoryStoreTests.swift) verifies that corrupt JSON or SQLite history is reported and preserved during ordinary saves. Explicit clearing permits an empty database to replace it.
+
+## SQLite history transactions
+
+[HistoryDatabaseTests.swift](../Tests/BrowseCoreTests/HistoryDatabaseTests.swift) verifies normalized URL/visit rows, exact timestamp and title round trips, incremental updates, rollback after an injected failure, retry, and deletion of visits and choices.
+
+## JSON history migration
+
+[HistoryDatabaseTests.swift](../Tests/BrowseCoreTests/HistoryDatabaseTests.swift) verifies one-time migration preserves visits and learned ranking, removes the JSON source, prevents reimport after clearing, and leaves unsupported database versions untouched.
+
+## SQLite history retention
+
+[HistoryDatabaseTests.swift](../Tests/BrowseCoreTests/HistoryDatabaseTests.swift) verifies the visit limit persists across reopening, with the oldest visit and its unreferenced URL removed when a new visit exceeds the bound.
 
 ## Completed navigation history
 

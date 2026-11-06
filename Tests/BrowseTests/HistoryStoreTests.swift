@@ -13,6 +13,13 @@ import WebKit
     store.recordVisit(url: "https://example.com/page", title: "Example")
     store.recordHistoryChoice(url: "https://example.com/page", query: "example")
     store.saveHistory()
+    let secondary = BrowserStore(sessionFile: root.appendingPathComponent("Windows/secondary.json"), sharedStore: store)
+    #expect(secondary.history == store.history)
+    secondary.recordVisit(url: "https://example.com/from-second-window", title: "Second window")
+    secondary.saveHistory()
+    #expect(store.history == secondary.history)
+    #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Windows/History.db").path))
+    secondary.removeHistory(url: "https://example.com/from-second-window")
     let restored = BrowserStore(sessionFile: file)
     #expect(restored.history == store.history)
     #expect(restored.historyError == nil)
@@ -26,11 +33,11 @@ import WebKit
 }
 
 // @lat: [[tests#Unreadable history preservation]]
-@Test @MainActor func unreadableHistory() throws {
+@Test(arguments: ["history.json", "History.db"]) @MainActor func unreadableHistory(fileName: String) throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseHistory-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    let file = root.appendingPathComponent("history.json")
+    let file = root.appendingPathComponent(fileName)
     let original = Data("broken history".utf8)
     try original.write(to: file)
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"))

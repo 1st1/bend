@@ -27,7 +27,7 @@ public struct HistorySuggestion: Identifiable, Equatable, Sendable {
     }
 }
 
-private struct HistoryChoice: Codable, Equatable, Sendable {
+struct HistoryChoice: Codable, Equatable, Sendable {
     let query: String
     let url: String
     var weight: Double
@@ -38,15 +38,22 @@ private struct HistoryChoice: Codable, Equatable, Sendable {
 public struct BrowsingHistory: Codable, Equatable, Sendable {
     public static let maximumVisits = 10_000
     public private(set) var visits: [HistoryVisit] = []
-    private var choices: [HistoryChoice] = []
+    var choices: [HistoryChoice] = []
 
     public init() {}
+
+    init(visits: [HistoryVisit], choices: [HistoryChoice]) {
+        self.visits = visits
+        self.choices = choices
+    }
 
     public var isValid: Bool {
         visits.count <= Self.maximumVisits && Set(visits.map(\.id)).count == visits.count
             && visits.allSatisfy { Self.webAddress($0.url) == $0.url && $0.date.timeIntervalSince1970.isFinite }
             && choices.count <= 1_000
-            && choices.allSatisfy { Self.webAddress($0.url) == $0.url && $0.weight.isFinite && $0.weight > 0 }
+            && Set(choices.map { [$0.query, $0.url] }).count == choices.count
+            && choices.allSatisfy { Self.webAddress($0.url) == $0.url && $0.weight.isFinite && $0.weight > 0
+                && $0.date.timeIntervalSince1970.isFinite }
     }
 
     public static func webAddress(_ address: String) -> String? {
