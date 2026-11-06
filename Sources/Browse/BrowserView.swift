@@ -31,6 +31,7 @@ struct BrowserView: View {
                 }
             }
         }
+        .background(PaneShadowPlane().allowsHitTesting(false).accessibilityHidden(true))
         .background {
             if #available(macOS 26.0, *) {
                 Color.black.opacity(store.windowGlass.darkening).allowsHitTesting(false)
@@ -48,6 +49,7 @@ struct BrowserView: View {
                 iconButton("sidebar.left", "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
             }.padding(.horizontal, 15).frame(height: 47)
                 .padding(.top, store.sidebarWidth < 180 ? 33 : 0)
+                .zIndex(1)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 7) {
@@ -57,6 +59,8 @@ struct BrowserView: View {
 
                 }.padding(.horizontal, 10).padding(.top, 6)
             }
+            .clipped()
+            .contentShape(Rectangle())
             if let error = store.persistenceError {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.system(size: 10)).foregroundStyle(.orange).padding(20)
@@ -326,6 +330,14 @@ private struct BrowserPane: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
     private var focused: Bool { tab.focusedPane == pageID }
+    private var activeHeaderTint: NSColor? {
+        guard focused, store.paneHighlight.style == .titleTint else { return nil }
+        return store.paneHighlight.titleTintColor.nsColor.withAlphaComponent(store.paneHighlight.titleTintIntensity)
+    }
+    private var usesSharedHeader: Bool {
+        if #available(macOS 26.0, *) { return !controller.isStartPage && controller.error == nil }
+        return false
+    }
     private var hostsWindowControls: Bool {
         let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
         return !store.sidebarVisible && pageID == (zoomed ?? tab.layout.paneIDs.first)
@@ -360,7 +372,7 @@ private struct BrowserPane: View {
     private var paneContent: some View {
         if #available(macOS 26.0, *), !controller.isStartPage, controller.error == nil {
             WebSurface(webView: controller.webView, topContentInset: headerHeight,
-                       headerAppearance: store.paneHeaderGlass)
+                       headerAppearance: store.paneHeaderGlass, activeHeaderTint: activeHeaderTint)
                 .background(PaneChromeBackground(cornerRadius: 12))
                 .overlay(alignment: .top) {
                     header
@@ -423,7 +435,7 @@ private struct BrowserPane: View {
         }.padding(.horizontal, 12).frame(height: 36)
         .background {
             store.paneHighlight.titleTintColor.color
-                .opacity(focused && store.paneHighlight.style == .titleTint ? store.paneHighlight.titleTintIntensity : 0)
+                .opacity(!usesSharedHeader && focused && store.paneHighlight.style == .titleTint ? store.paneHighlight.titleTintIntensity : 0)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
@@ -468,7 +480,7 @@ private struct BrowserPane: View {
             StartPage()
                 .onTapGesture { store.focus(pageID) }
         } else {
-            WebSurface(webView: controller.webView)
+            WebSurface(webView: controller.webView, activeHeaderTint: activeHeaderTint)
         }
     }
 }
@@ -500,7 +512,7 @@ private struct ClippedPaneContent<Content: View>: NSViewRepresentable {
     }
 }
 
-private final class ClippedPaneHost: PaneDropHost {
+final class ClippedPaneHost: PaneDropHost {
     let content: NSHostingView<AnyView>
 
     init(content rootView: AnyView) {
@@ -529,15 +541,16 @@ private struct WebSurface: NSViewRepresentable {
     let webView: WKWebView
     var topContentInset: CGFloat = 0
     var headerAppearance: GlassAppearance?
+    var activeHeaderTint: NSColor?
 
     func makeNSView(context: Context) -> WebSurfaceHost {
         let host = WebSurfaceHost()
-        host.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance)
+        host.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance, activeHeaderTint: activeHeaderTint)
         return host
     }
 
     func updateNSView(_ nsView: WebSurfaceHost, context: Context) {
-        nsView.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance)
+        nsView.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance, activeHeaderTint: activeHeaderTint)
     }
 }
 

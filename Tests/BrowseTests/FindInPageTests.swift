@@ -136,6 +136,19 @@ import WebKit
         #expect(glass.tintColor != nil)
         #expect(context.window.firstResponder === editorBeforeAppearanceChange)
         #expect(bar.superview === glass.contentView)
+        let activeTint = NSColor.systemBlue.withAlphaComponent(0.4)
+        hosts[0].update(webView: pages[0].webView, topContentInset: 36,
+            headerAppearance: .headerDefault, activeHeaderTint: activeTint)
+        let tint = hosts[0].activeHeaderTintView
+        #expect(tint.superview === glass.contentView)
+        #expect(tint.frame == glass.contentView?.bounds)
+        #expect(tint.layer?.backgroundColor == activeTint.cgColor)
+        #expect(tint.frame.contains(bar.frame))
+        #expect(context.window.firstResponder === editorBeforeAppearanceChange)
+        #expect(hosts[1].activeHeaderTintView.layer?.backgroundColor == nil)
+        hosts[0].update(webView: pages[0].webView, topContentInset: 36, headerAppearance: .headerDefault)
+        #expect(tint.layer?.backgroundColor == nil)
+        #expect(bar.superview === glass.contentView)
     }
     // Return wraps forward from the last match while keeping the field active.
     field.selectText(nil)

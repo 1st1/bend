@@ -58,6 +58,20 @@ import BrowseCore
         window.sendEvent(up)
         #expect(source.mouseDownPoint == nil)
     }
+    func clickSidebarButton(x: CGFloat) async throws {
+        let y = content.isFlipped ? content.bounds.minY + 23.5 : content.bounds.maxY - 23.5
+        let point = content.convert(NSPoint(x: x, y: y), to: nil)
+        let frame = try #require(window.contentView?.superview)
+        #expect(!(frame.hitTest(frame.convert(point, from: nil)) is NSScrollView))
+        try sendPaneMouse(.leftMouseDown, at: point, to: window)
+        try sendPaneMouse(.leftMouseUp, at: point, to: window)
+        try await Task.sleep(for: .milliseconds(150))
+    }
+    let tabsBefore = store.session.workspaces.flatMap(\.tabs).count
+    try await clickSidebarButton(x: store.sidebarWidth - 59)
+    #expect(store.session.workspaces.flatMap(\.tabs).count == tabsBefore + 1)
+    try await clickSidebarButton(x: store.sidebarWidth - 29)
+    #expect(!store.sidebarVisible)
 }
 
 @MainActor

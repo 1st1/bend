@@ -161,7 +161,7 @@ Opening a link splits its source pane to the right even when another pane is foc
 
 The test uses local HTTP fixtures and ephemeral storage in a full-content window with a unified toolbar. It checks that the titlebar adds no extra top inset. Narrowing and widening columns verifies CSS viewport width matches the native web view, media queries switch layouts, and resize events fire. Both the HTTP request received by the fixture and JavaScript expose Safari-compatible product tokens plus Bend’s identifier. Unvisited tabs remain uncreated, hidden tabs keep their viewport and ignore other tabs' zoom, selection resizes the active host, and tab or background-pane closure removes retained content.
 
-After switching back beneath a later-mounted hidden tab, the test verifies the inactive hosting root rejects hit tests and each visible pane's center resolves to its web view in Transparency, Outline, and Outline glow modes. Switching highlight styles preserves the same WebView and native parent. The test also sends a complete mouse gesture through the window: header press, drag across nine interior points of a real web view, and release. Each point activates the target preview; release rearranges the panes and removes the drag surface while preserving native WebKit parents, document identity, and unsaved input.
+After switching back beneath a later-mounted hidden tab, the test verifies the inactive hosting root rejects hit tests and each visible pane's center resolves to its web view in Transparency, Outline, Outline glow, and Title tint modes. Switching highlight styles preserves the same WebView and native parent. The test also sends a complete mouse gesture through the window: header press, drag across nine interior points of a real web view, and release. Each point activates the target preview; release rearranges the panes and removes the drag surface while preserving native WebKit parents, document identity, and unsaved input.
 
 ## Pane drop layout moves
 
@@ -197,7 +197,7 @@ The native preview layer is observed during continuous movement and edge changes
 
 [PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) sends window mouse events through the actual browser shell, unified titlebar, and glass container in an ordered offscreen window.
 
-Header hit testing reaches both the compact title handle and the adjacent empty-space handle; only the title handle drives hover feedback. Mouse-down focuses its pane and starts tracking; small motion does not move the window or begin a drag, and mouse-up clears tracking.
+Header hit testing reaches both the compact title handle and the adjacent empty-space handle; only the title handle drives hover feedback. Mouse-down focuses its pane and starts tracking; small motion does not move the window or begin a drag, and mouse-up clears tracking. Native mouse clicks also activate the sidebar’s new-tab and toggle buttons instead of reaching the sidebar scroll view.
 
 ## Input logging preference
 
@@ -445,7 +445,7 @@ Changing page zoom preserves the document and form contents and leaves the indep
 
 Layout assertions verify that the input keeps its frame across empty, pending, matching, and zero-result states, including at minimum pane width. The count stays right-aligned inside the field without overlapping the native text editor. Return and Find Next retain the count while navigating; editing the query immediately clears the old total.
 
-On macOS 26 and later, the find controls share the native title glass without a separate material. Opening and closing adjust the glass height and WebKit inset together; style and tint changes preserve the field editor and control parentage.
+On macOS 26 and later, the find controls share the native title glass without a separate material. Opening and closing adjust the glass height and WebKit inset together; style and tint changes preserve the field editor and control parentage. Active-pane tint spans the combined header, covers the find row, stays absent from inactive panes, and clears without removing the controls.
 
 Match-count assertions cover case-insensitive totals, hidden-text exclusion, zero and empty queries, and matches inside an iframe. Dismissal checks clear main-frame and iframe selections, preserve scroll, and reject late count results; reopening searches the retained query again. Repeated Escape presses after dismissal still reach page key listeners without crashing. Cancellation is also safe with no bar or before mounting a web view.
 
@@ -492,3 +492,7 @@ Default changes, explicit 100% overrides, individual/all resets, and history cle
 ## Closing the last browser pane
 
 [BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies Command-W closes panes and tabs until one remains, then closes only that browser window, including from its address popup, without creating a replacement tab.
+
+## Pane shadow boundaries
+
+[PaneShadowTests.swift](../Tests/BrowseTests/PaneShadowTests.swift) renders the shadow layer to a bitmap, checking visible falloff beyond canvas bounds, clear pane interiors, ignored hit tests, and updates for moved or hidden panes.

@@ -11,6 +11,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     private var topContentInset: CGFloat = 0
     private var headerGlass: NSView?
     private var headerContent: NSView?
+    let activeHeaderTintView: NSView = HeaderScrim()
     private var findBarContainer: NSView { headerContent ?? self }
     private(set) var isFindBarVisible = false
     private(set) var foundMatch: Bool?
@@ -84,6 +85,10 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
             bar = material
         }
         bar.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 38)
+        if headerGlass == nil {
+            activeHeaderTintView.frame = bar.bounds
+            bar.addSubview(activeHeaderTintView)
+        }
         searchField.placeholderString = "Find in page"
         searchField.setAccessibilityLabel("Find in page")
         searchField.controlSize = .small
@@ -194,11 +199,25 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         layer?.cornerRadius = 11
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
+        activeHeaderTintView.wantsLayer = true
+        activeHeaderTintView.autoresizingMask = [.width, .height]
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func update(webView: WKWebView, topContentInset: CGFloat, headerAppearance: GlassAppearance? = nil) {
+    func update(webView: WKWebView, topContentInset: CGFloat, headerAppearance: GlassAppearance? = nil,
+                activeHeaderTint: NSColor? = nil) {
+        if let layer = activeHeaderTintView.layer, layer.backgroundColor != activeHeaderTint?.cgColor {
+            let previous = layer.presentation()?.backgroundColor ?? layer.backgroundColor ?? NSColor.clear.cgColor
+            layer.backgroundColor = activeHeaderTint?.cgColor
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                let fade = CABasicAnimation(keyPath: "backgroundColor")
+                fade.fromValue = previous
+                fade.toValue = activeHeaderTint?.cgColor ?? NSColor.clear.cgColor
+                fade.duration = 0.1
+                layer.add(fade, forKey: "activeHeaderTint")
+            }
+        }
         if hostedWebView !== webView {
             hideFindBar(restoreFocus: false)
             findSupport?.invalidate()
@@ -220,6 +239,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
                 glass = PaneHeaderGlass()
                 headerGlass = glass
                 headerContent = glass.chromeContent
+                glass.chromeContent.addSubview(activeHeaderTintView)
                 addSubview(glass)
             }
             glass.apply(headerAppearance)
@@ -239,6 +259,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         let barHeight = isFindBarVisible ? (findBarView?.frame.height ?? 0) : 0
         let chromeHeight = topContentInset + barHeight
         headerGlass?.frame = NSRect(x: 0, y: bounds.height - chromeHeight, width: bounds.width, height: chromeHeight)
+        if let headerContent { activeHeaderTintView.frame = headerContent.bounds }
         findBarView?.frame.origin = NSPoint(x: 0, y: headerGlass == nil ? bounds.height - chromeHeight : 0)
         findBarView?.frame.size.width = bounds.width
         if #available(macOS 26.0, *) {
