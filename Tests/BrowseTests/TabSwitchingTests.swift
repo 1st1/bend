@@ -153,11 +153,17 @@ import BrowseCore
     // Hidden SwiftUI hosting roots must not steal either half of a page click.
     let inactiveHost = try #require(host.mounted[second.id])
     #expect(inactiveHost.isHidden)
-    for pageWeb in [web, otherWeb] {
-        let point = pageWeb.convert(NSPoint(x: pageWeb.bounds.midX, y: pageWeb.bounds.midY), to: host)
-        #expect(inactiveHost.hitTest(point) == nil)
-        let hit = try #require(host.hitTest(host.convert(point, to: host.superview)))
-        #expect(hit === pageWeb || hit.isDescendant(of: pageWeb))
+    for style in [PaneHighlight.Style.transparency, .outline, .glow] {
+        store.paneHighlight.style = style
+        update()
+        try await settle()
+        #expect(controller.webView === web && web.superview === parent)
+        for pageWeb in [web, otherWeb] {
+            let point = pageWeb.convert(NSPoint(x: pageWeb.bounds.midX, y: pageWeb.bounds.midY), to: host)
+            #expect(inactiveHost.hitTest(point) == nil)
+            let hit = try #require(host.hitTest(host.convert(point, to: host.superview)))
+            #expect(hit === pageWeb || hit.isDescendant(of: pageWeb))
+        }
     }
 
     // Send a complete header-to-page gesture through NSWindow, rather than

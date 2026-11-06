@@ -154,7 +154,7 @@ Opening a link splits its source pane to the right even when another pane is foc
 
 The test uses local HTTP fixtures and ephemeral storage in a full-content window with a unified toolbar. It checks that the titlebar adds no extra top inset. Narrowing and widening columns verifies CSS viewport width matches the native web view, media queries switch layouts, and resize events fire. Both the HTTP request received by the fixture and JavaScript expose Safari-compatible product tokens plus Browse’s identifier. Unvisited tabs remain uncreated, hidden tabs keep their viewport and ignore other tabs' zoom, selection resizes the active host, and tab or background-pane closure removes retained content.
 
-After switching back beneath a later-mounted hidden tab, the test verifies the inactive hosting root rejects hit tests and each visible pane's center resolves to its web view. The test also sends a complete mouse gesture through the window: header press, drag across nine interior points of a real web view, and release. Each point activates the target preview; release rearranges the panes and removes the drag surface while preserving native WebKit parents, document identity, and unsaved input.
+After switching back beneath a later-mounted hidden tab, the test verifies the inactive hosting root rejects hit tests and each visible pane's center resolves to its web view in Transparency, Outline, and Outline glow modes. Switching highlight styles preserves the same WebView and native parent. The test also sends a complete mouse gesture through the window: header press, drag across nine interior points of a real web view, and release. Each point activates the target preview; release rearranges the panes and removes the drag surface while preserving native WebKit parents, document identity, and unsaved input.
 
 ## Pane drop layout moves
 
@@ -345,6 +345,8 @@ Success contents are excluded entirely, unknown enum values become a generic lab
 [AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies legacy session defaults, preference persistence across store recreation, preserved tab identity, and numeric bounds and nonfinite-value handling.
 
 Window/header glass preferences persist independently, preserve legacy defaults, and support resetting both appearances.
+
+Highlight settings preserve separate colors, width, intensity, spread, and mode across restart; absent highlight settings retain Transparency. Older records without spread decode with their previous intensity-derived radius. Invalid colors and nonfinite numeric values normalize to defaults, and out-of-range values are bounded.
 
 ## Home page suggestion ranking
 

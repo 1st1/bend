@@ -162,6 +162,11 @@ final class BrowserStore: ObservableObject {
         set { if let sharedStore { sharedStore.paneHeaderGlass = newValue; return }; session.paneHeaderGlass = newValue.normalized(defaultDarkening: 0.5); saveSoon() }
     }
 
+    var paneHighlight: PaneHighlight {
+        get { if let sharedStore { return sharedStore.paneHighlight }; return (session.paneHighlight ?? PaneHighlight()).normalized() }
+        set { if let sharedStore { sharedStore.paneHighlight = newValue; return }; session.paneHighlight = newValue.normalized(); saveSoon() }
+    }
+
     func resizeSidebar(to width: CGFloat) {
         guard width.isFinite else { return }
         let clamped = min(300, max(100, width))

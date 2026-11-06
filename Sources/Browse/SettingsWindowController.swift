@@ -25,6 +25,9 @@ struct BrowserSettingsView: View {
 
     var body: some View {
         TabView {
+            UISettingsView(store: store)
+                .tabItem { Label("UI", systemImage: "slider.horizontal.3") }
+
             Group {
                 if #available(macOS 15.4, *) {
                     ExtensionSettingsView(manager: store.extensions)
@@ -33,9 +36,6 @@ struct BrowserSettingsView: View {
                 }
             }
             .tabItem { Label("Extensions", systemImage: "puzzlepiece.extension") }
-
-            UISettingsView(store: store)
-                .tabItem { Label("UI", systemImage: "slider.horizontal.3") }
 
             DevelopmentSettingsView()
                 .tabItem { Label("Development", systemImage: "hammer") }
@@ -76,21 +76,71 @@ private struct UISettingsView: View {
                 Text("Links")
             }
             Section {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Inactive pane dimming")
-                        Spacer()
-                        Text(store.inactivePaneDimAmount, format: .percent.precision(.fractionLength(0)))
-                            .monospacedDigit().foregroundStyle(.secondary)
+                Picker("Active pane highlight", selection: $store.paneHighlight.style) {
+                    Text("Transparency").tag(PaneHighlight.Style.transparency)
+                    Text("Outline").tag(PaneHighlight.Style.outline)
+                    Text("Outline glow").tag(PaneHighlight.Style.glow)
+                }
+                if store.paneHighlight.style == .transparency {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Inactive pane dimming")
+                            Spacer()
+                            Text(store.inactivePaneDimAmount, format: .percent.precision(.fractionLength(0)))
+                                .monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        Slider(value: $store.inactivePaneDimAmount, in: 0...1, step: 0.01) {
+                            Text("Inactive pane dimming")
+                        }.labelsHidden().frame(maxWidth: .infinity)
+                        HStack {
+                            Text("None")
+                            Spacer()
+                            Text("Fully dimmed")
+                        }.font(.caption).foregroundStyle(.secondary)
                     }
-                    Slider(value: $store.inactivePaneDimAmount, in: 0...1, step: 0.01) {
-                        Text("Inactive pane dimming")
-                    }.labelsHidden().frame(maxWidth: .infinity)
-                    HStack {
-                        Text("None")
-                        Spacer()
-                        Text("Fully dimmed")
-                    }.font(.caption).foregroundStyle(.secondary)
+                } else if store.paneHighlight.style == .outline {
+                    ColorPicker("Outline color", selection: Binding(
+                        get: { store.paneHighlight.outlineColor.color },
+                        set: { if let color = GlassAppearance.Tint(color: $0) { store.paneHighlight.outlineColor = color } }
+                    ), supportsOpacity: false)
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("Outline width")
+                            Spacer()
+                            Text("\(store.paneHighlight.outlineWidth, specifier: "%.1f") pt")
+                                .monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        Slider(value: $store.paneHighlight.outlineWidth, in: 0.5...6, step: 0.5) {
+                            Text("Outline width")
+                        }.labelsHidden()
+                    }
+                } else {
+                    ColorPicker("Glow color", selection: Binding(
+                        get: { store.paneHighlight.glowColor.color },
+                        set: { if let color = GlassAppearance.Tint(color: $0) { store.paneHighlight.glowColor = color } }
+                    ), supportsOpacity: false)
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("Glow intensity")
+                            Spacer()
+                            Text(store.paneHighlight.glowIntensity, format: .percent.precision(.fractionLength(0)))
+                                .monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        Slider(value: $store.paneHighlight.glowIntensity, in: 0...1, step: 0.01) {
+                            Text("Glow intensity")
+                        }.labelsHidden()
+                    }
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("Glow spread")
+                            Spacer()
+                            Text("\(store.paneHighlight.glowSpread, specifier: "%.0f") pt")
+                                .monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        Slider(value: $store.paneHighlight.glowSpread, in: 0...24, step: 1) {
+                            Text("Glow spread")
+                        }.labelsHidden()
+                    }
                 }
             } header: {
                 Text("Panes")

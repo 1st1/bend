@@ -324,6 +324,7 @@ private struct BrowserPane: View {
     @ViewState<CGFloat> private var headerHeight: CGFloat = 36
     @ViewState<Bool> private var titleHovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
     private var focused: Bool { tab.focusedPane == pageID }
     private var hostsWindowControls: Bool {
         let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
@@ -332,6 +333,14 @@ private struct BrowserPane: View {
 
     var body: some View {
         ClippedPaneContent(content: decoratedPane, store: store, tabID: tab.id, pageID: pageID)
+            // Reserve the ring inside the pane's layout slot so it remains
+            // visible at canvas edges and never overlaps a neighboring pane.
+            .padding(store.paneHighlight.style == .outline ? store.paneHighlight.outlineWidth + 1 / max(1, displayScale) : 0)
+            .overlay {
+                PaneHighlightOverlay(appearance: store.paneHighlight, focused: focused)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
     }
 
     private var decoratedPane: some View {
@@ -340,8 +349,8 @@ private struct BrowserPane: View {
         .overlay {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.black)
-                .opacity(focused ? 0 : store.inactivePaneDimAmount)
-                .animation(.easeInOut(duration: 0.1), value: focused)
+                .opacity(focused || store.paneHighlight.style != .transparency ? 0 : store.inactivePaneDimAmount)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }

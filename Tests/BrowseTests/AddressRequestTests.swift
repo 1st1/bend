@@ -57,10 +57,19 @@ import BrowseCore
     #expect(store.inactivePaneDimAmount == 0.08)
     #expect(store.windowGlass == .windowDefault)
     #expect(store.paneHeaderGlass == .headerDefault)
+    #expect(store.paneHighlight == PaneHighlight())
     store.commandClickDestination = .newTab
     store.inactivePaneDimAmount = 0.35
     store.windowGlass = GlassAppearance(clear: true, tint: .init(red: 0.2, green: 0.4, blue: 0.8), darkening: 0.15)
     store.paneHeaderGlass = GlassAppearance(tint: .init(red: 0.8, green: 0.3, blue: 0.1), darkening: 0.65)
+    var highlight = PaneHighlight()
+    highlight.style = .glow
+    highlight.outlineColor = .init(red: 0.7, green: 0.3, blue: 0.1)
+    highlight.outlineWidth = 3.5
+    highlight.glowColor = .init(red: 0.2, green: 0.8, blue: 0.5)
+    highlight.glowIntensity = 0.75
+    highlight.glowSpread = 16
+    store.paneHighlight = highlight
     store.save()
     #expect(store.persistenceError == nil)
     let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
@@ -68,6 +77,12 @@ import BrowseCore
     #expect(restored.inactivePaneDimAmount == 0.35)
     #expect(restored.windowGlass == store.windowGlass)
     #expect(restored.paneHeaderGlass == store.paneHeaderGlass)
+    #expect(restored.paneHighlight == highlight)
+    var oldHighlight = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(highlight)) as? [String: Any])
+    oldHighlight.removeValue(forKey: "glowSpread")
+    let migrated = try JSONDecoder().decode(PaneHighlight.self, from: JSONSerialization.data(withJSONObject: oldHighlight))
+    #expect(migrated.style == .glow && migrated.glowIntensity == 0.75)
+    #expect(migrated.glowSpread == 8)
     #expect(restored.selectedTab.id == legacy.selectedTab)
     store.inactivePaneDimAmount = -1
     #expect(store.inactivePaneDimAmount == 0)
@@ -92,6 +107,26 @@ import BrowseCore
     let reset = BrowserStore(sessionFile: file, persistentExtensions: false)
     #expect(reset.windowGlass == .windowDefault)
     #expect(reset.paneHeaderGlass == .headerDefault)
+    highlight.style = .outline
+    highlight.outlineWidth = .infinity
+    highlight.glowIntensity = -1
+    highlight.glowSpread = 100
+    highlight.outlineColor = .init(red: .nan, green: 0, blue: 0)
+    highlight.glowColor = .init(red: 2, green: -1, blue: 0.5)
+    store.paneHighlight = highlight
+    #expect(store.paneHighlight.style == .outline)
+    #expect(store.paneHighlight.outlineWidth == PaneHighlight().outlineWidth)
+    #expect(store.paneHighlight.glowIntensity == 0)
+    #expect(store.paneHighlight.glowSpread == 24)
+    #expect(store.paneHighlight.outlineColor == PaneHighlight().outlineColor)
+    #expect(store.paneHighlight.glowColor == .init(red: 1, green: 0, blue: 0.5))
+    highlight.outlineWidth = 50
+    highlight.glowIntensity = .nan
+    highlight.glowSpread = .infinity
+    store.paneHighlight = highlight
+    #expect(store.paneHighlight.outlineWidth == 6)
+    #expect(store.paneHighlight.glowIntensity == PaneHighlight().glowIntensity)
+    #expect(store.paneHighlight.glowSpread == PaneHighlight().glowSpread)
 }
 
 // @lat: [[tests#Live window glass preferences]]
