@@ -1,4 +1,6 @@
-<img src="Assets/AppIcon.png" alt="Bend logo" width="160" height="160">
+<p align="center">
+  <img src="Assets/AppIcon.png" alt="Bend logo" width="160" height="160">
+</p>
 
 # Bend
 
