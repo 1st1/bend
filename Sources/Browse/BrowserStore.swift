@@ -87,6 +87,12 @@ final class BrowserStore: ObservableObject {
             session.workspaces = [session.workspaces[0]]
             session.workspaces[0].tabs = tabs
         }
+        // Older sessions may retain the link-target role on a tab's only pane.
+        for wi in session.workspaces.indices {
+            for ti in session.workspaces[wi].tabs.indices where session.workspaces[wi].tabs[ti].pages.count == 1 {
+                session.workspaces[wi].tabs[ti].commandClickPaneID = nil
+            }
+        }
         if sharedStore == nil {
             do {
                 let database = try HistoryDatabase(file: historyFile, legacyFile: legacyHistoryFile)

@@ -416,7 +416,7 @@ Both commands dismiss the popup and remove the initial blank tab even after unsu
 
 [LinkNavigationTests.swift](../Tests/BrowseTests/LinkNavigationTests.swift) verifies one reusable link destination per tab, including stable pane and WebView identity across repeated links.
 
-Clicks from different source panes reuse the target, independent tabs receive independent targets, and iframe/self links avoid stale or self-referential openers. Closing, reopening, replacing, restarting, and switching settings preserve the intended designation and page counts.
+Clicks from different source panes reuse the target, independent tabs receive independent targets, and iframe/self links avoid stale or self-referential openers. Closing, reopening, replacing, restarting, and switching settings preserve the intended designation and page counts. Closing all ordinary panes promotes the surviving destination without replacing its WebView; the next link creates a new reusable target. Legacy single-pane designations are cleared on restoration.
 
 ## Command-click preference migration
 

@@ -172,6 +172,39 @@ private final class LinkAction: WKNavigationAction {
     restored.controller(for: source).onNewLink?("browse://history", true, true)
     #expect(restored.selectedTab.pages.count == original.pages.count + 2)
     #expect(restored.selectedTab.focusedPane == replacement)
+
+    // The last remaining pane becomes ordinary without losing its live WebView.
+    let survivor = try #require(restored.selectedTab.pages.first { $0.id == replacement })
+    let survivorController = restored.controller(for: survivor)
+    let survivorWeb = survivorController.webView
+    let survivorAddress = survivorController.address
+    let ordinaryPanes = restored.selectedTab.pages.filter { $0.id != replacement }
+    for (index, pane) in ordinaryPanes.enumerated() {
+        restored.closePage(pane.id)
+        #expect(restored.selectedTab.commandClickPaneID == (index == ordinaryPanes.count - 1 ? nil : replacement))
+    }
+    #expect(restored.selectedTab.pages.count == 1)
+    #expect(restored.selectedTab.focusedPane == replacement)
+    #expect(restored.controller(for: survivor).webView === survivorWeb)
+    #expect(survivorController.address == survivorAddress)
+    restored.save()
+    #expect(BrowserStore(sessionFile: file, persistentExtensions: false).selectedTab.commandClickPaneID == nil)
+    survivorController.onNewLink?("browse://guide", true, true)
+    let newTarget = try #require(restored.selectedTab.commandClickPaneID)
+    #expect(newTarget != replacement)
+    #expect(restored.selectedTab.pages.count == 2)
+    #expect(survivorController.address == survivorAddress && survivorController.webView === survivorWeb)
+    #expect(restored.linkOpeners[newTarget] == replacement)
+    survivorController.onNewLink?("browse://history", true, true)
+    #expect(restored.selectedTab.commandClickPaneID == newTarget && restored.selectedTab.pages.count == 2)
+
+    // Normalize the stale single-pane designation saved by older versions too.
+    restored.closePage(newTarget)
+    restored.editTab { $0.commandClickPaneID = replacement }
+    restored.save()
+    let legacyRestored = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(legacyRestored.selectedTab.commandClickPaneID == nil)
+    #expect(legacyRestored.selectedTab.pages[0].id == replacement)
 }
 
 // @lat: [[tests#Command-click preference migration]]

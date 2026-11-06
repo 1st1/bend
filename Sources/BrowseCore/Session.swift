@@ -146,7 +146,7 @@ public struct BrowserTab: Codable, Identifiable, Sendable {
     public mutating func closePane(_ id: UUID) {
         guard let next = layout.removing(id) else { return }
         layout = next; pages.removeAll { $0.id == id }
-        if commandClickPaneID == id { commandClickPaneID = nil }
+        if commandClickPaneID == id || pages.count == 1 { commandClickPaneID = nil }
         if focusedPane == id { focusedPane = next.paneIDs[0] }
     }
 }
