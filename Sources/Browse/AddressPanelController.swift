@@ -127,8 +127,10 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             shade.bottomAnchor.constraint(equalTo: background.bottomAnchor)
         ])
 
-        input.placeholderString = "Search or enter address"
         input.font = .systemFont(ofSize: 23)
+        input.placeholderAttributedString = NSAttributedString(string: "Search or enter address", attributes: [
+            .foregroundColor: NSColor(calibratedWhite: 0.75, alpha: 1), .font: NSFont.systemFont(ofSize: 23)
+        ])
         input.textColor = .labelColor
         input.isBordered = false
         input.drawsBackground = false
@@ -202,6 +204,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     func show(for paneID: UUID) {
         guard let parentWindow,
               let page = store.selectedTab.pages.first(where: { $0.id == paneID }) else { return }
+        if let targetPane, targetPane != paneID { store.finishNewTabEntry(for: targetPane) }
         targetPane = paneID
         InputDiagnostics.transition(.addressPanel, .shown, window: panel, paneID: paneID)
         let controller = store.controller(for: page)
@@ -233,6 +236,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             return
         }
         store.focus(targetPane)
+        store.finishNewTabEntry(for: targetPane)
         if let suggestion = result?.history {
             store.recordHistoryChoice(url: suggestion.url, query: showingFrequent ? "" : typedQuery)
         }
@@ -241,9 +245,10 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     }
 
     func dismiss(restoreFocus: Bool) {
-        guard targetPane != nil else { return }
+        guard let targetPane else { return }
         InputDiagnostics.transition(.addressPanel, .hidden, window: panel, paneID: targetPane, flags: ["restoreFocus": restoreFocus])
-        targetPane = nil
+        store.finishNewTabEntry(for: targetPane)
+        self.targetPane = nil
         parentWindow?.removeChildWindow(panel)
         panel.orderOut(nil)
         if restoreFocus, let parentWindow {
@@ -255,6 +260,13 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     }
 
     func windowDidResignKey(_ notification: Notification) { dismiss(restoreFocus: false) }
+
+    @discardableResult
+    func cancelNewTabIfPresented() -> Bool {
+        guard let targetPane, store.cancelNewTabEntry(for: targetPane) else { return false }
+        dismiss(restoreFocus: true)
+        return true
+    }
 
     private func updateResults(history: BrowsingHistory? = nil, allowAutofill: Bool = false, preserveSelection: Bool = false) {
         let selectedAddress = preserveSelection && results.indices.contains(selectedResult) ? results[selectedResult].address : nil
@@ -386,7 +398,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            dismiss(restoreFocus: true)
+            if !cancelNewTabIfPresented() { dismiss(restoreFocus: true) }
             return true
         }
         if commandSelector == #selector(NSResponder.moveDown(_:)) || commandSelector == #selector(NSResponder.moveUp(_:)) {

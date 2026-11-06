@@ -11,6 +11,13 @@ final class BrowserStore: ObservableObject {
     @Published private(set) var paneMoveRevision = 0
     var onAddressRequested: ((UUID) -> Void)?
     var onSettingsRequested: (() -> Void)?
+    private struct PendingTabEntry {
+        let tabID: UUID
+        let paneID: UUID
+        let previousTabID: UUID
+        let previousZoom: UUID?
+    }
+    private var pendingTabEntry: PendingTabEntry?
     private var extensionStorage: AnyObject?
     private let persistentExtensions: Bool
     @available(macOS 15.4, *)
@@ -113,11 +120,15 @@ final class BrowserStore: ObservableObject {
     }
 
     // @lat: [[architecture#UI preferences]]
-    var commandClickOpensNewTab: Bool {
-        get { sharedStore?.commandClickOpensNewTab ?? session.commandClickOpensNewTab ?? false }
+    var commandClickDestination: CommandClickDestination {
+        get {
+            sharedStore?.commandClickDestination ?? session.commandClickDestination
+                ?? (session.commandClickOpensNewTab == true ? .newTab : .newPane)
+        }
         set {
-            if let sharedStore { sharedStore.commandClickOpensNewTab = newValue; return }
-            session.commandClickOpensNewTab = newValue
+            if let sharedStore { sharedStore.commandClickDestination = newValue; return }
+            session.commandClickDestination = newValue
+            session.commandClickOpensNewTab = newValue == .newTab
             saveSoon()
         }
     }
@@ -207,6 +218,26 @@ final class BrowserStore: ObservableObject {
             if fromMainFrame { linkOpeners[$0.focusedPane] = source }
         }
     }
+
+    private func openInDedicatedPane(address: String, from source: UUID, fromMainFrame: Bool) {
+        guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == source } }) else { return }
+        guard let targetID = tab.commandClickPaneID, let page = tab.pages.first(where: { $0.id == targetID }) else {
+            openPane(address: address, toRightOf: source, fromMainFrame: fromMainFrame)
+            editTab(tab.id) { $0.commandClickPaneID = $0.focusedPane }
+            return
+        }
+        select(tab.id)
+        if fromMainFrame && source != targetID { linkOpeners[targetID] = source }
+        else { linkOpeners[targetID] = nil }
+        var destination = page
+        destination.address = address
+        editTab(tab.id) { tab in
+            if let index = tab.pages.firstIndex(where: { $0.id == targetID }) { tab.pages[index] = destination }
+            tab.focusedPane = targetID
+        }
+        if let controller = existingController(for: targetID) { controller.navigate(address) }
+        else { _ = controller(for: destination) }
+    }
     func resize(_ id: UUID, fraction: Double) { editTab { $0.layout = $0.layout.resizing(id, to: fraction) } }
     @discardableResult
     func movePane(_ source: UUID, beside target: UUID, edge: PaneDropEdge, in tabID: UUID, from sourceTabID: UUID? = nil) -> Bool {
@@ -293,12 +324,43 @@ final class BrowserStore: ObservableObject {
     }
 
     func newTab(in workspace: UUID? = nil, address: String = "browse://start", linkOpener: UUID? = nil) {
+        let previousTabID = session.selectedTab, previousZoom = zoomedPane
         let index = session.workspaces.firstIndex { $0.id == workspace }
             ?? session.workspaces.firstIndex { $0.tabs.contains { $0.id == session.selectedTab } } ?? 0
         let tab = BrowserTab(title: address == "browse://history" ? "History" : "New tab", pages: [Page(address: address)])
         if let linkOpener { linkOpeners[tab.pages[0].id] = linkOpener }
         session.workspaces[index].tabs.append(tab); select(tab.id)
+        pendingTabEntry = address == "browse://start" ? PendingTabEntry(tabID: tab.id, paneID: tab.pages[0].id,
+            previousTabID: previousTabID, previousZoom: previousZoom) : nil
         if address == "browse://start" { requestAddress() }
+    }
+
+    func finishNewTabEntry(for paneID: UUID) {
+        if pendingTabEntry?.paneID == paneID { pendingTabEntry = nil }
+    }
+
+    @discardableResult
+    func cancelNewTabEntry(for paneID: UUID) -> Bool {
+        guard let pending = pendingTabEntry, pending.paneID == paneID,
+              session.selectedTab == pending.tabID,
+              let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == pending.tabID } }),
+              let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == pending.tabID }),
+              session.workspaces[wi].tabs.count > 1 else { return false }
+        let tab = session.workspaces[wi].tabs[ti]
+        guard tab.pages.count == 1, tab.pages[0].id == paneID,
+              tab.pages[0].address == "browse://start",
+              (browsers[paneID]?.address ?? "browse://start") == "browse://start" else { return false }
+        pendingTabEntry = nil
+        browsers.removeValue(forKey: paneID)?.webView.stopLoading()
+        session.workspaces[wi].tabs.remove(at: ti)
+        let previous = session.workspaces.flatMap(\.tabs).first { $0.id == pending.previousTabID }
+        select(previous?.id ?? session.workspaces[wi].tabs[min(ti, session.workspaces[wi].tabs.count - 1)].id)
+        if let zoom = pending.previousZoom, previous?.pages.contains(where: { $0.id == zoom }) == true {
+            zoomedPane = zoom
+        }
+        InputDiagnostics.transition(.addressCancel, .finished, paneID: paneID, tabID: pending.tabID,
+                                    flags: ["discardNewTab": true])
+        return true
     }
 
     func showHistory() {
@@ -361,6 +423,7 @@ final class BrowserStore: ObservableObject {
     }
 
     func closeTab(_ id: UUID) {
+        if pendingTabEntry?.tabID == id { pendingTabEntry = nil }
         for wi in session.workspaces.indices {
             guard let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == id }) else { continue }
             let closed = snapshot(session.workspaces[wi].tabs[ti])
@@ -406,10 +469,12 @@ final class BrowserStore: ObservableObject {
                     ?? tab.layout.splitting(tab.focusedPane, with: paneID, axis: .horizontal)
                 tab.pages.insert(page, at: min(pageIndex, tab.pages.count))
                 tab.focusedPane = paneID
+                if tab.commandClickPaneID == nil, item.tab.commandClickPaneID == paneID { tab.commandClickPaneID = paneID }
                 session.workspaces[wi].tabs[ti] = tab
             } else {
                 var tab = BrowserTab(title: item.tab.title, pages: [page])
                 tab.id = item.tab.id
+                if item.tab.commandClickPaneID == paneID { tab.commandClickPaneID = paneID }
                 session.workspaces[wi].tabs.insert(tab, at: min(item.tabIndex, session.workspaces[wi].tabs.count))
             }
         } else {
@@ -451,8 +516,12 @@ final class BrowserStore: ObservableObject {
         controller.onNewTab = { [weak self] address in self?.newTab(address: address) }
         controller.onNewPane = { [weak self] address in self?.openPane(address: address, toRightOf: page.id) }
         controller.onNewLink = { [weak self] address, adjacent, mainFrame in
-            if adjacent, self?.commandClickOpensNewTab != true { self?.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame) }
-            else { self?.newTab(address: address, linkOpener: mainFrame ? page.id : nil) }
+            guard let self else { return }
+            switch adjacent ? self.commandClickDestination : .newTab {
+            case .newPane: self.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame)
+            case .dedicatedPane: self.openInDedicatedPane(address: address, from: page.id, fromMainFrame: mainFrame)
+            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil)
+            }
         }
         controller.onFocus = { [weak self] in self?.focus(page.id) }
         controller.onVisit = { [weak self] url, title in self?.recordVisit(url: url, title: title) }

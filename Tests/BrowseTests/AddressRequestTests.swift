@@ -53,18 +53,18 @@ import BrowseCore
     try JSONEncoder().encode(legacy).write(to: file)
     let store = BrowserStore(sessionFile: file, persistentExtensions: false)
     #expect(store.selectedTab.id == legacy.selectedTab)
-    #expect(!store.commandClickOpensNewTab)
+    #expect(store.commandClickDestination == .newPane)
     #expect(store.inactivePaneDimAmount == 0.08)
     #expect(store.windowGlass == .windowDefault)
     #expect(store.paneHeaderGlass == .headerDefault)
-    store.commandClickOpensNewTab = true
+    store.commandClickDestination = .newTab
     store.inactivePaneDimAmount = 0.35
     store.windowGlass = GlassAppearance(clear: true, tint: .init(red: 0.2, green: 0.4, blue: 0.8), darkening: 0.15)
     store.paneHeaderGlass = GlassAppearance(tint: .init(red: 0.8, green: 0.3, blue: 0.1), darkening: 0.65)
     store.save()
     #expect(store.persistenceError == nil)
     let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
-    #expect(restored.commandClickOpensNewTab)
+    #expect(restored.commandClickDestination == .newTab)
     #expect(restored.inactivePaneDimAmount == 0.35)
     #expect(restored.windowGlass == store.windowGlass)
     #expect(restored.paneHeaderGlass == store.paneHeaderGlass)
@@ -116,4 +116,125 @@ import BrowseCore
     #expect(glass.style == .regular)
     #expect(glass.tintColor == nil)
     #expect(glass.contentView === content)
+}
+
+// @lat: [[tests#Canceling new tab entry]]
+@Test @MainActor func cancelNewTabEntry() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseCancelTab-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let original = store.selectedTab
+    store.toggleZoom(original.focusedPane)
+    store.newTab()
+    let blank = store.selectedTab.focusedPane
+    let cancelled = store.cancelNewTabEntry(for: blank)
+    #expect(cancelled)
+    #expect(store.selectedTab.id == original.id && store.selectedTab.layout == original.layout)
+    #expect(store.zoomedPane == original.focusedPane)
+    #expect(store.session.workspaces[0].tabs.count == 1)
+    #expect(!store.canReopenClosed)
+    store.save()
+    let restored = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    #expect(restored.session.selectedTab == original.id && restored.session.workspaces[0].tabs.count == 1)
+    // Existing tabs, completed entry, and panes added to a new tab are never discarded.
+    #expect(!store.cancelNewTabEntry(for: original.focusedPane))
+    store.newTab()
+    let kept = store.selectedTab.focusedPane
+    store.finishNewTabEntry(for: kept)
+    #expect(!store.cancelNewTabEntry(for: kept))
+    store.newTab()
+    let split = store.selectedTab.focusedPane
+    store.split(.horizontal)
+    #expect(!store.cancelNewTabEntry(for: split))
+    #expect(store.selectedTab.pages.count == 2)
+    store.newTab(address: "https://example.com")
+    #expect(!store.cancelNewTabEntry(for: store.selectedTab.focusedPane))
+}
+
+// @lat: [[tests#New tab popup keyboard cancellation]]
+@Test @MainActor func newTabPopupKeyboardCancellation() throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseCancelPopup-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let windows = BrowserWindows(root: root, persistentExtensions: false)
+    windows.restore(show: false)
+    let context = try #require(windows.active)
+    context.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+    context.window.makeKeyAndOrderFront(nil)
+    let delegate = AppDelegate(browserWindows: windows)
+    let oldMenu = NSApp.mainMenu
+    delegate.installMenus()
+    defer {
+        NSApp.mainMenu = oldMenu
+        windows.prepareToQuit(); for context in windows.windows { context.window.close() }
+    }
+    let store = context.store
+    let original = store.selectedTab.id
+    let file = try #require(NSApp.mainMenu?.item(withTitle: "File")?.submenu)
+    func command(_ title: String) throws {
+        let item = try #require(file.item(withTitle: title))
+        #expect(NSApp.sendAction(try #require(item.action), to: item.target, from: item))
+    }
+    func popup() throws -> NSWindow {
+        try #require(context.window.childWindows?.first { $0.title == "Open Location" && $0.isVisible })
+    }
+    func fields(_ view: NSView) -> [NSTextField] {
+        (view as? NSTextField).map { [$0] } ?? view.subviews.flatMap(fields)
+    }
+    func escape(_ panel: NSWindow) throws {
+        let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: panel.windowNumber, context: nil,
+            characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53))
+        NSApp.sendEvent(event)
+    }
+    for useEscape in [true, false] {
+        try command("New Tab")
+        #expect(store.session.workspaces[0].tabs.count == 2)
+        let panel = try popup()
+        let content = try #require(panel.contentView)
+        let input = try #require(fields(content).first { $0.isEditable })
+        let placeholder = try #require(input.placeholderAttributedString)
+        let color = try #require(placeholder.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
+        #expect(try #require(color.usingColorSpace(.genericGray)).whiteComponent >= 0.7)
+        // Editing without submitting still belongs to the provisional tab.
+        input.stringValue = "changed my mind"
+        if useEscape { try escape(panel) }
+        else {
+            let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: panel.windowNumber, context: nil,
+                characters: "w", charactersIgnoringModifiers: "w", isARepeat: false, keyCode: 13))
+            let handled = try #require(NSApp.mainMenu).performKeyEquivalent(with: event)
+            #expect(handled)
+        }
+        #expect(!panel.isVisible)
+        #expect(store.session.selectedTab == original && store.session.workspaces[0].tabs.count == 1)
+        #expect(!store.canReopenClosed)
+        // The command-line test host can remain inactive, so AppKit may deny
+        // key-window status. Its browser responder must still be restored.
+        #expect(context.window.firstResponder === context.window.contentView)
+    }
+    // Escape in an existing tab only dismisses location entry.
+    try command("Open Location…")
+    try escape(try popup())
+    #expect(store.session.selectedTab == original && store.session.workspaces[0].tabs.count == 1)
+    // Outside dismissal commits the blank tab: reopening its popup must not delete it.
+    try command("New Tab")
+    let retained = store.session.selectedTab
+    context.addressPanel.dismiss(restoreFocus: true)
+    try command("Open Location…")
+    try escape(try popup())
+    #expect(store.session.selectedTab == retained && store.session.workspaces[0].tabs.count == 2)
+    // Successful submission also commits the tab, including internal destinations.
+    try command("New Tab")
+    let submitted = store.session.selectedTab
+    let panel = try popup()
+    let content = try #require(panel.contentView)
+    let input = try #require(fields(content).first { $0.isEditable })
+    input.stringValue = "browse://guide"
+    #expect(input.sendAction(try #require(input.action), to: input.target))
+    #expect(!panel.isVisible)
+    #expect(store.controller(for: store.selectedTab.pages[0]).address == "browse://guide")
+    try command("Open Location…")
+    try escape(try popup())
+    #expect(store.session.selectedTab == submitted && store.session.workspaces[0].tabs.count == 3)
 }

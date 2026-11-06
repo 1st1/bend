@@ -257,7 +257,9 @@ The 1Password and Dark Reader downloads are pinned to reviewed Mozilla-hosted ve
 
 [SettingsWindowController.swift](../Sources/Browse/SettingsWindowController.swift) exposes link-opening, inactive-pane dimming, and independent window/header glass controls in Settings’ UI tab.
 
-[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) saves shared UI preferences in the root session file; secondary windows delegate to that store. Command-click opens an adjacent column to the right by default, with a new-tab option that applies to existing page controllers immediately. Ordinary new-window links continue opening tabs. Main-frame opener tracking is preserved for both destinations.
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) saves shared UI preferences in the root session file; secondary windows delegate to that store. Command-click offers a new pane to the right (the default), one dedicated pane per tab, or a new tab. Changes apply to existing controllers immediately. Older sessions preserve their previous new-pane/new-tab choice. Ordinary new-window links continue opening tabs. Main-frame opener tracking is preserved for all destinations.
+
+In dedicated-pane mode, the first Command-click creates a pane to the right of its source. Later Command-clicks anywhere in that tab navigate and focus the same pane, retaining its WebView and navigation history. The pane identity persists in the tab across restarts. Closing or moving it away clears the designation; the next click creates a replacement. Reopening the closed pane restores its designation if no replacement exists. Joining tabs keeps the destination’s designated pane, or adopts the source’s when the destination has none. Clicking from the dedicated pane reuses itself without a self-opener; iframe links clear any previous main-frame opener. [[tests#Dedicated Command-click pane]] and [[tests#Command-click preference migration]] cover reuse and compatibility.
 
 Inactive-pane dimming ranges from 0% to 100%, defaults to 8%, and updates all mounted panes immediately. Values are clamped and nonfinite edits are ignored. [Session.swift](../Sources/BrowseCore/Session.swift) stores optional fields so older session files retain their tabs and receive the original defaults. [[tests#UI preference persistence]] and [[tests#Configurable link destination]] cover persistence and routing.
 
@@ -317,7 +319,7 @@ Bare hostnames containing dots use HTTPS, while localhost and loopback IPv4 addr
 
 ## Location popup
 
-[AddressPanelController.swift](../Sources/Browse/AddressPanelController.swift) owns a floating, Spotlight-style native location panel. URL entry is separate from pane chrome.
+[AddressPanelController.swift](../Sources/Browse/AddressPanelController.swift) owns a floating, Spotlight-style native location panel. URL entry is separate from pane chrome. Its empty hint uses explicit light-gray text for contrast against the dark material.
 
 Command-L and the start-page location button open the popup for a specific pane, with its current URL selected (blank for start pages). Return navigates that pane using the [[architecture#Address handling|address resolver]]; invalid input stays open with an error that clears when editing resumes.
 
@@ -331,8 +333,8 @@ A stretchable rounded material mask shapes both the backdrop and the native wind
 
 Selected suggestions use a rounded native clear-glass background on macOS 26 and later, with a subtle translucent fill on earlier systems. The selection keeps the compact row alignment and leaves keyboard focus in the address input.
 
-Escape dismisses the popup and returns keyboard focus to the browser, as does successful submission. Losing key-window status dismisses it without reclaiming focus, allowing outside clicks to select another pane or application normally.
+Escape dismisses an existing tab’s popup and returns keyboard focus to the browser, as does successful submission. During a new blank tab’s initial address entry, Escape or Command-W discards both the popup and that tab, restores the preceding tab and zoom, and adds nothing to closed-item history. Typed but unsubmitted text still counts as initial entry. Successful submission or outside dismissal commits the tab; opening its popup again does not make it disposable. Split panes, new-window initial tabs, and last-tab replacements are retained. [[tests#Canceling new tab entry]] and [[tests#New tab popup keyboard cancellation]] cover the boundaries. Losing key-window status dismisses it without reclaiming focus, allowing outside clicks to select another pane or application normally.
 
 [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) requests the popup after creating blank split panes, tabs, or a replacement for the last closed tab. Link-created panes and tabs already have a destination and do not prompt. Popup requests validate pane identity; submitting after the target has closed or left the selected tab cannot navigate another pane.
 
-[BrowseApp.swift](../Sources/Browse/BrowseApp.swift) connects the store's location-request callback to the panel controller. Requests carry a pane identity after the store has updated selection and focus, so presentation does not depend on a newly created SwiftUI pane observing an earlier event.
+[BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) connects each store's location-request callback to the panel controller. Requests carry a pane identity after the store has updated selection and focus, so presentation does not depend on a newly created SwiftUI pane observing an earlier event.

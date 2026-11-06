@@ -164,6 +164,8 @@ After switching back beneath a later-mounted hidden tab, the test verifies the i
 
 [PaneTransferTests.swift](../Tests/BrowseCoreTests/PaneTransferTests.swift) checks transfers at all four edges across workspaces, source collapse, empty-workspace recovery, detaching, invalid moves, and valid session restoration.
 
+Moving a designated Command-click pane clears the source tab’s designation and does not claim an ordinary pane in the destination.
+
 ## Cross-tab native pane dragging
 
 [PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) drives a single-pane tab through sidebar hover into an unvisited tab, drops on its WebKit content, then detaches into sidebar space.
@@ -360,7 +362,7 @@ Window/header glass preferences persist independently, preserve legacy defaults,
 
 [PaneTransferTests.swift](../Tests/BrowseCoreTests/PaneTransferTests.swift) verifies joins preserve both split trees, page identities, destination title, and source focus, remove the source tab, and survive serialization.
 
-Same-workspace and cross-workspace joins retain valid sessions, including replacement of an emptied workspace. Self-joins and missing endpoints leave the session unchanged.
+Same-workspace and cross-workspace joins retain valid sessions, including replacement of an emptied workspace. Self-joins and missing endpoints leave the session unchanged. A join retains the destination’s dedicated Command-click pane when present, otherwise adopts the source’s; that designation also survives serialization.
 
 ## Independent browser windows
 
@@ -383,3 +385,25 @@ The test also closes every registered extension window and opens a new one, chec
 ## Tab drag hover and merge placement
 
 [PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) drives native tab drags through delayed selection and all four pane-edge merges, checking timer cancellation, zoom exit, preview cleanup, and preservation of live page and extension identities.
+
+## Canceling new tab entry
+
+[AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies that canceling initial blank-tab entry restores the previous tab and zoom without recording a closed item.
+
+The saved session excludes the canceled tab. Existing tabs, completed entry, tabs with added panes, and tabs opened with a destination cannot be discarded through this path.
+
+## New tab popup keyboard cancellation
+
+[AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) exercises Escape and Command-W through the native popup and application menu after creating a tab.
+
+Both commands dismiss the popup and remove the initial blank tab even after unsubmitted editing. Existing-tab Escape, outside dismissal, and successful submission retain their tabs. The placeholder explicitly uses light-gray text.
+
+## Dedicated Command-click pane
+
+[LinkNavigationTests.swift](../Tests/BrowseTests/LinkNavigationTests.swift) verifies one reusable link destination per tab, including stable pane and WebView identity across repeated links.
+
+Clicks from different source panes reuse the target, independent tabs receive independent targets, and iframe/self links avoid stale or self-referential openers. Closing, reopening, replacing, restarting, and switching settings preserve the intended designation and page counts.
+
+## Command-click preference migration
+
+[LinkNavigationTests.swift](../Tests/BrowseTests/LinkNavigationTests.swift) verifies that both legacy link-opening choices survive loading and that the dedicated-pane choice persists without replacing existing tabs.

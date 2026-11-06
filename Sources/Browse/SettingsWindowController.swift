@@ -67,9 +67,10 @@ private struct UISettingsView: View {
     var body: some View {
         Form {
             Section {
-                Picker("Command-click a link", selection: $store.commandClickOpensNewTab) {
-                    Text("Open in adjacent column to the right").tag(false)
-                    Text("Open in a new tab").tag(true)
+                Picker("Command-click a link", selection: $store.commandClickDestination) {
+                    Text("Always open a new pane").tag(CommandClickDestination.newPane)
+                    Text("Reuse one dedicated pane per tab").tag(CommandClickDestination.dedicatedPane)
+                    Text("Open in a new tab").tag(CommandClickDestination.newTab)
                 }
             } header: {
                 Text("Links")

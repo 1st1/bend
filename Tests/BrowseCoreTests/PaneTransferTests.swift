@@ -6,7 +6,9 @@ import Testing
 @Test func paneTransferModel() throws {
     for edge in PaneDropEdge.allCases {
         let a = Page(address: "https://a.test"), b = Page(address: "https://b.test"), c = Page(address: "https://c.test")
-        let source = BrowserTab(pages: [a, b]), destination = BrowserTab(pages: [c])
+        var source = BrowserTab(pages: [a, b])
+        source.commandClickPaneID = a.id
+        let destination = BrowserTab(pages: [c])
         var session = BrowserSession()
         session.workspaces = [Workspace(name: "A", tabs: [source]), Workspace(name: "B", tabs: [destination])]
         session.selectedTab = source.id
@@ -16,6 +18,8 @@ import Testing
         #expect(session.selectedTab == destination.id)
         #expect(session.workspaces[0].tabs[0].pages.map(\.id) == [b.id])
         #expect(session.workspaces[0].tabs[0].focusedPane == b.id)
+        #expect(session.workspaces[0].tabs[0].commandClickPaneID == nil)
+        #expect(session.workspaces[1].tabs[0].commandClickPaneID == nil)
         #expect(session.workspaces[1].tabs[0].layout.paneIDs == (edge.isBefore ? [a.id, c.id] : [c.id, a.id]))
         #expect(session.workspaces[1].tabs[0].pages.last?.address == a.address)
         let movedB = session.transferPane(b.id, from: source.id, beside: c.id, in: destination.id, edge: edge)
@@ -47,8 +51,10 @@ import Testing
     for separateWorkspaces in [false, true] {
         var source = BrowserTab(title: "Source", pages: [Page(), Page()])
         source.split(axis: .vertical, after: source.pages[0].id)
+        source.commandClickPaneID = source.pages[0].id
         var destination = BrowserTab(title: "Destination", pages: [Page(), Page()])
         destination.split(axis: .vertical, after: destination.pages[1].id)
+        if separateWorkspaces { destination.commandClickPaneID = destination.pages[0].id }
         var session = BrowserSession()
         session.workspaces = separateWorkspaces
             ? [Workspace(name: "Source", tabs: [source]), Workspace(name: "Destination", tabs: [destination])]
@@ -68,12 +74,14 @@ import Testing
         #expect(tab.pages.map(\.address) == (destination.pages + source.pages).map(\.address))
         #expect(tab.focusedPane == source.focusedPane)
         #expect(tab.title == destination.title)
+        #expect(tab.commandClickPaneID == (destination.commandClickPaneID ?? source.commandClickPaneID))
         #expect(!session.workspaces.flatMap(\.tabs).contains { $0.id == source.id })
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         let saved = try encoder.encode(session)
         let restored = try JSONDecoder().decode(BrowserSession.self, from: saved)
         #expect(restored.isValid)
         #expect(restored.workspaces.flatMap(\.tabs).first { $0.id == destination.id }?.layout == tab.layout)
+        #expect(restored.workspaces.flatMap(\.tabs).first { $0.id == destination.id }?.commandClickPaneID == tab.commandClickPaneID)
         for (from, to) in [(destination.id, destination.id), (UUID(), destination.id), (destination.id, UUID())] {
             let changed = session.joinTabs(from, into: to)
             #expect(!changed)

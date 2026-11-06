@@ -30,7 +30,7 @@ The sidebar and exposed workspace share a native Liquid Glass base on macOS 26 a
 | --- | --- |
 | New window | ⌘N |
 | New tab | ⌘T |
-| Open link in a new pane to its right | ⌘-click link |
+| Open link using the chosen destination | ⌘-click link |
 | Open location popup | ⌘L |
 | Show History | ⌘Y |
 | Settings / extensions | ⌘, |
@@ -44,7 +44,9 @@ The sidebar and exposed workspace share a native Liquid Glass base on macOS 26 a
 | Reload | ⌘R |
 | Back / forward | ⌘[ / ⌘] |
 
-Press ⌘L to open a Spotlight-style URL/search popup for the focused pane. Return opens the address; Escape or an outside click dismisses the popup. New blank panes and tabs open it automatically. Reload/stop is in the top-right pane toolbar; back and forward use the shortcuts above.
+Press ⌘L to open a Spotlight-style URL/search popup for the focused pane. Return opens the address; Escape or an outside click dismisses the popup. New blank panes and tabs open it automatically. After ⌘T, Escape or ⌘W cancels initial address entry and removes the new tab, returning to the previous tab. Reload/stop is in the top-right pane toolbar; back and forward use the shortcuts above.
+
+Settings → UI → Command-click offers a new pane to the right, one reusable dedicated pane per tab, or a new tab. Dedicated panes survive restart; closing one lets the next Command-click create a replacement.
 
 The location popup searches browsing history by page title and URL as you type. Suggestions favor recent/frequent pages and learn from the results you choose; URL prefixes autocomplete with the suffix selected. Use ↑/↓ and Return or click a result. Matching is local; web searches run only when submitted.
 

@@ -1,6 +1,7 @@
 import Foundation
 
 public enum SplitAxis: String, Codable, Sendable { case horizontal, vertical }
+public enum CommandClickDestination: String, Codable, Sendable { case newPane, dedicatedPane, newTab }
 
 // @lat: [[architecture#Tiling model]]
 public indirect enum PaneLayout: Codable, Equatable, Sendable {
@@ -124,6 +125,7 @@ public struct BrowserTab: Codable, Identifiable, Sendable {
     public var layout: PaneLayout
     public var pages: [Page]
     public var focusedPane: UUID
+    public var commandClickPaneID: UUID?
 
     public init(title: String = "New tab", pages: [Page] = [Page()]) {
         let pages = pages.isEmpty ? [Page()] : pages
@@ -144,6 +146,7 @@ public struct BrowserTab: Codable, Identifiable, Sendable {
     public mutating func closePane(_ id: UUID) {
         guard let next = layout.removing(id) else { return }
         layout = next; pages.removeAll { $0.id == id }
+        if commandClickPaneID == id { commandClickPaneID = nil }
         if focusedPane == id { focusedPane = next.paneIDs[0] }
     }
 }
@@ -163,6 +166,7 @@ public struct BrowserSession: Codable, Sendable {
     public var selectedTab: UUID
     public var sidebarWidth: Double?
     public var commandClickOpensNewTab: Bool?
+    public var commandClickDestination: CommandClickDestination?
     public var inactivePaneDimAmount: Double?
     public var windowGlass: GlassAppearance?
     public var paneHeaderGlass: GlassAppearance?
@@ -225,6 +229,9 @@ public struct BrowserSession: Codable, Sendable {
         }
         workspaces[wi].tabs[ti].layout = layout
         workspaces[wi].tabs[ti].pages.append(contentsOf: source.pages)
+        if workspaces[wi].tabs[ti].commandClickPaneID == nil {
+            workspaces[wi].tabs[ti].commandClickPaneID = source.commandClickPaneID
+        }
         workspaces[wi].tabs[ti].focusedPane = source.focusedPane
         workspaces[sourceWorkspace].tabs.removeAll { $0.id == sourceID }
         if workspaces[sourceWorkspace].tabs.isEmpty { workspaces[sourceWorkspace].tabs.append(BrowserTab()) }

@@ -1,4 +1,5 @@
 import AppKit
+import BrowseCore
 import Testing
 import WebKit
 @testable import Browse
@@ -90,7 +91,7 @@ private final class LinkAction: WKNavigationAction {
         == store.selectedTab.layout.paneIDs.firstIndex(of: source.id).map { $0 + 1 })
 
     // The same existing controller must use the new preference immediately.
-    store.commandClickOpensNewTab = true
+    store.commandClickDestination = .newTab
     controller.onNewLink?("https://example.com/tab", true, true)
     #expect(store.selectedTab.id != originalTab.id)
     #expect(store.selectedTab.pages.count == 1)
@@ -98,7 +99,7 @@ private final class LinkAction: WKNavigationAction {
     #expect(store.linkOpeners[store.selectedTab.focusedPane] == source.id)
     #expect(store.session.workspaces[0].tabs.first { $0.id == originalTab.id }?.pages.count == initialCount + 1)
 
-    store.commandClickOpensNewTab = false
+    store.commandClickDestination = .newPane
     controller.onNewLink?("https://example.com/window", false, false)
     #expect(store.selectedTab.id != originalTab.id)
     #expect(store.linkOpeners[store.selectedTab.focusedPane] == nil)
@@ -106,4 +107,89 @@ private final class LinkAction: WKNavigationAction {
     #expect(store.selectedTab.id == originalTab.id)
     #expect(store.selectedTab.pages.count == initialCount + 2)
     #expect(store.linkOpeners[store.selectedTab.focusedPane] == nil)
+}
+
+// @lat: [[tests#Dedicated Command-click pane]]
+@Test @MainActor func dedicatedCommandClickPane() throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseDedicatedLink-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("session.json")
+    let store = BrowserStore(sessionFile: file, persistentExtensions: false)
+    store.commandClickDestination = .dedicatedPane
+    let original = store.selectedTab
+    let source = original.pages[0], other = original.pages[1]
+    let sourceController = store.controller(for: source)
+    sourceController.onNewLink?("browse://guide", true, true)
+    let dedicated = try #require(store.selectedTab.commandClickPaneID)
+    #expect(store.selectedTab.pages.count == original.pages.count + 1)
+    #expect(store.selectedTab.layout.paneIDs.firstIndex(of: dedicated) == 1)
+    let target = store.controller(for: try #require(store.selectedTab.pages.first { $0.id == dedicated }))
+    let web = target.webView
+    let otherController = store.controller(for: other)
+    otherController.onNewLink?("browse://history", true, true)
+    #expect(store.selectedTab.pages.count == original.pages.count + 1)
+    #expect(store.selectedTab.focusedPane == dedicated && store.selectedTab.commandClickPaneID == dedicated)
+    #expect(target.address == "browse://history" && target.webView === web)
+    #expect(store.linkOpeners[dedicated] == other.id)
+    #expect(sourceController.address == source.address && otherController.address == other.address)
+    // Reuse from an iframe clears the preceding main-frame opener. Clicking in
+    // the dedicated pane reuses it too, without a self-referential opener.
+    sourceController.onNewLink?("browse://guide", true, false)
+    #expect(store.linkOpeners[dedicated] == nil)
+    target.onNewLink?("browse://history", true, true)
+    #expect(store.selectedTab.pages.count == original.pages.count + 1)
+    #expect(store.linkOpeners[dedicated] == nil)
+    store.newTab(address: "browse://guide")
+    let secondTab = store.selectedTab
+    store.controller(for: secondTab.pages[0]).onNewLink?("browse://history", true, true)
+    #expect(store.selectedTab.pages.count == 2)
+    #expect(store.selectedTab.commandClickPaneID != dedicated)
+    sourceController.onNewLink?("browse://guide", true, true)
+    #expect(store.selectedTab.id == original.id && store.selectedTab.commandClickPaneID == dedicated)
+    store.closePage(dedicated)
+    #expect(store.selectedTab.commandClickPaneID == nil)
+    store.reopenClosed()
+    #expect(store.selectedTab.commandClickPaneID == dedicated)
+    store.closePage(dedicated)
+    sourceController.onNewLink?("browse://history", true, true)
+    let replacement = try #require(store.selectedTab.commandClickPaneID)
+    #expect(replacement != dedicated)
+    #expect(store.selectedTab.pages.count == original.pages.count + 1)
+    store.save()
+    let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(restored.commandClickDestination == .dedicatedPane)
+    #expect(restored.selectedTab.commandClickPaneID == replacement)
+    restored.controller(for: source).onNewLink?("browse://guide", true, true)
+    #expect(restored.selectedTab.commandClickPaneID == replacement)
+    #expect(restored.selectedTab.pages.count == original.pages.count + 1)
+    // Switching modes is live and must not repurpose an ordinary pane.
+    restored.commandClickDestination = .newPane
+    restored.controller(for: source).onNewLink?("browse://guide", true, true)
+    #expect(restored.selectedTab.pages.count == original.pages.count + 2)
+    #expect(restored.selectedTab.commandClickPaneID == replacement)
+    restored.commandClickDestination = .dedicatedPane
+    restored.controller(for: source).onNewLink?("browse://history", true, true)
+    #expect(restored.selectedTab.pages.count == original.pages.count + 2)
+    #expect(restored.selectedTab.focusedPane == replacement)
+}
+
+// @lat: [[tests#Command-click preference migration]]
+@Test @MainActor func commandClickPreferenceMigration() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseLinkMigration-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let file = root.appendingPathComponent("session.json")
+    for legacy in [false, true] {
+        var session = BrowserSession()
+        session.commandClickOpensNewTab = legacy
+        try JSONEncoder().encode(session).write(to: file)
+        let store = BrowserStore(sessionFile: file, persistentExtensions: false)
+        #expect(store.commandClickDestination == (legacy ? .newTab : .newPane))
+        store.commandClickDestination = .dedicatedPane
+        store.save()
+        let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
+        #expect(restored.commandClickDestination == .dedicatedPane)
+        #expect(restored.session.selectedTab == session.selectedTab)
+    }
 }

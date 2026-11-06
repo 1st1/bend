@@ -23,7 +23,7 @@ final class InputDiagnostics {
         case monitorFocus, webFocus, webAttachment, webReplacement, webLoad, webProcessExit
         case paneOwnership, paneHandleLifetime, paneDrag, paneDrop, paneHoverSelection
         case tabHandleLifetime, tabDrag, tabDrop, tabHoverSelection, tabMonitorLifetime, sidebarResizeLifetime, dividerResize
-        case storeFocus, storeSelection, storeZoom, addressRequest, addressPanel, addressSubmit
+        case storeFocus, storeSelection, storeZoom, addressRequest, addressPanel, addressSubmit, addressCancel
         case mountedTab, mountedTabRoot, mountedTabVisibility, mountedTabFocus
         case canvasScroll, paneRoot, paneMembership, paneMove, paneGeometry, paneVisibility, surfaceAttachment, surfaceInset
         case navigationPolicy, commandLink, newWindowLink, javascriptDialog

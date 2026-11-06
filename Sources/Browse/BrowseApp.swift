@@ -145,7 +145,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         store.showHistory()
         window?.makeKeyAndOrderFront(nil)
     }
-    @objc private func closePane() { store.closePane(store.selectedTab.focusedPane) }
+    @objc private func closePane() {
+        if addressPanel?.cancelNewTabIfPresented() == true { return }
+        addressPanel?.dismiss(restoreFocus: false)
+        store.closePane(store.selectedTab.focusedPane)
+    }
     @objc private func closeTab() { store.closeTab(store.selectedTab.id) }
     @objc private func reopenClosed() {
         addressPanel?.dismiss(restoreFocus: false)

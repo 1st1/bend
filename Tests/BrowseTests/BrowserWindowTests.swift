@@ -36,9 +36,9 @@ import BrowseCore
     second.store.removeHistory(url: "https://example.com/one")
     #expect(first.store.history.visits.count == 1)
     withExtendedLifetime(observation) {}
-    second.store.commandClickOpensNewTab = true
+    second.store.commandClickDestination = .newTab
     second.store.inactivePaneDimAmount = 0.35
-    #expect(first.store.commandClickOpensNewTab)
+    #expect(first.store.commandClickDestination == .newTab)
     #expect(first.store.inactivePaneDimAmount == 0.35)
     if #available(macOS 26.0, *) {
         let glass = try #require(second.window.contentView as? BrowserWindowGlass)
@@ -72,7 +72,7 @@ import BrowseCore
     let first = try #require(owner.active)
     let second = owner.newWindow(show: false)
     second.store.split(.vertical)
-    second.store.commandClickOpensNewTab = true
+    second.store.commandClickDestination = .newTab
     second.store.recordVisit(url: "https://example.com/", title: "Example")
     let savedLayout = second.store.selectedTab.layout
     let savedSelection = second.store.session.selectedTab
@@ -84,7 +84,7 @@ import BrowseCore
     let restoredSecond = try #require(restored.windows.last)
     #expect(restoredSecond.store.session.selectedTab == savedSelection)
     #expect(restoredSecond.store.selectedTab.layout == savedLayout)
-    #expect(restoredSecond.store.commandClickOpensNewTab)
+    #expect(restoredSecond.store.commandClickDestination == .newTab)
     #expect(restoredSecond.store.history.visits.count == 1)
     restored.windows[0].window.close()
     // Closing one window removes it from the next launch, but closing the final
