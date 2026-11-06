@@ -496,3 +496,5 @@ Default changes, explicit 100% overrides, individual/all resets, and history cle
 ## Pane shadow boundaries
 
 [PaneShadowTests.swift](../Tests/BrowseTests/PaneShadowTests.swift) renders the shadow layer to a bitmap, checking visible falloff beyond canvas bounds, clear pane interiors, ignored hit tests, and updates for moved or hidden panes.
+
+The bitmap checks also verify that glow colors only the focused pane’s shadow, follows focus changes, respects intensity and spread, and leaves both pane interiors clear. Leaving glow mode restores the ordinary black shadow.

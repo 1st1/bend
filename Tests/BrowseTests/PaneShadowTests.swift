@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Testing
+import BrowseCore
 @testable import Browse
 
 // @lat: [[tests#Pane shadow boundaries]]
@@ -21,7 +22,7 @@ import Testing
     window.orderFront(nil)
     defer { window.close() }
     root.layoutSubtreeIfNeeded()
-    func alpha(x: Int, y: Int) throws -> CGFloat {
+    func color(x: Int, y: Int) throws -> NSColor {
         let bitmap = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 300, pixelsHigh: 240,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
@@ -29,8 +30,9 @@ import Testing
         defer { NSGraphicsContext.restoreGraphicsState() }
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
         shadows.draw(shadows.bounds)
-        return try #require(bitmap.colorAt(x: x, y: y)).alphaComponent
+        return try #require(bitmap.colorAt(x: x, y: y))
     }
+    func alpha(x: Int, y: Int) throws -> CGFloat { try color(x: x, y: y).alphaComponent }
     // This point is beyond the clipped canvas, but within its pane's shadow.
     #expect(try alpha(x: 37, y: 120) > 0.01)
     #expect(try alpha(x: 100, y: 120) == 0)
@@ -42,4 +44,37 @@ import Testing
     pane.setFrameOrigin(NSPoint(x: 40, y: 0))
     #expect(try alpha(x: 37, y: 120) == 0)
     #expect(try alpha(x: 77, y: 120) > 0.01)
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("BendShadowGlow-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = BrowserStore(sessionFile: directory.appendingPathComponent("session.json"), persistentExtensions: false)
+    let tab = BrowserTab(pages: [Page(), Page()])
+    store.session.workspaces = [Workspace(name: "Test", tabs: [tab])]
+    store.session.selectedTab = tab.id
+    pane.frame = NSRect(x: 0, y: 0, width: 100, height: 160)
+    pane.store = store; pane.tabID = tab.id; pane.pageID = tab.pages[0].id
+    let neighbor = ClippedPaneHost(content: AnyView(Color.clear))
+    neighbor.frame = NSRect(x: 120, y: 0, width: 80, height: 160)
+    neighbor.store = store; neighbor.tabID = tab.id; neighbor.pageID = tab.pages[1].id
+    canvas.addSubview(neighbor)
+    store.paneHighlight.style = .glow
+    store.paneHighlight.glowColor = .init(red: 1, green: 0, blue: 0)
+    store.paneHighlight.glowIntensity = 0.5
+    store.paneHighlight.glowSpread = 15
+    let active = try color(x: 37, y: 120)
+    #expect(active.redComponent > 0.9 && active.greenComponent < 0.1 && active.alphaComponent > 0.01)
+    #expect(try color(x: 243, y: 120).redComponent == 0)
+    #expect(try alpha(x: 41, y: 120) == 0)
+    #expect(try alpha(x: 165, y: 120) == 0)
+    store.focus(tab.pages[1].id)
+    #expect(try color(x: 37, y: 120).redComponent == 0)
+    #expect(try color(x: 243, y: 120).redComponent > 0.9)
+    store.paneHighlight.glowSpread = 24
+    let wide = try alpha(x: 250, y: 120)
+    store.paneHighlight.glowSpread = 4
+    #expect(try alpha(x: 250, y: 120) < wide)
+    store.paneHighlight.glowIntensity = 0
+    #expect(try alpha(x: 243, y: 120) == 0)
+    store.paneHighlight.style = .outline
+    #expect(try alpha(x: 243, y: 120) > 0.01)
+
 }

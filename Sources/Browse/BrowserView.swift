@@ -31,7 +31,7 @@ struct BrowserView: View {
                 }
             }
         }
-        .background(PaneShadowPlane().allowsHitTesting(false).accessibilityHidden(true))
+        .background(PaneShadowPlane(store: store).allowsHitTesting(false).accessibilityHidden(true))
         .background {
             if #available(macOS 26.0, *) {
                 Color.black.opacity(store.windowGlass.darkening).allowsHitTesting(false)
