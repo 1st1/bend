@@ -42,7 +42,7 @@ cat > "$candidate/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 # @lat: [[architecture#Development signing]]
-codesign --force --options runtime --sign "${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Apple Development: Yury Selivanov (H8TFDJMW7E)}}" "$candidate"
+codesign --force --options runtime --sign "${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}" "$candidate"
 codesign --verify --strict "$candidate"
 # Never overwrite or re-sign files mapped by a running Bend process.
 # Publish only after signing succeeds; keep the old bundle for rollback.

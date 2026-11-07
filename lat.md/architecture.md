@@ -4,7 +4,7 @@ Bend is a native macOS prototype combining SwiftUI browser chrome, AppKit window
 
 ## Development signing
 
-[build-app.sh](../scripts/build-app.sh) packages and signs Bend.app, using `BEND_SIGNING_IDENTITY` when set and Yury's Apple Development certificate otherwise.
+[build-app.sh](../scripts/build-app.sh) packages and signs Bend.app, using `BEND_SIGNING_IDENTITY` when set and Yury's Developer ID Application certificate otherwise.
 
 Requires macOS 14 or newer and a Swift 6 toolchain (Xcode or Command Line Tools). From the repository root, build and open the signed app:
 
@@ -15,10 +15,10 @@ Requires macOS 14 or newer and a Swift 6 toolchain (Xcode or Command Line Tools)
 On another Mac, select an installed Apple-issued signing identity:
 
 ```sh
-BEND_SIGNING_IDENTITY='Apple Development: Your Name (IDENTIFIER)' ./scripts/build-app.sh --open
+BEND_SIGNING_IDENTITY='Developer ID Application: Your Name (TEAMID)' ./scripts/build-app.sh --open
 ```
 
-The certificate's Apple intermediate must also be installed; `security find-identity -v -p codesigning` should list the identity as valid. For development without the packaging script's signing step, open [Package.swift](../Package.swift) in Xcode or run `swift run Bend`.
+The certificate's Apple intermediate must also be installed; Developer ID G2 certificates require Apple's Developer ID G2 intermediate. `security find-identity -v -p codesigning` should list the identity as valid. For development without the packaging script's signing step, open [Package.swift](../Package.swift) in Xcode or run `swift run Bend`.
 
 The build explicitly supplies the installed SDK version to the linker while retaining macOS 14 as the deployment target. This prevents SwiftPM from stamping the deployment target as the linked SDK and making AppKit render legacy controls and toolbar chrome.
 
@@ -227,7 +227,7 @@ The host resolves user then system Mozilla NativeMessagingHosts manifests, valid
 
 Persistent ports and one-shot replies use length-prefixed UTF-8 JSON over pipes. Frames are limited to 1 MiB, queued writes to 4 MiB, and concurrent connections to sixteen per context. Reads handle fragmented frames without waiting for the pipe to fill. Invalid input, EOF, write failures, and one-shot timeouts close the session. Payloads and helper stderr are not logged. Disable, removal, replacement, port disconnection, and permission revocation tear down connections and terminate helpers.
 
-The installed 1Password helper is discovered through its Firefox manifest. Desktop unlock requires a qualifying distribution signature and the Bend app to be added through 1Password Settings → Browser → Add Browser, plus desktop integration enabled in the extension. Bend does not alter the trusted-browser list or impersonate Firefox. The transport and real extension's connection request are tested. The installed helper rejects the current Apple Development build; authenticated desktop unlocking and Touch ID remain unverified. Safari's proprietary app-extension route is not implemented.
+The installed 1Password helper is discovered through its Firefox manifest. Desktop unlock requires a qualifying distribution signature and the Bend app to be added through 1Password Settings → Browser → Add Browser, plus desktop integration enabled in the extension. Bend does not alter the trusted-browser list or impersonate Firefox. The transport and real extension's connection request are tested. The helper rejects Apple Development signing; the Developer ID build installed in Applications has user-confirmed desktop integration and Touch ID unlocking. See [[architecture#1Password connection probe]] for the standalone diagnostic limitation. Safari's proprietary app-extension route is not implemented.
 
 ## Extension compatibility adapters
 
@@ -271,7 +271,7 @@ Running the built Bend executable with --diagnose-1password launches the registe
 
 The same summary is included in production nativeProtocolStatus events for 1Password connections. It exposes known protocol types/error names and bounded, validated browser bundle identities from browser_state, never Success contents, callback IDs, account fields, or arbitrary error prose. These events distinguish protocol rejection from a pipe failure.
 
-The probe and Settings perform a certificate preflight against the Apple distribution-certificate requirement observed in the installed 1Password helper, and inspect the Hardened Runtime flag. The available Apple Development identity fails that requirement. Status-only probes report UnknownBrowser from dist and BrowserSignatureInvalid from an unchanged Applications copy; enabling Hardened Runtime alone leaves the signature rejection. Settings explains the certificate blocker rather than suggesting reinstalling. Developer ID signing can be selected through the existing build override, but its end-to-end desktop result is not yet verified. The preflight does not replace 1Password's own validation or change its trust settings.
+The probe and Settings perform a certificate preflight against the Apple distribution-certificate requirement observed in the installed 1Password helper, and inspect the Hardened Runtime flag. The default Developer ID Application build passes both checks; Apple Development signing fails the certificate requirement. Settings explains that blocker rather than suggesting reinstalling. The signed app must be installed in Applications and added through 1Password's Settings → Browser → Add Browser. The user has manually confirmed accounts available without separate extension sign-in and successful Touch ID unlock from the extension after locking the desktop app with this setup. The standalone status-only probe still times out from Applications even when the actual extension works, so that timeout does not establish integration failure. The preflight does not replace 1Password's own validation or change its trust settings.
 
 ## Extension runtime diagnostics
 
