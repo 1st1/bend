@@ -51,6 +51,14 @@ The smoke test waits for background errors, invokes the toolbar action, and veri
 
 HTML fallback fixtures also verify duration and seeking for attached and detached audio. The optional sidebar snapshots include a seekable progress bar at narrow and regular sidebar widths.
 
+## Media progress layout
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) verifies the card height and progress-bar frame stay unchanged as timing appears, disappears between tracks, and returns with a new duration. Missing timing disables seeking.
+
+## Media slider interaction
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) verifies the styled native slider commits keyboard and accessibility changes immediately in five-second steps. The optional sidebar snapshots verify the track appearance at narrow and regular widths.
+
 ## Media frame routing and lifecycle
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) targets an opaque-origin embedded player while another WebView shares its content controller, verifying frame and pane isolation, removal cleanup, and process-termination invalidation.

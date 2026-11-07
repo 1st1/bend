@@ -116,6 +116,84 @@ private let mediaSessionFixture = #"""
     }
 }
 
+// @lat: [[tests#Media progress layout]]
+@Test @MainActor func mediaProgressLayout() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendProgressLayout-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let page = store.selectedTab.pages[0]
+    let controller = store.controller(for: page)
+    defer { store.closePage(page.id) }
+    controller.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://progress.example"))
+    try await mediaWait { store.mediaCoordinator.selected != nil }
+    let preview = NSHostingView(rootView: SidebarMediaPlayer(coordinator: store.mediaCoordinator, store: store)
+        .frame(width: 236).preferredColorScheme(.dark))
+    preview.frame = NSRect(x: 0, y: 0, width: 236, height: 200)
+    func geometry() async throws -> (height: CGFloat, bar: NSRect, enabled: Bool) {
+        try await Task.sleep(for: .milliseconds(40))
+        preview.layoutSubtreeIfNeeded()
+        func slider(in view: NSView) -> NSSlider? {
+            if let slider = view as? NSSlider { return slider }
+            return view.subviews.lazy.compactMap { slider(in: $0) }.first
+        }
+        let bar = try #require(slider(in: preview))
+        return (preview.fittingSize.height, bar.convert(bar.bounds, to: preview), bar.isEnabled)
+    }
+    let initial = try await geometry()
+    #expect(!initial.enabled)
+    for positionState in ["{duration:240, position:30}", "", "{duration:360, position:0}"] {
+        _ = try await controller.webView.evaluateJavaScript("""
+            navigator.mediaSession.setActionHandler('seekto', () => {});
+            navigator.mediaSession.setPositionState(\(positionState)); void 0
+            """)
+        await controller.media.refresh()
+        try await mediaWait { (store.mediaCoordinator.selected?.state.timeline == nil) == positionState.isEmpty }
+        let current = try await geometry()
+        #expect(abs(current.height - initial.height) < 0.5)
+        #expect(current.bar == initial.bar)
+        #expect(current.enabled == !positionState.isEmpty)
+    }
+}
+
+// @lat: [[tests#Media slider interaction]]
+@Test @MainActor func mediaSliderInteraction() async throws {
+    _ = NSApplication.shared
+    var position = 60.0
+    var commits: [Double] = []
+    let view = NSHostingView(rootView: MediaProgressSlider(
+        value: Binding(get: { position }, set: { position = $0 }), duration: 240
+    ) { editing in if !editing { commits.append(position) } }.frame(width: 220, height: 16))
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 220, height: 40),
+                          styleMask: [.borderless], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = view
+    window.orderFront(nil)
+    defer { window.close() }
+    view.layoutSubtreeIfNeeded()
+    try await Task.sleep(for: .milliseconds(100))
+    view.layoutSubtreeIfNeeded()
+    func findSlider(_ view: NSView) -> NSSlider? {
+        if let slider = view as? NSSlider { return slider }
+        return view.subviews.lazy.compactMap(findSlider).first
+    }
+    let slider = try #require(findSlider(view))
+    let bitmap = try #require(slider.bitmapImageRepForCachingDisplay(in: slider.bounds))
+    slider.cacheDisplay(in: slider.bounds, to: bitmap)
+    _ = window.makeFirstResponder(slider)
+    let key = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+        context: nil, characters: "\u{f703}", charactersIgnoringModifiers: "\u{f703}", isARepeat: false, keyCode: 124))
+    slider.keyDown(with: key)
+    #expect(position > 60)
+    #expect(commits.count == 1)
+    #expect(slider.accessibilityPerformDecrement())
+    #expect(position == 60)
+    #expect(commits.count == 2)
+    #expect(commits.last == position)
+
+}
+
 // @lat: [[tests#Media frame routing and lifecycle]]
 @Test @MainActor func mediaFrameRoutingAndLifecycle() async throws {
     _ = NSApplication.shared

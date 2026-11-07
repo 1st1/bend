@@ -36,10 +36,8 @@ struct SidebarMediaPlayer: View {
                         .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .center)
-                    if let timeline = source.state.timeline {
-                        SidebarMediaProgress(source: source, timeline: timeline, coordinator: coordinator)
-                            .id(source.id + ":" + source.state.playerID)
-                    }
+                    SidebarMediaProgress(source: source, timeline: source.state.timeline, coordinator: coordinator)
+                        .id(source.id + ":" + source.state.playerID)
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
                         control("backward.end.fill", action: "previoustrack", help: "Previous track", source: source)
@@ -139,42 +137,43 @@ struct SidebarMediaPlayer: View {
 
 private struct SidebarMediaProgress: View {
     let source: SidebarMediaSource
-    let timeline: MediaTimeline
+    let timeline: MediaTimeline?
     let coordinator: WindowMediaCoordinator
     @MediaViewState<Double?> private var scrubPosition: Double?
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.25, paused: timeline.rate == 0 || scrubPosition != nil)) { _ in
-            let position = min(timeline.duration, scrubPosition ?? timeline.position())
+        TimelineView(.animation(minimumInterval: 0.25, paused: (timeline?.rate ?? 0) == 0 || scrubPosition != nil)) { _ in
+            let position = timeline.map { min($0.duration, scrubPosition ?? $0.position()) } ?? 0
             VStack(spacing: 2) {
-                if source.state.actions.contains("seekto") {
-                    Slider(value: Binding(get: { position }, set: { scrubPosition = $0 }), in: 0...timeline.duration) { editing in
+                if let timeline, source.state.actions.contains("seekto") {
+                    MediaProgressSlider(value: Binding(get: { position }, set: { scrubPosition = $0 }), duration: timeline.duration) { editing in
                         if editing { scrubPosition = position }
                         else if let target = scrubPosition {
                             scrubPosition = nil
                             Task { await coordinator.send("seekto", to: source, value: target) }
                         }
                     }
-                    .controlSize(.mini)
+                    .frame(height: 16)
                     .accessibilityLabel("Playback position")
                     .accessibilityValue("\(time(position)) of \(time(timeline.duration))")
                     .help("Seek")
                 } else {
-                    ProgressView(value: position, total: timeline.duration)
-                        .progressViewStyle(.linear)
+                    MediaProgressSlider(value: .constant(position), duration: timeline?.duration ?? 1, seekable: false) { _ in }
+                        .frame(height: 16)
                         .accessibilityLabel("Playback progress")
+                        .accessibilityValue(timeline.map { "\(time(position)) of \(time($0.duration))" } ?? "Timing unavailable")
                 }
                 HStack {
-                    Text(time(position))
+                    Text(timeline == nil ? "—" : time(position))
                     Spacer(minLength: 4)
-                    Text(time(timeline.duration))
+                    Text(timeline.map { time($0.duration) } ?? "—")
                 }
                 .font(.system(size: 9).monospacedDigit())
                 .foregroundStyle(.secondary)
             }
         }
         .onChange(of: source.state.title) { _, _ in scrubPosition = nil }
-        .onChange(of: timeline.duration) { _, _ in scrubPosition = nil }
+        .onChange(of: timeline?.duration) { _, _ in scrubPosition = nil }
     }
 
     private func time(_ value: Double) -> String {
