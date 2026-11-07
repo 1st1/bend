@@ -511,6 +511,12 @@ The native-view regression covers separate left/right targets, result growth and
 
 Default changes, explicit 100% overrides, individual/all resets, and history clearing preserve the intended website preference boundaries. Existing pages update without reloading; internal pages stay at 100%.
 
+## Website zoom during provisional navigation
+
+[WebsiteSettingsTests.swift](../Tests/BrowseTests/WebsiteSettingsTests.swift) verifies a delayed destination cannot resize the outgoing page before commit, and a failed navigation keeps its zoom and settings ownership.
+
+Live settings changes during the delay affect the visible source document; the destination’s latest preference applies at commit. Redirects never apply an intermediate host’s preference to the outgoing document.
+
 ## Website settings failure recovery
 
 [WebsiteSettingsTests.swift](../Tests/BrowseTests/WebsiteSettingsTests.swift) verifies unreadable settings surface an error without overwriting the file, and retry restores persistence after storage is repaired.

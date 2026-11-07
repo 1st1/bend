@@ -19,7 +19,7 @@ public struct GlassAppearance: Codable, Equatable, Sendable {
         self.clear = clear; self.tint = tint; self.darkening = darkening
     }
 
-    public static let windowDefault = GlassAppearance()
+    public static let windowDefault = GlassAppearance(darkening: 0.4)
     public static let headerDefault = GlassAppearance(darkening: 0.5)
 
     public func normalized(defaultDarkening: Double) -> Self {

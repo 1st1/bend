@@ -173,8 +173,8 @@ final class BrowserStore: ObservableObject {
     }
 
     var windowGlass: GlassAppearance {
-        get { if let sharedStore { return sharedStore.windowGlass }; return (session.windowGlass ?? .windowDefault).normalized(defaultDarkening: 0) }
-        set { if let sharedStore { sharedStore.windowGlass = newValue; return }; session.windowGlass = newValue.normalized(defaultDarkening: 0); saveSoon() }
+        get { if let sharedStore { return sharedStore.windowGlass }; return (session.windowGlass ?? .windowDefault).normalized(defaultDarkening: GlassAppearance.windowDefault.darkening) }
+        set { if let sharedStore { sharedStore.windowGlass = newValue; return }; session.windowGlass = newValue.normalized(defaultDarkening: GlassAppearance.windowDefault.darkening); saveSoon() }
     }
 
     var paneHeaderGlass: GlassAppearance {
@@ -992,7 +992,9 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         completedAddress = nil
         isStartPage = url.scheme == "browse"
         localDocumentDirectory = url.isFileURL ? url.deletingLastPathComponent() : nil
-        applyWebsiteZoom(for: url)
+        // A reused view still displays the outgoing document until commit.
+        // Only a fresh view (or native internal page) can take the target zoom now.
+        if isStartPage || webView.url == nil { applyWebsiteZoom(for: url) }
         if isStartPage {
             webView.stopLoading()
             title = address == "browse://history" ? "History" : (address == "browse://guide" ? "Tiling guide" : "New tab")

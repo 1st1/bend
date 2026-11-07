@@ -92,6 +92,56 @@ import WebKit
     #expect(page.webView.pageZoom == 1)
 }
 
+// @lat: [[tests#Website zoom during provisional navigation]]
+@Test @MainActor func websiteZoomDuringProvisionalNavigation() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendProvisionalZoom-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let server = try await WebsiteZoomHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let settings = WebsiteSettingsStore(file: root.appendingPathComponent("WebsiteSettings.db"))
+    let source = URL(string: "http://127.0.0.1:\(server.port)/first")!
+    let target = URL(string: "http://localhost:\(server.port)/slow")!
+    settings.setZoom(1.1, for: source)
+    let config = WKWebViewConfiguration(); config.websiteDataStore = .nonPersistent()
+    let web = FocusWebView(frame: .zero, configuration: config)
+    let page = PageController(address: source.absoluteString, webView: web, websiteSettings: settings)
+    defer { web.stopLoading() }
+    func waitUntil(_ ready: () -> Bool) async throws {
+        for _ in 0..<150 where !ready() { try await Task.sleep(for: .milliseconds(20)) }
+        try #require(ready())
+    }
+    try await waitUntil { web.url == source && !web.isLoading }
+    #expect(web.pageZoom == 1.1)
+    page.navigate(target.absoluteString)
+    #expect(web.pageZoom == 1.1)
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(web.isLoading && web.pageZoom == 1.1)
+    #expect(try await web.evaluateJavaScript("location.hostname") as? String == "127.0.0.1")
+    // Live settings still belong to the visible document while the next one loads.
+    settings.setZoom(1.2, for: source)
+    #expect(web.pageZoom == 1.2)
+    settings.setZoom(1.5, for: target)
+    #expect(web.pageZoom == 1.2)
+    try await waitUntil { web.url == target && !web.isLoading }
+    #expect(web.pageZoom == 1.5)
+
+    // A failed provisional navigation must leave the outgoing zoom and ownership intact.
+    page.navigate("http://127.0.0.1:\(server.port)/fail")
+    #expect(web.pageZoom == 1.5)
+    try await waitUntil { page.error != nil }
+    #expect(web.pageZoom == 1.5)
+    page.setPageZoom(1.6)
+    #expect(settings.values.zoom(for: target) == 1.6)
+    #expect(settings.values.zoom(for: source) == 1.2)
+
+    // Redirects apply only the final site's setting, never the intermediate host's.
+    page.navigate("http://127.0.0.1:\(server.port)/redirect")
+    #expect(web.pageZoom == 1.6)
+    try await waitUntil { web.url?.path == "/redirected" && !web.isLoading }
+    #expect(web.pageZoom == 1.6)
+}
+
 // @lat: [[tests#Website settings failure recovery]]
 @Test @MainActor func websiteSettingsFailureRecovery() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendWebsiteRecovery-\(UUID())")
@@ -127,6 +177,7 @@ private final class WebsiteZoomHTTPFixture: @unchecked Sendable {
             connection.start(queue: .global())
             connection.receive(minimumIncompleteLength: 1, maximumLength: 16384) { data, _, _, _ in
                 let request = String(data: data ?? Data(), encoding: .utf8) ?? ""
+                if request.hasPrefix("GET /fail ") { connection.cancel(); return }
                 let response: String
                 if request.hasPrefix("GET /redirect ") {
                     response = "HTTP/1.1 302 Found\r\nLocation: http://localhost:\(server.port)/redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
@@ -135,7 +186,13 @@ private final class WebsiteZoomHTTPFixture: @unchecked Sendable {
                     let body = "<html><head><title>Zoom fixture</title></head><body><input value='keep me'>\(frame)</body></html>"
                     response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
                 }
-                connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
+                if request.hasPrefix("GET /slow ") {
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+                        connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
+                    }
+                } else {
+                    connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
+                }
             }
         }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
