@@ -455,6 +455,34 @@ private let mediaSessionFixture = #"""
     #expect(second.media.sessions.isEmpty)
 }
 
+// @lat: [[tests#Media source menu images]]
+@Test @MainActor func mediaSourceMenuImages() throws {
+    _ = NSApplication.shared
+    let source = SidebarMediaSource(paneID: UUID(), state: MediaSessionState(
+        id: "one", playerID: "session", title: "First track", artist: "Artist", site: "first.example",
+        playing: true, playbackRevision: 1, actions: [], volume: nil, timeline: nil))
+    let other = SidebarMediaSource(paneID: UUID(), state: MediaSessionState(
+        id: "two", playerID: "session", title: "Second track", artist: "Artist", site: "second.example",
+        playing: false, playbackRevision: 1, actions: [], volume: nil, timeline: nil))
+    let favicon = NSImage(size: NSSize(width: 32, height: 32), flipped: false) { rect in
+        NSColor.systemGreen.setFill(); rect.fill(); return true
+    }
+    let presenter = MediaSourceMenu()
+    var selected: String?
+    let menu = presenter.makeMenu(sources: [source, other], selectedID: source.id,
+        favicon: { $0 == source.paneID ? favicon : nil }, onSelect: { selected = $0 })
+    #expect(menu.items.map { $0.representedObject as? String } == [source.id, other.id])
+    #expect(menu.items.map(\.state) == [.on, .off])
+    for item in menu.items {
+        #expect(item.image?.size == NSSize(width: 16, height: 16))
+        if #available(macOS 27.0, *) { #expect(item.preferredImageVisibility == .visible) }
+    }
+    #expect(favicon.size == NSSize(width: 32, height: 32))
+    let item = menu.items[1]
+    #expect(NSApp.sendAction(try #require(item.action), to: item.target, from: item))
+    #expect(selected == other.id)
+}
+
 // @lat: [[tests#Media source selection]]
 @Test @MainActor func mediaSourceSelection() async throws {
     _ = NSApplication.shared
@@ -469,15 +497,18 @@ private let mediaSessionFixture = #"""
     let firstSource = try #require(coordinator.selected)
     second.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://second.example"))
     try await mediaWait { coordinator.sources.count == 2 && coordinator.selected?.paneID == secondID }
+    #expect(coordinator.sources.map(\.paneID) == [secondID, firstID])
     coordinator.select(firstSource)
     await second.media.refresh()
     #expect(coordinator.selected?.paneID == firstID)
+    #expect(coordinator.sources.map(\.paneID) == [firstID, secondID])
     let secondSource = try #require(coordinator.sources.first { $0.paneID == secondID })
     coordinator.select(secondSource)
     // An already-clicked control retains its source even if selection changes before dispatch.
     await coordinator.send("pause", to: firstSource)
     try await mediaWait { first.media.sessions.first?.playing == false }
     #expect(second.media.sessions.first?.playing == true)
+    #expect(coordinator.sources.map(\.paneID) == [secondID, firstID])
     coordinator.select(firstSource)
     #expect(coordinator.selected?.paneID == firstID)
     coordinator.dismiss()
@@ -487,6 +518,7 @@ private let mediaSessionFixture = #"""
     await first.media.refresh()
     await second.media.refresh()
     #expect(coordinator.selected == nil)
+    #expect(coordinator.sources.map(\.paneID) == [firstID, secondID])
     _ = try await second.webView.evaluateJavaScript("navigator.mediaSession.metadata.title = 'Updated title'; void 0")
     await second.media.refresh()
     #expect(coordinator.selected == nil)

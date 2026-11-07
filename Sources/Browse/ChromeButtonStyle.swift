@@ -7,14 +7,16 @@ private typealias ButtonState<Value> = SwiftUI.State<Value>
 struct ChromeButtonStyle: ButtonStyle {
     static let highlightBackground = Color.primary.opacity(0.06)
     var prominent = false
+    var pill = false
 
     func makeBody(configuration: Configuration) -> some View {
-        ChromeButton(configuration: configuration, prominent: prominent)
+        ChromeButton(configuration: configuration, prominent: prominent, pill: pill)
     }
 
     private struct ChromeButton: View {
         let configuration: Configuration
         let prominent: Bool
+        let pill: Bool
         @ButtonState<Bool> private var hovered = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -34,11 +36,12 @@ struct ChromeButtonStyle: ButtonStyle {
                 .imageScale(.medium)
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(iconStyle)
-                .frame(width: prominent ? 28 : 24, height: prominent ? 28 : 24)
+                .padding(.horizontal, pill ? 6 : 0)
+                .frame(width: pill ? nil : (prominent ? 28 : 24), height: prominent ? 28 : 24)
                 .background {
-                    Circle()
+                    Capsule()
                         .fill(ChromeButtonStyle.highlightBackground.opacity(highlighted ? 1 : 0))
-                        .frame(width: prominent ? 28 : 22, height: prominent ? 28 : 22)
+                        .frame(width: pill ? nil : (prominent ? 28 : 22), height: prominent ? 28 : 22)
                 }
                 .contentShape(Rectangle())
                 .onHover { hovered = $0 }

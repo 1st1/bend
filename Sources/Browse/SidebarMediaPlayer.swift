@@ -7,6 +7,7 @@ struct SidebarMediaPlayer: View {
     @ObservedObject var coordinator: WindowMediaCoordinator
     @ObservedObject var store: BrowserStore
     @MediaViewState<Bool> private var showsVolume = false
+    @MediaViewState private var sourceMenu = MediaSourceMenu()
 
     var body: some View {
         if let source = coordinator.selected {
@@ -48,7 +49,7 @@ struct SidebarMediaPlayer: View {
                         Spacer(minLength: 0)
                     }.frame(maxWidth: .infinity)
                     .overlay(alignment: .leading) {
-                        if store.sidebarWidth >= 180 { sourcePicker(source) }
+                        if store.sidebarWidth >= 200 { sourcePicker(source) }
                     }
                     .overlay(alignment: .trailing) {
                         if store.sidebarWidth >= 180 && source.state.actions.contains("volume") {
@@ -62,7 +63,7 @@ struct SidebarMediaPlayer: View {
                                 }
                         }
                     }
-                    if store.sidebarWidth < 180 { sourcePicker(source) }
+                    if store.sidebarWidth < 200 { sourcePicker(source) }
                     if let error = coordinator.commandError {
                         Text(error).font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
                     }
@@ -83,12 +84,12 @@ struct SidebarMediaPlayer: View {
 
     @ViewBuilder private func sourcePicker(_ selected: SidebarMediaSource) -> some View {
         if let next = coordinator.sources.first(where: { $0.id != selected.id }) {
-            Menu {
-                ForEach(coordinator.sources) { item in
-                    Button("\(item.state.title) — \(item.state.site)") {
-                        coordinator.select(item)
-                        store.revealPage(item.paneID)
-                    }
+            Button {
+                sourceMenu.show(sources: coordinator.sources, selectedID: coordinator.selectedID,
+                    favicon: { store.existingController(for: $0)?.favicon }) { id in
+                    guard let item = coordinator.sources.first(where: { $0.id == id }) else { return }
+                    coordinator.select(item)
+                    store.revealPage(item.paneID)
                 }
             } label: {
                 HStack(spacing: 4) {
@@ -97,10 +98,10 @@ struct SidebarMediaPlayer: View {
                         sourceIcon(next)
                     }
                     .fixedSize()
-                    .frame(width: 25, alignment: .leading)
+                    .frame(width: 27.5, alignment: .leading)
                     .mask(LinearGradient(stops: [
                         .init(color: .white, location: 0),
-                        .init(color: .white, location: 0.6),
+                        .init(color: .white, location: 0.7),
                         .init(color: .clear, location: 1)
                     ], startPoint: .leading, endPoint: .trailing))
                     Image(systemName: "chevron.down")
@@ -109,10 +110,8 @@ struct SidebarMediaPlayer: View {
                 .frame(height: 24)
                 .contentShape(Rectangle())
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .foregroundStyle(.white.opacity(0.7))
+            .buttonStyle(ChromeButtonStyle(pill: true))
+            .background(MediaSourceMenuAnchor(menu: sourceMenu))
             .fixedSize()
             .help("Switch player (\(coordinator.sources.count) players)")
             .accessibilityLabel("\(coordinator.sources.count) players")

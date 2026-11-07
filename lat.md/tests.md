@@ -77,11 +77,15 @@ Both `new Audio()` and `document.createElement` fixtures work without DOM insert
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) verifies that pauses and brief inactive sessions between tracks preserve the selected source, while real stops expire and navigation clears it immediately.
 
+## Media source menu images
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) verifies native player menu rows include correctly sized favicon and fallback images, explicitly visible images on macOS 27, selected state, and actions bound to their source.
+
 ## Media source selection
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) checks most-recent playback selection, explicit source selection, commands affecting only that source, persistent dismissal, reappearance on new playback, and cleanup on native-page navigation.
 
-With two sources, closing hides the entire panel while retaining both players and their playback state. Refreshing either source or changing metadata keeps it hidden; a new playback start reveals the panel with both players still available.
+Sources are ordered most-recent-first after playback starts and explicit selection; refreshes, pauses, and metadata changes do not reorder them. With two sources, closing hides the entire panel while retaining both players and their playback state. Refreshing either source or changing metadata keeps it hidden; a new playback start reveals the panel with both players still available.
 
 ## Exclusive media playback
 
