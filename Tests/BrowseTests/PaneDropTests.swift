@@ -4,13 +4,18 @@ import Testing
 import BrowseCore
 @testable import Browse
 
+@MainActor private final class ChromeDragTestWindow: BrowseWindow {
+    var windowDragRequests = 0
+    override func performDrag(with event: NSEvent) { windowDragRequests += 1 }
+}
+
 // @lat: [[tests#Pane header mouse routing]]
 @Test @MainActor func paneHeaderMouseRouting() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseHeaderDrag-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
-    let window = BrowseWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1420, height: 880),
+    let window = ChromeDragTestWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1420, height: 880),
         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
@@ -31,7 +36,7 @@ import BrowseCore
         (view as? PaneDragSourceView).map { [$0] } ?? view.subviews.flatMap { handles(in: $0) }
     }
     let sources = handles(in: content)
-    #expect(sources.count == 4)
+    #expect(sources.count == 2)
     #expect(sources.filter { $0.onHover != nil }.count == 2)
     for source in sources {
         let point = source.convert(NSPoint(x: source.bounds.midX, y: source.bounds.midY), to: nil)
@@ -57,6 +62,31 @@ import BrowseCore
             context: nil, eventNumber: 2, clickCount: 1, pressure: 0))
         window.sendEvent(up)
         #expect(source.mouseDownPoint == nil)
+    }
+    #expect(window.windowDragRequests == 0)
+    func dragAreas(in view: NSView) -> [WindowDragAreaView] {
+        (view as? WindowDragAreaView).map { [$0] } ?? view.subviews.flatMap { dragAreas(in: $0) }
+    }
+    let regions = dragAreas(in: content).filter { !$0.isHiddenOrHasHiddenAncestor }
+    let backgrounds = regions.filter { !$0.excluded }
+    #expect(backgrounds.count == 3) // sidebar plus both pane headers
+    for area in backgrounds {
+        let point = area.convert(NSPoint(x: area.bounds.midX, y: area.bounds.midY), to: nil)
+        #expect(WindowDragAreaView.find(at: point, in: window) === area)
+        let before = window.windowDragRequests
+        try sendPaneMouse(.leftMouseDown, at: point, to: window)
+        #expect(window.windowDragRequests == before + 1)
+        #expect(!window.capturesPaneGesture)
+        try sendPaneMouse(.leftMouseUp, at: point, to: window)
+    }
+    for area in regions where area.excluded {
+        let point = area.convert(NSPoint(x: area.bounds.midX, y: area.bounds.midY), to: nil)
+        #expect(WindowDragAreaView.find(at: point, in: window) == nil)
+    }
+    for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+        let button = try #require(window.standardWindowButton(kind))
+        let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
+        #expect(WindowDragAreaView.find(at: point, in: window) == nil)
     }
     func clickSidebarButton(x: CGFloat) async throws {
         let y = content.isFlipped ? content.bounds.minY + 23.5 : content.bounds.maxY - 23.5

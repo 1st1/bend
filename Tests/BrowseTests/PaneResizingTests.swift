@@ -35,6 +35,17 @@ func dividerPointerTracking(axis: SplitAxis) async throws {
     try await settle()
     let initial = try divider()
     let down = host.convert(NSPoint(x: initial.frame.midX, y: host.bounds.height - initial.frame.midY), to: nil)
+    let dividerView = try #require(host.hitTest(host.convert(down, from: nil)) as? PaneDividerView)
+    #expect(!dividerView.mouseDownCanMoveWindow)
+    dividerView.updateTrackingAreas()
+    #expect(dividerView.trackingAreas.contains { $0.options.contains(.cursorUpdate) })
+    window.invalidateCursorRects(for: dividerView)
+    let cursorEvent = try #require(NSEvent.mouseEvent(with: .mouseMoved, location: down,
+        modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+        eventNumber: 0, clickCount: 0, pressure: 0))
+    dividerView.cursorUpdate(with: cursorEvent)
+    #expect(NSCursor.current == (axis == .horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown))
+    defer { NSCursor.arrow.set() }
     try sendPaneMouse(.leftMouseDown, at: down, to: window)
     // Repeating the same pointer coordinate after layout catches feedback from
     // the divider's own movement. Reversals must track without bouncing too.

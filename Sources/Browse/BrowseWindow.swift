@@ -39,6 +39,12 @@ class BrowseWindow: NSWindow {
                 InputDiagnostics.record(.paneConsumed, event: event, view: source)
                 return
             }
+            if let area = WindowDragAreaView.find(at: event.locationInWindow, in: self) {
+                if !isKeyWindow { makeKeyAndOrderFront(nil) }
+                area.onPress?()
+                performDrag(with: event)
+                return
+            }
         case .leftMouseDragged:
             if capturesPaneGesture {
                 InputDiagnostics.record(.paneConsumed, event: event, view: activePaneDrag)

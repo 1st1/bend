@@ -197,7 +197,7 @@ The native preview layer is observed during continuous movement and edge changes
 
 [PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) sends window mouse events through the actual browser shell, unified titlebar, and glass container in an ordered offscreen window.
 
-Header hit testing reaches both the compact title handle and the adjacent empty-space handle; only the title handle drives hover feedback. Mouse-down focuses its pane and starts tracking; small motion does not move the window or begin a drag, and mouse-up clears tracking. Native mouse clicks also activate the sidebar’s new-tab and toggle buttons instead of reaching the sidebar scroll view.
+Header hit testing reaches the compact title handles, which drive hover feedback and pane dragging. Mouse-down focuses the pane; small motion does not move the window or begin a drag, and mouse-up clears tracking. Empty header and sidebar backgrounds request native window dragging. Tab rows, toolbar controls, sidebar resize handles, and traffic lights are excluded; native clicks still activate the sidebar new-tab and toggle buttons.
 
 ## Input logging preference
 
@@ -257,7 +257,7 @@ Closing a pane and then its tab reopens them in reverse order without duplicate 
 
 [PaneResizingTests.swift](../Tests/BrowseTests/PaneResizingTests.swift) sends real window mouse events through horizontal and vertical dividers in an offscreen browser layout.
 
-Repeated pointer coordinates, forward movement, reversals, and release must preserve the expected pane size without feedback from the divider’s changing position. Axis cases run sequentially because they share native mouse-gesture state.
+Native hit testing must reach each divider, whose cursor-update tracking selects the appropriate horizontal or vertical resize cursor. Repeated pointer coordinates, forward movement, reversals, and release preserve the expected pane size without feedback from the divider’s changing position. Axis cases run sequentially because they share native mouse-gesture state.
 
 ## Divider bounds
 

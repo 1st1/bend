@@ -23,7 +23,8 @@ struct BrowserView: View {
             if store.sidebarVisible {
                 sidebar.frame(width: store.sidebarWidth)
                     .overlay(alignment: .trailing) {
-                        SidebarResizeHandle(store: store).frame(width: 8).offset(x: 4)
+                        SidebarResizeHandle(store: store).frame(width: 8)
+                            .background(WindowDragArea(excluded: true)).offset(x: 4)
                     }
                     .zIndex(1)
             }
@@ -49,7 +50,9 @@ struct BrowserView: View {
             HStack(spacing: 2) {
                 Spacer()
                 iconButton("plus", "New tab · ⌘T", prominent: true) { store.newTab() }
+                    .background(WindowDragArea(excluded: true))
                 iconButton("sidebar.left", "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
+                    .background(WindowDragArea(excluded: true))
             }.padding(.horizontal, 15).frame(height: 2 * Chrome.headerCenterY)
                 .padding(.top, store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
                 .zIndex(1)
@@ -69,6 +72,7 @@ struct BrowserView: View {
                     .font(.system(size: 10)).foregroundStyle(.orange).padding(20)
             }
         }
+        .background(WindowDragArea())
         .background(PaneSidebarTarget(store: store, destination: .workspace(
             store.session.workspaces.first(where: { $0.tabs.contains { $0.id == store.session.selectedTab } })!.id)))
         .background {
@@ -121,6 +125,7 @@ private struct SidebarTabRow: View {
         .onHover { hovered = $0 }
         .onDisappear { hovered = false }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: hovered)
+        .background(WindowDragArea(excluded: true))
         .background(PaneSidebarTarget(store: store, destination: .tab(tab.id)))
         .contextMenu {
             Button("New tab") { store.newTab() }
@@ -294,36 +299,6 @@ private struct PaneChromeBackground: View {
     }
 }
 
-private struct PaneDivider: View {
-    let placement: DividerPlacement
-    let paneIDs: [UUID]
-    let tabID: UUID
-    let onResize: (Double) -> Void
-    @ViewState<CGFloat?> private var dragStart: CGFloat?
-
-    var body: some View {
-        let horizontal = placement.axis == .horizontal
-        Rectangle().fill(Color.clear).contentShape(Rectangle())
-            .onHover { hovering in
-                if hovering { (horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).push() }
-                else { NSCursor.pop() }
-            }
-            // The divider moves as it resizes the panes. Measuring translation
-            // in its local coordinates feeds that movement back into the drag.
-            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global).onChanged { value in
-                if dragStart == nil {
-                    for pane in paneIDs { InputDiagnostics.transition(.dividerResize, .started, paneID: pane, tabID: tabID) }
-                    dragStart = placement.firstLength
-                }
-                let delta = horizontal ? value.translation.width : value.translation.height
-                onResize(placement.fraction(forLength: (dragStart ?? placement.firstLength) + delta))
-            }.onEnded { _ in
-                for pane in paneIDs { InputDiagnostics.transition(.dividerResize, .finished, paneID: pane, tabID: tabID) }
-                dragStart = nil
-            })
-    }
-}
-
 private struct BrowserPane: View {
     @ObservedObject var store: BrowserStore
     @ObservedObject var controller: PageController
@@ -397,6 +372,7 @@ private struct BrowserPane: View {
             if hostsWindowControls {
                 if !store.isFullScreen { Color.clear.frame(width: 66) }
                 iconButton("sidebar.left", "Show sidebar · ⌘⇧S") { store.sidebarVisible = true }
+                    .background(WindowDragArea(excluded: true))
             }
             HStack(spacing: 0) {
                 HStack(spacing: 7) {
@@ -417,7 +393,6 @@ private struct BrowserPane: View {
                     onHover: { titleHovered = $0 }))
                 Spacer(minLength: 0)
                     .frame(maxHeight: .infinity)
-                    .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title))
             }
             .frame(maxHeight: .infinity)
             HStack(spacing: 0) {
@@ -434,8 +409,9 @@ private struct BrowserPane: View {
                 iconButton("rectangle.split.2x1", "Split this pane right") { store.focus(pageID); store.split(.horizontal) }
                 iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
                 iconButton("xmark", "Close pane · ⌘W") { store.closePane(pageID) }
-            }
+            }.background(WindowDragArea(excluded: true))
         }.padding(.horizontal, 12).frame(height: Chrome.paneHeaderHeight)
+        .background(WindowDragArea(onPress: { store.focus(pageID) }))
         .background {
             store.paneHighlight.titleTintColor.color
                 .opacity(!usesSharedHeader && focused && store.paneHighlight.style == .titleTint ? store.paneHighlight.titleTintIntensity : 0)
