@@ -51,7 +51,7 @@ final class FloatingSidebarTrackingView: NSView {
         // The tracking area's activeInKeyWindow policy gates real hover events.
         guard let store, !store.sidebarVisible, window != nil else { return }
         let point = convert(event.locationInWindow, from: nil)
-        let edge = NSRect(x: 0, y: panelRect.minY, width: 8, height: panelRect.height)
+        let edge = NSRect(x: 0, y: panelRect.minY, width: 13, height: panelRect.height)
         // Include the small gap to the window edge so crossing it never dismisses the panel.
         let retained = panelRect.insetBy(dx: -Self.inset, dy: -Self.inset)
         if edge.contains(point) || (store.sidebarFloating && retained.contains(point)) {

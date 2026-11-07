@@ -102,7 +102,7 @@ Dragging measures pointer movement in window coordinates so resizing the sidebar
 
 [FloatingSidebar.swift](../Sources/Browse/FloatingSidebar.swift) reveals the hidden sidebar at the left window edge without resizing the browser canvas or changing the pinned-sidebar preference.
 
-In the key window, moving within eight points of the left edge reveals a rounded panel using the saved sidebar width and window material. It sits below the traffic lights in windowed mode and near the top edge in fullscreen. The existing tab list supports selection, closing, and new tabs; its sidebar toggle pins it open. Hovering the panel or its small edge gap keeps it visible. Leaving for 180 ms dismisses it; reentry cancels dismissal. Window deactivation also dismisses it. Hover state is transient and independent per window.
+In the key window, moving within thirteen points of the left edge reveals a rounded panel using the saved sidebar width and window material. It sits below the traffic lights in windowed mode and near the top edge in fullscreen. The existing tab list supports selection, closing, and new tabs; its sidebar toggle pins it open. Hovering the panel or its small edge gap keeps it visible. Leaving for 180 ms dismisses it; reentry cancels dismissal. Window deactivation also dismisses it. Hover state is transient and independent per window.
 
 [BrowserView.swift](../Sources/Browse/BrowserView.swift) overlays the panel above the unchanged mounted canvas. [BrowseWindow.swift](../Sources/Browse/BrowseWindow.swift) routes panel presses directly to AppKit so underlying pane and window drag regions cannot capture them. [[tests#Floating sidebar interaction]] covers native hit testing, selection, hover lifetime, and preserved canvas geometry.
 
