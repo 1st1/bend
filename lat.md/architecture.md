@@ -303,6 +303,8 @@ On macOS 26 and later, Browser window and Pane headers each offer Regular/Clear 
 
 Command-plus and Command-equals zoom in, Command-minus zooms out, and Command-zero resets to 100%. View menu actions use bounded steps from 25% to 500%, disabling at the limits. Start/history pages, errors, hidden panes, and unrelated key windows are excluded. Zoom affects page content without resizing browser chrome, reloading the document, or changing the separate Zoom Pane layout mode. Zoom changes are saved through [[architecture#Website settings]] and applied to other open panes on the same hostname. Navigation restores the destination website’s override or the default, including after redirects, back/forward, and app restarts. Command-zero saves an explicit 100% override when the default differs. [[tests#Page zoom shortcuts]] covers keyboard routing and limits.
 
+Trackpad pinch uses WebKit’s native magnification, enabled for every page WebView including replacements. This smooth, pointer-centered magnification stays local to the page and does not change the saved website page zoom or other panes.
+
 ## Website settings
 
 [WebsiteSettings.swift](../Sources/BrowseCore/WebsiteSettings.swift) models a default page zoom and hostname overrides. [WebsiteSettingsStore.swift](../Sources/Browse/WebsiteSettingsStore.swift) shares the preferences across browser windows.

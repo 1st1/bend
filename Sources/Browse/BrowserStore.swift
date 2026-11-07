@@ -801,6 +801,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         InputDiagnostics.transition(.extensionConfiguration, .changed, view: webView)
         webView.navigationDelegate = self; webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
+        webView.allowsMagnification = true
         webView.isInspectable = true
         webView.onFocus = { [weak self] in self?.onFocus?() }
         observations = [

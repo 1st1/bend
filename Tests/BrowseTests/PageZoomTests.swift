@@ -53,8 +53,15 @@ import Testing
         #expect(try #require(NSApp.mainMenu).performKeyEquivalent(with: event))
     }
     let origin = try await pages[0].webView.evaluateJavaScript("performance.timeOrigin") as? Double
+    #expect(pages.allSatisfy { $0.webView.allowsMagnification })
+    pages[0].webView.setMagnification(2, centeredAt: NSPoint(x: 250, y: 250))
+    #expect(pages[0].webView.magnification == 2)
+    #expect(pages[0].webView.pageZoom == 1)
+    #expect(pages[1].webView.magnification == 1)
     try key("=", code: 24)
     #expect(pages[0].webView.pageZoom == 1.1)
+    #expect(pages[0].webView.magnification == 2)
+    pages[0].webView.setMagnification(1, centeredAt: NSPoint(x: 250, y: 250))
     #expect(pages[1].webView.pageZoom == 1)
     try key("+", code: 24, modifiers: [.command, .shift])
     #expect(pages[0].webView.pageZoom == 1.25)

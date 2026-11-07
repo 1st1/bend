@@ -437,7 +437,7 @@ Clicks from different source panes reuse the target, independent tabs receive in
 
 [PageZoomTests.swift](../Tests/BrowseTests/PageZoomTests.swift) invokes native menu shortcuts against two web panes to verify zoom-in aliases, zoom-out, reset, focused-pane isolation, bounds, and disabled internal or hidden pages.
 
-Changing page zoom preserves the document and form contents and leaves the independent pane-maximizing layout mode untouched.
+Changing page zoom preserves the document and form contents and leaves the independent pane-maximizing layout mode untouched. Native magnification is enabled, scales only one pane, and remains independent of keyboard page zoom. The test applies magnification through WebKit’s public API; physical trackpad gesture delivery requires a manual check.
 
 ## Find in page
 
