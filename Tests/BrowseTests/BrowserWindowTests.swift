@@ -315,15 +315,30 @@ import BrowseCore
     #expect(owner.active === other)
     #expect(other.store.selectedTab.id == otherTab.id)
     #expect(other.store.selectedTab.pages.map(\.id) == otherTab.pages.map(\.id))
-    // A final blank pane also closes its window while its location popup is key.
+    // The only remaining browser stays open and focuses a fresh address entry.
     other.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
     other.window.makeKeyAndOrderFront(nil)
-    other.addressPanel.show(for: otherTab.focusedPane)
+    let closedPage = other.store.selectedTab.pages[0]
+    other.store.controller(for: closedPage).navigate("https://example.com/")
+    delegate.closeFocusedWindow(other.window)
+    #expect(owner.windows.count == 1)
+    #expect(other.window.isVisible)
+    #expect(other.store.selectedTab.pages.count == 1)
+    #expect(other.store.selectedTab.pages[0].address == "browse://start")
+    #expect(other.store.selectedTab.pages[0].id != closedPage.id)
+    #expect(other.store.existingController(for: closedPage.id) == nil)
+    #expect(other.store.canReopenClosed)
     let popup = try #require(other.window.childWindows?.first { other.addressPanel.owns($0) })
+    #expect(popup.isVisible)
+    #expect(popup.firstResponder is NSTextView)
     delegate.closeFocusedWindow(popup)
+    #expect(owner.windows.count == 1)
+    #expect(other.store.selectedTab.pages.count == 1)
+    #expect(other.store.selectedTab.pages[0].address == "browse://start")
+    #expect(popup.isVisible)
+    // Explicitly closing the native window still closes it.
+    other.window.close()
     #expect(owner.windows.isEmpty)
-    #expect(other.store.selectedTab.id == otherTab.id)
-    #expect(other.store.selectedTab.pages.map(\.id) == otherTab.pages.map(\.id))
     // With no browser left, another close command must not mutate the retained store.
     let encoder = JSONEncoder()
     encoder.outputFormatting = .sortedKeys

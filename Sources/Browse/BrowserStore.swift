@@ -11,6 +11,7 @@ final class BrowserStore: ObservableObject {
     @Published private(set) var paneMoveRevision = 0
     var onAddressRequested: ((UUID) -> Void)?
     var onSettingsRequested: (() -> Void)?
+    var onEmptiedByTransfer: ((BrowserStore) -> Void)?
     private struct PendingAddressEntry {
         let tabID: UUID
         let paneID: UUID
@@ -556,6 +557,29 @@ final class BrowserStore: ObservableObject {
         let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, websiteSettings: websiteSettings, configure: { [weak self] configuration in
             if #available(macOS 15.4, *) { self?.extensions.configure(configuration) }
         })
+        bindController(controller, to: page)
+        browsers[page.id] = controller
+        if #available(macOS 15.4, *), let extensionURL {
+            let manager = extensions
+            Task { [weak controller] in
+                await manager.restorationTask?.value
+                guard let controller, manager.store(for: page.id)?.existingController(for: page.id) === controller,
+                      controller.address == "browse://start" else { return }
+                guard let context = manager.controller.extensionContext(for: extensionURL), context.isLoaded,
+                      let configuration = context.webViewConfiguration else {
+                    controller.error = "This extension page is unavailable. Enable its extension in Settings."
+                    return
+                }
+                controller.navigateExtension(extensionURL, configuration: configuration)
+            }
+        }
+        return controller
+    }
+
+    private func bindController(_ controller: PageController, to page: Page) {
+        controller.configure = { [weak self] configuration in
+            if #available(macOS 15.4, *) { self?.extensions.configure(configuration) }
+        }
         controller.onStateChanged = { [weak self] in
             if #available(macOS 15.4, *) { self?.extensions.pageChanged(page.id) }
         }
@@ -589,32 +613,100 @@ final class BrowserStore: ObservableObject {
             owner.history.updateTitle(title, for: url)
             owner.saveHistorySoon()
         }
-        browsers[page.id] = controller
-        if #available(macOS 15.4, *), let extensionURL {
-            let manager = extensions
-            Task { [weak controller] in
-                await manager.restorationTask?.value
-                guard let controller, self.browsers[page.id] === controller,
-                      controller.address == "browse://start" else { return }
-                guard let context = manager.controller.extensionContext(for: extensionURL), context.isLoaded,
-                      let configuration = context.webViewConfiguration else {
-                    controller.error = "This extension page is unavailable. Enable its extension in Settings."
-                    return
-                }
-                controller.navigateExtension(extensionURL, configuration: configuration)
-            }
-        }
-        return controller
     }
 
     func existingController(for pageID: UUID) -> PageController? { browsers[pageID] }
+
+    // @lat: [[architecture#Cross-window dragging]]
+    @discardableResult
+    func transfer(tab tabID: UUID, pane paneID: UUID? = nil, to destination: BrowserStore,
+                  at placement: WindowDropPlacement) -> Bool {
+        guard self !== destination, preferencesStore === destination.preferencesStore,
+              let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == tabID } }),
+              let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == tabID }) else { return false }
+        let original = session.workspaces[wi].tabs[ti]
+        let emptiesWindow = session.workspaces.flatMap(\.tabs).count == 1
+            && (paneID == nil || original.pages.count == 1)
+        var incoming = snapshot(original)
+        if let paneID {
+            guard let page = incoming.pages.first(where: { $0.id == paneID }) else { return false }
+            incoming = BrowserTab(title: browsers[paneID]?.title ?? incoming.title, pages: [page])
+        }
+        let movedIDs = Set(incoming.pages.map(\.id))
+        guard !destination.session.workspaces.flatMap(\.tabs).contains(where: {
+            $0.id == incoming.id || $0.pages.contains { movedIDs.contains($0.id) }
+        }) else { return false }
+        var nextSource = session, nextDestination = destination.session
+        // Build and validate both layouts before changing ownership or views.
+        switch placement {
+        case .insert(let relativeID, let after):
+            guard let dw = nextDestination.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == relativeID } }),
+                  let dt = nextDestination.workspaces[dw].tabs.firstIndex(where: { $0.id == relativeID }) else { return false }
+            nextDestination.workspaces[dw].tabs.insert(incoming, at: dt + (after ? 1 : 0))
+            nextDestination.selectedTab = incoming.id
+        case .workspace(let id):
+            guard let dw = nextDestination.workspaces.firstIndex(where: { $0.id == id }) else { return false }
+            nextDestination.workspaces[dw].tabs.append(incoming)
+            nextDestination.selectedTab = incoming.id
+        case .join(let targetTab, let targetPane, let edge):
+            guard let dw = nextDestination.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == targetTab } }) else { return false }
+            nextDestination.workspaces[dw].tabs.append(incoming)
+            guard nextDestination.joinTabs(incoming.id, into: targetTab, beside: targetPane, edge: edge) else { return false }
+        }
+        if let paneID, original.pages.count > 1 {
+            nextSource.workspaces[wi].tabs[ti].closePane(paneID)
+        } else {
+            nextSource.workspaces[wi].tabs.remove(at: ti)
+            if nextSource.workspaces[wi].tabs.isEmpty { nextSource.workspaces[wi].tabs.append(BrowserTab()) }
+            if nextSource.selectedTab == tabID {
+                nextSource.selectedTab = nextSource.workspaces[wi].tabs[min(ti, nextSource.workspaces[wi].tabs.count - 1)].id
+            }
+        }
+        guard nextSource.isValid, nextDestination.isValid else { return false }
+        let oldPageOrder = session.workspaces.flatMap(\.tabs).flatMap(\.pages).map(\.id)
+        for page in incoming.pages {
+            if let controller = browsers[page.id] {
+                destination.browsers[page.id] = controller
+                destination.bindController(controller, to: page)
+            }
+            if let opener = linkOpeners[page.id], movedIDs.contains(opener) {
+                destination.linkOpeners[page.id] = opener
+            }
+        }
+        if let pendingAddressEntry, movedIDs.contains(pendingAddressEntry.paneID) { self.pendingAddressEntry = nil }
+        if let zoomedPane, movedIDs.contains(zoomedPane) { self.zoomedPane = nil }
+        destination.zoomedPane = nil
+        refreshTransferredTitles(&nextSource)
+        session = nextSource
+        // Publish source membership before retiring views: AppKit can request
+        // layout synchronously while a WebView is being reparented.
+        for id in movedIDs {
+            browsers.removeValue(forKey: id)?.webView.removeFromSuperview()
+        }
+        destination.session = nextDestination
+        // Extension adapters discover ownership from the final models, retaining
+        // their existing identities throughout the move.
+        if #available(macOS 15.4, *) {
+            let manager = extensions
+            let oldWindow = manager.window(for: self)
+            for id in movedIDs {
+                if let adapter = manager.tabs[id], let index = oldPageOrder.firstIndex(of: id) {
+                    manager.controller.didMoveTab(adapter, from: index, in: oldWindow)
+                }
+            }
+        }
+        saveSoon(); destination.saveSoon()
+        paneMoveRevision += 1; destination.paneMoveRevision += 1
+        if emptiesWindow { onEmptiedByTransfer?(destination) }
+        return true
+    }
 
     func stopWindow() {
         save()
         pendingSave?.cancel(); pendingSave = nil
         for page in browsers.values { page.webView.stopLoading() }
         browsers.removeAll()
-        onAddressRequested = nil; onSettingsRequested = nil
+        onAddressRequested = nil; onSettingsRequested = nil; onEmptiedByTransfer = nil
     }
 
     func revealPage(_ id: UUID) {
@@ -729,7 +821,7 @@ class FocusWebView: WKWebView {
 @MainActor
 final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
     @Published private(set) var webView: FocusWebView
-    private let configure: (WKWebViewConfiguration) -> Void
+    var configure: (WKWebViewConfiguration) -> Void
     private var extensionOrigin: URL?
     @Published var address: String
     @Published var title = "New tab"

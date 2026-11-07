@@ -97,9 +97,27 @@ final class PaneDragSourceView: NSView {
         cancelDrag()
         if let target, let edge, let sourceID, let store, let tabID, let targetID = target.pageID {
             if let destination = target.tabID {
-                store.movePane(sourceID, beside: targetID, edge: edge, in: destination, from: tabID)
+                if let targetStore = target.store, targetStore !== store {
+                    if store.transfer(tab: tabID, pane: sourceID, to: targetStore,
+                                      at: .join(tab: destination, pane: targetID, edge: edge)) {
+                        target.window?.makeKeyAndOrderFront(nil)
+                    }
+                } else {
+                    store.movePane(sourceID, beside: targetID, edge: edge, in: destination, from: tabID)
+                }
             }
         } else if let sidebarTarget, let store, let tabID, let pageID {
+            if let targetStore = sidebarTarget.store, targetStore !== store {
+                let placement: WindowDropPlacement
+                switch sidebarTarget.destination {
+                case .tab(let id): placement = .join(tab: id, pane: targetStore.session.workspaces.flatMap(\.tabs).first { $0.id == id }?.focusedPane, edge: .right)
+                case .workspace(let id): placement = .workspace(id)
+                }
+                if store.transfer(tab: tabID, pane: pageID, to: targetStore, at: placement) {
+                    sidebarTarget.window?.makeKeyAndOrderFront(nil)
+                }
+                return
+            }
             switch sidebarTarget.destination {
             case .tab(let destination) where destination != tabID:
                 store.movePaneToTab(pageID, from: tabID, into: destination)
@@ -195,10 +213,11 @@ class PaneDropHost: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func validSource(_ source: PaneDragSourceView) -> UUID? {
-        guard let store, source.store === store, let tabID, let sourceTabID = source.tabID,
+        guard let store, let sourceStore = source.store, sourceStore.preferencesStore === store.preferencesStore,
+              let tabID, let sourceTabID = source.tabID,
               store.selectedTab.id == tabID, store.zoomedPane == nil,
               let sourceID = source.pageID, let pageID, sourceID != pageID,
-              store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == sourceTabID && $0.pages.contains { $0.id == sourceID } }),
+              sourceStore.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == sourceTabID && $0.pages.contains { $0.id == sourceID } }),
               store.selectedTab.pages.contains(where: { $0.id == pageID }),
               !isHiddenOrHasHiddenAncestor else { return nil }
         return sourceID
@@ -247,12 +266,16 @@ final class PaneDragSurface: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func update(at windowPoint: NSPoint) {
-        guard let source, source.window === window else { clearTargets(); return }
+        guard let source, let sourceWindow = source.window, let sourceStore = source.store,
+              let windowPoint = WindowDragTarget.mount(self, from: sourceWindow, store: sourceStore, at: windowPoint),
+              let store = (window as? BrowseWindow)?.browserStore ?? source.store else {
+            isHidden = true; clearTargets(); return
+        }
         let point = convert(windowPoint, from: nil)
         badge.setFrameOrigin(NSPoint(x: point.x + 12, y: point.y + 12))
         guard bounds.contains(point), let content = superview else { clearTargets(); return }
         let sidebar = descendants(of: PaneSidebarTargetView.self, in: content).filter {
-            $0.store === source.store && !$0.isHiddenOrHasHiddenAncestor
+            $0.store === store && !$0.isHiddenOrHasHiddenAncestor
                 && $0.bounds.intersection($0.visibleRect).contains($0.convert(windowPoint, from: nil))
         }
         // Rows take precedence over the containing workspace's empty-space target.
@@ -266,7 +289,7 @@ final class PaneDragSurface: NSView {
             sidebarTarget?.showPreview(false)
             hoverTask?.cancel(); hoverTask = nil
             sidebarTarget = hovered
-            if let hovered, case .tab(let id) = hovered.destination, let store = source.store,
+            if let hovered, case .tab(let id) = hovered.destination,
                store.session.selectedTab != id {
                 hoverTask = Task { @MainActor [weak self, weak store] in
                     do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
@@ -279,6 +302,7 @@ final class PaneDragSurface: NSView {
         }
         if let hovered {
             setTarget(nil)
+            WindowDragTarget.reveal(window, from: source.window)
             hovered.showPreview(true, at: hovered.convert(windowPoint, from: nil))
             return
         }
@@ -297,6 +321,7 @@ final class PaneDragSurface: NSView {
     }
 
     private func setTarget(_ next: PaneDropHost?, edge: PaneDropEdge? = nil) {
+        if let next { WindowDragTarget.reveal(next.window, from: source?.window) }
         // Keep an unchanged target visible across pointer events. Clearing it
         // first lets an intermediate hidden layer reach the compositor.
         if target !== next {

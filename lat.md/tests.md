@@ -493,10 +493,30 @@ Default changes, explicit 100% overrides, individual/all resets, and history cle
 
 ## Closing the last browser pane
 
-[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies Command-W closes panes and tabs until one remains, then closes only that browser window, including from its address popup, without creating a replacement tab.
+[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies Command-W closes an exhausted window when another browser remains, but replaces the sole window’s last pane with a blank pane and focused address popup.
+
+The closed page remains reopenable. Repeating Command-W from the popup keeps the sole browser open; explicit native closure still closes it, and close commands with no browser do not mutate saved state.
 
 ## Pane shadow boundaries
 
 [PaneShadowTests.swift](../Tests/BrowseTests/PaneShadowTests.swift) renders the shadow layer to a bitmap, checking visible falloff beyond canvas bounds, clear pane interiors, ignored hit tests, and updates for moved or hidden panes.
 
 The bitmap checks also verify that glow colors only the focused pane’s shadow, follows focus changes, respects intensity and spread, and leaves both pane interiors clear. Leaving glow mode restores the ordinary black shadow.
+
+## Cross-window live transfers
+
+[CrossWindowDragTests.swift](../Tests/BrowseTests/CrossWindowDragTests.swift) verifies whole-tab and repeated pane transfers preserve live documents, form edits, both zoom modes, controller ownership, callbacks, and extension adapters.
+
+Invalid source or destination IDs leave models untouched. Both sessions remain valid, a source with remaining tabs stays open, moves add no closed-history items, saved layouts reflect the transfer, and closing the source does not stop transferred pages.
+
+## Cross-window drag gestures
+
+[CrossWindowDragTests.swift](../Tests/BrowseTests/CrossWindowDragTests.swift) drives native pane gestures and sidebar tab handles between two mounted browser windows, checking destination previews, cancellation, insertion, and WebView attachment.
+
+The pressed window receives pointer coordinates even over another window. Pane and sidebar previews raise the destination above other browser windows while preserving the key window and active drag. Cancelled drags clear the remote overlay and leave ownership unchanged; successful moves clean up tracking and mount the original WebView in its destination.
+
+## Empty window transfer cleanup
+
+[CrossWindowDragTests.swift](../Tests/BrowseTests/CrossWindowDragTests.swift) verifies moving the final tab or pane closes only the source window, preserves the live destination document and extension adapter, and removes the source from restoration.
+
+Invalid drops leave both windows open. The surviving window retains unsaved form contents, no closed-history entry is created by the transfer, and reopening restores only the destination window and its transferred page.

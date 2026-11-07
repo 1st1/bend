@@ -249,7 +249,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
 
     override func layout() {
         super.layout()
-        guard let webView = hostedWebView else { return }
+        guard let webView = hostedWebView, webView.superview === self else { return }
         let barHeight = isFindBarVisible ? (findBarView?.frame.height ?? 0) : 0
         let chromeHeight = topContentInset + barHeight
         headerGlass?.frame = NSRect(x: 0, y: bounds.height - chromeHeight, width: bounds.width, height: chromeHeight)

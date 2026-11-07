@@ -62,6 +62,13 @@ final class BrowserWindows {
             if !self.terminating, !self.windows.isEmpty { self.save() }
         }
         store.onSettingsRequested = { [weak self] in self?.onSettings?() }
+        store.onEmptiedByTransfer = { [weak self, weak context] destination in
+            guard let self, let context, self.windows.count > 1,
+                  self.windows.contains(where: { $0 === context }),
+                  let target = self.windows.first(where: { $0.store === destination }) else { return }
+            if context.window.isVisible { target.window.makeKeyAndOrderFront(nil) }
+            context.window.close()
+        }
         windows.append(context)
         lastActive = context
         if fresh, let previous {
@@ -98,6 +105,7 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
         window = BrowseWindow(contentRect: NSRect(x: 0, y: 0, width: 1420, height: 880),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
+        window.browserStore = store
         window.title = "Bend"
         window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified; window.toolbar = NSToolbar(identifier: "BrowseTitlebar")

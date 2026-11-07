@@ -177,11 +177,12 @@ private struct PaneCanvas: View {
         let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
         let layout = zoomed.map(PaneLayout.pane) ?? tab.layout
         let geometry = PaneGeometry(layout: layout, viewport: viewport)
+        let livePages = Set(store.session.workspaces.flatMap(\.tabs).first { $0.id == tab.id }?.pages.map(\.id) ?? [])
         ScrollViewReader { proxy in
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
                     ForEach(geometry.panes) { placement in
-                        if let page = tab.pages.first(where: { $0.id == placement.id }) {
+                        if livePages.contains(placement.id), let page = tab.pages.first(where: { $0.id == placement.id }) {
                             BrowserPane(store: store, controller: store.controller(for: page), tab: tab, pageID: page.id)
                                 .frame(width: placement.frame.width, height: placement.frame.height)
                                 .transition(reduceMotion ? .identity : .asymmetric(

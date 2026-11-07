@@ -204,7 +204,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if context.addressPanel.cancelInitialEntryIfPresented() { return }
         context.addressPanel.dismiss(restoreFocus: false)
         let store = context.store
-        if store.session.workspaces.flatMap(\.tabs).count == 1, store.selectedTab.pages.count == 1 {
+        if browserWindows.windows.count > 1,
+           store.session.workspaces.flatMap(\.tabs).count == 1, store.selectedTab.pages.count == 1 {
             context.window.performClose(nil)
         } else {
             store.closePane(store.selectedTab.focusedPane)

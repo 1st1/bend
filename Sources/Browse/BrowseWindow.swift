@@ -3,6 +3,7 @@ import AppKit
 // @lat: [[architecture#Pane drag and drop]]
 @MainActor
 class BrowseWindow: NSWindow {
+    weak var browserStore: BrowserStore?
     private enum PaneGesture {
         case idle
         case tracking(PaneDragSourceView)

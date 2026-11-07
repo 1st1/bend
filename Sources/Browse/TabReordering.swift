@@ -75,11 +75,25 @@ final class TabDragSourceView: NSView {
         dragSurface?.update(at: event.locationInWindow)
         let wasDragging = dragSurface != nil
         let placement = dragSurface?.placement
+        let destinationWindow = dragSurface?.window
+        let destinationStore = dragSurface?.destinationStore
         InputDiagnostics.transition(.tabDrop, .requested, view: self, tabID: tabID, flags: ["hasTarget": placement != nil])
         cancelDrag()
         guard let store, let tabID,
               store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == tabID }) else { return }
         if let placement {
+            if let destinationStore, destinationStore !== store {
+                let target: WindowDropPlacement
+                switch placement {
+                case .reorder(let id, let after): target = .insert(relativeTo: id, after: after)
+                case .join(let id): target = .join(tab: id, pane: nil, edge: .right)
+                case .joinAtPane(let id, let pane, let edge): target = .join(tab: id, pane: pane, edge: edge)
+                }
+                if store.transfer(tab: tabID, to: destinationStore, at: target) {
+                    destinationWindow?.makeKeyAndOrderFront(nil)
+                }
+                return
+            }
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
                 switch placement {
                 case .reorder(let destination, let after):
@@ -125,10 +139,15 @@ final class TabDragSurface: NSView {
     private weak var source: TabDragSourceView?
     private let marker = CAShapeLayer()
     private let badge = NSTextField(labelWithString: "")
-    private(set) var placement: Placement?
+    private(set) var placement: Placement? {
+        didSet {
+            if placement != nil { WindowDragTarget.reveal(window, from: source?.window) }
+        }
+    }
     private(set) var paneTarget: PaneDropHost?
     private var hoverTabID: UUID?
     private var hoverTask: Task<Void, Never>?
+    var destinationStore: BrowserStore? { (window as? BrowseWindow)?.browserStore ?? source?.store }
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -154,8 +173,12 @@ final class TabDragSurface: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func update(at windowPoint: NSPoint) {
-        guard let source, let store = source.store, source.window === window, let content = superview,
-              store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == source.tabID }) else { clearPlacement(); return }
+        guard let source, let sourceStore = source.store, let sourceWindow = source.window,
+              sourceStore.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == source.tabID }),
+              let windowPoint = WindowDragTarget.mount(self, from: sourceWindow, store: sourceStore, at: windowPoint),
+              let store = destinationStore, let content = superview else {
+            isHidden = true; clearPlacement(); return
+        }
         let point = convert(windowPoint, from: nil)
         badge.setFrameOrigin(NSPoint(x: point.x + 12, y: point.y + 12))
         guard bounds.contains(point) else { clearPlacement(); return }
@@ -213,12 +236,12 @@ final class TabDragSurface: NSView {
         guard id != hoverTabID else { return }
         hoverTask?.cancel(); hoverTask = nil
         hoverTabID = id
-        guard let id, let store = source?.store, store.session.selectedTab != id else { return }
+        guard let id, let store = destinationStore, store.session.selectedTab != id else { return }
         hoverTask = Task { @MainActor [weak self, weak store] in
             do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
             guard let self, let store, self.hoverTabID == id, self.source?.dragSurface === self,
                   let sourceID = self.source?.tabID,
-                  store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == sourceID }),
+                  self.source?.store?.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == sourceID }) == true,
                   store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == id }) else { return }
             InputDiagnostics.transition(.tabHoverSelection, .changed, view: self.source, tabID: id)
             store.select(id)
