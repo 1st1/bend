@@ -257,6 +257,7 @@ private struct UISettingsView: View {
 
     var body: some View {
         Form {
+            DefaultBrowserSettingsSection()
             Section {
                 Picker("Command-click a link", selection: $store.commandClickDestination) {
                     Text("Always open a new pane").tag(CommandClickDestination.newPane)

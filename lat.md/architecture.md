@@ -297,6 +297,16 @@ The enable switch reflects whether WebKit loaded the context, not whether every 
 
 The 1Password and Dark Reader downloads are pinned to reviewed Mozilla-hosted versions and SHA-256 digests. Downloads use an ephemeral session, a size limit and timeouts, require a successful HTTPS response, and validate the digest before import. [ExtensionManager.swift](../Sources/Browse/ExtensionManager.swift) checks the expected package identity before persistence, rejects duplicate identities, and cleans temporary downloads. Failed or cancelled downloads do not install a package. Catalog entries are matched to installed records by package identity, never display name. Imported packages remain disabled with no granted access until the user enables them and approves permissions. The catalog does not silently follow latest releases or update installed packages.
 
+## Default browser
+
+[DefaultBrowser.swift](../Sources/Browse/DefaultBrowser.swift) adds a default-browser status and Make Default action at the top of Settings → UI, using macOS's native consent flow.
+
+Both HTTP and HTTPS must resolve to Bend's bundle identity for the status to report it as default. Status refreshes when the section appears, Bend becomes active, and a request completes. Requests use NSWorkspace's public asynchronous default-application API, rechecking each scheme so a combined system confirmation does not cause a redundant prompt. Cancellation shows no error; other failures appear inline and allow retry. The refreshed status reflects any scheme changes that completed before a cancellation or failure. Bend never requests this change automatically on launch.
+
+[build-app.sh](../scripts/build-app.sh) declares HTTP/HTTPS URL handling and HTML/XHTML document viewing. System Settings browser eligibility needs the document declarations as well as the URL schemes; checking only URL-handler registration is insufficient. [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) receives external web URLs and local HTML/XHTML files, queues requests until window restoration finishes, and opens each in a new tab in the active browser window, preserving existing tabs. Unsupported schemes, remote file hosts, other file types, and web URLs without hosts are ignored. [[tests#Default browser selection]] covers consent outcomes without changing the machine's default; [[tests#External web links]] covers launch-time queuing and active-window routing.
+
+[LocalWebDocument.swift](../Sources/Browse/LocalWebDocument.swift) identifies supported local documents. [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) loads them through WebKit’s file-loading API with read access limited to their containing directory, including relative assets. Local navigation is restricted to that directory and normal web navigation clears the scope. Saved local-document URLs restore through the same path. [[tests#Local web documents]] verifies loading and scope checks.
+
 ## UI preferences
 
 [SettingsWindowController.swift](../Sources/Browse/SettingsWindowController.swift) opens Settings on the UI sidebar section, with link-opening, active-pane highlighting, and independent window/header glass controls.

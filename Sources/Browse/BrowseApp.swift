@@ -32,11 +32,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     private var clickMonitor: Any?
     private var settingsWindow: SettingsWindowController?
+    private var browserWindowsReady = false
+    private var pendingExternalURLs: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         InputDiagnostics.transition(.launch, .started)
         browserWindows.onSettings = { [weak self] in self?.showSettings() }
-        browserWindows.restore()
+        restoreBrowserWindows()
         installMenus()
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { event in
             InputDiagnostics.record(.application, event: event)
@@ -63,6 +65,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         InputDiagnostics.transition(.appActivation, .started, window: window)
+    }
+
+    // @lat: [[architecture#Default browser]]
+    func application(_ application: NSApplication, open urls: [URL]) {
+        pendingExternalURLs.append(contentsOf: urls.filter {
+            (["http", "https"].contains($0.scheme?.lowercased() ?? "") && !($0.host ?? "").isEmpty)
+                || LocalWebDocument.accepts($0)
+        })
+        openPendingExternalURLs()
+    }
+
+    func restoreBrowserWindows(show: Bool = true) {
+        browserWindows.restore(show: show)
+        browserWindowsReady = true
+        openPendingExternalURLs(show: show)
+    }
+
+    private func openPendingExternalURLs(show: Bool = true) {
+        guard browserWindowsReady, !pendingExternalURLs.isEmpty else { return }
+        let context = browserWindows.active ?? browserWindows.newWindow(show: show)
+        context.addressPanel.dismiss(restoreFocus: false)
+        let urls = pendingExternalURLs
+        pendingExternalURLs.removeAll()
+        for url in urls { context.store.newTab(address: url.absoluteString) }
+        if show {
+            context.window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
     func applicationDidResignActive(_ notification: Notification) {
         InputDiagnostics.transition(.appActivation, .finished, window: window)

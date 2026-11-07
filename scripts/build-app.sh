@@ -34,6 +34,25 @@ cat > "$candidate/Contents/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key><string>Bend</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleDocumentTypes</key><array>
+    <dict>
+      <key>CFBundleTypeName</key><string>HTML document</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>LSHandlerRank</key><string>Alternate</string>
+      <key>LSItemContentTypes</key><array><string>public.html</string></array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key><string>XHTML document</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>LSHandlerRank</key><string>Alternate</string>
+      <key>LSItemContentTypes</key><array><string>public.xhtml</string></array>
+    </dict>
+  </array>
+  <key>CFBundleURLTypes</key><array><dict>
+    <key>CFBundleURLName</key><string>Web URLs</string>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+    <key>CFBundleURLSchemes</key><array><string>http</string><string>https</string></array>
+  </dict></array>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>

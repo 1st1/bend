@@ -849,6 +849,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     private let websiteSettings: WebsiteSettingsStore?
     private var websiteSettingsObservation: AnyCancellable?
     private var zoomURL: URL?
+    private var localDocumentDirectory: URL?
 
     // WebKit's default user agent omits Safari's product tokens. Some sites
     // consequently serve a legacy, fixed-width page to an otherwise modern engine.
@@ -936,7 +937,8 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func navigate(_ input: String) {
-        guard let url = AddressResolver.resolve(input) else { error = "Enter a web address or search phrase."; return }
+        let localURL = URL(string: input).flatMap { LocalWebDocument.accepts($0) ? $0 : nil }
+        guard let url = localURL ?? AddressResolver.resolve(input) else { error = "Enter a web address or search phrase."; return }
         if extensionOrigin != nil {
             extensionOrigin = nil
             let configuration = WKWebViewConfiguration()
@@ -954,11 +956,14 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         error = nil; address = url.absoluteString
         completedAddress = nil
         isStartPage = url.scheme == "browse"
+        localDocumentDirectory = url.isFileURL ? url.deletingLastPathComponent() : nil
         applyWebsiteZoom(for: url)
         if isStartPage {
             webView.stopLoading()
             title = address == "browse://history" ? "History" : (address == "browse://guide" ? "Tiling guide" : "New tab")
             reportNavigation()
+        } else if let localDocumentDirectory {
+            webView.loadFileURL(url, allowingReadAccessTo: localDocumentDirectory)
         } else { webView.load(URLRequest(url: url)) }
     }
 
@@ -1005,6 +1010,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         if !isStartPage { error = nil }
     }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if webView.url?.isFileURL != true { localDocumentDirectory = nil }
         // The committed URL covers redirects, normal links, and back/forward.
         // Subframe navigation never changes the top-level website's preference.
         if !isStartPage, let url = webView.url { applyWebsiteZoom(for: url) }
@@ -1065,6 +1071,11 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
             originalHandler(policy)
         }
         guard let url = action.request.url else { decisionHandler(.cancel); return }
+        if url.isFileURL {
+            let allowed = localDocumentDirectory.map { LocalWebDocument.contains(url, in: $0) } ?? false
+            decisionHandler(allowed ? .allow : .cancel)
+            return
+        }
         if openCommandClickedLink(action) { decisionHandler(.cancel); return }
         if #available(macOS 15.4, *),
            let context = webView.configuration.webExtensionController?.extensionContext(for: url), context.isLoaded {

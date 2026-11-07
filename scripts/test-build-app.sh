@@ -46,6 +46,15 @@ for key in CFBundleName CFBundleDisplayName CFBundleExecutable; do
 done
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == dev.yury.browse.prototype ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$plist")" == AppIcon ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleTypeRole' "$plist")" == Viewer ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$plist")" == http ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:1' "$plist")" == https ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes:0:LSItemContentTypes:0' "$plist")" == public.html ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes:1:LSItemContentTypes:0' "$plist")" == public.xhtml ]]
+for index in 0 1; do
+  [[ "$(/usr/libexec/PlistBuddy -c "Print :CFBundleDocumentTypes:$index:CFBundleTypeRole" "$plist")" == Viewer ]]
+  [[ "$(/usr/libexec/PlistBuddy -c "Print :CFBundleDocumentTypes:$index:LSHandlerRank" "$plist")" == Alternate ]]
+done
 cmp "$root/Assets/AppIcon.icns" "$root/dist/Bend.app/Contents/Resources/AppIcon.icns"
 BEND_SIGNING_IDENTITY='Bend test signer' BROWSE_SIGNING_IDENTITY='Legacy test signer' bash "$root/scripts/build-app.sh"
 [[ "$(sed -n '5p' "$root/signing-arguments")" == 'Bend test signer' ]]

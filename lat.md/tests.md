@@ -45,7 +45,7 @@ The smoke test waits for background errors, invokes the toolbar action, and veri
 
 [test-build-app.sh](../scripts/test-build-app.sh) runs the packaging script with isolated compiler and signing stand-ins, verifying failure preservation and replacement without changing an open descriptor to the previous executable.
 
-Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files. The test checks Bend's bundle name and executable, the retained profile identifier, the icon resource and plist entry, and precedence of the new signing override over the legacy override. These checks do not exercise macOS signing or WebKit runtime behavior.
+Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files. The test checks Bend's bundle name and executable, the retained profile identifier, the icon resource and plist entry, HTTP/HTTPS URL-handler and HTML/XHTML document-viewer declarations, and precedence of the new signing override over the legacy override. These checks do not exercise macOS signing or WebKit runtime behavior.
 
 ## Catalog download integrity and identity
 
@@ -525,8 +525,26 @@ Invalid drops leave both windows open. The surviving window retains unsaved form
 
 [BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) compares actual native traffic-light frames with pane-title centers, verifying alignment and unchanged button geometry across repeated sidebar toggles and window resizing.
 
+## Default browser selection
+
+[DefaultBrowserTests.swift](../Tests/BrowseTests/DefaultBrowserTests.swift) verifies both web schemes are required for default status, combined system changes avoid duplicate requests, and cancellation and failure leave the control ready to retry.
+
+Injected handler queries and requests keep these tests from changing the user's actual default browser. Refresh detects changes made outside Bend; failure produces an error while cancellation does not.
+
+## External web links
+
+[DefaultBrowserTests.swift](../Tests/BrowseTests/DefaultBrowserTests.swift) verifies web URLs received before launch finishes open after restoration, later links target the active window, and existing tabs remain intact.
+
+Multiple URLs preserve order, query strings, and fragments. Unsupported schemes are ignored, the pending queue drains once, and external links do not open a blank address popup.
+
 ## Fullscreen chrome transitions
 
 [BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) enters and exits native fullscreen, verifying toolbar auto-hiding, unobstructed title hit testing, sidebar toggles, restored windowed geometry, and retained document state.
 
 Run with `BEND_FULLSCREEN_TEST=1` because the test activates a temporary app window and changes macOS Spaces. It checks full-height content layout, a compact rollover titlebar no taller than 32 points with vertically centered traffic lights, removal of traffic-light reservation in fullscreen, dismissal of an old address popup, and preservation of unsaved form data through exit. The original toolbar visibility and window-control position must return on exit.
+
+## Local web documents
+
+[DefaultBrowserTests.swift](../Tests/BrowseTests/DefaultBrowserTests.swift) verifies local HTML received through the app delegate loads with relative JavaScript assets and survives recreation from the saved file URL.
+
+HTML and XHTML are accepted, while other file types and remote file hosts are rejected. Directory containment rejects paths outside the document’s directory.
