@@ -3,6 +3,7 @@ import Testing
 import WebKit
 import Network
 import Combine
+import BrowseCore
 @testable import Browse
 
 // @lat: [[tests#Favicon discovery]]
@@ -175,6 +176,74 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     // Page code must not replace the isolated world's loader or canvas encoder.
     _ = try await web.evaluateJavaScript("window.Image = function() { throw Error('page override'); }; HTMLCanvasElement.prototype.toDataURL = () => 'spoof'; void 0")
     #expect(await FaviconLoader.load([server.url("/icon.png")], in: web)?.isValid == true)
+}
+
+// @lat: [[tests#Sidebar favicons]]
+@Test @MainActor func sidebarFavicons() async throws {
+    _ = NSApplication.shared
+    let server = try await FaviconHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSidebarIcons-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let tab = BrowserTab(pages: [Page(address: server.url("/page").absoluteString)])
+    let lazy = BrowserTab(pages: [Page(address: server.url("/page").absoluteString)])
+    store.session.workspaces = [Workspace(name: "Test", tabs: [tab, lazy])]
+    store.session.selectedTab = tab.id
+    let context = BrowserWindowSession(id: UUID().uuidString, store: store)
+    context.window.orderFront(nil)
+    context.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+    defer { context.window.close() }
+    func find(_ view: NSView) -> SidebarTabIconView? {
+        if let icon = view as? SidebarTabIconView, icon.tabID == tab.id { return icon }
+        return view.subviews.lazy.compactMap(find).first
+    }
+    func settle(_ ready: () -> Bool) async throws {
+        for _ in 0..<200 where !ready() {
+            context.window.contentView?.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try #require(ready())
+    }
+    try await settle { store.existingController(for: tab.pages[0].id)?.favicon != nil }
+    let controller = try #require(store.existingController(for: tab.pages[0].id))
+    let image = try #require(controller.favicon)
+    try await settle { find(context.window.contentView!)?.image === image }
+    let icon = try #require(find(context.window.contentView!))
+    #expect(icon.frame.width == 16)
+    #expect(icon.frame.height == 16)
+    #expect(store.existingController(for: lazy.pages[0].id) == nil)
+    // A visible 64-point raster catches intrinsic sizing and overflow that a
+    // transparent network fixture cannot reveal in a rendered sidebar.
+    controller.favicon = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
+        NSColor.systemRed.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 12, yRadius: 12).fill()
+        NSColor.white.setFill()
+        let triangle = NSBezierPath()
+        triangle.move(to: NSPoint(x: 24, y: 16))
+        triangle.line(to: NSPoint(x: 48, y: 32))
+        triangle.line(to: NSPoint(x: 24, y: 48))
+        triangle.close(); triangle.fill()
+        return true
+    }
+    try await settle { icon.image === controller.favicon }
+    for width in [100.0, 300.0, 236.0] {
+        store.resizeSidebar(to: width)
+        context.window.contentView?.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(icon.frame.size == NSSize(width: 16, height: 16))
+    }
+    if let path = ProcessInfo.processInfo.environment["BEND_SIDEBAR_SNAPSHOT"] {
+        let content = try #require(context.window.contentView)
+        let rect = NSRect(x: 0, y: 0, width: store.sidebarWidth, height: content.bounds.height)
+        let bitmap = try #require(content.bitmapImageRepForCachingDisplay(in: rect))
+        content.cacheDisplay(in: rect, to: bitmap)
+        try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+    let rendered = icon.image
+    controller.navigate("browse://start")
+    try await settle { find(context.window.contentView!)?.image !== rendered }
+    #expect(find(context.window.contentView!)?.image != nil)
 }
 
 private final class FaviconHTTPFixture: @unchecked Sendable {

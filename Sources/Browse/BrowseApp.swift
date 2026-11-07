@@ -47,6 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             if let content = event.window?.contentView {
                 var hit = content.hitTest(content.convert(event.locationInWindow, from: nil))
                 while let view = hit {
+                    if let tools = view as? DeveloperToolsPanel {
+                        tools.onFocus?()
+                        break
+                    }
                     if let browser = view as? FocusWebView {
                         InputDiagnostics.transition(.monitorFocus, .started, event: event, view: browser)
                         browser.onFocus?()
@@ -169,6 +173,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let history = NSMenu(title: "History")
         add("Show History", #selector(showHistory), "y", to: history)
         append(history, to: main)
+        let develop = NSMenu(title: "Develop")
+        add("Show Web Inspector", #selector(showWebInspector), "i", modifiers: [.command, .shift], to: develop)
+        add("Show JavaScript Console", #selector(showJavaScriptConsole), "c", modifiers: [.command, .option], to: develop)
+        append(develop, to: main)
         NSApp.mainMenu = main
     }
     private func append(_ menu: NSMenu, to main: NSMenu) {
@@ -199,6 +207,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return page
     }
     private var findSurface: WebSurfaceHost? { activeWebPage?.webView.superview as? WebSurfaceHost }
+    @objc func showWebInspector() {
+        if let page = activeWebPage, findSurface?.isDeveloperToolsVisible == true { page.webView.closeInspector() }
+        else { showDeveloperTools(console: false) }
+    }
+    @objc func showJavaScriptConsole() { showDeveloperTools(console: true) }
+    private func showDeveloperTools(console: Bool) {
+        guard let page = activeWebPage else { return }
+        if (page.webView.superview as? WebSurfaceHost)?.showDeveloperTools(console: console) != true {
+            let alert = NSAlert()
+            alert.messageText = "Open Web Inspector in Safari"
+            alert.informativeText = "This WebKit version cannot open the inspector directly. In Safari, enable developer features in Settings → Advanced, then choose this Bend page from the Develop menu."
+            if let window { alert.beginSheetModal(for: window) }
+        }
+    }
     @objc func findInPage(_ sender: NSMenuItem) {
         guard let action = NSTextFinder.Action(rawValue: sender.tag) else { return }
         findSurface?.performFindAction(action)
@@ -248,6 +270,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         window?.makeKeyAndOrderFront(nil)
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(showWebInspector) || menuItem.action == #selector(showJavaScriptConsole) {
+            if menuItem.action == #selector(showWebInspector) {
+                menuItem.title = findSurface?.isDeveloperToolsVisible == true ? "Close Web Inspector" : "Show Web Inspector"
+            }
+            return activeWebPage != nil
+        }
         if menuItem.action == #selector(findInPage(_:)) { return findSurface != nil }
         if menuItem.action == #selector(zoomPage(_:)) {
             guard let page = activeWebPage else { return false }

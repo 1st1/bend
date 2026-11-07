@@ -1,0 +1,99 @@
+import Combine
+import Foundation
+
+struct SidebarMediaSource: Identifiable, Equatable {
+    let paneID: UUID
+    let state: MediaSessionState
+    var id: String { "\(paneID):\(state.id)" }
+}
+
+@MainActor
+final class WindowMediaCoordinator: ObservableObject {
+    @Published private(set) var sources: [SidebarMediaSource] = []
+    @Published private(set) var selectedID: String?
+    @Published private(set) var commandError: String?
+    private struct Registration {
+        weak var controller: PageMediaController?
+        let subscription: AnyCancellable
+    }
+    private var registrations: [UUID: Registration] = [:]
+    private var lastUsed: [String: UInt64] = [:]
+    private var isDismissed = false
+    private var sequence: UInt64 = 0
+    private var chosenID: String?
+
+    var selected: SidebarMediaSource? { sources.first { $0.id == selectedID } }
+
+    func register(_ paneID: UUID, controller: PageMediaController) {
+        guard registrations[paneID]?.controller !== controller else { return }
+        unregister(paneID)
+        let subscription = controller.$sessions.sink { [weak self] states in self?.update(paneID, states: states) }
+        registrations[paneID] = Registration(controller: controller, subscription: subscription)
+    }
+
+    func unregister(_ paneID: UUID) {
+        registrations.removeValue(forKey: paneID)
+        update(paneID, states: [])
+    }
+
+    func removeAll() {
+        registrations.removeAll(); sources = []; selectedID = nil
+        lastUsed.removeAll(); isDismissed = false; chosenID = nil; commandError = nil
+    }
+
+    private func update(_ paneID: UUID, states: [MediaSessionState]) {
+        let old = Dictionary(uniqueKeysWithValues: sources.filter { $0.paneID == paneID }.map { ($0.id, $0) })
+        let incoming = states.map { SidebarMediaSource(paneID: paneID, state: $0) }
+        for item in incoming {
+            let previous = old[item.id]?.state
+            if lastUsed[item.id] == nil || (item.state.playing &&
+                (previous?.playing != true || previous?.playbackRevision != item.state.playbackRevision)) {
+                sequence += 1; lastUsed[item.id] = sequence
+                if item.state.playing { chosenID = item.id; isDismissed = false }
+            }
+        }
+        let next = ordered(sources.filter { $0.paneID != paneID } + incoming)
+        if next != sources { sources = next }
+        let ids = Set(sources.map(\.id))
+        lastUsed = lastUsed.filter { ids.contains($0.key) }
+        if let chosenID, !ids.contains(chosenID) { self.chosenID = nil }
+        choose()
+    }
+
+    private func ordered(_ items: [SidebarMediaSource]) -> [SidebarMediaSource] {
+        items.sorted {
+            let left = lastUsed[$0.id] ?? 0, right = lastUsed[$1.id] ?? 0
+            return left == right ? $0.id < $1.id : left > right
+        }
+    }
+
+    private func choose() {
+        let available = isDismissed ? [] : sources
+        let next = available.first { $0.id == chosenID }
+            ?? available.first { $0.id == selectedID } ?? available.max {
+            if $0.state.playing != $1.state.playing { return !$0.state.playing }
+            return (lastUsed[$0.id] ?? 0) < (lastUsed[$1.id] ?? 0)
+        }
+        if selectedID != next?.id { selectedID = next?.id; commandError = nil }
+    }
+
+    func select(_ source: SidebarMediaSource) {
+        guard sources.contains(where: { $0.id == source.id }) else { return }
+        sequence += 1; lastUsed[source.id] = sequence
+        let next = ordered(sources)
+        if sources != next { sources = next }
+        chosenID = source.id; isDismissed = false; choose()
+    }
+
+    func dismiss() {
+        guard selectedID != nil else { return }
+        isDismissed = true; chosenID = nil; choose()
+    }
+
+    func send(_ action: String, to target: SidebarMediaSource? = nil, value: Double = 0) async {
+        guard let source = target ?? selected, let controller = registrations[source.paneID]?.controller else { return }
+        let success = await controller.send(action, to: source.state, value: value)
+        guard selectedID == source.id else { return }
+        commandError = success ? nil : "Couldn’t control this player. Open its tab to continue."
+    }
+}

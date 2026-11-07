@@ -6,10 +6,10 @@ import BrowseCore
 // expose a same-named State macro without shipping its macro plugin.
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
-private enum Chrome {
+enum Chrome {
     // Match the fixed centerline of the native unified-toolbar traffic lights.
     static let headerCenterY: CGFloat = 26
-    static let paneInset: CGFloat = 6
+    static let paneInset: CGFloat = PaneGeometry.gap
     static let paneHeaderHeight = 2 * (headerCenterY - paneInset)
     static let accent = Color(red: 0.66, green: 0.81, blue: 0.73)
     static let muted = Color.white.opacity(0.42)
@@ -67,6 +67,7 @@ struct BrowserView: View {
             }
             .clipped()
             .contentShape(Rectangle())
+            SidebarMediaPlayer(coordinator: store.mediaCoordinator, store: store)
             if let error = store.persistenceError {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.system(size: 10)).foregroundStyle(.orange).padding(20)
@@ -95,8 +96,8 @@ private struct SidebarTabRow: View {
         return HStack(spacing: 8) {
             Button { store.select(tab.id) } label: {
                 HStack(spacing: 9) {
-                    Image(systemName: tab.pages.count > 1 ? "rectangle.split.2x1" : "globe")
-                        .font(.system(size: 13)).foregroundStyle(selected ? Chrome.accent : .white.opacity(0.5))
+                    SidebarTabIcon(store: store, tab: tab).frame(width: 16, height: 16)
+                        .accessibilityHidden(true)
                     FadingTabTitle(title: tab.title)
                         .font(.system(size: 12, weight: selected ? .medium : .regular))
                     if tab.pages.count > 1 && store.sidebarWidth >= 160 { Text("\(tab.pages.count)").font(.system(size: 9, design: .monospaced)).foregroundStyle(Chrome.muted) }
@@ -274,17 +275,18 @@ private struct TabSelectionMaterial: ViewModifier {
 }
 
 // @lat: [[architecture#Pane materials]]
-private struct PaneChromeBackground: View {
+struct PaneChromeBackground: View {
     var cornerRadius: CGFloat = 0
+    var roundsTopCorners = true
     var roundsBottomCorners = true
     var appearance: GlassAppearance = .headerDefault
 
     var body: some View {
         let shape = UnevenRoundedRectangle(
-            topLeadingRadius: cornerRadius,
+            topLeadingRadius: roundsTopCorners ? cornerRadius : 0,
             bottomLeadingRadius: roundsBottomCorners ? cornerRadius : 0,
             bottomTrailingRadius: roundsBottomCorners ? cornerRadius : 0,
-            topTrailingRadius: cornerRadius)
+            topTrailingRadius: roundsTopCorners ? cornerRadius : 0)
         Group {
             if #available(macOS 26.0, *) {
                 Color.clear.glassEffect(appearance.material, in: shape)
