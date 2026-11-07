@@ -13,6 +13,7 @@ NS_SWIFT_UI_ACTOR
 @property (nonatomic, readonly) BOOL canShow;
 @property (nonatomic, readonly) BOOL isVisible;
 - (BOOL)showConsole:(BOOL)console;
+- (void)restoreEmbedding;
 - (void)invalidate;
 @end
 

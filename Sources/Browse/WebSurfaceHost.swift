@@ -21,6 +21,11 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
             let panel = DeveloperToolsPanel()
             panel.dock = developerToolsDock
             panel.onFocus = { [weak web] in web?.onFocus?() }
+            panel.onFrontendDisplaced = { [weak web, weak panel] in
+                guard let panel, panel.window != nil, let frontend = panel.frontend,
+                      frontend.superview !== panel else { return }
+                web?.inspector.restoreEmbedding()
+            }
             panel.onResize = { [weak self] delta in
                 guard let self else { return }
                 if developerToolsDock == .bottom {
@@ -52,10 +57,15 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         layoutSubtreeIfNeeded()
     }
 
-    func installInspectorFrontend(_ frontend: WKWebView) { developerToolsPanel?.install(frontend) }
+    func installInspectorFrontend(_ frontend: WKWebView) {
+        developerToolsPanel?.install(frontend)
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
 
     func removeDeveloperTools() {
         guard let panel = developerToolsPanel else { return }
+        panel.onFrontendDisplaced = nil
         if let responder = window?.firstResponder as? NSView, responder.isDescendant(of: panel) {
             window?.makeFirstResponder(hostedWebView)
         }

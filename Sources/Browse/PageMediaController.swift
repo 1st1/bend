@@ -2,6 +2,26 @@ import AppKit
 import Combine
 import WebKit
 
+struct MediaTimeline: Equatable {
+    let duration: Double
+    let position: Double
+    let rate: Double
+    let updatedAt: TimeInterval
+
+    init?(_ raw: Any?, playing: Bool, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+        guard let values = raw as? [String: Any],
+              let duration = values["duration"] as? Double, duration.isFinite, duration > 0,
+              let position = values["position"] as? Double, position.isFinite, (0...duration).contains(position),
+              let rate = values["rate"] as? Double, rate.isFinite else { return nil }
+        self.duration = duration; self.position = position
+        self.rate = playing ? rate : 0; updatedAt = now
+    }
+
+    func position(at now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Double {
+        min(duration, max(0, position + max(0, now - updatedAt) * rate))
+    }
+}
+
 struct MediaSessionState: Equatable, Identifiable {
     let id: String
     let playerID: String
@@ -12,6 +32,7 @@ struct MediaSessionState: Equatable, Identifiable {
     let playbackRevision: Int
     let actions: Set<String>
     let volume: Double?
+    let timeline: MediaTimeline?
 }
 
 @MainActor
@@ -23,7 +44,7 @@ final class PageMediaController: ObservableObject {
     private var mainDocument: String?
     private var refreshTask: Task<Void, Never>?
     private var generation = 0
-    private static let actions: Set<String> = ["play", "pause", "previoustrack", "nexttrack", "volume"]
+    private static let actions: Set<String> = ["play", "pause", "previoustrack", "nexttrack", "volume", "seekto"]
 
     func attach(to web: FocusWebView) {
         webView?.mediaController = nil
@@ -77,7 +98,8 @@ final class PageMediaController: ObservableObject {
         let state = MediaSessionState(id: id, playerID: playerID,
             title: title.isEmpty ? site : title, artist: Self.clean(body["artist"]), site: site,
             playing: playing, playbackRevision: playbackRevision, actions: Set(rawActions).intersection(Self.actions),
-            volume: volume.flatMap { $0.isFinite && (0...1).contains($0) ? $0 : nil })
+            volume: volume.flatMap { $0.isFinite && (0...1).contains($0) ? $0 : nil },
+            timeline: MediaTimeline(body["timeline"], playing: playing))
         frames[id] = message.frameInfo
         let previous = sessions.first { $0.id == id }
         if let index = sessions.firstIndex(where: { $0.id == id }) {
@@ -150,6 +172,9 @@ final class PageMediaController: ObservableObject {
         guard Self.actions.contains(action), state.actions.contains(action), value.isFinite,
               sessions.contains(where: { $0.id == state.id && $0.playerID == state.playerID }),
               let frame = frames[state.id], let webView else { return false }
+        if action == "seekto" {
+            guard let timeline = state.timeline, (0...timeline.duration).contains(value) else { return false }
+        }
         let epoch = generation
         let result = await evaluate(
             "return await window.__bendMedia?.command(documentID, playerID, action, value) ?? false",

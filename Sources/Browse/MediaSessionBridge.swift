@@ -12,6 +12,11 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
         const ids = new WeakMap();
         let nextID = 0, current = null, previous = '', queued = false, sessionPlayed = false;
         let declaredPlaybackState = 'none';
+        let positionState = null;
+        const buffering = new WeakSet();
+        const sessionPosition = () => positionState ? Math.max(0, Math.min(positionState.duration,
+            positionState.position + (declaredPlaybackState === 'playing' ?
+                (performance.now() - positionState.updatedAt) / 1000 * positionState.playbackRate : 0))) : 0;
         let playbackRevision = 0, wasPlaying = false, lastPlayerID = '';
         const session = navigator.mediaSession;
         const post = value => {
@@ -22,8 +27,11 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
             if (!(media instanceof HTMLMediaElement) || players.has(media)) return;
             players.add(media); ids.set(media, String(++nextID));
             if (!media.isConnected) detached.add(media);
-            for (const name of ['play','playing','pause','ended','emptied','error','loadedmetadata','volumechange']) {
+            for (const name of ['play','playing','pause','ended','emptied','error','loadedmetadata','volumechange',
+                'durationchange','ratechange','seeking','seeked','waiting']) {
                 media.addEventListener(name, () => {
+                    if (name === 'waiting') buffering.add(media);
+                    if (name === 'playing' || name === 'seeked' || name === 'emptied') buffering.delete(media);
                     if (!media.paused && !media.ended && !media.muted && media.volume > 0) { played.add(media); current = media; }
                     schedule();
                 });
@@ -65,6 +73,16 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
             const actions = [...handlers.keys()];
             if (current) {
                 for (const action of ['play', 'pause', 'volume']) if (!actions.includes(action)) actions.push(action);
+                if (Number.isFinite(current.duration) && current.duration > 0 && current.seekable.length
+                    && !actions.includes('seekto')) actions.push('seekto');
+            }
+            let timeline = null;
+            if (current && Number.isFinite(current.duration) && current.duration > 0) {
+                timeline = {duration: current.duration, position: current.currentTime,
+                    rate: !current.paused && !current.seeking && !buffering.has(current) && current.readyState >= 3 ? current.playbackRate : 0};
+            } else if (positionState && Number.isFinite(positionState.duration) && positionState.duration > 0) {
+                timeline = {duration: positionState.duration, position: sessionPosition(),
+                    rate: declared === 'playing' ? positionState.playbackRate : 0};
             }
             const playerID = hasSession ? 'session' : (ids.get(current) || '');
             const isPlaying = playing.length > 0 || (declared === 'playing' && !current);
@@ -73,7 +91,7 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
             return {
                 active, playerID, playbackRevision, playing: isPlaying,
                 title: text(metadata?.title) || text(current?.getAttribute('aria-label')) || text(current?.title) || text(document.title),
-                artist: text(metadata?.artist), actions,
+                artist: text(metadata?.artist), actions, timeline,
                 volume: current ? (current.muted ? 0 : current.volume) : null
             };
         };
@@ -96,15 +114,31 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
                 }
                 return result;
             };
+            const setPosition = prototype.setPositionState;
+            if (setPosition) prototype.setPositionState = function(value) {
+                const result = setPosition.call(this, value);
+                if (this === session) {
+                    positionState = value && value.duration !== undefined ? {
+                        duration: Number(value.duration), position: Number(value.position ?? 0),
+                        playbackRate: Number(value.playbackRate ?? 1), updatedAt: performance.now()
+                    } : null;
+                    schedule();
+                }
+                return result;
+            };
             // Preserve native accessors and exceptions; active-frame refresh also
             // catches in-place changes to MediaMetadata.title/artist.
             for (const name of ['metadata', 'playbackState']) {
                 const descriptor = Object.getOwnPropertyDescriptor(prototype, name);
                 if (descriptor?.set && descriptor.configurable) {
                     Object.defineProperty(prototype, name, {...descriptor, set(value) {
+                        const position = sessionPosition();
                         descriptor.set.call(this, value);
                         if (this === session) {
-                            if (name === 'playbackState') declaredPlaybackState = String(value);
+                            if (name === 'playbackState') {
+                                if (positionState) { positionState.position = position; positionState.updatedAt = performance.now(); }
+                                declaredPlaybackState = String(value);
+                            }
                             schedule();
                         }
                     }});
@@ -127,6 +161,7 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
                 if (!handled) return 'native';
                 // Mirror the explicit browser pause for handler-only sessions.
                 // Web Audio without a handler is stopped by the native fallback.
+                if (positionState) { positionState.position = sessionPosition(); positionState.updatedAt = performance.now(); }
                 declaredPlaybackState = 'paused';
                 publish();
                 return 'paused';
@@ -139,7 +174,17 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
                 if (expected !== documentID) return false;
                 const state = snapshot();
                 if (!state.active || state.playerID !== playerID || !state.actions.includes(action)) return false;
-                if (action === 'volume') {
+                if (action === 'seekto') {
+                    if (!Number.isFinite(value) || !state.timeline || value < 0 || value > state.timeline.duration) return false;
+                    if (handlers.has(action)) await handlers.get(action)({action, seekTime: value, fastSeek: false});
+                    else if (current) {
+                        let seekable = false;
+                        for (let i = 0; i < current.seekable.length; i++)
+                            if (value >= current.seekable.start(i) && value <= current.seekable.end(i)) seekable = true;
+                        if (!seekable) return false;
+                        current.currentTime = value;
+                    } else return false;
+                } else if (action === 'volume') {
                     if (!current || !Number.isFinite(value)) return false;
                     current.volume = Math.max(0, Math.min(1, value)); current.muted = false;
                 } else if (handlers.has(action)) {

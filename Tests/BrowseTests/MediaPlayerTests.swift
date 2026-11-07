@@ -71,6 +71,51 @@ private let mediaSessionFixture = #"""
     #expect(PageMediaController.clean("a\u{202E}b\n" + String(repeating: "x", count: 1000)).count <= 512)
 }
 
+// @lat: [[tests#Media playback progress]]
+@Test @MainActor func mediaPlaybackProgress() async throws {
+    _ = NSApplication.shared
+    let page = PageController(address: "browse://start")
+    defer { page.media.detach(); page.webView.stopLoading() }
+    page.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://progress.example"))
+    try await mediaWait { !page.media.sessions.isEmpty }
+    #expect(page.media.sessions.first?.timeline == nil)
+    _ = try await page.webView.evaluateJavaScript("""
+        navigator.mediaSession.setPositionState({duration:240, position:30, playbackRate:2});
+        navigator.mediaSession.setActionHandler('seekto', details => {
+            window.lastSeek = details;
+            navigator.mediaSession.setPositionState({duration:240, position:details.seekTime, playbackRate:2});
+        }); void 0
+        """)
+    try await mediaWait { page.media.sessions.first?.timeline != nil }
+    let moving = try #require(page.media.sessions.first?.timeline)
+    #expect(moving.duration == 240)
+    #expect(moving.rate == 2)
+    #expect(abs(moving.position(at: moving.updatedAt + 2) - moving.position - 4) < 0.01)
+    #expect(moving.position(at: moving.updatedAt + 1000) == 240)
+    #expect(await page.media.send("pause", to: try #require(page.media.sessions.first)))
+    try await mediaWait { page.media.sessions.first?.timeline?.rate == 0 }
+    let paused = try #require(page.media.sessions.first)
+    let stopped = try #require(paused.timeline)
+    #expect(stopped.position(at: stopped.updatedAt + 10) == stopped.position)
+    #expect(await page.media.send("seekto", to: paused, value: 75))
+    try await mediaWait { page.media.sessions.first?.timeline?.position == 75 }
+    #expect(try await page.webView.evaluateJavaScript("lastSeek.seekTime === 75 && lastSeek.action === 'seekto' && lastSeek.fastSeek === false") as? Bool == true)
+    #expect(!(await page.media.send("seekto", to: paused, value: -1)))
+    #expect(!(await page.media.send("seekto", to: paused, value: 241)))
+    #expect(!(await page.media.send("seekto", to: paused, value: .nan)))
+    #expect(try await page.webView.evaluateJavaScript("(() => { try { navigator.mediaSession.setPositionState({duration:-1}); return false; } catch { return true; } })()") as? Bool == true)
+    _ = try await page.webView.evaluateJavaScript("navigator.mediaSession.setPositionState(); void 0")
+    try await mediaWait { page.media.sessions.first?.timeline == nil }
+    #expect(!(await page.media.send("seekto", to: try #require(page.media.sessions.first), value: 10)))
+    for values in [["duration": Double.infinity, "position": 0, "rate": 1],
+                   ["duration": 0, "position": 0, "rate": 1],
+                   ["duration": 100, "position": -1, "rate": 1],
+                   ["duration": 100, "position": 101, "rate": 1],
+                   ["duration": 100, "position": 1, "rate": Double.nan]] {
+        #expect(MediaTimeline(values, playing: true) == nil)
+    }
+}
+
 // @lat: [[tests#Media frame routing and lifecycle]]
 @Test @MainActor func mediaFrameRoutingAndLifecycle() async throws {
     _ = NSApplication.shared
@@ -137,13 +182,17 @@ private let mediaSessionFixture = #"""
         audio.play();
         </script>
         """#, baseURL: URL(string: "https://audio.example"))
-    try await mediaWait { controller.media.sessions.first?.playing == true }
+    try await mediaWait { controller.media.sessions.first?.playing == true && controller.media.sessions.first?.actions.contains("seekto") == true }
     var state = try #require(controller.media.sessions.first)
     #expect(state.title == "Audio fallback")
-    #expect(state.actions == ["play", "pause", "volume"])
+    #expect(state.actions == ["play", "pause", "volume", "seekto"])
+    #expect(state.timeline?.duration == 8)
     #expect(await controller.media.send("pause", to: state))
     try await mediaWait { controller.media.sessions.first?.playing == false }
     state = try #require(controller.media.sessions.first)
+    #expect(await controller.media.send("seekto", to: state, value: 4))
+    try await mediaWait { abs((controller.media.sessions.first?.timeline?.position ?? 0) - 4) < 0.1 }
+    #expect(try await web.evaluateJavaScript("audio.currentTime") as? Double == 4)
     #expect(await controller.media.send("volume", to: state, value: 0.25))
     try await mediaWait { controller.media.sessions.first?.volume == 0.25 }
     #expect(await controller.media.send("play", to: state))
@@ -227,7 +276,7 @@ private let mediaSessionFixture = #"""
             first.store.mediaCoordinator.unregister(alternateID)
             alternate.media.detach(); alternate.webView.stopLoading()
         }
-        _ = try await pageController.webView.evaluateJavaScript("navigator.mediaSession.metadata.title = 'A long track title that should truncate inside the glass header'; void 0")
+        _ = try await pageController.webView.evaluateJavaScript("navigator.mediaSession.metadata.title = 'A long track title that should truncate inside the glass header'; navigator.mediaSession.setPositionState({duration:240,position:75}); navigator.mediaSession.setActionHandler('seekto', () => {}); void 0")
         await pageController.media.refresh()
         pageController.favicon = NSImage(systemSymbolName: "play.rectangle.fill", accessibilityDescription: nil)
         for width in [100.0, 236.0, 300.0] {

@@ -7,6 +7,7 @@ final class DeveloperToolsPanel: NSView {
     enum Dock { case bottom, right }
     var onFocus: (() -> Void)?
     var onResize: ((CGFloat) -> Void)?
+    var onFrontendDisplaced: (() -> Void)?
     var dock: Dock = .bottom {
         didSet {
             divider.dock = dock
@@ -34,7 +35,7 @@ final class DeveloperToolsPanel: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func install(_ webView: WKWebView) {
-        if frontend !== webView {
+        if frontend !== webView || webView.superview !== self {
             frontend?.removeFromSuperview()
             frontend = webView
             webView.autoresizingMask = []
@@ -43,6 +44,16 @@ final class DeveloperToolsPanel: NSView {
             layoutSubtreeIfNeeded()
         }
         window?.makeFirstResponder(webView)
+    }
+
+    override func willRemoveSubview(_ subview: NSView) {
+        super.willRemoveSubview(subview)
+        guard subview === frontend, let onFrontendDisplaced else { return }
+        // Wait until WebKit finishes its reparenting before restoring ownership.
+        // Closure releases this panel; a queued recovery then becomes a no-op.
+        // AppKit can also call this during deallocation; use the already-created
+        // weak callback rather than forming a new weak reference to this view.
+        Task { @MainActor in onFrontendDisplaced() }
     }
 
     override func layout() {

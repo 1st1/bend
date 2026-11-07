@@ -5,6 +5,7 @@
 - (void)connect;
 - (WKWebView *)inspectorWebView;
 - (void)close;
+- (void)hide;
 @end
 
 @interface WKWebView (BendOptionalInspector)
@@ -54,6 +55,7 @@
     return [inspector respondsToSelector:@selector(connect)]
         && [inspector respondsToSelector:@selector(inspectorWebView)]
         && [inspector respondsToSelector:@selector(setDelegate:)]
+        && [inspector respondsToSelector:@selector(hide)]
         && [inspector respondsToSelector:@selector(close)];
 }
 
@@ -134,6 +136,17 @@
 - (void)setDockedToRight:(BOOL)dockedToRight
 {
     _dockedToRight = dockedToRight;
+    [self updateDockedState];
+}
+
+- (void)restoreEmbedding
+{
+    if (!_presented || !_frontend) return;
+    // Inspect-element and debugger reveal requests can invoke WebKit's native
+    // presentation after connect(). Hide that presentation without closing the
+    // backend, stopping its automatic resizing before remounting our frontend.
+    [_openedInspector hide];
+    if (self.onFrontendReady) self.onFrontendReady(_frontend);
     [self updateDockedState];
 }
 

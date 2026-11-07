@@ -125,17 +125,33 @@ import WebKit
     #expect(firstHost.isFindBarVisible)
     #expect(pages[0].webView.frame.minY == panel.frame.maxY)
     firstHost.hideFindBar()
+    // Element inspection asks WebKit to reveal its frontend before docking.
+    _ = try await firstFrontend.evaluateJavaScript("""
+        WI.runtimeManager.evaluateInInspectedWindow("inspect(document.querySelector('p'))", {objectGroup:'console', includeCommandLineAPI:true}, () => {}); void 0
+        """)
+    try await wait { await contents(pages[0].webView).contains("<p>") }
+    #expect(firstFrontend.superview === panel)
     // Use the actual WebKit toolbar buttons, preserving the live console.
     _ = try await firstFrontend.evaluateJavaScript("WI._dockRightTabBarButton.element.click(); void 0")
     try await wait { panel.dock == .right }
+    #expect(firstFrontend.superview === panel)
+    #expect(firstFrontend.frame.maxX <= panel.bounds.maxX)
     #expect(pages[0].webView.frame.maxX == panel.frame.minX)
     #expect(pages[0].webView.frame.minY == 0)
     #expect(panel.frame.maxY <= firstHost.bounds.height - 44)
     #expect(firstFrontend.window === context.window)
+    // A later native reveal (also used by element picking and breakpoints)
+    // must not take the frontend back, even when the page is too narrow to dock.
+    let nativeInspector = try #require(pages[0].webView.perform(NSSelectorFromString("_inspector"))?.takeUnretainedValue() as? NSObject)
+    #expect(nativeInspector.responds(to: NSSelectorFromString("show")))
+    nativeInspector.perform(NSSelectorFromString("show"))
+    try await wait { firstFrontend.superview === panel && firstFrontend.window === context.window }
+    #expect(pages[0].webView.frame.maxX == panel.frame.minX)
     let initialWidth = panel.frame.width
     try dragDivider(from: NSPoint(x: 2, y: panel.bounds.midY), by: NSPoint(x: -30, y: 0))
     #expect(panel.frame.width == initialWidth + 30)
-    #expect(await contents(pages[0].webView).contains("BEND_CONSOLE_0"))
+    _ = try await firstFrontend.evaluateJavaScript("WI.showConsoleTab(); void 0")
+    try await wait { await contents(pages[0].webView).contains("BEND_CONSOLE_0") }
     firstHost.frame.size = NSSize(width: 340, height: 400)
     firstHost.layoutSubtreeIfNeeded()
     #expect(pages[0].webView.frame.width >= 100)

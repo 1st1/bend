@@ -45,6 +45,12 @@ The smoke test waits for background errors, invokes the toolbar action, and veri
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) checks document-start action capture, controls, title/artist extraction, metadata mutation, handler removal, native validation, command timeout, and stale-command rejection after navigation.
 
+## Media playback progress
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) verifies Media Session timing, native interpolation, pause freezing, seek-handler arguments, clearing position state, and rejection of invalid durations and seek targets.
+
+HTML fallback fixtures also verify duration and seeking for attached and detached audio. The optional sidebar snapshots include a seekable progress bar at narrow and regular sidebar widths.
+
 ## Media frame routing and lifecycle
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) targets an opaque-origin embedded player while another WebView shares its content controller, verifying frame and pane isolation, removal cleanup, and process-termination invalidation.
@@ -81,7 +87,7 @@ The mounted icon must stay 16×16 points after loading and across narrow, defaul
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) optionally loads `BEND_MEDIA_SMOKE_URL` in an ephemeral WebKit store, attempts muted playback, matches the sidebar title to Media Session metadata, and tests pause/resume with default playback policy.
 
-This opt-in check uses no saved sign-in and depends on the site's availability, consent flow, and playback policies. Local fixtures cover the deterministic bridge behavior. `BEND_MEDIA_SNAPSHOT` optionally renders the card with multiple players, a long title, and favicon at narrow, default, and wide sidebar widths, plus the full browser window, during the ownership fixture to inspect picker centering, truncation, glass chrome, and pane spacing.
+This opt-in check uses no saved sign-in and depends on the site's availability, consent flow, and playback policies. Local fixtures cover the deterministic bridge behavior. `BEND_MEDIA_SNAPSHOT` optionally renders the card with multiple players, a long title, and favicon at narrow, default, and wide sidebar widths, plus the full browser window, during the ownership fixture to inspect centered metadata, the compact favicon picker beside transport controls (with a separate row at minimum width), truncation, glass chrome, and pane spacing.
 
 ## Build bundle publication
 
@@ -649,4 +655,4 @@ Pointer movement within one link switches the preview to the right and back with
 
 [DeveloperToolsTests.swift](../Tests/BrowseTests/DeveloperToolsTests.swift) opens the native inspector through the Develop menu shortcut and checks that console errors, thrown errors, and unhandled rejections from the selected pane reach its console.
 
-Two mounted pages verify source isolation and focused-pane routing. Command-Shift-I toggles the inspector below its page in the same pane. The native toolbar switches between right and bottom docking without losing console messages, and its close button removes the panel. Mouse drags resize both dock positions without moving the browser window. Reopening and find-bar coexistence preserve separate page/inspector bounds, including narrow panes. The inspector control bridge is absent from the inspected website. Left docking and detaching stay hidden; closure removes the frontend, and commands disable on native Bend pages. `BEND_INSPECTOR_SNAPSHOT` optionally captures the containing browser window. Run this AppKit test without parallel execution because it owns the shared application menu.
+Two mounted pages verify source isolation and focused-pane routing. Command-Shift-I toggles the inspector below its page in the same pane. The native toolbar switches between right and bottom docking without losing console messages, and its close button removes the panel. Inspecting a real DOM element before docking, plus a repeated native reveal in a narrow page, must keep the frontend in its original panel and window with no empty dock region. Mouse drags resize both dock positions without moving the browser window. Reopening and find-bar coexistence preserve separate page/inspector bounds, including narrow panes. The inspector control bridge is absent from the inspected website. Left docking and detaching stay hidden; closure removes the frontend, and commands disable on native Bend pages. `BEND_INSPECTOR_SNAPSHOT` optionally captures the containing browser window. Run this AppKit test without parallel execution because it owns the shared application menu.
