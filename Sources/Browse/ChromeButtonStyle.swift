@@ -8,15 +8,17 @@ struct ChromeButtonStyle: ButtonStyle {
     static let highlightBackground = Color.primary.opacity(0.06)
     var prominent = false
     var pill = false
+    var colorOnHover = false
 
     func makeBody(configuration: Configuration) -> some View {
-        ChromeButton(configuration: configuration, prominent: prominent, pill: pill)
+        ChromeButton(configuration: configuration, prominent: prominent, pill: pill, colorOnHover: colorOnHover)
     }
 
     private struct ChromeButton: View {
         let configuration: Configuration
         let prominent: Bool
         let pill: Bool
+        let colorOnHover: Bool
         @ButtonState<Bool> private var hovered = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -36,6 +38,7 @@ struct ChromeButtonStyle: ButtonStyle {
                 .imageScale(.medium)
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(iconStyle)
+                .saturation(colorOnHover && !highlighted ? 0 : 1)
                 .padding(.horizontal, pill ? 6 : 0)
                 .frame(width: pill ? nil : (prominent ? 28 : 24), height: prominent ? 28 : 24)
                 .background {

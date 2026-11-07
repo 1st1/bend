@@ -287,6 +287,8 @@ The native preview layer is observed during continuous movement and edge changes
 
 Header hit testing reaches the compact title handles, which drive hover feedback and pane dragging. Mouse-down focuses the pane; small motion does not move the window or begin a drag, and mouse-up clears tracking. Empty header and sidebar backgrounds request native window dragging. Tab rows, toolbar controls, sidebar resize handles, and traffic lights are excluded; native clicks still activate the sidebar new-tab and toggle buttons.
 
+Every background window-drag request must originate inside AppKit's normal event dispatch, so activating clicks cannot skip native window appearance bookkeeping. Outside mouse-down dispatch the background targets do not claim hit testing, preserving underlying scroll and hover behavior.
+
 ## Input logging preference
 
 [InputDiagnosticsTests.swift](../Tests/BrowseTests/InputDiagnosticsTests.swift) verifies logging defaults off, enabling records both streams, the preference survives recreation, and disabling preserves files without appending events.
@@ -636,6 +638,10 @@ Multiple URLs preserve order, query strings, and fragments. Unsupported schemes 
 [BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) enters and exits native fullscreen, verifying toolbar auto-hiding, unobstructed title hit testing, sidebar toggles, restored windowed geometry, and retained document state.
 
 Run with `BEND_FULLSCREEN_TEST=1` because the test activates a temporary app window and changes macOS Spaces. It checks full-height content layout, a compact rollover titlebar no taller than 32 points with vertically centered traffic lights, removal of traffic-light reservation in fullscreen, dismissal of an old address popup, and preservation of unsaved form data through exit. The original toolbar visibility and window-control position must return on exit.
+
+## Page fullscreen availability
+
+[ElementFullscreenTests.swift](../Tests/BrowseTests/ElementFullscreenTests.swift) loads a browser page and verifies the document reports fullscreen enabled and exposes the video request API without entering fullscreen automatically.
 
 ## External application consent
 

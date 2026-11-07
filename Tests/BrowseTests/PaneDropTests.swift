@@ -6,7 +6,17 @@ import BrowseCore
 
 @MainActor private final class ChromeDragTestWindow: BrowseWindow {
     var windowDragRequests = 0
-    override func performDrag(with event: NSEvent) { windowDragRequests += 1 }
+    var forwardingToAppKit = false
+    var nativeDragRequests = 0
+    override func forwardToAppKit(_ event: NSEvent) {
+        forwardingToAppKit = true
+        defer { forwardingToAppKit = false }
+        super.forwardToAppKit(event)
+    }
+    override func performDrag(with event: NSEvent) {
+        windowDragRequests += 1
+        if forwardingToAppKit { nativeDragRequests += 1 }
+    }
 }
 
 // @lat: [[tests#Pane header mouse routing]]
@@ -73,9 +83,14 @@ import BrowseCore
     for area in backgrounds {
         let point = area.convert(NSPoint(x: area.bounds.midX, y: area.bounds.midY), to: nil)
         #expect(WindowDragAreaView.find(at: point, in: window) === area)
+        let frameView = try #require(window.contentView?.superview)
+        // Outside native mouse-down dispatch, the overlay must not claim
+        // hit testing (notably scrolling in empty sidebar space).
+        #expect(frameView.hitTest(frameView.convert(point, from: nil)) !== area)
         let before = window.windowDragRequests
         try sendPaneMouse(.leftMouseDown, at: point, to: window)
         #expect(window.windowDragRequests == before + 1)
+        #expect(window.nativeDragRequests == window.windowDragRequests)
         #expect(!window.capturesPaneGesture)
         try sendPaneMouse(.leftMouseUp, at: point, to: window)
     }

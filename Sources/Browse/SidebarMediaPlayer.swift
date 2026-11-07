@@ -110,7 +110,7 @@ struct SidebarMediaPlayer: View {
                 .frame(height: 24)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(ChromeButtonStyle(pill: true))
+            .buttonStyle(ChromeButtonStyle(pill: true, colorOnHover: true))
             .background(MediaSourceMenuAnchor(menu: sourceMenu))
             .fixedSize()
             .help("Switch player (\(coordinator.sources.count) players)")
@@ -153,12 +153,14 @@ private struct SidebarMediaProgress: View {
                         }
                     }
                     .frame(height: 16)
+                    .offset(y: -4)
                     .accessibilityLabel("Playback position")
                     .accessibilityValue("\(time(position)) of \(time(timeline.duration))")
                     .help("Seek")
                 } else {
                     MediaProgressSlider(value: .constant(position), duration: timeline?.duration ?? 1, seekable: false) { _ in }
                         .frame(height: 16)
+                        .offset(y: -4)
                         .accessibilityLabel("Playback progress")
                         .accessibilityValue(timeline.map { "\(time(position)) of \(time($0.duration))" } ?? "Timing unavailable")
                 }
@@ -169,6 +171,7 @@ private struct SidebarMediaProgress: View {
                 }
                 .font(.system(size: 9).monospacedDigit())
                 .foregroundStyle(.secondary)
+                .padding(.top, -7)
             }
         }
         .onChange(of: source.state.title) { _, _ in scrubPosition = nil }

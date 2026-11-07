@@ -17,7 +17,28 @@ struct WindowDragArea: NSViewRepresentable {
 final class WindowDragAreaView: NSView {
     var excluded = false
     var onPress: (() -> Void)?
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // The sidebar overlay only claims presses. Scroll, hover, and other
+        // events must hit the underlying SwiftUI scroll view and controls.
+        guard !excluded, let window = window as? BrowseWindow,
+              window.dispatchingNativeMouseDown else { return nil }
+        let local = convert(point, from: superview)
+        guard bounds.intersection(visibleRect).contains(local),
+              Self.find(at: convert(local, to: nil), in: window) === self else { return nil }
+        return self
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        // NSWindow.sendEvent must process the activating click before we start
+        // dragging. Calling performDrag directly from our window's sendEvent
+        // override skips AppKit's native activation/appearance bookkeeping.
+        guard let window else { return }
+        onPress?()
+        window.performDrag(with: event)
+    }
 
     static func find(at point: NSPoint, in window: NSWindow) -> WindowDragAreaView? {
         guard let content = window.contentView else { return nil }

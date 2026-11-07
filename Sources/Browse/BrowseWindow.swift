@@ -4,6 +4,7 @@ import AppKit
 @MainActor
 class BrowseWindow: NSWindow {
     weak var browserStore: BrowserStore?
+    private(set) var dispatchingNativeMouseDown = false
     private enum PaneGesture {
         case idle
         case tracking(PaneDragSourceView)
@@ -39,12 +40,6 @@ class BrowseWindow: NSWindow {
                 InputDiagnostics.record(.paneConsumed, event: event, view: source)
                 return
             }
-            if let area = WindowDragAreaView.find(at: event.locationInWindow, in: self) {
-                if !isKeyWindow { makeKeyAndOrderFront(nil) }
-                area.onPress?()
-                performDrag(with: event)
-                return
-            }
         case .leftMouseDragged:
             if capturesPaneGesture {
                 InputDiagnostics.record(.paneConsumed, event: event, view: activePaneDrag)
@@ -74,7 +69,12 @@ class BrowseWindow: NSWindow {
     // replacing its source cannot leave an obsolete native mouse target behind.
     func forwardToAppKit(_ event: NSEvent) {
         InputDiagnostics.record(.appKit, event: event)
-        defer { InputDiagnostics.record(.appKitReturned, event: event) }
+        let previous = dispatchingNativeMouseDown
+        dispatchingNativeMouseDown = event.type == .leftMouseDown
+        defer {
+            dispatchingNativeMouseDown = previous
+            InputDiagnostics.record(.appKitReturned, event: event)
+        }
         super.sendEvent(event)
     }
 

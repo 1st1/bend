@@ -73,7 +73,7 @@ struct BrowserView: View {
                     .font(.system(size: 10)).foregroundStyle(.orange).padding(20)
             }
         }
-        .background(WindowDragArea())
+        .overlay(WindowDragArea())
         .background(PaneSidebarTarget(store: store, destination: .workspace(
             store.session.workspaces.first(where: { $0.tabs.contains { $0.id == store.session.selectedTab } })!.id)))
         .background {

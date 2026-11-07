@@ -817,6 +817,8 @@ class FocusWebView: WKWebView {
     }
 
     override init(frame: NSRect, configuration: WKWebViewConfiguration) {
+        // WebKit defaults this off, including for video players' fullscreen controls.
+        configuration.preferences.isElementFullscreenEnabled = true
         LinkHoverObserver.install(in: configuration.userContentController)
         MediaSessionBridge.install(in: configuration.userContentController)
         super.init(frame: frame, configuration: configuration)
