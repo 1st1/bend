@@ -135,6 +135,29 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
         if #available(macOS 15.4, *) { store.extensions.controller.didFocusWindow(nil) }
     }
+    // @lat: [[architecture#Fullscreen chrome]]
+    func window(_ window: NSWindow, willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions) -> NSApplication.PresentationOptions {
+        proposedOptions.union(.autoHideToolbar)
+    }
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        addressPanel.dismiss(restoreFocus: false)
+        // The empty unified toolbar is only for windowed traffic-light alignment.
+        // Hide its row so fullscreen rollover uses AppKit's compact titlebar.
+        window.toolbar?.isVisible = false
+    }
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        store.isFullScreen = true
+    }
+    func windowWillExitFullScreen(_ notification: Notification) {
+        addressPanel.dismiss(restoreFocus: false)
+    }
+    func windowDidExitFullScreen(_ notification: Notification) {
+        window.toolbar?.isVisible = true
+        store.isFullScreen = false
+    }
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) {
+        window.toolbar?.isVisible = true
+    }
     func windowWillClose(_ notification: Notification) {
         addressPanel.dismiss(restoreFocus: false)
         if #available(macOS 15.4, *) { store.extensions.detachWindow(window) }

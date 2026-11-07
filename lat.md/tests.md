@@ -524,3 +524,9 @@ Invalid drops leave both windows open. The surviving window retains unsaved form
 ## Window control alignment
 
 [BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) compares actual native traffic-light frames with pane-title centers, verifying alignment and unchanged button geometry across repeated sidebar toggles and window resizing.
+
+## Fullscreen chrome transitions
+
+[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) enters and exits native fullscreen, verifying toolbar auto-hiding, unobstructed title hit testing, sidebar toggles, restored windowed geometry, and retained document state.
+
+Run with `BEND_FULLSCREEN_TEST=1` because the test activates a temporary app window and changes macOS Spaces. It checks full-height content layout, a compact rollover titlebar no taller than 32 points with vertically centered traffic lights, removal of traffic-light reservation in fullscreen, dismissal of an old address popup, and preservation of unsaved form data through exit. The original toolbar visibility and window-control position must return on exit.

@@ -391,3 +391,96 @@ import BrowseCore
         }
     }
 }
+
+// @lat: [[tests#Fullscreen chrome transitions]]
+@Test(.enabled(if: ProcessInfo.processInfo.environment["BEND_FULLSCREEN_TEST"] == "1"))
+@MainActor func fullscreenChromeTransitions() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFullscreen-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    let context = try #require(owner.active)
+    let originalPolicy = NSApp.activationPolicy()
+    NSApp.setActivationPolicy(.regular)
+    NSApp.activate(ignoringOtherApps: true)
+    context.window.makeKeyAndOrderFront(nil)
+    defer { owner.prepareToQuit(); context.window.close(); NSApp.setActivationPolicy(originalPolicy) }
+    let page = context.store.selectedTab.pages[0]
+    let controller = context.store.controller(for: page)
+    let web = controller.webView
+    controller.isStartPage = false
+    web.loadHTMLString("<input value='draft'><script>window.token='retained'</script>", baseURL: nil)
+    for _ in 0..<50 {
+        if (try? await web.evaluateJavaScript("window.token")) as? String == "retained" { break }
+        try await Task.sleep(for: .milliseconds(100))
+    }
+    func settle() async throws {
+        for _ in 0..<5 {
+            context.window.contentView?.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+        }
+    }
+    func titleHandle(in view: NSView) -> PaneDragSourceView? {
+        if let handle = view as? PaneDragSourceView, handle.pageID == page.id, handle.onHover != nil { return handle }
+        return view.subviews.lazy.compactMap { titleHandle(in: $0) }.first
+    }
+    func titleFrame() throws -> NSRect {
+        let header = try #require(titleHandle(in: context.window.contentView!))
+        let frame = header.convert(header.bounds, to: nil)
+        let root = try #require(context.window.contentView?.superview)
+        #expect(root.hitTest(root.convert(NSPoint(x: frame.midX, y: frame.midY), from: nil)) === header)
+        return frame
+    }
+    context.store.sidebarVisible = false
+    try await settle()
+    let originalTitle = try titleFrame()
+    let toolbar = context.window.toolbar
+    let closeButton = try #require(context.window.standardWindowButton(.closeButton))
+    let originalButtonSize = closeButton.frame.size
+    let originalButtonTop = context.window.frame.height - closeButton.convert(closeButton.bounds, to: nil).midY
+    context.store.requestAddress()
+    context.window.toggleFullScreen(nil)
+    for _ in 0..<100 {
+        try await Task.sleep(for: .milliseconds(100))
+        if context.store.isFullScreen { break }
+    }
+    try #require(context.store.isFullScreen)
+    try await settle()
+    #expect(NSApp.presentationOptions.contains(.autoHideToolbar))
+    // AppKit hosts the rollover titlebar in a separate window, even while hidden.
+    let titlebarWindow = try #require(closeButton.window)
+    #expect(titlebarWindow !== context.window)
+    #expect(titlebarWindow.frame.height <= 32)
+    // Hiding slides the native container; measure alignment inside that container.
+    let buttonContainer = try #require(closeButton.superview)
+    #expect(abs(closeButton.frame.midY - buttonContainer.bounds.midY) <= 0.5)
+    #expect(context.window.toolbar?.isVisible == false)
+    #expect(context.window.contentLayoutRect.maxY == context.window.contentView!.convert(context.window.contentView!.bounds, to: nil).maxY)
+    #expect(context.window.childWindows?.contains { context.addressPanel.owns($0) && $0.isVisible } != true)
+    // Hidden window controls leave no dead space in the pane title row.
+    #expect(try titleFrame().minX < originalTitle.minX)
+    context.store.sidebarVisible = true
+    try await settle()
+    _ = try titleFrame()
+    context.store.sidebarVisible = false
+    try await settle()
+    #expect(try titleFrame().minX < originalTitle.minX)
+    #expect(context.store.existingController(for: page.id) === controller)
+    #expect(try await web.evaluateJavaScript("window.token") as? String == "retained")
+    context.window.toggleFullScreen(nil)
+    for _ in 0..<100 {
+        try await Task.sleep(for: .milliseconds(100))
+        if !context.store.isFullScreen { break }
+    }
+    try #require(!context.store.isFullScreen)
+    try await settle()
+    #expect(!context.window.styleMask.contains(.fullScreen))
+    #expect(context.window.toolbar === toolbar)
+    #expect(context.window.toolbar?.isVisible == true)
+    #expect(closeButton.frame.size == originalButtonSize)
+    #expect(abs(context.window.frame.height - closeButton.convert(closeButton.bounds, to: nil).midY - originalButtonTop) <= 0.5)
+    #expect(abs(try titleFrame().minX - originalTitle.minX) <= 0.5)
+    #expect(context.store.existingController(for: page.id)?.webView === web)
+    #expect(try await web.evaluateJavaScript("document.querySelector('input').value") as? String == "draft")
+}

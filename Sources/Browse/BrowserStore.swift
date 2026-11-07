@@ -7,6 +7,7 @@ import BrowseCore
 final class BrowserStore: ObservableObject {
     @Published var session: BrowserSession
     @Published var sidebarVisible = true
+    @Published var isFullScreen = false
     @Published var zoomedPane: UUID?
     @Published private(set) var paneMoveRevision = 0
     var onAddressRequested: ((UUID) -> Void)?

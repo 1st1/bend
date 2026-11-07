@@ -50,6 +50,12 @@ Each pane has one compact title row with extensions, reload/stop, split, zoom, a
 
 [BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) attaches an empty unified native toolbar to give the traffic lights standard toolbar-height spacing. AppKit manages their placement through resizing and full-screen transitions; their native size and position do not change when the sidebar toggles. Sidebar controls and pane titles share the traffic lights’ fixed vertical centerline, accounting for the pane’s outer margin. The transparent titlebar has no separator or shared toolbar actions. [[tests#Window control alignment]] covers sidebar toggles and window resizing.
 
+## Fullscreen chrome
+
+[BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) auto-hides the empty native toolbar in fullscreen so it cannot permanently cover the browser’s pane headers and sidebar controls.
+
+The empty unified toolbar is hidden before fullscreen entry, leaving AppKit's compact native titlebar for top-edge rollover instead of a tall empty toolbar row. The same toolbar becomes visible again after exit or failed entry, preserving windowed traffic-light alignment. Completed transition notifications update a transient per-window fullscreen state. [BrowserView.swift](../Sources/Browse/BrowserView.swift) then removes the collapsed sidebar’s traffic-light spacer and the narrow sidebar’s extra window-control row, while retaining its sidebar toggle and pane actions. Location popups dismiss before either transition so their anchors cannot remain at obsolete window coordinates. No page or WebView is replaced. [[tests#Fullscreen chrome transitions]] covers real fullscreen entry and exit.
+
 ## Browser windows
 
 [BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) owns independent native browser windows. File → New Window and Command-N create a blank tab in a new window with its address popup focused.

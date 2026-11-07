@@ -51,7 +51,7 @@ struct BrowserView: View {
                 iconButton("plus", "New tab · ⌘T", prominent: true) { store.newTab() }
                 iconButton("sidebar.left", "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
             }.padding(.horizontal, 15).frame(height: 2 * Chrome.headerCenterY)
-                .padding(.top, store.sidebarWidth < 180 ? 33 : 0)
+                .padding(.top, store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
                 .zIndex(1)
 
             ScrollView {
@@ -395,7 +395,7 @@ private struct BrowserPane: View {
     private var header: some View {
         HStack(spacing: 9) {
             if hostsWindowControls {
-                Color.clear.frame(width: 66)
+                if !store.isFullScreen { Color.clear.frame(width: 66) }
                 iconButton("sidebar.left", "Show sidebar · ⌘⇧S") { store.sidebarVisible = true }
             }
             HStack(spacing: 0) {
