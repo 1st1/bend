@@ -7,6 +7,10 @@ import BrowseCore
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
 private enum Chrome {
+    // Match the fixed centerline of the native unified-toolbar traffic lights.
+    static let headerCenterY: CGFloat = 26
+    static let paneInset: CGFloat = 6
+    static let paneHeaderHeight = 2 * (headerCenterY - paneInset)
     static let accent = Color(red: 0.66, green: 0.81, blue: 0.73)
     static let muted = Color.white.opacity(0.42)
 }
@@ -24,7 +28,7 @@ struct BrowserView: View {
                     .zIndex(1)
             }
             MountedTabContent(store: store)
-            .padding(6)
+            .padding(Chrome.paneInset)
             .background {
                 if #unavailable(macOS 26.0) {
                     WindowMaterial(material: .underWindowBackground).allowsHitTesting(false)
@@ -46,7 +50,7 @@ struct BrowserView: View {
                 Spacer()
                 iconButton("plus", "New tab · ⌘T", prominent: true) { store.newTab() }
                 iconButton("sidebar.left", "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
-            }.padding(.horizontal, 15).frame(height: 47)
+            }.padding(.horizontal, 15).frame(height: 2 * Chrome.headerCenterY)
                 .padding(.top, store.sidebarWidth < 180 ? 33 : 0)
                 .zIndex(1)
 
@@ -325,7 +329,7 @@ private struct BrowserPane: View {
     @ObservedObject var controller: PageController
     let tab: BrowserTab
     let pageID: UUID
-    @ViewState<CGFloat> private var headerHeight: CGFloat = 36
+    @ViewState<CGFloat> private var headerHeight: CGFloat = Chrome.paneHeaderHeight
     @ViewState<Bool> private var titleHovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
@@ -431,7 +435,7 @@ private struct BrowserPane: View {
                 iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
                 iconButton("xmark", "Close pane · ⌘W") { store.closePane(pageID) }
             }
-        }.padding(.horizontal, 12).frame(height: 36)
+        }.padding(.horizontal, 12).frame(height: Chrome.paneHeaderHeight)
         .background {
             store.paneHighlight.titleTintColor.color
                 .opacity(!usesSharedHeader && focused && store.paneHighlight.style == .titleTint ? store.paneHighlight.titleTintIntensity : 0)

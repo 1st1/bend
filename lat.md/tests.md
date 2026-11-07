@@ -520,3 +520,7 @@ The pressed window receives pointer coordinates even over another window. Pane a
 [CrossWindowDragTests.swift](../Tests/BrowseTests/CrossWindowDragTests.swift) verifies moving the final tab or pane closes only the source window, preserves the live destination document and extension adapter, and removes the source from restoration.
 
 Invalid drops leave both windows open. The surviving window retains unsaved form contents, no closed-history entry is created by the transfer, and reopening restores only the destination window and its transferred page.
+
+## Window control alignment
+
+[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) compares actual native traffic-light frames with pane-title centers, verifying alignment and unchanged button geometry across repeated sidebar toggles and window resizing.

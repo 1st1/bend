@@ -48,7 +48,7 @@ The sidebar header places a new-tab button beside a right-aligned sidebar toggle
 
 Each pane has one compact title row with extensions, reload/stop, split, zoom, and close controls, using shared [[architecture#Toolbar button styling]]. Reload focuses its pane and becomes stop while loading; it is disabled on start pages. The persistent address row is replaced by the [[architecture#Location popup]]. Back/forward remain available through the View menu and shortcuts; tab creation remains in the sidebar and File menu.
 
-[BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) attaches an empty unified native toolbar to give the traffic lights standard toolbar-height spacing. AppKit manages their placement through resizing and full-screen transitions; the transparent titlebar has no separator or shared toolbar actions.
+[BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) attaches an empty unified native toolbar to give the traffic lights standard toolbar-height spacing. AppKit manages their placement through resizing and full-screen transitions; their native size and position do not change when the sidebar toggles. Sidebar controls and pane titles share the traffic lights’ fixed vertical centerline, accounting for the pane’s outer margin. The transparent titlebar has no separator or shared toolbar actions. [[tests#Window control alignment]] covers sidebar toggles and window resizing.
 
 ## Browser windows
 

@@ -346,3 +346,48 @@ import BrowseCore
     delegate.closeFocusedWindow(nil)
     #expect(try encoder.encode(owner.sharedStore.session) == snapshot)
 }
+
+// @lat: [[tests#Window control alignment]]
+@Test @MainActor func windowControlAlignment() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendChromeAlignment-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    let context = try #require(owner.active)
+    defer { owner.prepareToQuit(); context.window.close() }
+    context.window.makeKeyAndOrderFront(nil)
+    context.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+    func descendants<T: NSView>(_ type: T.Type, _ view: NSView) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(type, $0) }
+    }
+    var originalButtons: [NSRect]?
+    for width: CGFloat in [1400, 900] {
+        context.window.setContentSize(NSSize(width: width, height: 850))
+        for sidebar in [true, false, true] {
+            context.store.sidebarVisible = sidebar
+            for _ in 0..<6 {
+                context.window.contentView?.layoutSubtreeIfNeeded()
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            let buttons = try [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].map { type in
+                let button = try #require(context.window.standardWindowButton(type))
+                let frame = button.convert(button.bounds, to: nil)
+                return NSRect(x: frame.minX, y: context.window.frame.height - frame.maxY,
+                              width: frame.width, height: frame.height)
+            }
+            if let originalButtons { #expect(buttons == originalButtons) }
+            else { originalButtons = buttons }
+            let headers = descendants(PaneDragSourceView.self, context.window.contentView!).filter {
+                $0.onHover != nil && !$0.isHiddenOrHasHiddenAncestor
+            }
+            #expect(headers.count == 2)
+            for header in headers {
+                let frame = header.convert(header.bounds, to: nil)
+                let centerFromTop = context.window.frame.height - frame.midY
+                #expect(abs(centerFromTop - buttons[0].midY) <= 0.5)
+            }
+
+        }
+    }
+}
