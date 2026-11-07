@@ -137,11 +137,35 @@ Storage retention runs in a unique persistent WebKit configuration, separate fro
 
 ## Favicon fallback and cancellation
 
-[FaviconTests.swift](../Tests/BrowseTests/FaviconTests.swift) verifies that invalid image data falls through to the next candidate and cancellation discards a successful response before it can update the pane.
+[faviconFallback](../Tests/BrowseTests/FaviconTests.swift) verifies invalid images fall through to a valid WebKit-rasterized icon and cancellation discards a delayed valid response before it can update the pane.
+
+## Favicon request security
+
+[faviconRequestSecurity](../Tests/BrowseTests/FaviconTests.swift) verifies icon loading respects image CSP, rejects redirects outside that policy, requires cross-origin CORS permission, and resists page overrides of image and canvas functions.
+
+Local HTTP fixtures record requests so the test distinguishes blocked network access from a failed decode. CSP denial covers both declared icons and the origin fallback, including a second loopback server. Allowed images still produce a native icon.
+
+## JavaScript dialog origin and responses
+
+[javaScriptDialogOriginAndResponses](../Tests/BrowseTests/JavaScriptDialogTests.swift) verifies all dialog kinds use a real subframe's origin, preserve alert/confirm/prompt completion semantics, and label local or opaque origins safely.
+
+## JavaScript dialog admission and rate limits
+
+[javaScriptDialogAdmissionAndLimits](../Tests/BrowseTests/JavaScriptDialogTests.swift) rejects hidden and background-window callers, coalesces pending requests, isolates windows, and verifies rolling limits survive navigation while user suppression resets on commit.
+
+## JavaScript dialog lifecycle cancellation
+
+[javaScriptDialogLifecycleCancellation](../Tests/BrowseTests/JavaScriptDialogTests.swift) verifies navigation, ancestor hiding, detachment, process termination, and window closure cancel prompts exactly once, even if a stale sheet callback later reports acceptance.
+
+## JavaScript native sheets
+
+[javaScriptNativeSheets](../Tests/BrowseTests/JavaScriptDialogTests.swift) verifies a real AppKit prompt attaches to its browser window, returns entered text, and leaves the application outside an application-modal event loop.
 
 ## Favicon navigation reset
 
-[FaviconTests.swift](../Tests/BrowseTests/FaviconTests.swift) verifies that a provisional navigation or opening an internal page clears the previous site's favicon.
+[FaviconTests.swift](../Tests/BrowseTests/FaviconTests.swift) verifies same-origin links, reloads, and address entry preserve the icon without a placeholder, while redirects to another origin and internal pages clear it.
+
+A delayed local HTTP response checks that the icon stays visible during loading and is replaced after a successful refresh. CSP-blocked refreshes retain the last same-origin icon; late results cannot restore it after leaving the origin. Origin comparison includes scheme, hostname, and effective port.
 
 ## Link pane placement
 

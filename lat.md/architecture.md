@@ -166,13 +166,35 @@ Selecting a visited tab does not load or reload its pages. Its [[architecture#Mo
 
 Website configurations append Safari-compatible product tokens and a Bend identifier to WebKit’s default user agent before navigation, including when leaving extension pages. The Safari version comes from the installed app’s bundle metadata, with a macOS 14-era fallback; this prevents sites such as Google from serving legacy fixed-width layouts. This does not read Safari preferences or share its session.
 
-All panes share the app’s default persistent WebKit website data store, separate from Safari. Navigation updates the stored address and first-pane tab title. Command-clicking an HTTP or HTTPS link opens and focuses a new pane to the right of its source by default, or a new tab when selected in [[architecture#UI preferences]], leaving the source page unchanged and exiting pane zoom. This also applies to links targeting a new window; other new-window web links create tabs. Errors offer retry, and page JavaScript alert, confirm, and text-input dialogs use AppKit.
+All panes share the app’s default persistent WebKit website data store, separate from Safari. Navigation updates the stored address and first-pane tab title. Command-clicking an HTTP or HTTPS link opens and focuses a new pane to the right of its source by default, or a new tab when selected in [[architecture#UI preferences]], leaving the source page unchanged and exiting pane zoom. This also applies to links targeting a new window; other new-window web links create tabs. Errors offer retry, and page JavaScript alert, confirm, and text-input dialogs use the origin-labeled [[architecture#JavaScript dialogs|sheet coordinator]].
 
 Command-click routing uses WebKit's navigation-action modifiers and left-button mask in both navigation policy and new-window callbacks. It cancels source navigation when opening the destination; plain clicks and non-link navigation retain their normal behavior.
 
-Pane headers display full-color site favicons discovered from the completed document's icon links, then touch icons, then the origin's `/favicon.ico`. [FaviconLoader.swift](../Sources/Browse/FaviconLoader.swift) resolves and deduplicates candidates, bounds downloads, and uses an ephemeral cookie-free session with an in-memory HTTP cache. Missing or invalid icons use a site initial; internal pages retain their app symbols. Navigation clears the old icon and cancels pending work so stale results cannot replace the next page's icon.
+Pane headers display [[architecture#Page favicons|site favicons]] or a site initial when no usable icon is available. Internal pages retain their app symbols. Same-origin navigation keeps the last successful icon while refreshing it; leaving the origin clears it. Pending work is cancelled so stale results cannot replace the next page's icon.
 
 Custom URL schemes use the confirmed [[architecture#External application links|external-app handoff]]. Downloads, website media permissions, native Safari App Extensions, and Safari session sharing are outside the implemented prototype. Safari Web Extensions use the separate [[architecture#Web extensions|Bend extension host]].
+
+## Page favicons
+
+[FaviconLoader](../Sources/Browse/FaviconLoader.swift) loads icons inside the originating WebKit document so favicon requests obey its security policy and only a small raster image reaches the native UI.
+
+[FaviconLoader.candidates](../Sources/Browse/FaviconLoader.swift) discovers standard icons before touch icons and appends the origin's favicon fallback. Candidate count and URL length are bounded. Internal and local documents do not request favicons.
+
+[FaviconLoader.imageScript](../Sources/Browse/FaviconLoader.swift) loads anonymous-CORS images in an isolated script world. The originating document's image CSP, mixed-content rules, redirect checks, and WebKit content blocking apply; there is no native networking fallback. Cross-origin icons without CORS permission fall back to another candidate or the site initial. Requests omit the referrer; normal WebKit image credential rules apply.
+
+[PageController](../Sources/Browse/BrowserStore.swift) associates the displayed icon with the page origin that produced it. Links, reloads, and address entry within the same HTTP(S) origin keep that icon while the new document loads and refreshes it. A failed or policy-blocked refresh keeps the last successful same-origin icon. Scheme, hostname, or effective port changes, including redirects, clear it; internal and local pages also clear it. Late results from cancelled or replaced documents cannot restore an old icon. [[tests#Favicon navigation reset]] covers continuity and origin changes.
+
+Each image attempt times out. Oversized image dimensions are rejected, and successful images are rasterized to a small PNG before leaving WebKit. [FaviconLoader.load](../Sources/Browse/FaviconLoader.swift) bounds that result and discards it on cancellation or URL changes. [[tests#Favicon request security]] verifies CSP, redirects, CORS, and isolation from page-owned JavaScript prototypes.
+
+## JavaScript dialogs
+
+[JavaScriptDialogs](../Sources/Browse/JavaScriptDialogs.swift) presents page-generated alerts, confirmations, and text prompts as native window sheets labeled with the initiating frame's security origin.
+
+[PageController](../Sources/Browse/BrowserStore.swift) forwards the originating WebKit frame rather than attributing subframe dialogs to the top-level page. Opaque origins receive an unknown-origin label; local files receive a local-file label. Page text and prompt defaults are bounded, and the native title always identifies JavaScript separately from untrusted message text.
+
+[JavaScriptDialogs.request](../Sources/Browse/JavaScriptDialogs.swift) admits only visible pages in a visible, non-minimized key window without another sheet. Requests are never queued. A window-wide rolling limit permits three dialogs per thirty seconds across all frames, panes, and navigations. A suppression checkbox blocks subsequent dialogs from that page until another navigation commits; navigation does not reset the window budget.
+
+Navigation, web-view replacement, content-process termination, hiding or detaching a page, and closing or minimizing its window cancel pending dialogs. Late sheet callbacks cannot complete a request twice. Accepted responses are rechecked against the original view, window visibility, and URL. Rejected confirmations return false and rejected prompts return null; alerts always complete. [[tests#JavaScript native sheets]] exercises a real AppKit sheet without an application-modal event loop.
 
 ## External application links
 

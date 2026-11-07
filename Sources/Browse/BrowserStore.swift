@@ -777,6 +777,12 @@ class FocusWebView: WKWebView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    var onDialogInvalidated: (() -> Void)?
+    override func viewDidHide() {
+        super.viewDidHide()
+        onDialogInvalidated?()
+    }
+
     var diagnosticPaneID: UUID?
     var onFocus: (() -> Void)?
     override func cancelOperation(_ sender: Any?) {
@@ -822,11 +828,13 @@ class FocusWebView: WKWebView {
     }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if window == nil { onDialogInvalidated?() }
         hoveredLink = ""
         InputDiagnostics.transition(.webAttachment, window == nil ? .detached : .attached, view: self)
     }
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
+        if superview == nil { onDialogInvalidated?() }
         hoveredLink = ""
         InputDiagnostics.transition(.webAttachment, superview == nil ? .detached : .attached, view: self, flags: ["superview": true])
     }
@@ -841,6 +849,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published var title = "New tab"
     @Published var favicon: NSImage?
     private var faviconTask: Task<Void, Never>?
+    private var faviconPageURL: URL?
     @Published var isLoading = false
     @Published var progress = 0.0
     @Published var canGoBack = false
@@ -864,6 +873,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var zoomURL: URL?
     private var localDocumentDirectory: URL?
     private let externalApplications: ExternalApplicationLinks
+    private let javaScriptDialogs: JavaScriptDialogs
 
     // WebKit's default user agent omits Safari's product tokens. Some sites
     // consequently serve a legacy, fixed-width page to an otherwise modern engine.
@@ -875,9 +885,10 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }()
 
     init(address: String, paneID: UUID? = nil, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil,
-         externalApplications: ExternalApplicationLinks = .shared, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
+         externalApplications: ExternalApplicationLinks = .shared, javaScriptDialogs: JavaScriptDialogs = .shared, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
         self.externalApplications = externalApplications
+        self.javaScriptDialogs = javaScriptDialogs
         self.websiteSettings = websiteSettings
         self.configure = configure
         let configuration = WKWebViewConfiguration()
@@ -914,6 +925,10 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         webView.allowsMagnification = true
         webView.isInspectable = true
         webView.onFocus = { [weak self] in self?.onFocus?() }
+        webView.onDialogInvalidated = { [weak self] in
+            guard let self else { return }
+            self.javaScriptDialogs.cancel(for: self.webView)
+        }
         observations = [
             webView.observe(\.estimatedProgress) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
             webView.observe(\.isLoading) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
@@ -924,6 +939,8 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     private func replaceWebView(configuration: WKWebViewConfiguration) {
         InputDiagnostics.transition(.webReplacement, .started, view: webView)
+        javaScriptDialogs.cancel(for: webView)
+        webView.onDialogInvalidated = nil
         observations.removeAll()
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
@@ -967,9 +984,10 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     private func load(_ url: URL) {
+        javaScriptDialogs.cancel(for: webView)
         webView.hoveredLink = ""
         InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "browse"])
-        resetFavicon()
+        resetFavicon(for: url)
         error = nil; address = url.absoluteString
         completedAddress = nil
         isStartPage = url.scheme == "browse"
@@ -989,7 +1007,10 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         isLoading = webView.isLoading; progress = webView.estimatedProgress
         canGoBack = webView.canGoBack; canGoForward = webView.canGoForward
         if !isStartPage {
-            if let url = webView.url { address = url.absoluteString }
+            if let url = webView.url {
+                discardFavicon(ifLeaving: url)
+                address = url.absoluteString
+            }
             title = webView.title?.isEmpty == false ? webView.title! : (webView.url?.host ?? "New tab")
             reportNavigation()
             if let completedAddress, !isLoading, error == nil {
@@ -1020,14 +1041,20 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        javaScriptDialogs.cancel(for: webView)
         (webView as? FocusWebView)?.hoveredLink = ""
         (webView.superview as? WebSurfaceHost)?.hideFindBar(restoreFocus: false)
         InputDiagnostics.transition(.webLoad, .started, view: webView)
-        resetFavicon()
+        resetFavicon(for: webView.url ?? URL(string: address))
         completedAddress = nil
         if !isStartPage { error = nil }
     }
+    func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
+        resetFavicon(for: webView.url)
+    }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        discardFavicon(ifLeaving: webView.url)
+        javaScriptDialogs.didCommitNavigation(in: webView)
         if webView.url?.isFileURL != true { localDocumentDirectory = nil }
         // The committed URL covers redirects, normal links, and back/forward.
         // Subframe navigation never changes the top-level website's preference.
@@ -1042,16 +1069,26 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         faviconTask = Task { [weak self] in
             let candidates = await FaviconLoader.candidates(in: webView, pageURL: url)
             guard !Task.isCancelled else { return }
-            let image = await FaviconLoader.load(candidates)
-            guard !Task.isCancelled else { return }
-            self?.favicon = image
+            let image = await FaviconLoader.load(candidates, in: webView)
+            guard !Task.isCancelled, let self, self.webView === webView,
+                  !self.isStartPage, webView.url == url, let image else { return }
+            self.faviconPageURL = url
+            self.favicon = image
         }
     }
 
-    private func resetFavicon() {
+    private func resetFavicon(for destination: URL?) {
         faviconTask?.cancel()
         faviconTask = nil
-        favicon = nil
+        discardFavicon(ifLeaving: destination)
+    }
+
+    private func discardFavicon(ifLeaving destination: URL?) {
+        // Keep the last successful icon through same-origin navigation and failed
+        // refreshes, but never let another origin inherit its visual identity.
+        guard !FaviconLoader.sameOrigin(faviconPageURL, destination) else { return }
+        faviconPageURL = nil
+        if favicon != nil { favicon = nil }
     }
 
     deinit { faviconTask?.cancel() }
@@ -1064,6 +1101,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         refresh()
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        javaScriptDialogs.cancel(for: webView)
         InputDiagnostics.transition(.webProcessExit, .finished, view: webView)
         error = "This page stopped responding. Reload to continue."
     }
@@ -1094,6 +1132,9 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         let originalHandler = decisionHandler
         let decisionHandler: (WKNavigationActionPolicy) -> Void = { policy in
             InputDiagnostics.transition(.navigationPolicy, policy == .allow ? .allowed : .denied, view: webView)
+            if policy == .allow, action.targetFrame?.isMainFrame == true {
+                self.resetFavicon(for: action.request.url)
+            }
             originalHandler(policy)
         }
         guard let url = action.request.url else { decisionHandler(.cancel); return }
@@ -1135,26 +1176,18 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor () -> Void) {
-        InputDiagnostics.transition(.javascriptDialog, .shown, view: webView)
-        defer { InputDiagnostics.transition(.javascriptDialog, .hidden, view: webView) }
-        let alert = NSAlert(); alert.messageText = webView.url?.host ?? "Web page"; alert.informativeText = message
-        alert.runModal(); completionHandler()
+        javaScriptDialogs.request(.init(kind: .alert, origin: JavaScriptDialogs.originLabel(frame.securityOrigin), message: message),
+                                  from: webView) { _ in completionHandler() }
     }
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void) {
-        InputDiagnostics.transition(.javascriptDialog, .shown, view: webView)
-        defer { InputDiagnostics.transition(.javascriptDialog, .hidden, view: webView) }
-        let alert = NSAlert(); alert.messageText = webView.url?.host ?? "Web page"; alert.informativeText = message
-        alert.addButton(withTitle: "OK"); alert.addButton(withTitle: "Cancel")
-        completionHandler(alert.runModal() == .alertFirstButtonReturn)
+        javaScriptDialogs.request(.init(kind: .confirm, origin: JavaScriptDialogs.originLabel(frame.securityOrigin), message: message),
+                                  from: webView) { completionHandler($0.accepted) }
     }
     func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (String?) -> Void) {
-        InputDiagnostics.transition(.javascriptDialog, .shown, view: webView)
-        defer { InputDiagnostics.transition(.javascriptDialog, .hidden, view: webView) }
-        let alert = NSAlert(); alert.messageText = prompt
-        let field = NSTextField(string: defaultText ?? ""); field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
-        alert.accessoryView = field; alert.addButton(withTitle: "OK"); alert.addButton(withTitle: "Cancel")
-        completionHandler(alert.runModal() == .alertFirstButtonReturn ? field.stringValue : nil)
+        javaScriptDialogs.request(.init(kind: .prompt, origin: JavaScriptDialogs.originLabel(frame.securityOrigin),
+                                       message: prompt, defaultText: defaultText ?? ""),
+                                  from: webView) { completionHandler($0.text) }
     }
 }
