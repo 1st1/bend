@@ -98,6 +98,14 @@ Native ownership revisions invalidate queued work after a newer start. Each fram
 
 Dragging measures pointer movement in window coordinates so resizing the sidebar cannot feed movement back into the gesture. [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) clamps and saves the width in the session; older sessions default to 236 points. Hiding the sidebar preserves its width, and resizing retains live pane controllers. At narrow widths, header buttons move below the window controls and pane-count labels disappear to leave room for tab titles.
 
+## Floating sidebar
+
+[FloatingSidebar.swift](../Sources/Browse/FloatingSidebar.swift) reveals the hidden sidebar at the left window edge without resizing the browser canvas or changing the pinned-sidebar preference.
+
+In the key window, moving within eight points of the left edge reveals a rounded panel using the saved sidebar width and window material. It sits below the traffic lights in windowed mode and near the top edge in fullscreen. The existing tab list supports selection, closing, and new tabs; its sidebar toggle pins it open. Hovering the panel or its small edge gap keeps it visible. Leaving for 180 ms dismisses it; reentry cancels dismissal. Window deactivation also dismisses it. Hover state is transient and independent per window.
+
+[BrowserView.swift](../Sources/Browse/BrowserView.swift) overlays the panel above the unchanged mounted canvas. [BrowseWindow.swift](../Sources/Browse/BrowseWindow.swift) routes panel presses directly to AppKit so underlying pane and window drag regions cannot capture them. [[tests#Floating sidebar interaction]] covers native hit testing, selection, hover lifetime, and preserved canvas geometry.
+
 ## Sidebar tab reordering
 
 [TabReordering.swift](../Sources/Browse/TabReordering.swift) uses native sidebar drags to reorder or join tabs, with distinct insertion-line and whole-row previews.

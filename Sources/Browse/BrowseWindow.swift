@@ -26,6 +26,11 @@ class BrowseWindow: NSWindow {
         case .leftMouseDown:
             cancelPaneDrag()
             paneGesture = .idle
+            // Floating chrome occludes native pane/window drag regions below it.
+            if FloatingSidebarTrackingView.covers(event.locationInWindow, in: self) {
+                forwardToAppKit(event)
+                return
+            }
             if let source = paneHandle(at: event.locationInWindow) {
                 InputDiagnostics.transition(.paneOwnership, .started, event: event, view: source)
                 if !isKeyWindow { makeKeyAndOrderFront(nil) }

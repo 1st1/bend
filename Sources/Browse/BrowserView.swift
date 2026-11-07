@@ -21,7 +21,7 @@ struct BrowserView: View {
     var body: some View {
         HStack(spacing: 0) {
             if store.sidebarVisible {
-                sidebar.frame(width: store.sidebarWidth)
+                sidebar(floating: false).frame(width: store.sidebarWidth)
                     .overlay(alignment: .trailing) {
                         SidebarResizeHandle(store: store).frame(width: 8)
                             .background(WindowDragArea(excluded: true)).offset(x: 4)
@@ -36,6 +36,20 @@ struct BrowserView: View {
                 }
             }
         }
+        .overlay(alignment: .topLeading) {
+            if !store.sidebarVisible && store.sidebarFloating {
+                sidebar(floating: true)
+                    .frame(width: store.sidebarWidth)
+                    .frame(maxHeight: .infinity)
+                    .background(PaneChromeBackground(cornerRadius: 14, appearance: store.windowGlass))
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .shadow(color: .black.opacity(0.35), radius: 14, x: 4, y: 4)
+                    .padding(.leading, FloatingSidebarTrackingView.inset)
+                    .padding(.top, FloatingSidebarTrackingView.topInset(fullScreen: store.isFullScreen))
+                    .padding(.bottom, FloatingSidebarTrackingView.inset)
+            }
+        }
+        .overlay { FloatingSidebarTracking(store: store).accessibilityHidden(true) }
         .background(PaneShadowPlane(store: store).allowsHitTesting(false).accessibilityHidden(true))
         .background {
             if #available(macOS 26.0, *) {
@@ -45,16 +59,16 @@ struct BrowserView: View {
         .preferredColorScheme(.dark)
     }
 
-    private var sidebar: some View {
+    private func sidebar(floating: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 2) {
                 Spacer()
                 iconButton("plus", "New tab · ⌘T", prominent: true) { store.newTab() }
                     .background(WindowDragArea(excluded: true))
-                iconButton("sidebar.left", "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
+                iconButton("sidebar.left", floating ? "Keep sidebar open · ⌘⇧S" : "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
                     .background(WindowDragArea(excluded: true))
             }.padding(.horizontal, 15).frame(height: 2 * Chrome.headerCenterY)
-                .padding(.top, store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
+                .padding(.top, !floating && store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
                 .zIndex(1)
 
             ScrollView {
@@ -78,7 +92,7 @@ struct BrowserView: View {
             store.session.workspaces.first(where: { $0.tabs.contains { $0.id == store.session.selectedTab } })!.id)))
         .background {
             if #unavailable(macOS 26.0) {
-                WindowMaterial(material: .sidebar).allowsHitTesting(false)
+                if !floating { WindowMaterial(material: .sidebar).allowsHitTesting(false) }
             }
         }
     }

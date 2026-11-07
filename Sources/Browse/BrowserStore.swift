@@ -7,7 +7,10 @@ import WebKitFindSupport
 @MainActor
 final class BrowserStore: ObservableObject {
     @Published var session: BrowserSession
-    @Published var sidebarVisible = true
+    @Published var sidebarVisible = true {
+        didSet { if sidebarVisible { sidebarFloating = false } }
+    }
+    @Published var sidebarFloating = false
     @Published var isFullScreen = false
     @Published var zoomedPane: UUID?
     let mediaCoordinator = WindowMediaCoordinator()
