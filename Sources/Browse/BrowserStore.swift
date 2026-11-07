@@ -9,6 +9,8 @@ final class BrowserStore: ObservableObject {
     @Published var sidebarVisible = true
     @Published var isFullScreen = false
     @Published var zoomedPane: UUID?
+    let mediaCoordinator = WindowMediaCoordinator()
+    let mediaPlaybackFocus: MediaPlaybackFocus
     @Published private(set) var paneMoveRevision = 0
     var onAddressRequested: ((UUID) -> Void)?
     var onSettingsRequested: (() -> Void)?
@@ -78,6 +80,7 @@ final class BrowserStore: ObservableObject {
 
     init(sessionFile: URL? = nil, persistentExtensions: Bool = true, extensionManager: AnyObject? = nil, sharedStore: BrowserStore? = nil) {
         self.sharedStore = sharedStore
+        mediaPlaybackFocus = sharedStore?.mediaPlaybackFocus ?? MediaPlaybackFocus()
         self.persistentExtensions = sharedStore?.persistentExtensions ?? persistentExtensions
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BrowsePrototype", isDirectory: true)
@@ -388,7 +391,7 @@ final class BrowserStore: ObservableObject {
             guard tab.pages.count > 1 else { return false }
         }
         pendingAddressEntry = nil
-        browsers.removeValue(forKey: paneID)?.webView.stopLoading()
+        removeController(paneID)
         switch pending.kind {
         case .tab(let previousTabID):
             session.workspaces[wi].tabs.remove(at: ti)
@@ -487,7 +490,7 @@ final class BrowserStore: ObservableObject {
         for wi in session.workspaces.indices {
             guard let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == id }) else { continue }
             let closed = snapshot(session.workspaces[wi].tabs[ti])
-            for page in session.workspaces[wi].tabs[ti].pages { browsers.removeValue(forKey: page.id)?.webView.stopLoading() }
+            for page in session.workspaces[wi].tabs[ti].pages { removeController(page.id) }
             session.workspaces[wi].tabs.remove(at: ti)
             let needsReplacement = session.workspaces[wi].tabs.isEmpty
             if needsReplacement { session.workspaces[wi].tabs.append(BrowserTab()) }
@@ -543,7 +546,7 @@ final class BrowserStore: ObservableObject {
                 let replacement = session.workspaces[wi].tabs[index]
                 if replacement.pages.count == 1, replacement.pages[0].address == "browse://start",
                    (browsers[replacement.pages[0].id]?.address ?? "browse://start") == "browse://start" {
-                    browsers.removeValue(forKey: replacement.pages[0].id)?.webView.stopLoading()
+                    removeController(replacement.pages[0].id)
                     session.workspaces[wi].tabs.remove(at: index)
                 }
             }
@@ -578,6 +581,9 @@ final class BrowserStore: ObservableObject {
     }
 
     private func bindController(_ controller: PageController, to page: Page) {
+        controller.onFaviconChanged = { [weak self] in self?.objectWillChange.send() }
+        mediaPlaybackFocus.register(controller.media)
+        mediaCoordinator.register(page.id, controller: controller.media)
         controller.configure = { [weak self] configuration in
             if #available(macOS 15.4, *) { self?.extensions.configure(configuration) }
         }
@@ -617,6 +623,14 @@ final class BrowserStore: ObservableObject {
     }
 
     func existingController(for pageID: UUID) -> PageController? { browsers[pageID] }
+
+    private func removeController(_ id: UUID) {
+        mediaCoordinator.unregister(id)
+        let controller = browsers.removeValue(forKey: id)
+        controller?.media.detach()
+        controller?.webView.pauseAllMediaPlayback(completionHandler: nil)
+        controller?.webView.stopLoading()
+    }
 
     // @lat: [[architecture#Cross-window dragging]]
     @discardableResult
@@ -682,6 +696,7 @@ final class BrowserStore: ObservableObject {
         // Publish source membership before retiring views: AppKit can request
         // layout synchronously while a WebView is being reparented.
         for id in movedIDs {
+            mediaCoordinator.unregister(id)
             browsers.removeValue(forKey: id)?.webView.removeFromSuperview()
         }
         destination.session = nextDestination
@@ -703,9 +718,14 @@ final class BrowserStore: ObservableObject {
     }
 
     func stopWindow() {
+        mediaCoordinator.removeAll()
         save()
         pendingSave?.cancel(); pendingSave = nil
-        for page in browsers.values { page.webView.stopLoading() }
+        for page in browsers.values {
+            page.media.detach()
+            page.webView.pauseAllMediaPlayback(completionHandler: nil)
+            page.webView.stopLoading()
+        }
         browsers.removeAll()
         onAddressRequested = nil; onSettingsRequested = nil; onEmptiedByTransfer = nil
     }
@@ -723,7 +743,7 @@ final class BrowserStore: ObservableObject {
         rememberClosed(.init(tab: snapshot(tab), workspaceID: session.workspaces[wi].id, tabIndex: ti, paneID: id, replacementID: nil))
         editTab(tab.id) { $0.closePane(id) }
         if zoomedPane == id { zoomedPane = nil }
-        browsers.removeValue(forKey: id)?.webView.stopLoading()
+        removeController(id)
     }
 
     private func tracePaneMembership() {
@@ -766,12 +786,14 @@ final class BrowserStore: ObservableObject {
 // @lat: [[architecture#WebKit integration]]
 @MainActor
 class FocusWebView: WKWebView {
+    weak var mediaController: PageMediaController?
     var hoveredLink = "" {
         didSet { (superview as? WebSurfaceHost)?.showLinkPreview(hoveredLink) }
     }
 
     override init(frame: NSRect, configuration: WKWebViewConfiguration) {
         LinkHoverObserver.install(in: configuration.userContentController)
+        MediaSessionBridge.install(in: configuration.userContentController)
         super.init(frame: frame, configuration: configuration)
     }
 
@@ -842,12 +864,14 @@ class FocusWebView: WKWebView {
 
 @MainActor
 final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
+    let media = PageMediaController()
     @Published private(set) var webView: FocusWebView
     var configure: (WKWebViewConfiguration) -> Void
     private var extensionOrigin: URL?
     @Published var address: String
     @Published var title = "New tab"
-    @Published var favicon: NSImage?
+    @Published var favicon: NSImage? { didSet { onFaviconChanged?() } }
+    var onFaviconChanged: (() -> Void)?
     private var faviconTask: Task<Void, Never>?
     private var faviconPageURL: URL?
     @Published var isLoading = false
@@ -919,6 +943,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     private func observeWebView() {
+        media.attach(to: webView)
         InputDiagnostics.transition(.extensionConfiguration, .changed, view: webView)
         webView.navigationDelegate = self; webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
@@ -997,11 +1022,17 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         if isStartPage || webView.url == nil { applyWebsiteZoom(for: url) }
         if isStartPage {
             webView.stopLoading()
+            if webView.url != nil {
+                media.detach()
+                webView.pauseAllMediaPlayback(completionHandler: nil)
+            }
             title = address == "browse://history" ? "History" : (address == "browse://guide" ? "Tiling guide" : "New tab")
             reportNavigation()
-        } else if let localDocumentDirectory {
-            webView.loadFileURL(url, allowingReadAccessTo: localDocumentDirectory)
-        } else { webView.load(URLRequest(url: url)) }
+        } else {
+            if webView.mediaController == nil { media.attach(to: webView) }
+            if let localDocumentDirectory { webView.loadFileURL(url, allowingReadAccessTo: localDocumentDirectory) }
+            else { webView.load(URLRequest(url: url)) }
+        }
     }
 
     func refresh() {
@@ -1103,6 +1134,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         refresh()
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        media.reset()
         javaScriptDialogs.cancel(for: webView)
         InputDiagnostics.transition(.webProcessExit, .finished, view: webView)
         error = "This page stopped responding. Reload to continue."

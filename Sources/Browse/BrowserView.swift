@@ -67,6 +67,7 @@ struct BrowserView: View {
             }
             .clipped()
             .contentShape(Rectangle())
+            SidebarMediaPlayer(coordinator: store.mediaCoordinator, store: store)
             if let error = store.persistenceError {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.system(size: 10)).foregroundStyle(.orange).padding(20)
@@ -95,8 +96,8 @@ private struct SidebarTabRow: View {
         return HStack(spacing: 8) {
             Button { store.select(tab.id) } label: {
                 HStack(spacing: 9) {
-                    Image(systemName: tab.pages.count > 1 ? "rectangle.split.2x1" : "globe")
-                        .font(.system(size: 13)).foregroundStyle(selected ? Chrome.accent : .white.opacity(0.5))
+                    SidebarTabIcon(store: store, tab: tab).frame(width: 16, height: 16)
+                        .accessibilityHidden(true)
                     FadingTabTitle(title: tab.title)
                         .font(.system(size: 12, weight: selected ? .medium : .regular))
                     if tab.pages.count > 1 && store.sidebarWidth >= 160 { Text("\(tab.pages.count)").font(.system(size: 9, design: .monospaced)).foregroundStyle(Chrome.muted) }

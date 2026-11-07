@@ -64,6 +64,28 @@ Each window owns its store, tab selection, pane controllers, sidebar sizing, zoo
 
 One retained root store owns history and UI preferences, including after its original window closes. Other [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) instances delegate reads and writes to it and forward observation, so live history results and appearance changes reach every window. Settings and the extension manager are shared; normal website views use WebKit's shared default data store. [[architecture#Session restoration]] preserves each window's layout independently.
 
+## Sidebar media player
+
+[SidebarMediaPlayer.swift](../Sources/Browse/SidebarMediaPlayer.swift) places a native Now Playing card below the tab list, controlling media in foreground or background panes without changing tab selection.
+
+[MediaSessionBridge.swift](../Sources/Browse/MediaSessionBridge.swift) installs one document-start script per content controller in the page world, including subframes. It forwards native Media Session action registrations unchanged while retaining callbacks for generic play, pause, previous, and next controls. Audio/video elements, including dynamically inserted players and open shadow roots, provide fallback play, pause, and volume. Muted autoplay alone does not create a player. Sites declaring a playing Media Session can expose controls without a visible media element. Unsupported buttons remain disabled; this does not use site-specific selectors or simulated system keys.
+
+Track titles and artists come from Media Session metadata, falling back to the active element's accessible label or title, then the document title and site. Playback events and metadata assignments send deduplicated updates. While a frame has an active or resumable session, [PageMediaController.swift](../Sources/Browse/PageMediaController.swift) refreshes it every two seconds to detect in-place metadata changes and detached frames. Idle documents have no refresh timer. The card uses the pane favicon, with no separate artwork download.
+
+Messages are page-controlled input. Native routing uses WebKit's originating WebView and frame, bounds strings and session counts, strips control and directional formatting characters, and accepts only supported commands. Commands use structured arguments, target the recorded frame, and check its document and player identities before invoking a callback. Main-document changes, frame departure, WebView replacement, process termination, and closure discard obsolete sessions. The page-world bridge grants no native capability beyond reporting player state; media commands originate from native controls.
+
+[WindowMediaCoordinator.swift](../Sources/Browse/WindowMediaCoordinator.swift) selects the most recently started playing source, retaining paused sources for resuming. Selecting a source explicitly keeps it selected until removed, dismissed, or another source starts playing; changing browser tabs does not change the source. A picker exposes multiple sources. Dismissal preserves playback and remains effective until that source starts playing again. Clicking the title reveals its owning pane. Live pane transfers move ownership to the destination window while retaining the same player. Command failure offers a return to the page rather than claiming success. Volume is available when an HTML media element is accessible and sidebar width permits it.
+
+[[tests#Media session commands and metadata]], [[tests#Media frame routing and lifecycle]], [[tests#HTML media fallback controls]], [[tests#Sidebar media ownership]], and [[tests#Media source selection]] exercise the bridge and ownership boundaries with local WebKit fixtures. [[tests#Live media session smoke test]] provides an opt-in check against a real player. Commands time out after five seconds; frame refreshes time out after two seconds. Closing a pane or navigating to a native Bend page detaches its observer and pauses its media.
+
+## Exclusive media playback
+
+[MediaPlaybackFocus.swift](../Sources/Browse/MediaPlaybackFocus.swift) gives newly started playback priority and pauses media in other panes, including background tabs and other Bend windows.
+
+Browser stores share their root store's playback coordinator. It retains controllers weakly, so live pane transfers keep their registration and do not count as a new playback start. A playing transition claims ownership, clears any old explicit card selection in that window, and pauses competing panes through their standard pause handlers and known HTML media elements. Native WebKit pause is the fallback for players without usable handlers. Pausing or closing the winner does not resume an older player automatically.
+
+Native ownership revisions invalidate queued work after a newer start. Each frame also reports a playback revision; a delayed pause checks that revision and its document/player identity inside JavaScript before acting. [[tests#Exclusive media playback]] covers handoff within and between windows and rejection of an obsolete pause. [[tests#HTML media fallback controls]] verifies interruption pauses the actual audio element.
+
 ## Sidebar sizing
 
 [SidebarResizing.swift](../Sources/Browse/SidebarResizing.swift) supplies an invisible eight-point handle at the sidebar's right edge, with a horizontal resize cursor and immediate resizing between 100 and 300 points.
@@ -183,6 +205,8 @@ Custom URL schemes use the confirmed [[architecture#External application links|e
 [FaviconLoader.imageScript](../Sources/Browse/FaviconLoader.swift) loads anonymous-CORS images in an isolated script world. The originating document's image CSP, mixed-content rules, redirect checks, and WebKit content blocking apply; there is no native networking fallback. Cross-origin icons without CORS permission fall back to another candidate or the site initial. Requests omit the referrer; normal WebKit image credential rules apply.
 
 [PageController](../Sources/Browse/BrowserStore.swift) associates the displayed icon with the page origin that produced it. Links, reloads, and address entry within the same HTTP(S) origin keep that icon while the new document loads and refreshes it. A failed or policy-blocked refresh keeps the last successful same-origin icon. Scheme, hostname, or effective port changes, including redirects, clear it; internal and local pages also clear it. Late results from cancelled or replaced documents cannot restore an old icon. [[tests#Favicon navigation reset]] covers continuity and origin changes.
+
+[SidebarTabIcon.swift](../Sources/Browse/SidebarTabIcon.swift) displays the first pane's favicon beside its tab title, including for split tabs. Favicon changes notify the owning store so an icon loaded after the row mounts appears immediately. Missing icons use a globe or split symbol; native Bend pages use their own symbols. The native image view reports a fixed 16-point fitting size and clips to its bounds, so a raster's intrinsic size cannot escape the tab row. Reading sidebar icons never instantiates an unvisited tab's WebView. [[tests#Sidebar favicons]] verifies native image updates and lazy-tab preservation.
 
 Each image attempt times out. Oversized image dimensions are rejected, and successful images are rasterized to a small PNG before leaving WebKit. [FaviconLoader.load](../Sources/Browse/FaviconLoader.swift) bounds that result and discards it on cancellation or URL changes. [[tests#Favicon request security]] verifies CSP, redirects, CORS, and isolation from page-owned JavaScript prototypes.
 

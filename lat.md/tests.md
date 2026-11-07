@@ -41,6 +41,44 @@ The fixture unloads runtime contexts without disabling the saved preference. Fou
 
 The smoke test waits for background errors, invokes the toolbar action, and verifies that the resulting document renders 1Password's welcome page. It uses a fake notification provider and does not display windows, sign in, read a real vault, or verify authenticated autofill. Host recreation within one process is not a signed-app upgrade test.
 
+## Media session commands and metadata
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) checks document-start action capture, controls, title/artist extraction, metadata mutation, handler removal, native validation, command timeout, and stale-command rejection after navigation.
+
+## Media frame routing and lifecycle
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) targets an opaque-origin embedded player while another WebView shares its content controller, verifying frame and pane isolation, removal cleanup, and process-termination invalidation.
+
+## HTML media fallback controls
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) plays a generated silent WAV in an open shadow root, verifying native play/pause/volume commands, page-title fallback, resumed playback, and cleanup after element removal.
+
+## Sidebar media ownership
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) verifies commands reach a background tab, title activation reveals its pane, cross-window transfer retains the live WebView, dismissal survives refresh, resumed playback restores the card, and closure removes it.
+
+## Media source selection
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) checks most-recent playback selection, explicit source selection, commands affecting only that source, persistent dismissal, reappearance on new playback, and cleanup on native-page navigation.
+
+## Exclusive media playback
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) starts media in competing panes and windows, checks that older players pause, resumes an older source, and rejects a queued pause for its previous playback revision.
+
+Stopping the new owner must leave older players paused. The HTML fallback fixture separately checks the underlying audio element is paused when another pane starts.
+
+## Sidebar favicons
+
+[FaviconTests.swift](../Tests/BrowseTests/FaviconTests.swift) loads an icon through a local HTTP fixture and checks the mounted sidebar image updates to that exact favicon, resets for a native page, and leaves unvisited tabs uninstantiated.
+
+The mounted icon must stay 16×16 points after loading and across narrow, default, and wide sidebar sizes. An opaque 64-point raster exercises intrinsic-size overflow; `BEND_SIDEBAR_SNAPSHOT` optionally captures the rendered sidebar for visual inspection.
+
+## Live media session smoke test
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) optionally loads `BEND_MEDIA_SMOKE_URL` in an ephemeral WebKit store, attempts muted playback, matches the sidebar title to Media Session metadata, and tests pause/resume with default playback policy.
+
+This opt-in check uses no saved sign-in and depends on the site's availability, consent flow, and playback policies. Local fixtures cover the deterministic bridge behavior. `BEND_MEDIA_SNAPSHOT` optionally writes a PNG of the native card during the ownership fixture for visual inspection.
+
 ## Build bundle publication
 
 [test-build-app.sh](../scripts/test-build-app.sh) runs the packaging script with isolated compiler and signing stand-ins, verifying failure preservation and replacement without changing an open descriptor to the previous executable.
