@@ -172,7 +172,17 @@ Command-click routing uses WebKit's navigation-action modifiers and left-button 
 
 Pane headers display full-color site favicons discovered from the completed document's icon links, then touch icons, then the origin's `/favicon.ico`. [FaviconLoader.swift](../Sources/Browse/FaviconLoader.swift) resolves and deduplicates candidates, bounds downloads, and uses an ephemeral cookie-free session with an in-memory HTTP cache. Missing or invalid icons use a site initial; internal pages retain their app symbols. Navigation clears the old icon and cancels pending work so stale results cannot replace the next page's icon.
 
-External custom URL schemes are not handed to other applications. Downloads, website media permissions, native Safari App Extensions, and Safari session sharing are outside the implemented prototype. Safari Web Extensions use the separate [[architecture#Web extensions|Bend extension host]].
+Custom URL schemes use the confirmed [[architecture#External application links|external-app handoff]]. Downloads, website media permissions, native Safari App Extensions, and Safari session sharing are outside the implemented prototype. Safari Web Extensions use the separate [[architecture#Web extensions|Bend extension host]].
+
+## External application links
+
+[ExternalApplicationLinks.swift](../Sources/Browse/ExternalApplicationLinks.swift) lets pages launch installed apps through custom URL schemes after an explicit native confirmation, without app-specific routing rules.
+
+[BrowserStore.swift](../Sources/Browse/BrowserStore.swift) intercepts external schemes in navigation policy and new-window callbacks. Normal links, scripted navigation, iframe launchers, and new-window links all preserve the source document and do not create empty tabs. Internal, web, file, script, data, blob, and extension schemes retain their existing handling and never reach the external opener. Detached or hidden page views cannot present a launch prompt.
+
+NSWorkspace resolves the registered application. The confirmation shows its name and icon and the initiating page’s origin, omitting URL credentials, paths, queries, and fragments. Approval opens the original URL in that exact application; cancellation does nothing. No persistent launch permission is granted. Missing handlers and launch failures show a native explanation without replacing the source page. Bend is excluded as its own external handler to avoid loops.
+
+Only one request per window may be pending; other requests are discarded rather than queued behind a sheet. Closing or hiding the window before approval prevents the launch. [[tests#External application consent]], [[tests#External application prompt coalescing]], and [[tests#WebKit external application routes]] cover the flow with mocked app launches and real WebKit navigation.
 
 ## Native input diagnostics
 

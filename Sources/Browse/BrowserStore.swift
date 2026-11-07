@@ -850,6 +850,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var websiteSettingsObservation: AnyCancellable?
     private var zoomURL: URL?
     private var localDocumentDirectory: URL?
+    private let externalApplications: ExternalApplicationLinks
 
     // WebKit's default user agent omits Safari's product tokens. Some sites
     // consequently serve a legacy, fixed-width page to an otherwise modern engine.
@@ -860,8 +861,10 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         return "Version/\(version) Safari/605.1.15 Bend/0.1"
     }()
 
-    init(address: String, paneID: UUID? = nil, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
+    init(address: String, paneID: UUID? = nil, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil,
+         externalApplications: ExternalApplicationLinks = .shared, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
+        self.externalApplications = externalApplications
         self.websiteSettings = websiteSettings
         self.configure = configure
         let configuration = WKWebViewConfiguration()
@@ -1060,6 +1063,14 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         return true
     }
 
+    private func openExternalApplication(_ action: WKNavigationAction, from webView: WKWebView) -> Bool {
+        guard let url = action.request.url, ExternalApplicationLinks.isExternal(url) else { return false }
+        if let window = webView.window, !webView.isHiddenOrHasHiddenAncestor {
+            externalApplications.request(url, source: action.sourceFrame.request.url ?? webView.url, in: window)
+        }
+        return true
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         InputDiagnostics.transition(.navigationPolicy, .requested, view: webView, flags: [
             "link": action.navigationType == .linkActivated, "command": action.modifierFlags.contains(.command),
@@ -1090,13 +1101,14 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
             Task { @MainActor [weak self] in self?.navigate(url.absoluteString) }
             return
         }
-        // Do not silently hand arbitrary custom schemes to other applications.
+        if openExternalApplication(action, from: webView) { decisionHandler(.cancel); return }
         decisionHandler(["https", "http", "about"].contains(url.scheme?.lowercased() ?? "") ? .allow : .cancel)
     }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         InputDiagnostics.transition(.newWindowLink, .requested, view: webView)
         if openCommandClickedLink(action) { return nil }
+        if openExternalApplication(action, from: webView) { return nil }
         if action.targetFrame == nil, let url = action.request.url,
            ["http", "https"].contains(url.scheme ?? "") {
             InputDiagnostics.transition(.newWindowLink, .allowed, view: webView)
