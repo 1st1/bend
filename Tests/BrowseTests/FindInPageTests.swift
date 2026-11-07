@@ -106,6 +106,17 @@ import WebKit
     let emptyInputFrame = field.frame
     field.selectText(nil)
     let editor = try #require(field.currentEditor() as? NSTextView)
+    func checkEmptyEditor(_ editor: NSTextView) throws {
+        let cell = try #require(field.cell as? NSSearchFieldCell)
+        let icon = cell.searchButtonRect(forBounds: field.bounds)
+        let screenCaret = editor.firstRect(forCharacterRange: NSRange(location: 0, length: 0), actualRange: nil)
+        let caret = field.convert(context.window.convertFromScreen(screenCaret), from: nil)
+        #expect(caret.minX >= icon.maxX)
+        #expect(caret.minY >= 0 && caret.maxY <= field.bounds.height)
+        let editorRect = editor.convert(editor.visibleRect, to: field)
+        #expect(abs(editorRect.midY - field.bounds.midY) <= 2)
+    }
+    try checkEmptyEditor(editor)
     editor.insertText("findneedle", replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
     try await waitForSelection("first")
     try await waitForCount(3)
@@ -203,6 +214,7 @@ import WebKit
     #expect(hosts[0].matchCount == nil)
     bar.layoutSubtreeIfNeeded()
     #expect(field.frame == narrowInputFrame)
+    try checkEmptyEditor(activeEditor)
     hosts[0].frame.size.width = 600
     hosts[0].layoutSubtreeIfNeeded()
     store.focus(tab.pages[1].id)

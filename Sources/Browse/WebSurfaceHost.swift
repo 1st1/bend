@@ -92,6 +92,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         searchField.placeholderString = "Find in page"
         searchField.setAccessibilityLabel("Find in page")
         searchField.controlSize = .small
+        searchField.heightAnchor.constraint(equalToConstant: 24).isActive = true
         searchField.delegate = self
         searchField.sendsSearchStringImmediately = true
         searchField.sendsWholeSearchString = false
@@ -271,10 +272,24 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
 }
 
 
-// Keep the native search-field bezel and clear button, with a trailing count
+// Keep the native search-field editing and clear button, with a trailing count
 // inside the field. The cell reserves the same space for drawing and editing.
 private final class FindSearchFieldCell: NSSearchFieldCell {
     var countWidth: CGFloat = 0
+
+    static func bezelPath(in bounds: NSRect) -> NSBezierPath {
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
+    }
+
+    override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
+        let path = Self.bezelPath(in: cellFrame)
+        NSColor.controlBackgroundColor.withAlphaComponent(0.6).setFill()
+        path.fill()
+        NSColor.separatorColor.setStroke()
+        path.stroke()
+        // Preserve native bezeled-field geometry; customize only the bezel drawing.
+        super.drawInterior(withFrame: cellFrame, in: controlView)
+    }
 
     func countRect(forBounds bounds: NSRect) -> NSRect {
         let text = super.searchTextRect(forBounds: bounds)
@@ -302,7 +317,8 @@ private final class FindSearchField: NSSearchField {
         isSelectable = true
         isBezeled = true
         bezelStyle = .roundedBezel
-        drawsBackground = true
+        drawsBackground = false
+        focusRingType = .exterior
         matchCountLabel.font = font
         matchCountLabel.textColor = .secondaryLabelColor
         matchCountLabel.alignment = .right
@@ -311,6 +327,13 @@ private final class FindSearchField: NSSearchField {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var focusRingMaskBounds: NSRect { bounds }
+
+    override func drawFocusRingMask() {
+        NSColor.black.setFill()
+        FindSearchFieldCell.bezelPath(in: bounds).fill()
+    }
 
     override func textDidBeginEditing(_ notification: Notification) {
         super.textDidBeginEditing(notification)
