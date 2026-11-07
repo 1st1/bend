@@ -331,6 +331,52 @@ private let mediaSessionFixture = #"""
     #expect(second.store.mediaCoordinator.sources.isEmpty)
 }
 
+// @lat: [[tests#Media track transitions]]
+@Test @MainActor func mediaTrackTransitions() async throws {
+    _ = NSApplication.shared
+    let first = PageController(address: "browse://start"), second = PageController(address: "browse://start")
+    let coordinator = WindowMediaCoordinator()
+    let firstID = UUID(), secondID = UUID()
+    coordinator.register(firstID, controller: first.media)
+    coordinator.register(secondID, controller: second.media)
+    defer { coordinator.removeAll(); first.media.detach(); second.media.detach() }
+    first.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://first.example"))
+    try await mediaWait { coordinator.selected?.paneID == firstID }
+    second.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://second.example"))
+    try await mediaWait { coordinator.selected?.paneID == secondID }
+    let selectedID = try #require(coordinator.selectedID)
+    var selections: [String?] = []
+    let observation = coordinator.$selectedID.sink { selections.append($0) }
+    defer { observation.cancel() }
+    // A pause between tracks must not prefer an older source still reporting playback.
+    _ = try await second.webView.evaluateJavaScript("navigator.mediaSession.playbackState = 'paused'; void 0")
+    try await mediaWait { second.media.sessions.first?.playing == false }
+    #expect(coordinator.selectedID == selectedID)
+    // Some players briefly clear their entire Media Session during track replacement.
+    let clear = "navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; void 0"
+    _ = try await second.webView.evaluateJavaScript(clear)
+    try await mediaWait { coordinator.selected?.state.actions.isEmpty == true }
+    #expect(coordinator.sources.count == 2)
+    #expect(coordinator.selectedID == selectedID)
+    try await Task.sleep(for: .milliseconds(200))
+    _ = try await second.webView.evaluateJavaScript("""
+        navigator.mediaSession.metadata = new MediaMetadata({title:'Replacement track'});
+        navigator.mediaSession.playbackState = 'playing'; void 0
+        """)
+    try await mediaWait { coordinator.selected?.state.title == "Replacement track" }
+    #expect(selections.allSatisfy { $0 == selectedID })
+    // A real stop expires; navigation bypasses the transition delay entirely.
+    _ = try await second.webView.evaluateJavaScript(clear)
+    try await mediaWait { coordinator.selected?.paneID == firstID }
+    _ = try await second.webView.evaluateJavaScript("navigator.mediaSession.playbackState = 'playing'; void 0")
+    try await mediaWait { coordinator.selected?.paneID == secondID }
+    _ = try await second.webView.evaluateJavaScript(clear)
+    try await mediaWait { coordinator.selected?.state.actions.isEmpty == true }
+    second.navigate("browse://start")
+    #expect(coordinator.selected?.paneID == firstID)
+    #expect(second.media.sessions.isEmpty)
+}
+
 // @lat: [[tests#Media source selection]]
 @Test @MainActor func mediaSourceSelection() async throws {
     _ = NSApplication.shared

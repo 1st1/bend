@@ -43,6 +43,7 @@ final class PageMediaController: ObservableObject {
     private var frames: [String: WKFrameInfo] = [:]
     private var mainDocument: String?
     private var refreshTask: Task<Void, Never>?
+    private var inactiveTasks: [String: Task<Void, Never>] = [:]
     private var generation = 0
     private static let actions: Set<String> = ["play", "pause", "previoustrack", "nexttrack", "volume", "seekto"]
 
@@ -56,6 +57,7 @@ final class PageMediaController: ObservableObject {
     func reset() {
         generation += 1
         refreshTask?.cancel(); refreshTask = nil
+        inactiveTasks.values.forEach { $0.cancel() }; inactiveTasks.removeAll()
         frames.removeAll(); mainDocument = nil
         if !sessions.isEmpty { sessions = [] }
     }
@@ -67,9 +69,27 @@ final class PageMediaController: ObservableObject {
     }
 
     private func remove(_ id: String) {
+        inactiveTasks.removeValue(forKey: id)?.cancel()
         frames.removeValue(forKey: id)
         if sessions.contains(where: { $0.id == id }) { sessions.removeAll { $0.id == id } }
         if sessions.isEmpty { refreshTask?.cancel(); refreshTask = nil }
+    }
+
+    private func markInactive(_ id: String) {
+        guard inactiveTasks[id] == nil, let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        let state = sessions[index]
+        // Track replacement can briefly report no active player. Retain the
+        // source's identity and metadata, but disable commands and freeze time.
+        let timeline = state.timeline.flatMap {
+            MediaTimeline(["duration": $0.duration, "position": $0.position(), "rate": 0], playing: false)
+        }
+        sessions[index] = MediaSessionState(id: state.id, playerID: state.playerID,
+            title: state.title, artist: state.artist, site: state.site, playing: false,
+            playbackRevision: state.playbackRevision, actions: [], volume: state.volume, timeline: timeline)
+        inactiveTasks[id] = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            self?.remove(id)
+        }
     }
 
     func receive(_ message: WKScriptMessage) {
@@ -85,7 +105,7 @@ final class PageMediaController: ObservableObject {
         if kind == "gone" { remove(id); return }
         guard kind == "state", let active = body["active"] as? Bool else { return }
         if message.frameInfo.isMainFrame, let mainDocument, mainDocument != id { return }
-        if !active { remove(id); return }
+        if !active { markInactive(id); return }
         guard frames[id] != nil || frames.count < 32,
               let playerID = body["playerID"] as? String, !playerID.isEmpty, playerID.count < 64,
               let playing = body["playing"] as? Bool, let playbackRevision = body["playbackRevision"] as? Int,
@@ -100,6 +120,7 @@ final class PageMediaController: ObservableObject {
             playing: playing, playbackRevision: playbackRevision, actions: Set(rawActions).intersection(Self.actions),
             volume: volume.flatMap { $0.isFinite && (0...1).contains($0) ? $0 : nil },
             timeline: MediaTimeline(body["timeline"], playing: playing))
+        inactiveTasks.removeValue(forKey: id)?.cancel()
         frames[id] = message.frameInfo
         let previous = sessions.first { $0.id == id }
         if let index = sessions.firstIndex(where: { $0.id == id }) {

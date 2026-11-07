@@ -65,6 +65,10 @@ Both `new Audio()` and `document.createElement` fixtures work without DOM insert
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) verifies commands reach a background tab, title activation reveals its pane, cross-window transfer retains the live WebView, dismissal survives refresh, resumed playback restores the card, and closure removes it.
 
+## Media track transitions
+
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) verifies that pauses and brief inactive sessions between tracks preserve the selected source, while real stops expire and navigation clears it immediately.
+
 ## Media source selection
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) checks most-recent playback selection, explicit source selection, commands affecting only that source, persistent dismissal, reappearance on new playback, and cleanup on native-page navigation.

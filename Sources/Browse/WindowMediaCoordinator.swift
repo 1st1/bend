@@ -49,7 +49,7 @@ final class WindowMediaCoordinator: ObservableObject {
             if started[item.id] == nil || (item.state.playing &&
                 (previous?.playing != true || previous?.playbackRevision != item.state.playbackRevision)) {
                 sequence += 1; started[item.id] = sequence
-                if item.state.playing { chosenID = nil; isDismissed = false }
+                if item.state.playing { chosenID = item.id; isDismissed = false }
             }
         }
         let next = sources.filter { $0.paneID != paneID } + incoming
@@ -62,7 +62,8 @@ final class WindowMediaCoordinator: ObservableObject {
 
     private func choose() {
         let available = isDismissed ? [] : sources
-        let next = available.first { $0.id == chosenID } ?? available.max {
+        let next = available.first { $0.id == chosenID }
+            ?? available.first { $0.id == selectedID } ?? available.max {
             if $0.state.playing != $1.state.playing { return !$0.state.playing }
             return (started[$0.id] ?? 0) < (started[$1.id] ?? 0)
         }
