@@ -566,3 +566,9 @@ Each navigation produces exactly one mocked app launch, preserves the source doc
 [DefaultBrowserTests.swift](../Tests/BrowseTests/DefaultBrowserTests.swift) verifies local HTML received through the app delegate loads with relative JavaScript assets and survives recreation from the saved file URL.
 
 HTML and XHTML are accepted, while other file types and remote file hosts are rejected. Directory containment rejects paths outside the document’s directory.
+
+## Link hover preview
+
+Verify relative, nested, shadow-root, and iframe links display their destinations through an isolated WebKit bridge. Leaving a link and navigating clear the preview; its bounded pane-local bubble ignores clicks.
+
+Pointer movement within one link switches the preview to the right and back without duplicate URL messages or oscillation. Long URLs truncate clear of the cursor at either edge, including after a pane resize.

@@ -9,6 +9,49 @@ import BrowseCore
 // @lat: [[architecture#Find in page]]
 final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     private weak var hostedWebView: WKWebView?
+    let linkPreview = LinkHoverPreview()
+    private var linkTrackingArea: NSTrackingArea?
+
+    private var linkPreviewPointer: NSPoint? {
+        window.map { convert($0.mouseLocationOutsideOfEventStream, from: nil) }
+    }
+
+    func showLinkPreview(_ url: String) {
+        guard let web = hostedWebView, web.superview === self else { return }
+        let pointer = convert(window?.mouseLocationOutsideOfEventStream ?? .zero, from: nil)
+        let content = NSRect(x: 0, y: 0, width: bounds.width,
+                             height: max(0, bounds.height - topContentInset - (isFindBarVisible ? 38 : 0)))
+        linkPreview.url = window?.isVisible == true && !isHiddenOrHasHiddenAncestor && content.contains(pointer) ? url : ""
+        linkPreview.place(in: bounds, avoiding: linkPreviewPointer)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let linkTrackingArea { removeTrackingArea(linkTrackingArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        linkTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        if !linkPreview.isHidden {
+            linkPreview.place(in: bounds, avoiding: convert(event.locationInWindow, from: nil))
+        }
+        super.mouseMoved(with: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        (hostedWebView as? FocusWebView)?.hoveredLink = ""
+        linkPreview.url = ""
+        super.mouseExited(with: event)
+    }
+
+    override func viewDidHide() {
+        super.viewDidHide()
+        linkPreview.url = ""
+    }
+
     private var topContentInset: CGFloat = 0
     private var headerGlass: NSView?
     private var headerContent: NSView?
@@ -193,6 +236,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         layer?.cornerRadius = 11
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
+        addSubview(linkPreview)
         activeHeaderTintView.wantsLayer = true
         activeHeaderTintView.autoresizingMask = [.width, .height]
     }
@@ -213,6 +257,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
             }
         }
         if hostedWebView !== webView {
+            linkPreview.url = ""
             hideFindBar(restoreFocus: false)
             findSupport?.invalidate()
             findSupport = nil
@@ -238,6 +283,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
             }
             glass.apply(headerAppearance)
         }
+        addSubview(linkPreview, positioned: .above, relativeTo: nil)
         self.topContentInset = max(0, topContentInset)
         // In the stacked layout the page only touches the pane's bottom corners.
         layer?.maskedCorners = topContentInset > 0
@@ -249,6 +295,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
 
     override func layout() {
         super.layout()
+        linkPreview.place(in: bounds, avoiding: linkPreviewPointer)
         guard let webView = hostedWebView, webView.superview === self else { return }
         let barHeight = isFindBarVisible ? (findBarView?.frame.height ?? 0) : 0
         let chromeHeight = topContentInset + barHeight

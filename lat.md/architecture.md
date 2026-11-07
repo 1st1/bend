@@ -458,3 +458,11 @@ Escape dismisses an existing tab’s popup and returns keyboard focus to the bro
 [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) requests the popup after creating blank split panes, tabs, or a replacement for the last closed tab. Link-created panes and tabs already have a destination and do not prompt. Popup requests validate pane identity; submitting after the target has closed or left the selected tab cannot navigate another pane.
 
 [BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) connects each store's location-request callback to the panel controller. Requests carry a pane identity after the store has updated selection and focus, so presentation does not depend on a newly created SwiftUI pane observing an earlier event.
+
+## Link hover preview
+
+Hovering a link shows its destination in a compact, noninteractive bubble at the bottom of that browser pane, moving away from the cursor.
+
+[LinkHoverPreview.swift](../Sources/Browse/LinkHoverPreview.swift) observes link targets in an isolated WebKit content world, including subframes and nested elements in open shadow roots. Relative destinations resolve against the document base URL. Encoded URLs retain their full scheme, with control and directional formatting characters removed; long destinations truncate in the middle to fit the pane.
+
+[WebSurfaceHost.swift](../Sources/Browse/WebSurfaceHost.swift) places the preview above page content without intercepting clicks. It prefers the bottom-left corner, switches to the right when the cursor approaches, and returns left once clear. Native pointer tracking updates placement even within the same link; layout also recomputes it after resizing. When a long URL would overlap the cursor at both corners, it truncates into the roomier side with a gap around the pointer. Leaving the pane, hiding it, scrolling, clicking, or navigating clears the preview. [FocusWebView](../Sources/Browse/BrowserStore.swift) clears hover state when reattached, preserving pane-local behavior across live transfers. Shared content controllers route hover messages to their originating web view rather than retaining a pane or page controller.

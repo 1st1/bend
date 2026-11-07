@@ -766,6 +766,17 @@ final class BrowserStore: ObservableObject {
 // @lat: [[architecture#WebKit integration]]
 @MainActor
 class FocusWebView: WKWebView {
+    var hoveredLink = "" {
+        didSet { (superview as? WebSurfaceHost)?.showLinkPreview(hoveredLink) }
+    }
+
+    override init(frame: NSRect, configuration: WKWebViewConfiguration) {
+        LinkHoverObserver.install(in: configuration.userContentController)
+        super.init(frame: frame, configuration: configuration)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
     var diagnosticPaneID: UUID?
     var onFocus: (() -> Void)?
     override func cancelOperation(_ sender: Any?) {
@@ -811,10 +822,12 @@ class FocusWebView: WKWebView {
     }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        hoveredLink = ""
         InputDiagnostics.transition(.webAttachment, window == nil ? .detached : .attached, view: self)
     }
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
+        hoveredLink = ""
         InputDiagnostics.transition(.webAttachment, superview == nil ? .detached : .attached, view: self, flags: ["superview": true])
     }
 }
@@ -954,6 +967,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     private func load(_ url: URL) {
+        webView.hoveredLink = ""
         InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "browse"])
         resetFavicon()
         error = nil; address = url.absoluteString
@@ -1006,6 +1020,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        (webView as? FocusWebView)?.hoveredLink = ""
         (webView.superview as? WebSurfaceHost)?.hideFindBar(restoreFocus: false)
         InputDiagnostics.transition(.webLoad, .started, view: webView)
         resetFavicon()
