@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import WebKit
 import BrowseCore
+import WebKitFindSupport
 
 @MainActor
 final class BrowserStore: ObservableObject {
@@ -627,6 +628,7 @@ final class BrowserStore: ObservableObject {
     private func removeController(_ id: UUID) {
         mediaCoordinator.unregister(id)
         let controller = browsers.removeValue(forKey: id)
+        controller?.webView.closeInspector()
         controller?.media.detach()
         controller?.webView.pauseAllMediaPlayback(completionHandler: nil)
         controller?.webView.stopLoading()
@@ -722,6 +724,7 @@ final class BrowserStore: ObservableObject {
         save()
         pendingSave?.cancel(); pendingSave = nil
         for page in browsers.values {
+            page.webView.closeInspector()
             page.media.detach()
             page.webView.pauseAllMediaPlayback(completionHandler: nil)
             page.webView.stopLoading()
@@ -786,6 +789,28 @@ final class BrowserStore: ObservableObject {
 // @lat: [[architecture#WebKit integration]]
 @MainActor
 class FocusWebView: WKWebView {
+    private var inspectorSupport: BendInspectorSupport?
+    var inspector: BendInspectorSupport {
+        if let inspectorSupport { return inspectorSupport }
+        let support = BendInspectorSupport(webView: self)
+        support.onFrontendReady = { [weak self] frontend in
+            (self?.superview as? WebSurfaceHost)?.installInspectorFrontend(frontend)
+        }
+        support.onAction = { [weak self] action in
+            guard let self else { return }
+            if action == "close" { closeInspector() }
+            else if action == "bottom" || action == "right" {
+                (superview as? WebSurfaceHost)?.dockDeveloperTools(action == "right" ? .right : .bottom)
+            }
+        }
+        inspectorSupport = support
+        return support
+    }
+    func closeInspector() {
+        (superview as? WebSurfaceHost)?.removeDeveloperTools()
+        inspectorSupport?.invalidate()
+        inspectorSupport = nil
+    }
     weak var mediaController: PageMediaController?
     var hoveredLink = "" {
         didSet { (superview as? WebSurfaceHost)?.showLinkPreview(hoveredLink) }
@@ -795,6 +820,7 @@ class FocusWebView: WKWebView {
         LinkHoverObserver.install(in: configuration.userContentController)
         MediaSessionBridge.install(in: configuration.userContentController)
         super.init(frame: frame, configuration: configuration)
+        BendInspectorSupport.enable(for: self)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -965,6 +991,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     private func replaceWebView(configuration: WKWebViewConfiguration) {
         InputDiagnostics.transition(.webReplacement, .started, view: webView)
         javaScriptDialogs.cancel(for: webView)
+        webView.closeInspector()
         webView.onDialogInvalidated = nil
         observations.removeAll()
         webView.navigationDelegate = nil
@@ -1021,6 +1048,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         // Only a fresh view (or native internal page) can take the target zoom now.
         if isStartPage || webView.url == nil { applyWebsiteZoom(for: url) }
         if isStartPage {
+            webView.closeInspector()
             webView.stopLoading()
             if webView.url != nil {
                 media.detach()

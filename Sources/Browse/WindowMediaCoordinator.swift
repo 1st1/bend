@@ -18,7 +18,7 @@ final class WindowMediaCoordinator: ObservableObject {
     }
     private var registrations: [UUID: Registration] = [:]
     private var started: [String: UInt64] = [:]
-    private var dismissed: Set<String> = []
+    private var isDismissed = false
     private var sequence: UInt64 = 0
     private var chosenID: String?
 
@@ -38,7 +38,7 @@ final class WindowMediaCoordinator: ObservableObject {
 
     func removeAll() {
         registrations.removeAll(); sources = []; selectedID = nil
-        started.removeAll(); dismissed.removeAll(); chosenID = nil; commandError = nil
+        started.removeAll(); isDismissed = false; chosenID = nil; commandError = nil
     }
 
     private func update(_ paneID: UUID, states: [MediaSessionState]) {
@@ -48,21 +48,20 @@ final class WindowMediaCoordinator: ObservableObject {
             let previous = old[item.id]?.state
             if started[item.id] == nil || (item.state.playing &&
                 (previous?.playing != true || previous?.playbackRevision != item.state.playbackRevision)) {
-                sequence += 1; started[item.id] = sequence; dismissed.remove(item.id)
-                if item.state.playing { chosenID = nil }
+                sequence += 1; started[item.id] = sequence
+                if item.state.playing { chosenID = nil; isDismissed = false }
             }
         }
         let next = sources.filter { $0.paneID != paneID } + incoming
         if next != sources { sources = next }
         let ids = Set(sources.map(\.id))
         started = started.filter { ids.contains($0.key) }
-        dismissed.formIntersection(ids)
         if let chosenID, !ids.contains(chosenID) { self.chosenID = nil }
         choose()
     }
 
     private func choose() {
-        let available = sources.filter { !dismissed.contains($0.id) }
+        let available = isDismissed ? [] : sources
         let next = available.first { $0.id == chosenID } ?? available.max {
             if $0.state.playing != $1.state.playing { return !$0.state.playing }
             return (started[$0.id] ?? 0) < (started[$1.id] ?? 0)
@@ -72,12 +71,12 @@ final class WindowMediaCoordinator: ObservableObject {
 
     func select(_ source: SidebarMediaSource) {
         guard sources.contains(where: { $0.id == source.id }) else { return }
-        chosenID = source.id; dismissed.remove(source.id); choose()
+        chosenID = source.id; isDismissed = false; choose()
     }
 
     func dismiss() {
-        guard let selectedID else { return }
-        dismissed.insert(selectedID); chosenID = nil; choose()
+        guard selectedID != nil else { return }
+        isDismissed = true; chosenID = nil; choose()
     }
 
     func send(_ action: String, to target: SidebarMediaSource? = nil, value: Double = 0) async {

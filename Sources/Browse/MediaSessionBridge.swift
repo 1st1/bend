@@ -8,7 +8,7 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
         if (window.__bendMedia) return;
         const documentID = '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,
             digit => (Number(digit) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(digit) / 4).toString(16));
-        const handlers = new Map(), players = new Set(), played = new WeakSet();
+        const handlers = new Map(), players = new Set(), played = new WeakSet(), detached = new WeakSet();
         const ids = new WeakMap();
         let nextID = 0, current = null, previous = '', queued = false, sessionPlayed = false;
         let declaredPlaybackState = 'none';
@@ -21,7 +21,8 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
         const remember = media => {
             if (!(media instanceof HTMLMediaElement) || players.has(media)) return;
             players.add(media); ids.set(media, String(++nextID));
-            for (const name of ['play','playing','pause','ended','emptied','loadedmetadata','volumechange']) {
+            if (!media.isConnected) detached.add(media);
+            for (const name of ['play','playing','pause','ended','emptied','error','loadedmetadata','volumechange']) {
                 media.addEventListener(name, () => {
                     if (!media.paused && !media.ended && !media.muted && media.volume > 0) { played.add(media); current = media; }
                     schedule();
@@ -47,7 +48,11 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
             scan(root);
         };
         const snapshot = () => {
-            for (const media of players) if (!media.isConnected) players.delete(media);
+            for (const media of players) {
+                if (media.isConnected) detached.delete(media);
+                else if (!detached.has(media) || media.ended || media.error
+                    || (played.has(media) && media.networkState === HTMLMediaElement.NETWORK_EMPTY)) players.delete(media);
+            }
             const audible = media => !media.muted && media.volume > 0;
             const playing = [...players].filter(media => !media.paused && !media.ended && audible(media));
             if (!playing.includes(current) && playing.length) current = playing[playing.length - 1];
@@ -145,8 +150,15 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
                 publish(); return true;
             }
         }});
-        // Discover dynamically inserted and open-shadow-root players without
-        // polling idle documents. Closed roots remain controlled via Media Session.
+        // Audio can play without ever entering the DOM. Preserve the native
+        // play promise and exceptions while observing those elements too.
+        const play = HTMLMediaElement.prototype.play;
+        HTMLMediaElement.prototype.play = function(...args) {
+            const result = play.apply(this, args);
+            remember(this); schedule();
+            return result;
+        };
+        // Discover inserted and open-shadow-root players without idle polling.
         const attachShadow = Element.prototype.attachShadow;
         Element.prototype.attachShadow = function(options) {
             const root = attachShadow.call(this, options);

@@ -105,7 +105,8 @@ private let mediaSessionFixture = #"""
 }
 
 // @lat: [[tests#HTML media fallback controls]]
-@Test @MainActor func htmlMediaFallbackControls() async throws {
+@Test(arguments: ["shadow", "detached audio", "detached element"])
+@MainActor func htmlMediaFallbackControls(placement: String) async throws {
     _ = NSApplication.shared
     let configuration = WKWebViewConfiguration()
     configuration.websiteDataStore = .nonPersistent()
@@ -122,7 +123,9 @@ private let mediaSessionFixture = #"""
         <title>Audio fallback</title><script>
         const host = document.createElement('div'); document.documentElement.append(host);
         const shadow = host.attachShadow({mode:'open'});
-        const audio = document.createElement('audio'); shadow.append(audio); window.audio = audio;
+        const audio = \#(placement == "detached audio" ? "new Audio()" : "document.createElement('audio')");
+        if ('\#(placement)' === 'shadow') shadow.append(audio);
+        window.audio = audio;
         // Eight seconds of silent PCM: exercise real media events without playing sound.
         const buffer = new ArrayBuffer(44 + 8000 * 8 * 2), data = new DataView(buffer);
         const text = (offset, value) => [...value].forEach((c, i) => data.setUint8(offset+i,c.charCodeAt(0)));
@@ -153,7 +156,7 @@ private let mediaSessionFixture = #"""
     other.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://interrupt.example"))
     try await mediaWait { other.media.sessions.first?.playing == true && controller.media.sessions.first?.playing == false }
     #expect(try await web.evaluateJavaScript("audio.paused") as? Bool == true)
-    _ = try await web.evaluateJavaScript("audio.pause(); audio.remove(); void 0")
+    _ = try await web.evaluateJavaScript("audio.pause(); audio.remove(); audio.removeAttribute('src'); audio.load(); void 0")
     await controller.media.refresh()
     try await mediaWait { controller.media.sessions.isEmpty }
 }
@@ -214,17 +217,44 @@ private let mediaSessionFixture = #"""
     pageController.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://music.example"))
     try await mediaWait { first.store.mediaCoordinator.selected?.state.title == "First track" }
     if let path = ProcessInfo.processInfo.environment["BEND_MEDIA_SNAPSHOT"] {
-        let preview = NSHostingView(rootView: SidebarMediaPlayer(coordinator: first.store.mediaCoordinator, store: first.store)
-            .frame(width: 236).preferredColorScheme(.dark))
-        let previewWindow = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 236, height: 150),
-                                     styleMask: [.borderless], backing: .buffered, defer: false)
-        previewWindow.isReleasedWhenClosed = false
-        previewWindow.contentView = preview; previewWindow.orderFront(nil)
-        for _ in 0..<5 { preview.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(40)) }
-        let bitmap = try #require(preview.bitmapImageRepForCachingDisplay(in: preview.bounds))
-        preview.cacheDisplay(in: preview.bounds, to: bitmap)
-        try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
-        previewWindow.close()
+        let alternate = PageController(address: "browse://start")
+        let alternateID = UUID()
+        alternate.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://second.example"))
+        try await mediaWait { !alternate.media.sessions.isEmpty }
+        first.store.mediaCoordinator.register(alternateID, controller: alternate.media)
+        first.store.mediaCoordinator.select(try #require(first.store.mediaCoordinator.sources.first { $0.paneID == page.id }))
+        defer {
+            first.store.mediaCoordinator.unregister(alternateID)
+            alternate.media.detach(); alternate.webView.stopLoading()
+        }
+        _ = try await pageController.webView.evaluateJavaScript("navigator.mediaSession.metadata.title = 'A long track title that should truncate inside the glass header'; void 0")
+        await pageController.media.refresh()
+        pageController.favicon = NSImage(systemSymbolName: "play.rectangle.fill", accessibilityDescription: nil)
+        for width in [100.0, 236.0, 300.0] {
+            first.store.resizeSidebar(to: width)
+            let preview = NSHostingView(rootView: SidebarMediaPlayer(coordinator: first.store.mediaCoordinator, store: first.store)
+                .frame(width: width).preferredColorScheme(.dark))
+            let previewWindow = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: width, height: 150),
+                                         styleMask: [.borderless], backing: .buffered, defer: false)
+            previewWindow.isReleasedWhenClosed = false
+            previewWindow.contentView = preview; previewWindow.orderFront(nil)
+            for _ in 0..<5 { preview.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(40)) }
+            let bitmap = try #require(preview.bitmapImageRepForCachingDisplay(in: preview.bounds))
+            preview.cacheDisplay(in: preview.bounds, to: bitmap)
+            let destination = width == 236 ? path : path + "-\(Int(width)).png"
+            try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: destination))
+            previewWindow.close()
+        }
+        first.store.resizeSidebar(to: 236)
+        first.window.setFrame(NSRect(x: -10000, y: -10000, width: 1100, height: 720), display: true)
+        first.window.orderFront(nil)
+        let content = try #require(first.window.contentView)
+        for _ in 0..<5 { content.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(40)) }
+        let bitmap = try #require(content.bitmapImageRepForCachingDisplay(in: content.bounds))
+        content.cacheDisplay(in: content.bounds, to: bitmap)
+        try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path + "-window.png"))
+        _ = try await pageController.webView.evaluateJavaScript("navigator.mediaSession.metadata.title = 'First track'; void 0")
+        await pageController.media.refresh()
     }
     let sourceTab = first.store.selectedTab.id
     first.store.newTab()
@@ -278,12 +308,19 @@ private let mediaSessionFixture = #"""
     coordinator.select(firstSource)
     #expect(coordinator.selected?.paneID == firstID)
     coordinator.dismiss()
-    #expect(coordinator.selected?.paneID == secondID)
+    #expect(coordinator.selected == nil)
+    #expect(coordinator.sources.count == 2)
+    #expect(second.media.sessions.first?.playing == true)
     await first.media.refresh()
-    #expect(coordinator.selected?.paneID == secondID)
-    // A new playback start may reveal a dismissed source again.
+    await second.media.refresh()
+    #expect(coordinator.selected == nil)
+    _ = try await second.webView.evaluateJavaScript("navigator.mediaSession.metadata.title = 'Updated title'; void 0")
+    await second.media.refresh()
+    #expect(coordinator.selected == nil)
+    // New playback reopens the panel with all players still available.
     #expect(await first.media.send("play", to: firstSource.state))
     try await mediaWait { coordinator.selected?.paneID == firstID }
+    #expect(coordinator.sources.count == 2)
     first.navigate("browse://start")
     #expect(first.media.sessions.isEmpty)
     #expect(coordinator.selected?.paneID == secondID)

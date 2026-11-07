@@ -9,6 +9,61 @@ import BrowseCore
 // @lat: [[architecture#Find in page]]
 final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     private weak var hostedWebView: WKWebView?
+    private(set) var developerToolsPanel: DeveloperToolsPanel?
+    private var developerToolsHeight: CGFloat = 260
+    private var developerToolsWidth: CGFloat = 360
+    private var developerToolsDock: DeveloperToolsPanel.Dock = .bottom
+    var isDeveloperToolsVisible: Bool { developerToolsPanel != nil }
+
+    func showDeveloperTools(console: Bool) -> Bool {
+        guard let web = hostedWebView as? FocusWebView else { return false }
+        if developerToolsPanel == nil {
+            let panel = DeveloperToolsPanel()
+            panel.dock = developerToolsDock
+            panel.onFocus = { [weak web] in web?.onFocus?() }
+            panel.onResize = { [weak self] delta in
+                guard let self else { return }
+                if developerToolsDock == .bottom {
+                    developerToolsHeight = max(100, min(bounds.height - topContentInset - 72,
+                        (developerToolsPanel?.frame.height ?? developerToolsHeight) + delta))
+                } else {
+                    developerToolsWidth = max(160, min(bounds.width - 100,
+                        (developerToolsPanel?.frame.width ?? developerToolsWidth) + delta))
+                }
+                needsLayout = true
+                layoutSubtreeIfNeeded()
+            }
+            developerToolsPanel = panel
+            addSubview(panel)
+        }
+        web.inspector.dockedToRight = developerToolsDock == .right
+        guard web.inspector.showConsole(console) else { removeDeveloperTools(); return false }
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        return true
+    }
+
+    func dockDeveloperTools(_ dock: DeveloperToolsPanel.Dock) {
+        guard let panel = developerToolsPanel else { return }
+        developerToolsDock = dock
+        panel.dock = dock
+        (hostedWebView as? FocusWebView)?.inspector.dockedToRight = dock == .right
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
+    func installInspectorFrontend(_ frontend: WKWebView) { developerToolsPanel?.install(frontend) }
+
+    func removeDeveloperTools() {
+        guard let panel = developerToolsPanel else { return }
+        if let responder = window?.firstResponder as? NSView, responder.isDescendant(of: panel) {
+            window?.makeFirstResponder(hostedWebView)
+        }
+        panel.removeFromSuperview()
+        developerToolsPanel = nil
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
     let linkPreview = LinkHoverPreview()
     private var linkTrackingArea: NSTrackingArea?
 
@@ -19,10 +74,10 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     func showLinkPreview(_ url: String) {
         guard let web = hostedWebView, web.superview === self else { return }
         let pointer = convert(window?.mouseLocationOutsideOfEventStream ?? .zero, from: nil)
-        let content = NSRect(x: 0, y: 0, width: bounds.width,
-                             height: max(0, bounds.height - topContentInset - (isFindBarVisible ? 38 : 0)))
+        let content = NSRect(x: web.frame.minX, y: web.frame.minY, width: web.frame.width,
+                             height: max(0, web.frame.height - topContentInset - (isFindBarVisible ? 38 : 0)))
         linkPreview.url = window?.isVisible == true && !isHiddenOrHasHiddenAncestor && content.contains(pointer) ? url : ""
-        linkPreview.place(in: bounds, avoiding: linkPreviewPointer)
+        linkPreview.place(in: web.frame, avoiding: linkPreviewPointer)
     }
 
     override func updateTrackingAreas() {
@@ -36,7 +91,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
 
     override func mouseMoved(with event: NSEvent) {
         if !linkPreview.isHidden {
-            linkPreview.place(in: bounds, avoiding: convert(event.locationInWindow, from: nil))
+            linkPreview.place(in: hostedWebView?.frame ?? bounds, avoiding: convert(event.locationInWindow, from: nil))
         }
         super.mouseMoved(with: event)
     }
@@ -257,6 +312,8 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
             }
         }
         if hostedWebView !== webView {
+            (hostedWebView as? FocusWebView)?.closeInspector()
+            if webView.superview !== self { (webView as? FocusWebView)?.closeInspector() }
             linkPreview.url = ""
             hideFindBar(restoreFocus: false)
             findSupport?.invalidate()
@@ -295,16 +352,23 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
 
     override func layout() {
         super.layout()
-        linkPreview.place(in: bounds, avoiding: linkPreviewPointer)
         guard let webView = hostedWebView, webView.superview === self else { return }
         let barHeight = isFindBarVisible ? (findBarView?.frame.height ?? 0) : 0
         let chromeHeight = topContentInset + barHeight
+        let toolsHeight = developerToolsPanel == nil || developerToolsDock != .bottom ? 0
+            : min(developerToolsHeight, max(0, bounds.height - chromeHeight - 72))
+        let toolsWidth = developerToolsPanel == nil || developerToolsDock != .right ? 0
+            : min(developerToolsWidth, max(0, bounds.width - 100))
+        let pageWidth = max(0, bounds.width - toolsWidth)
+        developerToolsPanel?.frame = developerToolsDock == .bottom
+            ? NSRect(x: 0, y: 0, width: bounds.width, height: toolsHeight)
+            : NSRect(x: pageWidth, y: 0, width: toolsWidth, height: max(0, bounds.height - chromeHeight))
         headerGlass?.frame = NSRect(x: 0, y: bounds.height - chromeHeight, width: bounds.width, height: chromeHeight)
         if let headerContent { activeHeaderTintView.frame = headerContent.bounds }
         findBarView?.frame.origin = NSPoint(x: 0, y: headerGlass == nil ? bounds.height - chromeHeight : 0)
         findBarView?.frame.size.width = bounds.width
         if #available(macOS 26.0, *) {
-            webView.frame = bounds
+            webView.frame = NSRect(x: 0, y: toolsHeight, width: pageWidth, height: max(0, bounds.height - toolsHeight))
             // Reserve the visible viewport for the page while allowing its
             // scrolled content to render behind the overlaid glass header.
             let inset = topContentInset + barHeight
@@ -313,8 +377,9 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
                 webView.obscuredContentInsets = NSEdgeInsets(top: inset, left: 0, bottom: 0, right: 0)
             }
         } else {
-            webView.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - barHeight))
+            webView.frame = NSRect(x: 0, y: toolsHeight, width: pageWidth, height: max(0, bounds.height - barHeight - toolsHeight))
         }
+        linkPreview.place(in: webView.frame, avoiding: linkPreviewPointer)
     }
 }
 

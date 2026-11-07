@@ -51,7 +51,9 @@ The smoke test waits for background errors, invokes the toolbar action, and veri
 
 ## HTML media fallback controls
 
-[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) plays a generated silent WAV in an open shadow root, verifying native play/pause/volume commands, page-title fallback, resumed playback, and cleanup after element removal.
+[MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) plays a silent WAV in an open shadow root and in off-DOM audio elements, verifying discovery, commands, exclusive playback, and cleanup.
+
+Both `new Audio()` and `document.createElement` fixtures work without DOM insertion or declared Media Session playback state. Play/pause/volume controls, page-title fallback, and resuming work in all cases; removing and emptying the player retires it.
 
 ## Sidebar media ownership
 
@@ -60,6 +62,8 @@ The smoke test waits for background errors, invokes the toolbar action, and veri
 ## Media source selection
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) checks most-recent playback selection, explicit source selection, commands affecting only that source, persistent dismissal, reappearance on new playback, and cleanup on native-page navigation.
+
+With two sources, closing hides the entire panel while retaining both players and their playback state. Refreshing either source or changing metadata keeps it hidden; a new playback start reveals the panel with both players still available.
 
 ## Exclusive media playback
 
@@ -77,7 +81,7 @@ The mounted icon must stay 16×16 points after loading and across narrow, defaul
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) optionally loads `BEND_MEDIA_SMOKE_URL` in an ephemeral WebKit store, attempts muted playback, matches the sidebar title to Media Session metadata, and tests pause/resume with default playback policy.
 
-This opt-in check uses no saved sign-in and depends on the site's availability, consent flow, and playback policies. Local fixtures cover the deterministic bridge behavior. `BEND_MEDIA_SNAPSHOT` optionally writes a PNG of the native card during the ownership fixture for visual inspection.
+This opt-in check uses no saved sign-in and depends on the site's availability, consent flow, and playback policies. Local fixtures cover the deterministic bridge behavior. `BEND_MEDIA_SNAPSHOT` optionally renders the card with multiple players, a long title, and favicon at narrow, default, and wide sidebar widths, plus the full browser window, during the ownership fixture to inspect picker centering, truncation, glass chrome, and pane spacing.
 
 ## Build bundle publication
 
@@ -640,3 +644,9 @@ HTML and XHTML are accepted, while other file types and remote file hosts are re
 Verify relative, nested, shadow-root, and iframe links display their destinations through an isolated WebKit bridge. Leaving a link and navigating clear the preview; its bounded pane-local bubble ignores clicks.
 
 Pointer movement within one link switches the preview to the right and back without duplicate URL messages or oscillation. Long URLs truncate clear of the cursor at either edge, including after a pane resize.
+
+## Developer tools
+
+[DeveloperToolsTests.swift](../Tests/BrowseTests/DeveloperToolsTests.swift) opens the native inspector through the Develop menu shortcut and checks that console errors, thrown errors, and unhandled rejections from the selected pane reach its console.
+
+Two mounted pages verify source isolation and focused-pane routing. Command-Shift-I toggles the inspector below its page in the same pane. The native toolbar switches between right and bottom docking without losing console messages, and its close button removes the panel. Mouse drags resize both dock positions without moving the browser window. Reopening and find-bar coexistence preserve separate page/inspector bounds, including narrow panes. The inspector control bridge is absent from the inspected website. Left docking and detaching stay hidden; closure removes the frontend, and commands disable on native Bend pages. `BEND_INSPECTOR_SNAPSHOT` optionally captures the containing browser window. Run this AppKit test without parallel execution because it owns the shared application menu.

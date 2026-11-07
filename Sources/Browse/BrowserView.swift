@@ -6,10 +6,10 @@ import BrowseCore
 // expose a same-named State macro without shipping its macro plugin.
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
-private enum Chrome {
+enum Chrome {
     // Match the fixed centerline of the native unified-toolbar traffic lights.
     static let headerCenterY: CGFloat = 26
-    static let paneInset: CGFloat = 6
+    static let paneInset: CGFloat = PaneGeometry.gap
     static let paneHeaderHeight = 2 * (headerCenterY - paneInset)
     static let accent = Color(red: 0.66, green: 0.81, blue: 0.73)
     static let muted = Color.white.opacity(0.42)
@@ -275,17 +275,18 @@ private struct TabSelectionMaterial: ViewModifier {
 }
 
 // @lat: [[architecture#Pane materials]]
-private struct PaneChromeBackground: View {
+struct PaneChromeBackground: View {
     var cornerRadius: CGFloat = 0
+    var roundsTopCorners = true
     var roundsBottomCorners = true
     var appearance: GlassAppearance = .headerDefault
 
     var body: some View {
         let shape = UnevenRoundedRectangle(
-            topLeadingRadius: cornerRadius,
+            topLeadingRadius: roundsTopCorners ? cornerRadius : 0,
             bottomLeadingRadius: roundsBottomCorners ? cornerRadius : 0,
             bottomTrailingRadius: roundsBottomCorners ? cornerRadius : 0,
-            topTrailingRadius: cornerRadius)
+            topTrailingRadius: roundsTopCorners ? cornerRadius : 0)
         Group {
             if #available(macOS 26.0, *) {
                 Color.clear.glassEffect(appearance.material, in: shape)
