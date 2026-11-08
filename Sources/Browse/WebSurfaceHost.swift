@@ -374,6 +374,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
             ? NSRect(x: 0, y: 0, width: bounds.width, height: toolsHeight)
             : NSRect(x: pageWidth, y: 0, width: toolsWidth, height: max(0, bounds.height - chromeHeight))
         headerGlass?.frame = NSRect(x: 0, y: bounds.height - chromeHeight, width: bounds.width, height: chromeHeight)
+        headerGlass?.layoutSubtreeIfNeeded()
         if let headerContent { activeHeaderTintView.frame = headerContent.bounds }
         findBarView?.frame.origin = NSPoint(x: 0, y: headerGlass == nil ? bounds.height - chromeHeight : 0)
         findBarView?.frame.size.width = bounds.width
@@ -479,15 +480,22 @@ private final class FindSearchField: NSSearchField {
 }
 
 @available(macOS 26.0, *)
-private final class PaneHeaderGlass: NSGlassEffectView {
+private final class PaneHeaderGlass: NSView {
+    private let glass = NSGlassEffectView()
+    private let glassContent = NSView()
     let chromeContent = NSView()
     private let scrim = HeaderScrim()
 
     init() {
         super.init(frame: .zero)
-        // WebSurfaceHost clips the shared header's top corners with the pane.
-        cornerRadius = 0
-        contentView = chromeContent
+        wantsLayer = true
+        layer?.masksToBounds = true
+        // Keep the top and side highlights, but move the bottom glass edge
+        // below this clip. Controls retain the visible header's coordinates.
+        glass.cornerRadius = 0
+        glass.contentView = glassContent
+        glassContent.addSubview(chromeContent)
+        addSubview(glass)
         scrim.wantsLayer = true
         scrim.autoresizingMask = [.width, .height]
         chromeContent.addSubview(scrim)
@@ -496,13 +504,17 @@ private final class PaneHeaderGlass: NSGlassEffectView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func apply(_ appearance: GlassAppearance) {
-        style = appearance.clear ? .clear : .regular
-        tintColor = appearance.tint?.nsColor
+        glass.style = appearance.clear ? .clear : .regular
+        glass.tintColor = appearance.tint?.nsColor
         scrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(appearance.darkening).cgColor
     }
 
     override func layout() {
         super.layout()
+        let bleed = PaneChromeBackground.bottomRimBleed
+        glass.frame = NSRect(x: 0, y: -bleed, width: bounds.width, height: bounds.height + bleed)
+        glass.layoutSubtreeIfNeeded()
+        chromeContent.frame = NSRect(x: 0, y: bleed, width: bounds.width, height: bounds.height)
         scrim.frame = chromeContent.bounds
     }
 }

@@ -168,7 +168,7 @@ On macOS 26 and later, each live web page extends behind its compact title row. 
 
 Each web view fills its pane's viewport and scrolls its document internally through WebKit. Page content height does not size the web view or the pane. The outer canvas scrolls only when the split layout's minimum dimensions exceed the available window area.
 
-The complete pane, including its outer glass background, header, and page, shares a rounded, layer-backed AppKit container. Clipping is applied after the pane background so its glass compositing layers cannot extend outside the silhouette. The header glass also has rounded top corners, and the clip follows pane resizing.
+The complete pane, including its outer glass background, header, and page, shares a rounded, layer-backed AppKit container. Clipping is applied after the pane background so its glass compositing layers cannot extend outside the silhouette. The header glass also has rounded top corners, and the clip follows pane resizing. [[Sources/Browse/WebSurfaceHost.swift#PaneHeaderGlass]] and stacked headers in [[Sources/Browse/BrowserView.swift#PaneChromeBackground]] extend the glass below the visible header and clip away its bottom reflective rim. Top and side highlights remain; controls, header height, and WebKit's inset use the visible bounds. The separate configurable header separator still applies.
 
 The web view has an additional native clip around its composited content: all corners under the glass header, or only the bottom corners in the stacked layout. Nested SwiftUI content inherits the pane's environment through its native host.
 

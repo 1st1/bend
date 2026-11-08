@@ -146,31 +146,39 @@ import WebKit
     #expect(bar.convert(bar.bounds, to: hosts[0]).maxY == hosts[0].bounds.maxY - 36)
     if #available(macOS 26.0, *) {
         #expect(pages[0].webView.obscuredContentInsets.top == 36 + bar.frame.height)
-        let glass = try #require(hosts[0].subviews.compactMap { $0 as? NSGlassEffectView }.first)
-        #expect(bar.superview === glass.contentView)
+        let chromeContent = try #require(bar.superview)
+        let glass = try #require(hosts[0].subviews.flatMap(\.subviews).compactMap { $0 as? NSGlassEffectView }.first)
+        let clip = try #require(glass.superview)
+        #expect(clip.layer?.masksToBounds == true)
+        #expect(chromeContent.superview === glass.contentView)
         #expect(!(bar is NSVisualEffectView))
-        #expect(glass.frame.height == 36 + bar.frame.height)
-        #expect(glass.frame.maxY == hosts[0].bounds.maxY)
+        #expect(clip.frame.height == 36 + bar.frame.height)
+        #expect(clip.frame.maxY == hosts[0].bounds.maxY)
+        #expect(glass.frame.minY < clip.bounds.minY)
+        #expect(glass.frame.maxY == clip.bounds.maxY)
+        #expect(glass.frame.minX == clip.bounds.minX)
+        #expect(glass.frame.maxX == clip.bounds.maxX)
+        #expect(chromeContent.convert(chromeContent.bounds, to: clip) == clip.bounds)
         let editorBeforeAppearanceChange = context.window.firstResponder
         hosts[0].update(webView: pages[0].webView, topContentInset: 36,
                         headerAppearance: GlassAppearance(clear: true, tint: .init(red: 0.2, green: 0.4, blue: 0.8), darkening: 0.3))
         #expect(glass.style == .clear)
         #expect(glass.tintColor != nil)
         #expect(context.window.firstResponder === editorBeforeAppearanceChange)
-        #expect(bar.superview === glass.contentView)
+        #expect(bar.superview === chromeContent)
         let activeTint = NSColor.systemBlue.withAlphaComponent(0.4)
         hosts[0].update(webView: pages[0].webView, topContentInset: 36,
             headerAppearance: .headerDefault, activeHeaderTint: activeTint)
         let tint = hosts[0].activeHeaderTintView
-        #expect(tint.superview === glass.contentView)
-        #expect(tint.frame == glass.contentView?.bounds)
+        #expect(tint.superview === chromeContent)
+        #expect(tint.frame == chromeContent.bounds)
         #expect(tint.layer?.backgroundColor == activeTint.cgColor)
         #expect(tint.frame.contains(bar.frame))
         #expect(context.window.firstResponder === editorBeforeAppearanceChange)
         #expect(hosts[1].activeHeaderTintView.layer?.backgroundColor == nil)
         hosts[0].update(webView: pages[0].webView, topContentInset: 36, headerAppearance: .headerDefault)
         #expect(tint.layer?.backgroundColor == nil)
-        #expect(bar.superview === glass.contentView)
+        #expect(bar.superview === chromeContent)
     }
     try await clickFindButton(1)
     try await waitForSelection("first")
@@ -235,7 +243,9 @@ import WebKit
     #expect(context.window.firstResponder === pages[0].webView)
     if #available(macOS 26.0, *) {
         #expect(pages[0].webView.obscuredContentInsets.top == 36)
-        #expect(hosts[0].subviews.compactMap { $0 as? NSGlassEffectView }.first?.frame.height == 36)
+        let tint = hosts[0].activeHeaderTintView
+        #expect(tint.convert(tint.bounds, to: hosts[0]) == NSRect(x: 0, y: hosts[0].bounds.maxY - 36,
+                                                               width: hosts[0].bounds.width, height: 36))
     }
     // Escape clears both the native find selection and obsolete count replies,
     // even when it arrives immediately after a new query.

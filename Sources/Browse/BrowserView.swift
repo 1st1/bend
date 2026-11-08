@@ -301,9 +301,11 @@ private struct TabSelectionMaterial: ViewModifier {
 
 // @lat: [[architecture#Pane materials]]
 struct PaneChromeBackground: View {
+    static let bottomRimBleed: CGFloat = 8
     var cornerRadius: CGFloat = 0
     var roundsTopCorners = true
     var roundsBottomCorners = true
+    var suppressesBottomRim = false
     var appearance: GlassAppearance = .headerDefault
 
     var body: some View {
@@ -315,6 +317,8 @@ struct PaneChromeBackground: View {
         Group {
             if #available(macOS 26.0, *) {
                 Color.clear.glassEffect(appearance.material, in: shape)
+                    .padding(.bottom, suppressesBottomRim ? -Self.bottomRimBleed : 0)
+                    .clipped()
             } else {
                 shape.fill(.regularMaterial)
             }
@@ -391,6 +395,7 @@ private struct BrowserPane: View {
             VStack(spacing: 0) {
                 header
                     .background(PaneChromeBackground(cornerRadius: 11, roundsBottomCorners: false,
+                                                    suppressesBottomRim: true,
                                                     appearance: store.paneHeaderGlass))
                 pageContent
                     .background(PaneChromeBackground())
