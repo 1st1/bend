@@ -17,7 +17,11 @@ final class SidebarResizeView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func resetCursorRects() {
-        addCursorRect(bounds.intersection(visibleRect), cursor: .resizeLeftRight)
+        let rect = bounds.intersection(visibleRect)
+        guard window != nil, !isHiddenOrHasHiddenAncestor, !rect.isEmpty,
+              rect.origin.x.isFinite, rect.origin.y.isFinite,
+              rect.width.isFinite, rect.height.isFinite else { return }
+        addCursorRect(rect, cursor: .resizeLeftRight)
     }
 
     override func mouseDown(with event: NSEvent) {

@@ -192,3 +192,33 @@ func sidebarVisibilityAnimation(animationsDisabled: Bool) async throws {
     restored.session.sidebarWidth = .nan
     #expect(restored.sidebarWidth == 250)
 }
+
+// @lat: [[tests#Clipped resize cursors]]
+@Test @MainActor func clippedResizeCursors() throws {
+    _ = NSApplication.shared
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 200, height: 200),
+                          styleMask: [.borderless], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    defer { window.close() }
+    let clip = NSClipView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
+    window.contentView = clip
+    let document = NSView(frame: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+    clip.documentView = document
+    for handle in [PaneDividerView(), SidebarResizeView()] as [NSView] {
+        handle.frame = NSRect(x: 500, y: 500, width: 6, height: 200)
+        handle.bounds.origin = NSPoint(x: 10, y: 10)
+        document.addSubview(handle)
+        #expect(handle.bounds.intersection(handle.visibleRect).isNull)
+        handle.resetCursorRects()
+        handle.frame.origin = NSPoint(x: 50, y: 50)
+        #expect(!handle.bounds.intersection(handle.visibleRect).isEmpty)
+        handle.resetCursorRects()
+        handle.isHidden = true
+        handle.resetCursorRects()
+        handle.isHidden = false
+        handle.frame.size = .zero
+        handle.resetCursorRects()
+        handle.removeFromSuperview()
+        handle.resetCursorRects()
+    }
+}

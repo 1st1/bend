@@ -61,6 +61,10 @@ final class BrowserWindows {
             // saves the whole open set before AppKit tears down any windows.
             if !self.terminating, !self.windows.isEmpty { self.save() }
         }
+        store.onNewWindowDrop = { [weak self, weak store] tab, pane, point in
+            guard let self, let store else { return false }
+            return self.detach(tab: tab, pane: pane, from: store, at: point) != nil
+        }
         store.onSettingsRequested = { [weak self] in self?.onSettings?() }
         store.onEmptiedByTransfer = { [weak self, weak context] destination in
             guard let self, let context, self.windows.count > 1,
@@ -75,6 +79,30 @@ final class BrowserWindows {
             context.window.cascadeTopLeft(from: NSPoint(x: previous.frame.minX + 24, y: previous.frame.maxY - 24))
         }
         if show { context.window.makeKeyAndOrderFront(nil) }
+        return context
+    }
+
+    // @lat: [[architecture#Dragging into a new window]]
+    @discardableResult
+    func detach(tab tabID: UUID, pane paneID: UUID?, from source: BrowserStore, at point: NSPoint) -> BrowserWindowSession? {
+        guard let original = windows.first(where: { $0.store === source }),
+              let tab = source.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }),
+              paneID == nil || tab.pages.contains(where: { $0.id == paneID }) else { return nil }
+        let visible = NSScreen.screens.first { $0.frame.contains(point) }?.visibleFrame
+            ?? original.window.screen?.visibleFrame ?? original.window.frame
+        let size = NSSize(width: min(original.window.frame.width, visible.width),
+                          height: min(original.window.frame.height, visible.height))
+        let frame = NSRect(x: min(max(point.x - 160, visible.minX), visible.maxX - size.width),
+                           y: min(max(point.y + 124 - size.height, visible.minY), visible.maxY - size.height),
+                           width: size.width, height: size.height)
+        let context = create(id: UUID().uuidString, fresh: true, show: false)
+        context.window.setFrame(frame, display: false)
+        guard source.transfer(tab: tabID, pane: paneID, to: context.store, at: .emptyWindow) else {
+            context.window.close()
+            return nil
+        }
+        context.window.makeKeyAndOrderFront(nil)
+        save()
         return context
     }
 

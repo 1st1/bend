@@ -35,6 +35,7 @@ final class PaneDragSourceView: NSView {
     private(set) var isHovering = false
     private(set) var mouseDownPoint: NSPoint?
     private(set) var dragSurface: PaneDragSurface?
+    private(set) var dragPreview: DetachedDragPreview?
     weak var trackingWindow: BrowseWindow?
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -76,12 +77,18 @@ final class PaneDragSourceView: NSView {
         }
         guard dragSurface != nil || hypot(event.locationInWindow.x - origin.x, event.locationInWindow.y - origin.y) >= 5 else { return }
         if dragSurface == nil {
-            let surface = PaneDragSurface(source: self, content: content, badge: dragBadge())
+            if let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }) {
+                dragPreview = DetachedDragPreview(store: store, tab: tab, pane: pageID, title: title, source: window)
+            }
+            let surface = PaneDragSurface(source: self, content: content)
             dragSurface = surface
             InputDiagnostics.transition(.paneDrag, .started, event: event, view: self, tabID: tabID)
             content.addSubview(surface, positioned: .above, relativeTo: nil)
 
         }
+        let screenPoint = window.convertPoint(toScreen: event.locationInWindow)
+        dragPreview?.update(at: screenPoint, expanded: WindowDragTarget.previewExpanded(
+            at: screenPoint, store: store, wasExpanded: dragPreview?.expanded == true))
         dragSurface?.update(at: event.locationInWindow)
     }
 
@@ -89,6 +96,8 @@ final class PaneDragSourceView: NSView {
         InputDiagnostics.record(.paneHandle, event: event, view: self)
         guard mouseDownPoint != nil else { return }
         dragSurface?.update(at: event.locationInWindow)
+        let outsidePoint = dragSurface == nil ? nil
+            : WindowDragTarget.newWindowPoint(from: window, at: event.locationInWindow, store: store)
         let target = dragSurface?.target
         let sidebarTarget = dragSurface?.sidebarTarget
         let edge = target?.dropEdge
@@ -125,6 +134,8 @@ final class PaneDragSourceView: NSView {
                 store.detachPane(pageID, from: tabID, into: workspace)
             default: break
             }
+        } else if let outsidePoint, let store, let tabID, let pageID {
+            _ = store.onNewWindowDrop?(tabID, pageID, outsidePoint)
         }
     }
 
@@ -143,28 +154,12 @@ final class PaneDragSourceView: NSView {
         dragSurface?.clearTargets()
         dragSurface?.removeFromSuperview()
         dragSurface = nil
+        dragPreview?.close(); dragPreview = nil
         trackingWindow?.releasePaneDrag(self)
         trackingWindow = nil
     }
 
-    private func dragBadge() -> NSImage {
-        let text = NSString(string: title)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.white]
-        let size = NSSize(width: min(260, max(100, text.size(withAttributes: attributes).width + 24)), height: 30)
-        let image = NSImage(size: size)
-        image.lockFocus()
-        let rect = NSRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)
-        NSColor(calibratedWhite: 0.15, alpha: 0.96).setFill()
-        let path = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
-        path.fill()
-        NSColor.white.withAlphaComponent(0.2).setStroke(); path.stroke()
-        let paragraph = NSMutableParagraphStyle(); paragraph.lineBreakMode = .byTruncatingTail
-        text.draw(in: NSRect(x: 12, y: 7, width: size.width - 24, height: 16),
-                  withAttributes: attributes.merging([.paragraphStyle: paragraph]) { _, new in new })
-        image.unlockFocus()
-        return image
-    }
+
 }
 
 // Native pane geometry is used directly during an internal drag; WebKit's
@@ -246,7 +241,6 @@ class PaneDropHost: NSView {
 @MainActor
 final class PaneDragSurface: NSView {
     private weak var source: PaneDragSourceView?
-    private let badge: NSImageView
     private(set) var target: PaneDropHost?
     private(set) var sidebarTarget: PaneSidebarTargetView?
     private var hoverTask: Task<Void, Never>?
@@ -254,14 +248,11 @@ final class PaneDragSurface: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    init(source: PaneDragSourceView, content: NSView, badge image: NSImage) {
+    init(source: PaneDragSourceView, content: NSView) {
         self.source = source
-        badge = NSImageView(frame: NSRect(origin: .zero, size: image.size))
-        badge.image = image
         super.init(frame: content.bounds)
         autoresizingMask = [.width, .height]
         wantsLayer = true
-        addSubview(badge)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -272,7 +263,6 @@ final class PaneDragSurface: NSView {
             isHidden = true; clearTargets(); return
         }
         let point = convert(windowPoint, from: nil)
-        badge.setFrameOrigin(NSPoint(x: point.x + 12, y: point.y + 12))
         guard bounds.contains(point), let content = superview else { clearTargets(); return }
         let sidebar = descendants(of: PaneSidebarTargetView.self, in: content).filter {
             $0.store === store && !$0.isHiddenOrHasHiddenAncestor

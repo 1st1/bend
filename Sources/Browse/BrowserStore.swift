@@ -20,6 +20,7 @@ final class BrowserStore: ObservableObject {
     var onAddressRequested: ((UUID) -> Void)?
     var onSettingsRequested: (() -> Void)?
     var onEmptiedByTransfer: ((BrowserStore) -> Void)?
+    var onNewWindowDrop: ((UUID, UUID?, NSPoint) -> Bool)?
     private struct PendingAddressEntry {
         let tabID: UUID
         let paneID: UUID
@@ -757,12 +758,21 @@ final class BrowserStore: ObservableObject {
             $0.id == incoming.id || $0.pages.contains { movedIDs.contains($0.id) }
         }) else { return false }
         var nextSource = session, nextDestination = destination.session
+        var replacedPages: [UUID] = []
         // Build and validate both layouts before changing ownership or views.
         switch placement {
         case .insert(let relativeID, let after):
             guard let dw = nextDestination.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == relativeID } }),
                   let dt = nextDestination.workspaces[dw].tabs.firstIndex(where: { $0.id == relativeID }) else { return false }
             nextDestination.workspaces[dw].tabs.insert(incoming, at: dt + (after ? 1 : 0))
+            nextDestination.selectedTab = incoming.id
+        case .emptyWindow:
+            guard nextDestination.workspaces.count == 1, nextDestination.workspaces[0].tabs.count == 1,
+                  let blank = nextDestination.workspaces[0].tabs.first, !blank.isPinned,
+                  blank.pages.count == 1, blank.pages[0].address == "browse://start",
+                  (destination.browsers[blank.pages[0].id]?.address ?? "browse://start") == "browse://start" else { return false }
+            replacedPages = blank.pages.map(\.id)
+            nextDestination.workspaces[0].tabs = [incoming]
             nextDestination.selectedTab = incoming.id
         case .workspace(let id):
             guard let dw = nextDestination.workspaces.firstIndex(where: { $0.id == id }) else { return false }
@@ -805,6 +815,7 @@ final class BrowserStore: ObservableObject {
             browsers.removeValue(forKey: id)?.webView.removeFromSuperview()
         }
         destination.session = nextDestination
+        for id in replacedPages { destination.removeController(id) }
         // Extension adapters discover ownership from the final models, retaining
         // their existing identities throughout the move.
         if #available(macOS 15.4, *) {
@@ -833,7 +844,7 @@ final class BrowserStore: ObservableObject {
             page.webView.stopLoading()
         }
         browsers.removeAll()
-        onAddressRequested = nil; onSettingsRequested = nil; onEmptiedByTransfer = nil
+        onAddressRequested = nil; onSettingsRequested = nil; onEmptiedByTransfer = nil; onNewWindowDrop = nil
     }
 
     func revealPage(_ id: UUID) {

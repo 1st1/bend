@@ -788,3 +788,35 @@ Tab pinning sets all pane pins; individual unpinning keeps the tab protected whi
 ## Native pin controls
 
 [[Tests/BrowseTests/PinningTests.swift#nativePinControls]] exercises native Option-clicks on pane controls and sidebar rows, checks the live modifier preview, and unpins an inactive pane and an unselected tab through their always-visible pin buttons.
+
+## Detached window ownership
+
+[[Tests/BrowseTests/DetachedWindowTests.swift#DetachedWindowTests#detachedWindowOwnership]] verifies pane and whole-tab detachment preserves live WebViews, form state, page zoom, pins, and saved window membership without an extra blank tab or closed history.
+
+Whole-tab detachment preserves split layout, tab identity, and the dedicated-link pane. Exhausted source windows close after transfer, while a source with remaining panes stays open. Invalid sources create no window, and destination frames fit the chosen display.
+
+## Outside-window drag gestures
+
+[[Tests/BrowseTests/DetachedWindowTests.swift#DetachedWindowTests#outsideWindowDragGestures]] drives native pane and tab gestures through the threshold, outside preview, return, cancellation, and successful release into a new window.
+
+The preview remains mouse-transparent and nonactivating, grows outside, shrinks on return, and does not mask the source window as a drop target. Near-edge size hysteresis leaves exact outside-drop eligibility unchanged. No destination exists before release; cancellation clears the panel and retains ownership. Both final drop paths leave no preview or extra blank tab. `BEND_DRAG_PREVIEW_SNAPSHOT` optionally captures the expanded card for visual review.
+
+Tab drags retain a compact title badge inside their source window, show the thumbnail after leaving, and restore the badge on return; repeated boundary crossings do not leave both visuals visible.
+
+## Drag preview motion
+
+[[Tests/BrowseTests/DetachedWindowTests.swift#dragPreviewMotion]] moves the preview continuously while it grows and shrinks, verifying its cursor anchor never trails the latest pointer or jumps back to an earlier position.
+
+After motion stops, the size transition must finish at the requested dimensions without moving the cursor anchor. Landscape and portrait sources retain their thumbnail aspect ratio without extra space in compact, expanded, and intermediate sizes; both outer dimensions remain within the 250-point cap. This regresses competing panel-position and resize animations.
+
+## Clipped resize cursors
+
+[[Tests/BrowseTests/PaneResizingTests.swift#clippedResizeCursors]] exercises pane and sidebar resize handles outside a clip view, then visible, hidden, empty, and detached, ensuring invalid cursor rectangles never reach AppKit.
+
+The fully clipped case has a null intersection with an infinite origin, matching the cursor-registration crash. Visible handles still register their resize regions.
+
+## Drag preview rendered proportions
+
+[[Tests/BrowseTests/DetachedWindowTests.swift#dragPreviewRenderedProportions]] renders wide, tall, and shallow pane previews, checking that captured squares stay square and web content reaches the thumbnail edges after capped resizing.
+
+A web-only snapshot replaces its original content rectangle inside the full-pane capture, retaining header geometry. Long titles must truncate rather than widen portrait cards. Compact, expanded, and restored compact renders preserve proportions within native pixel rounding without letterboxing; shallow panes retain their captured height rather than layout minimums.

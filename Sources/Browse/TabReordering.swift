@@ -24,6 +24,7 @@ final class TabDragSourceView: NSView {
     var reduceMotion = false
     private(set) var mouseDownPoint: NSPoint?
     private(set) var dragSurface: TabDragSurface?
+    private(set) var dragPreview: DetachedDragPreview?
     private var monitor: Any?
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -41,6 +42,9 @@ final class TabDragSourceView: NSView {
               let window, let content = window.contentView else { cancelDrag(); return }
         guard dragSurface != nil || hypot(event.locationInWindow.x - origin.x, event.locationInWindow.y - origin.y) >= 5 else { return }
         if dragSurface == nil {
+            if let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }) {
+                dragPreview = DetachedDragPreview(store: store, tab: tab, pane: nil, title: title, source: window)
+            }
             let surface = TabDragSurface(source: self, content: content)
             dragSurface = surface
             InputDiagnostics.transition(.tabDrag, .started, view: self, tabID: tabID)
@@ -66,6 +70,13 @@ final class TabDragSourceView: NSView {
                 name: NSWindow.didResignKeyNotification, object: window)
         }
         autoscroll(with: event)
+        let screenPoint = window.convertPoint(toScreen: event.locationInWindow)
+        if window.frame.contains(screenPoint) {
+            dragPreview?.hide()
+        } else {
+            dragPreview?.update(at: screenPoint, expanded: WindowDragTarget.previewExpanded(
+                at: screenPoint, store: store, wasExpanded: dragPreview?.expanded == true))
+        }
         dragSurface?.update(at: event.locationInWindow)
     }
 
@@ -73,6 +84,8 @@ final class TabDragSourceView: NSView {
         InputDiagnostics.record(.tabHandle, event: event, view: self)
         guard mouseDownPoint != nil else { return }
         dragSurface?.update(at: event.locationInWindow)
+        let outsidePoint = dragSurface == nil ? nil
+            : WindowDragTarget.newWindowPoint(from: window, at: event.locationInWindow, store: store)
         let wasDragging = dragSurface != nil
         let placement = dragSurface?.placement
         let destinationWindow = dragSurface?.window
@@ -104,6 +117,8 @@ final class TabDragSourceView: NSView {
                     _ = store.joinTabs(tabID, into: destination, beside: pane, edge: edge)
                 }
             }
+        } else if let outsidePoint {
+            _ = store.onNewWindowDrop?(tabID, nil, outsidePoint)
         } else if !wasDragging, bounds.contains(convert(event.locationInWindow, from: nil)) {
             if event.modifierFlags.contains(.option) { store.toggleTabPinned(tabID) }
             else { store.select(tabID) }
@@ -122,6 +137,7 @@ final class TabDragSourceView: NSView {
         mouseDownPoint = nil
         dragSurface?.clearPlacement()
         dragSurface?.removeFromSuperview(); dragSurface = nil
+        dragPreview?.close(); dragPreview = nil
         if let monitor {
             NSEvent.removeMonitor(monitor); self.monitor = nil
             InputDiagnostics.transition(.tabMonitorLifetime, .removed, view: self, tabID: tabID)
@@ -181,6 +197,7 @@ final class TabDragSurface: NSView {
             isHidden = true; clearPlacement(); return
         }
         let point = convert(windowPoint, from: nil)
+        badge.isHidden = window !== sourceWindow
         badge.setFrameOrigin(NSPoint(x: point.x + 12, y: point.y + 12))
         guard bounds.contains(point) else { clearPlacement(); return }
         let targets = descendants(of: PaneSidebarTargetView.self, in: content).filter { $0.store === store && !$0.isHiddenOrHasHiddenAncestor }

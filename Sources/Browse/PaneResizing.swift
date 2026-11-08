@@ -33,7 +33,11 @@ final class PaneDividerView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func resetCursorRects() {
-        addCursorRect(bounds.intersection(visibleRect), cursor: resizeCursor)
+        let rect = bounds.intersection(visibleRect)
+        guard window != nil, !isHiddenOrHasHiddenAncestor, !rect.isEmpty,
+              rect.origin.x.isFinite, rect.origin.y.isFinite,
+              rect.width.isFinite, rect.height.isFinite else { return }
+        addCursorRect(rect, cursor: resizeCursor)
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
