@@ -153,11 +153,15 @@ import BrowseCore
     // Hidden SwiftUI hosting roots must not steal either half of a page click.
     let inactiveHost = try #require(host.mounted[second.id])
     #expect(inactiveHost.isHidden)
+    let originalPageFrames = [web, otherWeb].map { $0.convert($0.bounds, to: host) }
+    store.paneHighlight.outlineWidth = 2
+    store.paneHighlight.outlineGap = 2.5
     for style in [PaneHighlight.Style.none, .transparency, .outline, .glow, .titleTint] {
         store.paneHighlight.style = style
         update()
         try await settle()
         #expect(controller.webView === web && web.superview === parent)
+        #expect([web, otherWeb].map { $0.convert($0.bounds, to: host) } == originalPageFrames)
         for pageWeb in [web, otherWeb] {
             let point = pageWeb.convert(NSPoint(x: pageWeb.bounds.midX, y: pageWeb.bounds.midY), to: host)
             #expect(inactiveHost.hitTest(point) == nil)

@@ -353,7 +353,6 @@ private struct BrowserPane: View {
     @ViewState<Bool> private var titleHovered = false
     @ViewState<Bool> private var paneHovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.displayScale) private var displayScale
     private var focused: Bool { tab.focusedPane == pageID }
     private var activeHeaderTint: NSColor? {
         guard focused, store.paneHighlight.style == .titleTint else { return nil }
@@ -371,14 +370,6 @@ private struct BrowserPane: View {
     var body: some View {
         ClippedPaneContent(content: decoratedPane, store: store, tabID: tab.id, pageID: pageID,
                            onHover: { paneHovered = $0 })
-            // Reserve the ring inside the pane's layout slot so it remains
-            // visible at canvas edges and never overlaps a neighboring pane.
-            .padding(store.paneHighlight.style == .outline ? store.paneHighlight.outlineWidth + 1 / max(1, displayScale) : 0)
-            .overlay {
-                PaneHighlightOverlay(appearance: store.paneHighlight, focused: focused)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
     }
 
     private var decoratedPane: some View {

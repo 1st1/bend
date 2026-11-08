@@ -73,7 +73,8 @@ import BrowseCore
     var highlight = PaneHighlight()
     highlight.style = .titleTint
     highlight.outlineColor = .init(red: 0.7, green: 0.3, blue: 0.1)
-    highlight.outlineWidth = 3.5
+    highlight.outlineWidth = 1.5
+    highlight.outlineGap = 1.25
     highlight.glowColor = .init(red: 0.2, green: 0.8, blue: 0.5)
     highlight.glowIntensity = 0.75
     highlight.glowSpread = 16
@@ -126,9 +127,11 @@ import BrowseCore
     oldHighlight.removeValue(forKey: "titleTintColor")
     oldHighlight.removeValue(forKey: "titleTintIntensity")
     oldHighlight.removeValue(forKey: "glowSpread")
+    oldHighlight.removeValue(forKey: "outlineGap")
     let migrated = try JSONDecoder().decode(PaneHighlight.self, from: JSONSerialization.data(withJSONObject: oldHighlight))
     #expect(migrated.style == .glow && migrated.glowIntensity == 0.75)
     #expect(migrated.glowSpread == 8)
+    #expect(migrated.outlineGap == PaneHighlight().outlineGap)
     #expect(migrated.titleTintColor == PaneHighlight().titleTintColor)
     #expect(migrated.titleTintIntensity == PaneHighlight().titleTintIntensity)
     #expect(restored.selectedTab.id == legacy.selectedTab)
@@ -157,6 +160,7 @@ import BrowseCore
     #expect(reset.paneHeaderGlass == .headerDefault)
     highlight.style = .outline
     highlight.outlineWidth = .infinity
+    highlight.outlineGap = .nan
     highlight.glowIntensity = -1
     highlight.glowSpread = 100
     highlight.titleTintIntensity = 2
@@ -166,6 +170,7 @@ import BrowseCore
     store.paneHighlight = highlight
     #expect(store.paneHighlight.style == .outline)
     #expect(store.paneHighlight.outlineWidth == PaneHighlight().outlineWidth)
+    #expect(store.paneHighlight.outlineGap == PaneHighlight().outlineGap)
     #expect(store.paneHighlight.glowIntensity == 0)
     #expect(store.paneHighlight.glowSpread == 24)
     #expect(store.paneHighlight.titleTintIntensity == 1)
@@ -173,12 +178,14 @@ import BrowseCore
     #expect(store.paneHighlight.outlineColor == PaneHighlight().outlineColor)
     #expect(store.paneHighlight.glowColor == .init(red: 1, green: 0, blue: 0.5))
     highlight.outlineWidth = 50
+    highlight.outlineGap = 50
     highlight.glowIntensity = .nan
     highlight.glowSpread = .infinity
     highlight.titleTintIntensity = .nan
     highlight.titleTintColor = .init(red: .infinity, green: 0, blue: 0)
     store.paneHighlight = highlight
-    #expect(store.paneHighlight.outlineWidth == 6)
+    #expect(store.paneHighlight.outlineWidth == 2)
+    #expect(store.paneHighlight.outlineGap == 2.5)
     #expect(store.paneHighlight.glowIntensity == PaneHighlight().glowIntensity)
     #expect(store.paneHighlight.glowSpread == PaneHighlight().glowSpread)
     #expect(store.paneHighlight.titleTintIntensity == PaneHighlight().titleTintIntensity)

@@ -265,6 +265,8 @@ The test uses local HTTP fixtures and ephemeral storage in a full-content window
 
 After switching back beneath a later-mounted hidden tab, the test verifies the inactive hosting root rejects hit tests and each visible pane's center resolves to its web view in None, Transparency, Outline, Outline glow, and Title tint modes. Switching highlight styles preserves the same WebView and native parent. On macOS 26 and later, the web surface reaches the pane’s top edge without a border inset. The test also sends a complete mouse gesture through the window: header press, drag across nine interior points of a real web view, and release. Each point activates the target preview; release rearranges the panes and removes the drag surface while preserving native WebKit parents, document identity, and unsaved input.
 
+The pane and WebView frames stay identical across all focus styles, including Outline with the maximum gap and thickness; decorations consume no layout space.
+
 ## Pane drop layout moves
 
 [PaneDropTests.swift](../Tests/BrowseCoreTests/PaneDropTests.swift) checks every source, target, and edge combination in a nested layout, preserving all pane IDs and unrelated split fractions while rejecting missing or identical endpoints.
@@ -487,7 +489,7 @@ Success contents are excluded entirely, unknown enum values become a generic lab
 
 Window/header glass preferences persist independently, preserve legacy defaults, and support resetting both appearances. Top- and bottom-rim clipping default independently for legacy sessions, persist fractional values, delegate through secondary windows, and clamp invalid input. Sessions containing retired custom separator settings still load without affecting the clipping defaults or tabs.
 
-Highlight settings preserve separate colors, width, intensity, spread, and mode across restart, including None mode and retained title-tint color and intensity; absent highlight settings use None. Older records without spread decode with their previous intensity-derived radius; records without title-tint fields receive the default color and intensity. Invalid colors and nonfinite numeric values normalize to defaults, and out-of-range values are bounded.
+Highlight settings preserve separate colors, outline gap and width, intensity, spread, and mode across restart, including None mode and retained title-tint color and intensity; absent highlight settings use None. Older records without an outline gap receive the default gap. Older records without spread decode with their previous intensity-derived radius; records without title-tint fields receive the default color and intensity. Invalid colors and nonfinite numeric values normalize to defaults, and out-of-range values are bounded.
 
 ## Home page suggestion ranking
 
@@ -627,7 +629,7 @@ The closed page remains reopenable. Repeating Command-W from the popup keeps the
 
 [PaneShadowTests.swift](../Tests/BrowseTests/PaneShadowTests.swift) renders the shadow layer to a bitmap, checking visible falloff beyond canvas bounds, clear pane interiors, ignored hit tests, and updates for moved or hidden panes.
 
-The bitmap checks also verify that glow colors only the focused pane’s shadow, follows focus changes, respects intensity and spread, and leaves both pane interiors clear. Leaving glow mode restores the ordinary black shadow.
+The bitmap checks also verify that glow colors only the focused pane’s shadow, follows focus changes, respects intensity and spread, and has matching top/bottom and left/right falloff. Leaving glow mode restores the ordinary black shadow. Outline checks cover independent gap and thickness, drawing beyond the canvas, focus changes, hiding, and clear pane interiors even when a thick ring reaches a neighbor.
 
 ## Cross-window live transfers
 

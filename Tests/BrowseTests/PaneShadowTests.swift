@@ -60,6 +60,13 @@ import BrowseCore
     store.paneHighlight.glowColor = .init(red: 1, green: 0, blue: 0)
     store.paneHighlight.glowIntensity = 0.5
     store.paneHighlight.glowSpread = 15
+    neighbor.isHidden = true
+    let topGlow = try alpha(x: 90, y: 37)
+    let bottomGlow = try alpha(x: 90, y: 202)
+    #expect(topGlow > 0.01 && bottomGlow > 0.01)
+    #expect(abs(topGlow - bottomGlow) < 0.01)
+    #expect(abs(try alpha(x: 37, y: 120) - alpha(x: 142, y: 120)) < 0.01)
+    neighbor.isHidden = false
     let active = try color(x: 37, y: 120)
     #expect(active.redComponent > 0.9 && active.greenComponent < 0.1 && active.alphaComponent > 0.01)
     #expect(try color(x: 243, y: 120).redComponent == 0)
@@ -76,5 +83,24 @@ import BrowseCore
     #expect(try alpha(x: 243, y: 120) == 0)
     store.paneHighlight.style = .outline
     #expect(try alpha(x: 243, y: 120) > 0.01)
-
+    store.paneHighlight.outlineColor = .init(red: 0, green: 1, blue: 0)
+    store.paneHighlight.outlineGap = 1
+    store.paneHighlight.outlineWidth = 1
+    // The ring is beyond the canvas edge, with an empty gap next to the pane.
+    #expect(try color(x: 240, y: 120).greenComponent == 0)
+    #expect(try color(x: 241, y: 120).greenComponent > 0.9)
+    #expect(try color(x: 243, y: 120).greenComponent == 0)
+    store.paneHighlight.outlineWidth = 2
+    #expect(try color(x: 242, y: 120).greenComponent > 0.9)
+    store.paneHighlight.outlineGap = 2.5
+    #expect(try color(x: 241, y: 120).greenComponent == 0)
+    #expect(try color(x: 243, y: 120).greenComponent > 0.9)
+    store.focus(tab.pages[0].id)
+    #expect(try color(x: 243, y: 120).greenComponent == 0)
+    #expect(try color(x: 143, y: 120).greenComponent > 0.9)
+    neighbor.setFrameOrigin(NSPoint(x: 102, y: 0))
+    #expect(try alpha(x: 143, y: 120) == 0)
+    #expect(try alpha(x: 100, y: 120) == 0)
+    pane.isHidden = true
+    #expect(try color(x: 36, y: 120).greenComponent == 0)
 }

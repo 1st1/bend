@@ -314,13 +314,24 @@ private struct UISettingsView: View {
                     ), supportsOpacity: false)
                     VStack(spacing: 10) {
                         HStack {
-                            Text("Outline width")
+                            Text("Outline thickness")
                             Spacer()
                             Text("\(store.paneHighlight.outlineWidth, specifier: "%.1f") pt")
                                 .monospacedDigit().foregroundStyle(.secondary)
                         }
-                        Slider(value: $store.paneHighlight.outlineWidth, in: 0.5...6, step: 0.5) {
-                            Text("Outline width")
+                        Slider(value: $store.paneHighlight.outlineWidth, in: PaneHighlight.outlineWidthRange) {
+                            Text("Outline thickness")
+                        }.labelsHidden()
+                    }
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("Gap from pane")
+                            Spacer()
+                            Text("\(store.paneHighlight.outlineGap, specifier: "%.1f") pt")
+                                .monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        Slider(value: $store.paneHighlight.outlineGap, in: PaneHighlight.outlineGapRange) {
+                            Text("Gap from pane")
                         }.labelsHidden()
                     }
                 } else if store.paneHighlight.style == .glow {
