@@ -487,7 +487,7 @@ Success contents are excluded entirely, unknown enum values become a generic lab
 
 [AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies legacy session defaults, preference persistence across store recreation, preserved tab identity, and numeric bounds and nonfinite-value handling.
 
-Window/header glass preferences persist independently, preserve legacy defaults, and support resetting both appearances. Top- and bottom-rim clipping default independently for legacy sessions, persist fractional values, delegate through secondary windows, and clamp invalid input. Sessions containing retired custom separator settings still load without affecting the clipping defaults or tabs.
+Window/header appearances persist independently, including the solid header color and style, preserve legacy defaults, and support resetting both appearances. Top- and bottom-rim clipping default independently for legacy sessions, persist fractional values, delegate through secondary windows, and clamp invalid input. Sessions containing retired custom separator settings still load without affecting the clipping defaults or tabs.
 
 Highlight settings preserve separate colors, outline gap and width, intensity, spread, and mode across restart, including None mode and retained title-tint color and intensity; absent highlight settings use None. Older records without an outline gap receive the default gap. Older records without spread decode with their previous intensity-derived radius; records without title-tint fields receive the default color and intensity. Invalid colors and nonfinite numeric values normalize to defaults, and out-of-range values are bounded.
 
@@ -504,6 +504,12 @@ Bare-host prefixes also prefer a www. home page over a much more frequently visi
 ## Live window glass preferences
 
 [AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies style and tint update on the existing native window glass, header changes leave it alone, and reset clears tint without replacing content.
+
+## Solid header appearance
+
+[[Tests/BrowseTests/AddressRequestTests.swift#solidHeaderAppearance]] verifies legacy style migration, retained solid color across style changes and serialization, and invalid-color normalization.
+
+Native and SwiftUI bitmap renders must both be opaque, lighter than the chosen color at the top, darker at the bottom, and visually equivalent within channel tolerance. Maximum glass darkening and rim clipping cannot affect solid paint.
 
 ## Joining tab layouts
 
@@ -569,7 +575,7 @@ Actual window mouse clicks on the shared-style find buttons navigate forwards an
 
 Layout assertions verify that the input keeps its frame across empty, pending, matching, and zero-result states, including at minimum pane width. Empty focused and cleared input keep the caret beyond the search icon and vertically inside the field, including at minimum width. The count stays right-aligned inside the field without overlapping the native text editor. Return and Find Next retain the count while navigating; editing the query immediately clears the old total.
 
-On macOS 26 and later, the find controls share the native title glass without a separate material. Opening and closing adjust the visible header height and WebKit inset together; style and tint changes preserve the field editor and control parentage. The glass extends above and below a clipping container to hide its top and bottom rims, while controls retain the visible header's coordinates. Live top- and bottom-clipping changes at zero, fractional, and maximum values preserve the find row, field editor, and WebKit inset. Active-pane tint spans the combined header, covers the find row, stays absent from inactive panes, and clears without removing the controls.
+On macOS 26 and later, the find controls share the native title glass without a separate material. Opening and closing adjust the visible header height and WebKit inset together; style and tint changes preserve the field editor and control parentage. Switching repeatedly between solid and glass hides the unused background, preserves the chosen solid color, and keeps find geometry, control parents, and WebKit insets unchanged. The glass extends above and below a clipping container to hide its top and bottom rims, while controls retain the visible header's coordinates. Live top- and bottom-clipping changes at zero, fractional, and maximum values preserve the find row, field editor, and WebKit inset. Active-pane tint spans the combined header, covers the find row, stays absent from inactive panes, and clears without removing the controls.
 
 Match-count assertions cover case-insensitive totals, hidden-text exclusion, zero and empty queries, and matches inside an iframe. Dismissal checks clear main-frame and iframe selections, preserve scroll, and reject late count results; reopening searches the retained query again. Repeated Escape presses after dismissal still reach page key listeners without crashing. Cancellation is also safe with no bar or before mounting a web view.
 

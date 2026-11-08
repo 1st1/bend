@@ -150,7 +150,7 @@ import WebKit
         let glass = try #require(hosts[0].subviews.flatMap(\.subviews).compactMap { $0 as? NSGlassEffectView }.first)
         let clip = try #require(glass.superview)
         #expect(clip.layer?.masksToBounds == true)
-        #expect(chromeContent.superview === glass.contentView)
+        #expect(chromeContent.superview === clip)
         #expect(!(bar is NSVisualEffectView))
         #expect(clip.frame.height == 36 + bar.frame.height)
         #expect(clip.frame.maxY == hosts[0].bounds.maxY)
@@ -180,6 +180,21 @@ import WebKit
         #expect(tint.layer?.backgroundColor == nil)
         #expect(bar.superview === chromeContent)
         let originalBarFrame = bar.convert(bar.bounds, to: hosts[0])
+        for style in [GlassAppearance.Style.solid, .clear, .solid, .regular] {
+            var appearance = GlassAppearance(solidColor: .init(red: 0.2, green: 0.4, blue: 0.6))
+            appearance.style = style
+            hosts[0].update(webView: pages[0].webView, topContentInset: 36, headerAppearance: appearance)
+            let solid = try #require(clip.subviews.compactMap { $0 as? SolidHeaderBackground }.first)
+            #expect(glass.isHidden == (style == .solid))
+            #expect(solid.isHidden == (style != .solid))
+            #expect(solid.frame == clip.bounds)
+            #expect(solid.color == appearance.solidColor)
+            #expect(bar.superview === chromeContent)
+            #expect(chromeContent.superview === clip)
+            #expect(bar.convert(bar.bounds, to: hosts[0]) == originalBarFrame)
+            #expect(pages[0].webView.obscuredContentInsets.top == clip.frame.height)
+            #expect(context.window.firstResponder === editorBeforeAppearanceChange)
+        }
         for (top, bottom) in [(0.0, 0.0), (0.5, 1.25), (2.5, 8.0), (16.0, 16.0)] {
             hosts[0].update(webView: pages[0].webView, topContentInset: 36,
                             headerAppearance: .headerDefault, topRimClipping: top, bottomRimClipping: bottom)

@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import SwiftUI
 import Testing
 import BrowseCore
 @testable import Browse
@@ -65,7 +66,8 @@ import BrowseCore
     store.commandClickDestination = .newTab
     store.inactivePaneDimAmount = 0.35
     store.windowGlass = GlassAppearance(clear: true, tint: .init(red: 0.2, green: 0.4, blue: 0.8), darkening: 0.15)
-    store.paneHeaderGlass = GlassAppearance(tint: .init(red: 0.8, green: 0.3, blue: 0.1), darkening: 0.65)
+    store.paneHeaderGlass = GlassAppearance(tint: .init(red: 0.8, green: 0.3, blue: 0.1), darkening: 0.65,
+                                           solidColor: .init(red: 0.2, green: 0.3, blue: 0.4))
     #expect(store.paneHeaderTopRimClipping == 0.5)
     #expect(store.paneHeaderBottomRimClipping == 1.1)
     store.paneHeaderTopRimClipping = 2.5
@@ -465,4 +467,56 @@ import BrowseCore
     content.addSubview(right)
     try await Task.sleep(for: .milliseconds(100))
     try verify(right, fixedTop: fallbackTop)
+}
+
+// @lat: [[tests#Solid header appearance]]
+@Test @MainActor func solidHeaderAppearance() throws {
+    for clear in [false, true] {
+        let legacy = Data("{\"clear\":\(clear),\"darkening\":0.5}".utf8)
+        let decoded = try JSONDecoder().decode(GlassAppearance.self, from: legacy)
+        #expect(decoded.style == (clear ? .clear : .regular))
+        #expect(decoded.solidColor == GlassAppearance.defaultSolidColor)
+    }
+    var appearance = GlassAppearance(darkening: 1, solidColor: .init(red: 0.2, green: 0.3, blue: 0.4))
+    appearance.style = .clear
+    appearance = try JSONDecoder().decode(GlassAppearance.self, from: JSONEncoder().encode(appearance))
+    #expect(appearance.solidColor == .init(red: 0.2, green: 0.3, blue: 0.4))
+    appearance.style = .solid
+    #expect(GlassAppearance(solidColor: .init(red: -1, green: 2, blue: 0.5))
+        .normalized(defaultDarkening: 0).solidColor == .init(red: 0, green: 1, blue: 0.5))
+    #expect(GlassAppearance(solidColor: .init(red: .nan, green: 0, blue: 0))
+        .normalized(defaultDarkening: 0).solidColor == GlassAppearance.defaultSolidColor)
+
+    // Render both paths: glass clipping and darkening must not affect solid paint.
+    let native = SolidHeaderBackground(frame: NSRect(x: 0, y: 0, width: 120, height: 36))
+    native.color = appearance.solidColor
+    let context = try #require(CGContext(data: nil, width: 120, height: 36, bitsPerComponent: 8,
+        bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+    native.draw(native.bounds)
+    NSGraphicsContext.restoreGraphicsState()
+    let bitmap = NSBitmapImageRep(cgImage: try #require(context.makeImage()))
+    let renderer = ImageRenderer(content: PaneChromeBackground(topRimClipping: 16, bottomRimClipping: 16,
+        appearance: appearance).frame(width: 120, height: 36))
+    let swiftUI = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+    // colorAt returns raw bitmap channels labeled as calibrated RGB. These
+    // images are already sRGB; converting that label would transform them twice.
+    for image in [bitmap, swiftUI] {
+        let top = try #require(image.colorAt(x: 60, y: 1))
+        let bottom = try #require(image.colorAt(x: 60, y: 34))
+        #expect(top.alphaComponent == 1 && bottom.alphaComponent == 1)
+        #expect(top.redComponent > 0.2 && bottom.redComponent < 0.2)
+        #expect(top.greenComponent > 0.3 && bottom.greenComponent < 0.3)
+        #expect(top.blueComponent > 0.4 && bottom.blueComponent < 0.4)
+        #expect(top.redComponent - bottom.redComponent < 0.06)
+    }
+    for y in [1, 18, 34] {
+        let a = try #require(bitmap.colorAt(x: 60, y: y))
+        let b = try #require(swiftUI.colorAt(x: 60, y: y))
+        #expect(abs(a.redComponent - b.redComponent) < 0.015)
+        #expect(abs(a.greenComponent - b.greenComponent) < 0.015)
+        #expect(abs(a.blueComponent - b.blueComponent) < 0.015)
+    }
 }

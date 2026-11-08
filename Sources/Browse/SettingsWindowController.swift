@@ -389,7 +389,7 @@ private struct UISettingsView: View {
             }
             if #available(macOS 26.0, *) {
                 GlassSettingsSection(title: "Browser window", appearance: $store.windowGlass, defaults: .windowDefault)
-                GlassSettingsSection(title: "Pane headers", appearance: $store.paneHeaderGlass, defaults: .headerDefault,
+                GlassSettingsSection(title: "Pane headers", appearance: $store.paneHeaderGlass, defaults: .headerDefault, allowsSolid: true,
                                      topRimClipping: $store.paneHeaderTopRimClipping,
                                      bottomRimClipping: $store.paneHeaderBottomRimClipping)
             }
@@ -414,43 +414,52 @@ private struct GlassSettingsSection: View {
     let title: String
     @Binding var appearance: GlassAppearance
     let defaults: GlassAppearance
+    var allowsSolid = false
     var topRimClipping: Binding<Double>?
     var bottomRimClipping: Binding<Double>?
 
     var body: some View {
         Section {
-            Picker("Glass style", selection: $appearance.clear) {
-                Text("Regular").tag(false)
-                Text("Clear").tag(true)
+            Picker("Glass style", selection: $appearance.style) {
+                Text("Regular").tag(GlassAppearance.Style.regular)
+                Text("Clear").tag(GlassAppearance.Style.clear)
+                if allowsSolid { Text("Solid color").tag(GlassAppearance.Style.solid) }
             }
-            HStack {
-                Toggle("Tint", isOn: Binding(
-                    get: { appearance.tint != nil },
-                    set: { appearance.tint = $0 ? GlassAppearance.Tint(color: .accentColor) : nil }
-                ))
-                Spacer()
-                ColorPicker("Tint color", selection: Binding(
-                    get: { appearance.tint?.color ?? .accentColor },
-                    set: { appearance.tint = GlassAppearance.Tint(color: $0) }
+            if appearance.style == .solid {
+                ColorPicker("Color", selection: Binding(
+                    get: { appearance.solidColor.color },
+                    set: { if let color = GlassAppearance.Tint(color: $0) { appearance.solidColor = color } }
                 ), supportsOpacity: false)
-                .labelsHidden().disabled(appearance.tint == nil)
-            }
-            VStack(spacing: 10) {
+            } else {
                 HStack {
-                    Text("Darkening")
+                    Toggle("Tint", isOn: Binding(
+                        get: { appearance.tint != nil },
+                        set: { appearance.tint = $0 ? GlassAppearance.Tint(color: .accentColor) : nil }
+                    ))
                     Spacer()
-                    Text(appearance.darkening, format: .percent.precision(.fractionLength(0)))
-                        .monospacedDigit().foregroundStyle(.secondary)
+                    ColorPicker("Tint color", selection: Binding(
+                        get: { appearance.tint?.color ?? .accentColor },
+                        set: { appearance.tint = GlassAppearance.Tint(color: $0) }
+                    ), supportsOpacity: false)
+                    .labelsHidden().disabled(appearance.tint == nil)
                 }
-                Slider(value: $appearance.darkening, in: 0...1) {
-                    Text("Darkening")
-                }.labelsHidden()
-            }
-            if let topRimClipping { rimClippingSlider("Top rim clipping", value: topRimClipping) }
-            if let bottomRimClipping { rimClippingSlider("Bottom rim clipping", value: bottomRimClipping) }
-            if topRimClipping != nil || bottomRimClipping != nil {
-                Text("Higher values hide more of each glass rim. Zero restores it. Applies to pane and mini-player headers.")
-                    .font(.caption).foregroundStyle(.secondary)
+                VStack(spacing: 10) {
+                    HStack {
+                        Text("Darkening")
+                        Spacer()
+                        Text(appearance.darkening, format: .percent.precision(.fractionLength(0)))
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    Slider(value: $appearance.darkening, in: 0...1) {
+                        Text("Darkening")
+                    }.labelsHidden()
+                }
+                if let topRimClipping { rimClippingSlider("Top rim clipping", value: topRimClipping) }
+                if let bottomRimClipping { rimClippingSlider("Bottom rim clipping", value: bottomRimClipping) }
+                if topRimClipping != nil || bottomRimClipping != nil {
+                    Text("Higher values hide more of each glass rim. Zero restores it. Applies to pane and mini-player headers.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Button("Reset to Defaults") {
                 appearance = defaults

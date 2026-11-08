@@ -484,7 +484,7 @@ private final class FindSearchField: NSSearchField {
 @available(macOS 26.0, *)
 private final class PaneHeaderGlass: NSView {
     private let glass = NSGlassEffectView()
-    private let glassContent = NSView()
+    private let solid = SolidHeaderBackground()
     let chromeContent = NSView()
     private let scrim = HeaderScrim()
     private var topRimClipping: CGFloat = BrowserStore.defaultHeaderTopRimClipping
@@ -497,9 +497,11 @@ private final class PaneHeaderGlass: NSView {
         // Move the top and bottom glass edges beyond this clip while keeping
         // side highlights. Controls retain the visible header's coordinates.
         glass.cornerRadius = 0
-        glass.contentView = glassContent
-        glassContent.addSubview(chromeContent)
+        glass.contentView = NSView()
         addSubview(glass)
+        addSubview(solid)
+        // Keep controls in one stable parent when switching between materials.
+        addSubview(chromeContent)
         scrim.wantsLayer = true
         scrim.autoresizingMask = [.width, .height]
         chromeContent.addSubview(scrim)
@@ -508,6 +510,10 @@ private final class PaneHeaderGlass: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func apply(_ appearance: GlassAppearance, topRimClipping: CGFloat, bottomRimClipping: CGFloat) {
+        glass.isHidden = appearance.style == .solid
+        solid.isHidden = appearance.style != .solid
+        solid.color = appearance.solidColor
+        scrim.isHidden = appearance.style == .solid
         glass.style = appearance.clear ? .clear : .regular
         glass.tintColor = appearance.tint?.nsColor
         scrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(appearance.darkening).cgColor
@@ -523,7 +529,8 @@ private final class PaneHeaderGlass: NSView {
         let bleed = bottomRimClipping
         glass.frame = NSRect(x: 0, y: -bleed, width: bounds.width, height: bounds.height + bleed + topRimClipping)
         glass.layoutSubtreeIfNeeded()
-        chromeContent.frame = NSRect(x: 0, y: bleed, width: bounds.width, height: bounds.height)
+        solid.frame = bounds
+        chromeContent.frame = bounds
         scrim.frame = chromeContent.bounds
     }
 }

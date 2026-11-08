@@ -315,7 +315,11 @@ struct PaneChromeBackground: View {
             bottomTrailingRadius: roundsBottomCorners ? cornerRadius : 0,
             topTrailingRadius: roundsTopCorners ? cornerRadius : 0)
         Group {
-            if #available(macOS 26.0, *) {
+            if appearance.style == .solid {
+                shape.fill(LinearGradient(colors: [appearance.solidColor.headerGradientTop.color,
+                                                    appearance.solidColor.headerGradientBottom.color],
+                                          startPoint: .top, endPoint: .bottom))
+            } else if #available(macOS 26.0, *) {
                 Color.clear.glassEffect(appearance.material, in: shape)
                     .padding(.top, -topRimClipping)
                     .padding(.bottom, -bottomRimClipping)
@@ -325,7 +329,7 @@ struct PaneChromeBackground: View {
             }
         }
         // Darken only the material, preserving foreground control contrast.
-        .overlay { shape.fill(.black.opacity(appearance.darkening)) }
+        .overlay { if appearance.style != .solid { shape.fill(.black.opacity(appearance.darkening)) } }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
