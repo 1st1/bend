@@ -142,6 +142,12 @@ private let mediaSessionFixture = #"""
     }
     let initial = try await geometry()
     #expect(!initial.enabled)
+    for clipping in [0.0, 1.1, 16.0] {
+        store.paneHeaderBottomRimClipping = clipping
+        let current = try await geometry()
+        #expect(abs(current.height - initial.height) < 0.5)
+        #expect(current.bar == initial.bar)
+    }
     for positionState in ["{duration:240, position:30}", "", "{duration:360, position:0}"] {
         _ = try await controller.webView.evaluateJavaScript("""
             navigator.mediaSession.setActionHandler('seekto', () => {});

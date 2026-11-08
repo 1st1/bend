@@ -376,11 +376,11 @@ private struct UISettingsView: View {
             } header: {
                 Text("Panes")
             }
-            PaneBorderSettingsSection(title: "Header separator", line: $store.paneBorders.separator,
-                                      defaults: PaneBorders().separator)
             if #available(macOS 26.0, *) {
                 GlassSettingsSection(title: "Browser window", appearance: $store.windowGlass, defaults: .windowDefault)
-                GlassSettingsSection(title: "Pane headers", appearance: $store.paneHeaderGlass, defaults: .headerDefault)
+                GlassSettingsSection(title: "Pane headers", appearance: $store.paneHeaderGlass, defaults: .headerDefault,
+                                     topRimClipping: $store.paneHeaderTopRimClipping,
+                                     bottomRimClipping: $store.paneHeaderBottomRimClipping)
             }
         }.formStyle(.grouped)
     }
@@ -399,49 +399,12 @@ private struct UISettingsView: View {
     }
 }
 
-private struct PaneBorderSettingsSection: View {
-    let title: String
-    @Binding var line: PaneBorders.Line
-    let defaults: PaneBorders.Line
-
-    var body: some View {
-        Section {
-            Toggle("Show \(title.lowercased())", isOn: $line.enabled)
-            Group {
-                ColorPicker("Color", selection: Binding(
-                    get: { line.color.color },
-                    set: { if let color = GlassAppearance.Tint(color: $0) { line.color = color } }
-                ), supportsOpacity: false)
-                VStack(spacing: 10) {
-                    HStack {
-                        Text("Opacity")
-                        Spacer()
-                        Text(line.opacity, format: .percent.precision(.fractionLength(0)))
-                            .monospacedDigit().foregroundStyle(.secondary)
-                    }
-                    Slider(value: $line.opacity, in: 0...1) { Text("Opacity") }.labelsHidden()
-                }
-                VStack(spacing: 10) {
-                    HStack {
-                        Text("Width")
-                        Spacer()
-                        Text("\(line.width, specifier: "%.1f") pt")
-                            .monospacedDigit().foregroundStyle(.secondary)
-                    }
-                    Slider(value: $line.width, in: 0.5...4, step: 0.5) { Text("Width") }.labelsHidden()
-                }
-            }.disabled(!line.enabled)
-            Button("Reset to Defaults") { line = defaults }.disabled(line == defaults)
-        } header: {
-            Text(title)
-        }
-    }
-}
-
 private struct GlassSettingsSection: View {
     let title: String
     @Binding var appearance: GlassAppearance
     let defaults: GlassAppearance
+    var topRimClipping: Binding<Double>?
+    var bottomRimClipping: Binding<Double>?
 
     var body: some View {
         Section {
@@ -472,12 +435,38 @@ private struct GlassSettingsSection: View {
                     Text("Darkening")
                 }.labelsHidden()
             }
-            Button("Reset to Defaults") { appearance = defaults }
-                .disabled(appearance == defaults)
+            if let topRimClipping { rimClippingSlider("Top rim clipping", value: topRimClipping) }
+            if let bottomRimClipping { rimClippingSlider("Bottom rim clipping", value: bottomRimClipping) }
+            if topRimClipping != nil || bottomRimClipping != nil {
+                Text("Higher values hide more of each glass rim. Zero restores it. Applies to pane and mini-player headers.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Button("Reset to Defaults") {
+                appearance = defaults
+                topRimClipping?.wrappedValue = BrowserStore.defaultHeaderTopRimClipping
+                bottomRimClipping?.wrappedValue = BrowserStore.defaultHeaderBottomRimClipping
+            }
+            .disabled(appearance == defaults && (topRimClipping?.wrappedValue ?? BrowserStore.defaultHeaderTopRimClipping)
+                      == BrowserStore.defaultHeaderTopRimClipping
+                      && (bottomRimClipping?.wrappedValue ?? BrowserStore.defaultHeaderBottomRimClipping)
+                      == BrowserStore.defaultHeaderBottomRimClipping)
         } header: {
             Text(title)
         }
     }
+
+    private func rimClippingSlider(_ title: String, value: Binding<Double>) -> some View {
+        VStack(spacing: 10) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\(value.wrappedValue, specifier: "%.1f") pt")
+                    .monospacedDigit().foregroundStyle(.secondary)
+            }
+            Slider(value: value, in: BrowserStore.headerRimClippingRange) { Text(title) }.labelsHidden()
+        }
+    }
+
 }
 
 @available(macOS 15.4, *)

@@ -309,6 +309,8 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func update(webView: WKWebView, topContentInset: CGFloat, headerAppearance: GlassAppearance? = nil,
+                topRimClipping: CGFloat = BrowserStore.defaultHeaderTopRimClipping,
+                bottomRimClipping: CGFloat = BrowserStore.defaultHeaderBottomRimClipping,
                 activeHeaderTint: NSColor? = nil) {
         if let layer = activeHeaderTintView.layer, layer.backgroundColor != activeHeaderTint?.cgColor {
             let previous = layer.presentation()?.backgroundColor ?? layer.backgroundColor ?? NSColor.clear.cgColor
@@ -348,7 +350,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
                 glass.chromeContent.addSubview(activeHeaderTintView)
                 addSubview(glass)
             }
-            glass.apply(headerAppearance)
+            glass.apply(headerAppearance, topRimClipping: topRimClipping, bottomRimClipping: bottomRimClipping)
         }
         addSubview(linkPreview, positioned: .above, relativeTo: nil)
         self.topContentInset = max(0, topContentInset)
@@ -485,13 +487,15 @@ private final class PaneHeaderGlass: NSView {
     private let glassContent = NSView()
     let chromeContent = NSView()
     private let scrim = HeaderScrim()
+    private var topRimClipping: CGFloat = BrowserStore.defaultHeaderTopRimClipping
+    private var bottomRimClipping: CGFloat = BrowserStore.defaultHeaderBottomRimClipping
 
     init() {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.masksToBounds = true
-        // Keep the top and side highlights, but move the bottom glass edge
-        // below this clip. Controls retain the visible header's coordinates.
+        // Move the top and bottom glass edges beyond this clip while keeping
+        // side highlights. Controls retain the visible header's coordinates.
         glass.cornerRadius = 0
         glass.contentView = glassContent
         glassContent.addSubview(chromeContent)
@@ -503,16 +507,21 @@ private final class PaneHeaderGlass: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func apply(_ appearance: GlassAppearance) {
+    func apply(_ appearance: GlassAppearance, topRimClipping: CGFloat, bottomRimClipping: CGFloat) {
         glass.style = appearance.clear ? .clear : .regular
         glass.tintColor = appearance.tint?.nsColor
         scrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(appearance.darkening).cgColor
+        if self.topRimClipping != topRimClipping || self.bottomRimClipping != bottomRimClipping {
+            self.topRimClipping = topRimClipping
+            self.bottomRimClipping = bottomRimClipping
+            needsLayout = true
+        }
     }
 
     override func layout() {
         super.layout()
-        let bleed = PaneChromeBackground.bottomRimBleed
-        glass.frame = NSRect(x: 0, y: -bleed, width: bounds.width, height: bounds.height + bleed)
+        let bleed = bottomRimClipping
+        glass.frame = NSRect(x: 0, y: -bleed, width: bounds.width, height: bounds.height + bleed + topRimClipping)
         glass.layoutSubtreeIfNeeded()
         chromeContent.frame = NSRect(x: 0, y: bleed, width: bounds.width, height: bounds.height)
         scrim.frame = chromeContent.bounds

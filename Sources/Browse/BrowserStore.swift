@@ -212,9 +212,36 @@ final class BrowserStore: ObservableObject {
         set { if let sharedStore { sharedStore.paneHeaderGlass = newValue; return }; session.paneHeaderGlass = newValue.normalized(defaultDarkening: 0.5); saveSoon() }
     }
 
-    var paneBorders: PaneBorders {
-        get { if let sharedStore { return sharedStore.paneBorders }; return (session.paneBorders ?? PaneBorders()).normalized() }
-        set { if let sharedStore { sharedStore.paneBorders = newValue; return }; session.paneBorders = newValue.normalized(); saveSoon() }
+    static let defaultHeaderTopRimClipping: Double = 0.5
+    static let defaultHeaderBottomRimClipping: Double = 1.1
+    static let headerRimClippingRange: ClosedRange<Double> = 0...16
+
+    var paneHeaderTopRimClipping: Double {
+        get {
+            if let sharedStore { return sharedStore.paneHeaderTopRimClipping }
+            let value = session.paneHeaderTopRimClipping ?? Self.defaultHeaderTopRimClipping
+            return value.isFinite ? min(Self.headerRimClippingRange.upperBound, max(0, value)) : Self.defaultHeaderTopRimClipping
+        }
+        set {
+            if let sharedStore { sharedStore.paneHeaderTopRimClipping = newValue; return }
+            guard newValue.isFinite else { return }
+            session.paneHeaderTopRimClipping = min(Self.headerRimClippingRange.upperBound, max(0, newValue))
+            saveSoon()
+        }
+    }
+
+    var paneHeaderBottomRimClipping: Double {
+        get {
+            if let sharedStore { return sharedStore.paneHeaderBottomRimClipping }
+            let value = session.paneHeaderBottomRimClipping ?? Self.defaultHeaderBottomRimClipping
+            return value.isFinite ? min(Self.headerRimClippingRange.upperBound, max(0, value)) : Self.defaultHeaderBottomRimClipping
+        }
+        set {
+            if let sharedStore { sharedStore.paneHeaderBottomRimClipping = newValue; return }
+            guard newValue.isFinite else { return }
+            session.paneHeaderBottomRimClipping = min(Self.headerRimClippingRange.upperBound, max(0, newValue))
+            saveSoon()
+        }
     }
 
     var paneHighlight: PaneHighlight {

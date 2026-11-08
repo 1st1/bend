@@ -36,11 +36,9 @@ struct SidebarMediaPlayer: View {
                 .padding(.horizontal, store.sidebarWidth < 140 ? 6 : 12)
                 .frame(height: Chrome.paneHeaderHeight)
                 .background(PaneChromeBackground(cornerRadius: 12, roundsBottomCorners: false,
-                                                suppressesBottomRim: true,
+                                                topRimClipping: store.paneHeaderTopRimClipping,
+                                                bottomRimClipping: store.paneHeaderBottomRimClipping,
                                                 appearance: store.paneHeaderGlass))
-                .overlay(alignment: .bottom) {
-                    PaneHeaderSeparator(line: store.paneBorders.separator)
-                }
                 VStack(alignment: .leading, spacing: 7) {
                     Text(source.state.artist.isEmpty ? source.state.site : "\(source.state.artist) · \(source.state.site)")
                         .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
@@ -67,7 +65,7 @@ struct SidebarMediaPlayer: View {
                 }
                 .padding(store.sidebarWidth < 140 ? 6 : 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(PaneChromeBackground(cornerRadius: 12, roundsTopCorners: false))
+                .background(PaneBodyBackground(cornerRadius: 12))
             }
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())

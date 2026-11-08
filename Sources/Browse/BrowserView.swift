@@ -301,11 +301,11 @@ private struct TabSelectionMaterial: ViewModifier {
 
 // @lat: [[architecture#Pane materials]]
 struct PaneChromeBackground: View {
-    static let bottomRimBleed: CGFloat = 8
     var cornerRadius: CGFloat = 0
     var roundsTopCorners = true
     var roundsBottomCorners = true
-    var suppressesBottomRim = false
+    var topRimClipping: CGFloat = 0
+    var bottomRimClipping: CGFloat = 0
     var appearance: GlassAppearance = .headerDefault
 
     var body: some View {
@@ -317,7 +317,8 @@ struct PaneChromeBackground: View {
         Group {
             if #available(macOS 26.0, *) {
                 Color.clear.glassEffect(appearance.material, in: shape)
-                    .padding(.bottom, suppressesBottomRim ? -Self.bottomRimBleed : 0)
+                    .padding(.top, -topRimClipping)
+                    .padding(.bottom, -bottomRimClipping)
                     .clipped()
             } else {
                 shape.fill(.regularMaterial)
@@ -330,15 +331,14 @@ struct PaneChromeBackground: View {
     }
 }
 
-struct PaneHeaderSeparator: View {
-    let line: PaneBorders.Line
+// A stacked body must not contribute a second rim at the header boundary.
+// Move its glass top behind the entire header; the body clip hides that edge.
+struct PaneBodyBackground: View {
+    var cornerRadius: CGFloat = 0
 
     var body: some View {
-        Rectangle().fill(line.color.color.opacity(line.opacity))
-            .frame(height: line.visibleWidth)
-            .frame(height: max(2, line.visibleWidth), alignment: .top)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+        PaneChromeBackground(cornerRadius: cornerRadius, roundsTopCorners: false,
+                             topRimClipping: Chrome.paneHeaderHeight)
     }
 }
 
@@ -397,8 +397,10 @@ private struct BrowserPane: View {
     private var paneContent: some View {
         if #available(macOS 26.0, *), !controller.isStartPage, controller.error == nil {
             WebSurface(webView: controller.webView, topContentInset: headerHeight,
-                       headerAppearance: store.paneHeaderGlass, activeHeaderTint: activeHeaderTint)
-                .background(PaneChromeBackground(cornerRadius: 12))
+                       headerAppearance: store.paneHeaderGlass, topRimClipping: store.paneHeaderTopRimClipping,
+                       bottomRimClipping: store.paneHeaderBottomRimClipping,
+                       activeHeaderTint: activeHeaderTint)
+                .background(PaneChromeBackground(cornerRadius: 12, topRimClipping: store.paneHeaderTopRimClipping))
                 .overlay(alignment: .top) {
                     header
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
@@ -407,10 +409,11 @@ private struct BrowserPane: View {
             VStack(spacing: 0) {
                 header
                     .background(PaneChromeBackground(cornerRadius: 11, roundsBottomCorners: false,
-                                                    suppressesBottomRim: true,
+                                                    topRimClipping: store.paneHeaderTopRimClipping,
+                                                    bottomRimClipping: store.paneHeaderBottomRimClipping,
                                                     appearance: store.paneHeaderGlass))
                 pageContent
-                    .background(PaneChromeBackground())
+                    .background(PaneBodyBackground())
             }
         }
     }
@@ -490,12 +493,12 @@ private struct BrowserPane: View {
                 .accessibilityHidden(true)
         }
         .overlay(alignment: .bottom) {
-            PaneHeaderSeparator(line: store.paneBorders.separator)
-                .overlay(alignment: .topLeading) {
-                    if controller.isLoading {
-                        GeometryReader { geo in Rectangle().fill(Color(nsColor: .controlAccentColor)).frame(width: geo.size.width * controller.progress, height: 2) }
-                    }
-                }
+            if controller.isLoading {
+                GeometryReader { geo in
+                    Rectangle().fill(Color(nsColor: .controlAccentColor))
+                        .frame(width: geo.size.width * controller.progress, height: 2)
+                }.frame(height: 2).allowsHitTesting(false)
+            }
         }
     }
 
@@ -648,16 +651,20 @@ private struct WebSurface: NSViewRepresentable {
     let webView: WKWebView
     var topContentInset: CGFloat = 0
     var headerAppearance: GlassAppearance?
+    var topRimClipping: CGFloat = BrowserStore.defaultHeaderTopRimClipping
+    var bottomRimClipping: CGFloat = BrowserStore.defaultHeaderBottomRimClipping
     var activeHeaderTint: NSColor?
 
     func makeNSView(context: Context) -> WebSurfaceHost {
         let host = WebSurfaceHost()
-        host.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance, activeHeaderTint: activeHeaderTint)
+        host.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance,
+                    topRimClipping: topRimClipping, bottomRimClipping: bottomRimClipping, activeHeaderTint: activeHeaderTint)
         return host
     }
 
     func updateNSView(_ nsView: WebSurfaceHost, context: Context) {
-        nsView.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance, activeHeaderTint: activeHeaderTint)
+        nsView.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance,
+                      topRimClipping: topRimClipping, bottomRimClipping: bottomRimClipping, activeHeaderTint: activeHeaderTint)
     }
 }
 

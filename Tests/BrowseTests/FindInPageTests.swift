@@ -155,7 +155,7 @@ import WebKit
         #expect(clip.frame.height == 36 + bar.frame.height)
         #expect(clip.frame.maxY == hosts[0].bounds.maxY)
         #expect(glass.frame.minY < clip.bounds.minY)
-        #expect(glass.frame.maxY == clip.bounds.maxY)
+        #expect(glass.frame.maxY > clip.bounds.maxY)
         #expect(glass.frame.minX == clip.bounds.minX)
         #expect(glass.frame.maxX == clip.bounds.maxX)
         #expect(chromeContent.convert(chromeContent.bounds, to: clip) == clip.bounds)
@@ -179,6 +179,16 @@ import WebKit
         hosts[0].update(webView: pages[0].webView, topContentInset: 36, headerAppearance: .headerDefault)
         #expect(tint.layer?.backgroundColor == nil)
         #expect(bar.superview === chromeContent)
+        let originalBarFrame = bar.convert(bar.bounds, to: hosts[0])
+        for (top, bottom) in [(0.0, 0.0), (0.5, 1.25), (2.5, 8.0), (16.0, 16.0)] {
+            hosts[0].update(webView: pages[0].webView, topContentInset: 36,
+                            headerAppearance: .headerDefault, topRimClipping: top, bottomRimClipping: bottom)
+            #expect(abs(glass.frame.maxY - clip.bounds.maxY - top) < 0.01)
+            #expect(abs(glass.frame.minY - clip.bounds.minY + bottom) < 0.01)
+            #expect(bar.convert(bar.bounds, to: hosts[0]) == originalBarFrame)
+            #expect(pages[0].webView.obscuredContentInsets.top == clip.frame.height)
+            #expect(context.window.firstResponder === editorBeforeAppearanceChange)
+        }
     }
     try await clickFindButton(1)
     try await waitForSelection("first")
