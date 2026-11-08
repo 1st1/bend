@@ -5,7 +5,7 @@ public struct PaneBorders: Codable, Equatable, Sendable {
         public var enabled = true
         public var color: GlassAppearance.Tint
         public var opacity: Double
-        public var width: Double = 1
+        public var width: Double = 0.5
 
         public var visibleWidth: Double { enabled ? width : 0 }
 

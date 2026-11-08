@@ -483,7 +483,7 @@ Success contents are excluded entirely, unknown enum values become a generic lab
 
 [AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies legacy session defaults, preference persistence across store recreation, preserved tab identity, and numeric bounds and nonfinite-value handling.
 
-Window/header glass preferences persist independently, preserve legacy defaults, and support resetting both appearances. Separator settings also round-trip their enabled state, color, opacity, and width, use defaults for older sessions, normalize invalid values, and reset independently of highlight styles.
+Window/header glass preferences persist independently, preserve legacy defaults, and support resetting both appearances. Separator settings also round-trip their enabled state, color, opacity, and width, use enabled white at 6% opacity and 0.5 pt width for older sessions, normalize invalid values, and reset independently of highlight styles.
 
 Highlight settings preserve separate colors, width, intensity, spread, and mode across restart, including None mode and retained title-tint color and intensity; absent highlight settings use None. Older records without spread decode with their previous intensity-derived radius; records without title-tint fields receive the default color and intensity. Invalid colors and nonfinite numeric values normalize to defaults, and out-of-range values are bounded.
 

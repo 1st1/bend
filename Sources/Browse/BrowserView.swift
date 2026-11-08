@@ -330,6 +330,18 @@ struct PaneChromeBackground: View {
     }
 }
 
+struct PaneHeaderSeparator: View {
+    let line: PaneBorders.Line
+
+    var body: some View {
+        Rectangle().fill(line.color.color.opacity(line.opacity))
+            .frame(height: line.visibleWidth)
+            .frame(height: max(2, line.visibleWidth), alignment: .top)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
 private struct BrowserPane: View {
     // The 24-point buttons have a 36-point center pitch across group boundaries.
     private static let controlGroupSpacing: CGFloat = 12
@@ -478,13 +490,12 @@ private struct BrowserPane: View {
                 .accessibilityHidden(true)
         }
         .overlay(alignment: .bottom) {
-            ZStack(alignment: .topLeading) {
-                Rectangle().fill(store.paneBorders.separator.color.color.opacity(store.paneBorders.separator.opacity))
-                    .frame(height: store.paneBorders.separator.visibleWidth)
-                if controller.isLoading {
-                    GeometryReader { geo in Rectangle().fill(Color(nsColor: .controlAccentColor)).frame(width: geo.size.width * controller.progress, height: 2) }
+            PaneHeaderSeparator(line: store.paneBorders.separator)
+                .overlay(alignment: .topLeading) {
+                    if controller.isLoading {
+                        GeometryReader { geo in Rectangle().fill(Color(nsColor: .controlAccentColor)).frame(width: geo.size.width * controller.progress, height: 2) }
+                    }
                 }
-            }.frame(height: max(2, store.paneBorders.separator.visibleWidth))
         }
     }
 
