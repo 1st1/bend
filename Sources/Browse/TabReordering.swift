@@ -105,7 +105,8 @@ final class TabDragSourceView: NSView {
                 }
             }
         } else if !wasDragging, bounds.contains(convert(event.locationInWindow, from: nil)) {
-            store.select(tabID)
+            if event.modifierFlags.contains(.option) { store.toggleTabPinned(tabID) }
+            else { store.select(tabID) }
         }
     }
 

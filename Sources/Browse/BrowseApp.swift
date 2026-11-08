@@ -253,6 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         guard let context else { return }
+        guard !context.store.isPanePinned(context.store.selectedTab.focusedPane) else { return }
         if context.addressPanel.cancelInitialEntryIfPresented() { return }
         context.addressPanel.dismiss(restoreFocus: false)
         let store = context.store
@@ -280,6 +281,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if menuItem.action == #selector(zoomPage(_:)) {
             guard let page = activeWebPage else { return false }
             return pageZoomLevel(menuItem.tag, current: page.webView.pageZoom) != page.webView.pageZoom
+        }
+        if menuItem.action == #selector(closeTab) { return !store.selectedTab.isPinned }
+        if menuItem.action == #selector(closePane) {
+            if let key = NSApp.keyWindow, key !== window, addressPanel?.owns(key) != true { return true }
+            return !store.isPanePinned(store.selectedTab.focusedPane)
         }
         return menuItem.action == #selector(reopenClosed) ? store.canReopenClosed : true
     }

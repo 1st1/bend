@@ -116,7 +116,18 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
 public struct Page: Codable, Identifiable, Sendable {
     public var id: UUID
     public var address: String
-    public init(address: String = "browse://start") { id = UUID(); self.address = address }
+    public var isPinned: Bool
+    public init(address: String = "browse://start", isPinned: Bool = false) {
+        id = UUID(); self.address = address; self.isPinned = isPinned
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, address, isPinned }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        address = try values.decode(String.self, forKey: .address)
+        isPinned = try values.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+    }
 }
 
 public struct BrowserTab: Codable, Identifiable, Sendable {
@@ -126,6 +137,7 @@ public struct BrowserTab: Codable, Identifiable, Sendable {
     public var pages: [Page]
     public var focusedPane: UUID
     public var commandClickPaneID: UUID?
+    public var isPinned: Bool { pages.contains { $0.isPinned } }
 
     public init(title: String = "New tab", pages: [Page] = [Page()]) {
         let pages = pages.isEmpty ? [Page()] : pages
@@ -144,6 +156,12 @@ public struct BrowserTab: Codable, Identifiable, Sendable {
     }
 
     public mutating func closePane(_ id: UUID) {
+        guard pages.first(where: { $0.id == id })?.isPinned == false else { return }
+        removePaneForTransfer(id)
+    }
+
+    // Structural removal for moves: the destination retains the page and its pin.
+    public mutating func removePaneForTransfer(_ id: UUID) {
         guard let next = layout.removing(id) else { return }
         layout = next; pages.removeAll { $0.id == id }
         if commandClickPaneID == id || pages.count == 1 { commandClickPaneID = nil }
@@ -247,7 +265,7 @@ public struct BrowserSession: Codable, Sendable {
         guard let wi = workspaces.firstIndex(where: { $0.tabs.contains { $0.id == tabID } }),
               let ti = workspaces[wi].tabs.firstIndex(where: { $0.id == tabID }) else { return }
         if workspaces[wi].tabs[ti].pages.count > 1 {
-            workspaces[wi].tabs[ti].closePane(source)
+            workspaces[wi].tabs[ti].removePaneForTransfer(source)
         } else {
             workspaces[wi].tabs.remove(at: ti)
             if workspaces[wi].tabs.isEmpty { workspaces[wi].tabs.append(BrowserTab()) }

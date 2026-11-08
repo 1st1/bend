@@ -438,6 +438,7 @@ final class BrowserStore: ObservableObject {
         guard let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == tabID } }),
               let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == tabID }),
               session.workspaces[wi].tabs[ti].pages.map(\.id) == [paneID],
+              !session.workspaces[wi].tabs[ti].isPinned,
               session.workspaces[wi].tabs.count > 1 else { return }
         removeController(paneID)
         session.workspaces[wi].tabs.remove(at: ti)
@@ -461,7 +462,7 @@ final class BrowserStore: ObservableObject {
               let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == pending.tabID } }),
               let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == pending.tabID }) else { return false }
         let tab = session.workspaces[wi].tabs[ti]
-        guard let page = tab.pages.first(where: { $0.id == paneID }), page.address == "browse://start",
+        guard let page = tab.pages.first(where: { $0.id == paneID }), !page.isPinned, page.address == "browse://start",
               (browsers[paneID]?.address ?? "browse://start") == "browse://start" else { return false }
         switch pending.kind {
         case .tab:
@@ -564,7 +565,31 @@ final class BrowserStore: ObservableObject {
         } catch { historyError = "History could not be saved: \(error.localizedDescription)" }
     }
 
+    // @lat: [[architecture#Pinned panes and tabs]]
+    func isPanePinned(_ id: UUID) -> Bool {
+        session.workspaces.flatMap(\.tabs).flatMap(\.pages).first { $0.id == id }?.isPinned == true
+    }
+
+    func setPanePinned(_ id: UUID, pinned: Bool) {
+        guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == id } }) else { return }
+        editTab(tab.id) { tab in
+            if let index = tab.pages.firstIndex(where: { $0.id == id }) { tab.pages[index].isPinned = pinned }
+        }
+    }
+
+    func setTabPinned(_ id: UUID, pinned: Bool) {
+        editTab(id) { tab in
+            for index in tab.pages.indices { tab.pages[index].isPinned = pinned }
+        }
+    }
+
+    func toggleTabPinned(_ id: UUID) {
+        guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.id == id }) else { return }
+        setTabPinned(id, pinned: !tab.isPinned)
+    }
+
     func closeTab(_ id: UUID) {
+        guard session.workspaces.flatMap(\.tabs).first(where: { $0.id == id })?.isPinned == false else { return }
         if pendingAddressEntry?.tabID == id { pendingAddressEntry = nil }
         for wi in session.workspaces.indices {
             guard let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == id }) else { continue }
@@ -623,7 +648,7 @@ final class BrowserStore: ObservableObject {
             if let replacementID = item.replacementID,
                let index = session.workspaces[wi].tabs.firstIndex(where: { $0.id == replacementID }) {
                 let replacement = session.workspaces[wi].tabs[index]
-                if replacement.pages.count == 1, replacement.pages[0].address == "browse://start",
+                if !replacement.isPinned, replacement.pages.count == 1, replacement.pages[0].address == "browse://start",
                    (browsers[replacement.pages[0].id]?.address ?? "browse://start") == "browse://start" {
                     removeController(replacement.pages[0].id)
                     session.workspaces[wi].tabs.remove(at: index)
@@ -749,7 +774,7 @@ final class BrowserStore: ObservableObject {
             guard nextDestination.joinTabs(incoming.id, into: targetTab, beside: targetPane, edge: edge) else { return false }
         }
         if let paneID, original.pages.count > 1 {
-            nextSource.workspaces[wi].tabs[ti].closePane(paneID)
+            nextSource.workspaces[wi].tabs[ti].removePaneForTransfer(paneID)
         } else {
             nextSource.workspaces[wi].tabs.remove(at: ti)
             if nextSource.workspaces[wi].tabs.isEmpty { nextSource.workspaces[wi].tabs.append(BrowserTab()) }
@@ -820,6 +845,7 @@ final class BrowserStore: ObservableObject {
         guard let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.pages.contains { $0.id == id } } }),
               let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.pages.contains { $0.id == id } }) else { return }
         let tab = session.workspaces[wi].tabs[ti]
+        guard tab.pages.first(where: { $0.id == id })?.isPinned == false else { return }
         if tab.pages.count == 1 { closeTab(tab.id); return }
         rememberClosed(.init(tab: snapshot(tab), workspaceID: session.workspaces[wi].id, tabIndex: ti, paneID: id, replacementID: nil))
         editTab(tab.id) { $0.closePane(id) }

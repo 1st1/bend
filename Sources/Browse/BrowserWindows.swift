@@ -158,6 +158,10 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
     func windowDidFailToEnterFullScreen(_ window: NSWindow) {
         window.toolbar?.isVisible = true
     }
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        !store.session.workspaces.flatMap(\.tabs).contains { $0.isPinned }
+    }
+
     func windowWillClose(_ notification: Notification) {
         addressPanel.dismiss(restoreFocus: false)
         if #available(macOS 15.4, *) { store.extensions.detachWindow(window) }

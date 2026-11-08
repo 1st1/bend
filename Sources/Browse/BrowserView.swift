@@ -118,7 +118,10 @@ private struct SidebarTabRow: View {
     var body: some View {
         let selected = tab.id == store.session.selectedTab
         return HStack(spacing: 8) {
-            Button { store.select(tab.id) } label: {
+            Button {
+                if OptionKeyState.optionAtClick { store.toggleTabPinned(tab.id) }
+                else { store.select(tab.id) }
+            } label: {
                 HStack(spacing: 9) {
                     SidebarTabIcon(store: store, tab: tab).frame(width: 16, height: 16)
                         .accessibilityHidden(true)
@@ -131,13 +134,11 @@ private struct SidebarTabRow: View {
                 TabDragHandle(store: store, tabID: tab.id, title: tab.title, reduceMotion: reduceMotion)
                     .accessibilityHidden(true)
             }
-            if selected || hovered {
-                Button { store.closeTab(tab.id) } label: {
-                    Image(systemName: "xmark").font(.system(size: 9))
-                        .frame(width: 16, height: 22).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain).foregroundStyle(Chrome.muted).help("Close tab · ⌘⇧W")
-                .transition(.opacity)
+            if selected || hovered || tab.isPinned {
+                PinCloseButton(pinned: tab.isPinned, tab: true,
+                               setPinned: { store.setTabPinned(tab.id, pinned: $0) },
+                               close: { store.closeTab(tab.id) })
+                    .transition(.opacity)
             }
         }
         .padding(.horizontal, 11).frame(height: 34)
@@ -155,7 +156,8 @@ private struct SidebarTabRow: View {
         .background(PaneSidebarTarget(store: store, destination: .tab(tab.id)))
         .contextMenu {
             Button("New tab") { store.newTab() }
-            Button("Close tab") { store.closeTab(tab.id) }
+            Button(tab.isPinned ? "Unpin tab" : "Pin tab") { store.toggleTabPinned(tab.id) }
+            Button("Close tab") { store.closeTab(tab.id) }.disabled(tab.isPinned)
         }
     }
 
@@ -358,6 +360,7 @@ private struct BrowserPane: View {
     @ViewState<Bool> private var paneHovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var focused: Bool { tab.focusedPane == pageID }
+    private var pinned: Bool { tab.pages.first { $0.id == pageID }?.isPinned == true }
     private var activeHeaderTint: NSColor? {
         guard focused, store.paneHighlight.style == .titleTint else { return nil }
         return store.paneHighlight.titleTintColor.nsColor.withAlphaComponent(store.paneHighlight.titleTintIntensity)
@@ -446,38 +449,47 @@ private struct BrowserPane: View {
                     .frame(maxHeight: .infinity)
             }
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            HStack(spacing: Self.controlGroupSpacing) {
-                HStack(spacing: 0) {
-                    iconButton("chevron.left", "Back · ⌘[") {
-                        store.focus(pageID); controller.webView.goBack()
-                    }.disabled(controller.isStartPage || !controller.canGoBack)
-                    iconButton("chevron.right", "Forward · ⌘]") {
-                        store.focus(pageID); controller.webView.goForward()
-                    }.disabled(controller.isStartPage || !controller.canGoForward)
-                }
-                iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
-                    store.focus(pageID)
-                    if controller.isLoading { controller.webView.stopLoading() }
-                    else if !controller.isStartPage { controller.webView.reload() }
-                }.disabled(controller.isStartPage)
-                HStack(spacing: 0) {
-                    if #available(macOS 15.4, *) {
-                        PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
-                            store.focus(pageID); store.onSettingsRequested?()
-                        }
+            HStack(spacing: 0) {
+                HStack(spacing: Self.controlGroupSpacing) {
+                    HStack(spacing: 0) {
+                        iconButton("chevron.left", "Back · ⌘[") {
+                            store.focus(pageID); controller.webView.goBack()
+                        }.disabled(controller.isStartPage || !controller.canGoBack)
+                        iconButton("chevron.right", "Forward · ⌘]") {
+                            store.focus(pageID); controller.webView.goForward()
+                        }.disabled(controller.isStartPage || !controller.canGoForward)
                     }
-                    iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
-                    iconButton("xmark", "Close pane · ⌘W") { store.closePane(pageID) }
+                    iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
+                        store.focus(pageID)
+                        if controller.isLoading { controller.webView.stopLoading() }
+                        else if !controller.isStartPage { controller.webView.reload() }
+                    }.disabled(controller.isStartPage)
+                    HStack(spacing: 0) {
+                        if #available(macOS 15.4, *) {
+                            PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
+                                store.focus(pageID); store.onSettingsRequested?()
+                            }
+                        }
+                        iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
+                    }
                 }
-            }
-            .fixedSize()
-            .opacity(focused || paneHovered ? 1 : 0)
-            .allowsHitTesting(focused || paneHovered)
-            .accessibilityHidden(!focused && !paneHovered)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused || paneHovered)
-            .background {
-                if focused || paneHovered { WindowDragArea(excluded: true) }
-            }
+                .opacity(focused || paneHovered ? 1 : 0)
+                .allowsHitTesting(focused || paneHovered)
+                .accessibilityHidden(!focused && !paneHovered)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused || paneHovered)
+                .background {
+                    if focused || paneHovered { WindowDragArea(excluded: true) }
+                }
+                PinCloseButton(pinned: pinned, setPinned: { store.setPanePinned(pageID, pinned: $0) },
+                               close: { store.closePane(pageID) })
+                    .opacity(pinned || focused || paneHovered ? 1 : 0)
+                    .allowsHitTesting(pinned || focused || paneHovered)
+                    .accessibilityHidden(!pinned && !focused && !paneHovered)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: pinned || focused || paneHovered)
+                    .background {
+                        if pinned || focused || paneHovered { WindowDragArea(excluded: true) }
+                    }
+            }.fixedSize()
         }.padding(.horizontal, 12).frame(height: Chrome.paneHeaderHeight)
         .background(WindowDragArea(onPress: { store.focus(pageID) }))
         .background {

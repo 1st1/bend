@@ -770,3 +770,21 @@ Pointer movement within one link switches the preview to the right and back with
 [DeveloperToolsTests.swift](../Tests/BrowseTests/DeveloperToolsTests.swift) opens the native inspector through the Develop menu shortcut and checks that console errors, thrown errors, and unhandled rejections from the selected pane reach its console.
 
 Two mounted pages verify source isolation and focused-pane routing. Command-Shift-I toggles the inspector below its page in the same pane. The native toolbar switches between right and bottom docking without losing console messages, and its close button removes the panel. Inspecting a real DOM element before docking, plus a repeated native reveal in a narrow page, must keep the frontend in its original panel and window with no empty dock region. Mouse drags resize both dock positions without moving the browser window. Reopening and find-bar coexistence preserve separate page/inspector bounds, including narrow panes. The inspector control bridge is absent from the inspected website. Left docking and detaching stay hidden; closure removes the frontend, and commands disable on native Bend pages. `BEND_INSPECTOR_SNAPSHOT` optionally captures the containing browser window. Run this AppKit test without parallel execution because it owns the shared application menu.
+
+## Pinned pane protection
+
+[[Tests/BrowseTests/PinningTests.swift#pinnedPaneProtection]] verifies pins survive reload, older pages default to unpinned, and protected pane/tab closure preserves controllers, layout, zoom, and closed history.
+
+Tab pinning sets all pane pins; individual unpinning keeps the tab protected while any pin remains. Unpinned siblings can close and reopen. Pinned blank-entry and download tabs survive automatic cleanup, and reopening a closed tab retains a pinned replacement.
+
+## Pinned pane transfers
+
+[[Tests/BrowseTests/PinningTests.swift#pinnedPaneTransfers]] moves a pinned pane across tabs, detaches and rejoins it, then transfers it between windows, preserving its pin, live WebView, session validity, and persisted state without closed history.
+
+## Pinned close commands
+
+[[Tests/BrowseTests/PinningTests.swift#pinnedCloseCommands]] verifies Command-W cannot close the final pinned pane's window, native close requests are refused while pinned, and unpinning restores normal last-pane window closure.
+
+## Native pin controls
+
+[[Tests/BrowseTests/PinningTests.swift#nativePinControls]] exercises native Option-clicks on pane controls and sidebar rows, checks the live modifier preview, and unpins an inactive pane and an unselected tab through their always-visible pin buttons.

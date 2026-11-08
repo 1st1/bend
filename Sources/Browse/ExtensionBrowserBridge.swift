@@ -251,6 +251,11 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
     }
     func close(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["close": true])
+        guard store?.isPanePinned(id) != true else {
+            completionHandler(NSError(domain: "Bend", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Unpin this pane before closing it."]))
+            return
+        }
         store?.closePage(id); completionHandler(nil)
     }
 }
