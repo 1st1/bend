@@ -147,6 +147,7 @@ import BrowseCore
     let firstSelection = first.store.session.selectedTab
     let second = owner.newWindow(show: false)
     #expect(first.window !== second.window)
+    #expect(first.store.downloads === second.store.downloads)
     #expect(first.addressPanel !== second.addressPanel)
     #expect(second.store.session.workspaces.flatMap(\.tabs).count == 1)
     #expect(second.store.selectedTab.pages.count == 1)

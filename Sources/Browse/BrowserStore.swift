@@ -15,6 +15,7 @@ final class BrowserStore: ObservableObject {
     @Published var zoomedPane: UUID?
     let mediaCoordinator = WindowMediaCoordinator()
     let mediaPlaybackFocus: MediaPlaybackFocus
+    let downloads: BrowserDownloads
     @Published private(set) var paneMoveRevision = 0
     var onAddressRequested: ((UUID) -> Void)?
     var onSettingsRequested: (() -> Void)?
@@ -89,6 +90,8 @@ final class BrowserStore: ObservableObject {
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BrowsePrototype", isDirectory: true)
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
+        downloads = sharedStore?.downloads ?? BrowserDownloads(
+            databaseFile: self.sessionFile.deletingLastPathComponent().appendingPathComponent("Downloads.db"))
         websiteSettings = sharedStore?.websiteSettings ?? WebsiteSettingsStore(
             file: self.sessionFile.deletingLastPathComponent().appendingPathComponent("WebsiteSettings.db"))
         historyFile = self.sessionFile.deletingLastPathComponent().appendingPathComponent("History.db")
@@ -119,6 +122,7 @@ final class BrowserStore: ObservableObject {
                 historyError = "Saved history could not be read. Clear history to reset it."
             }
         }
+        if sharedStore == nil { downloads.directory = downloadDirectory }
         tracePaneMembership()
         extensionStorage = extensionManager
         if let sharedStore {
@@ -145,6 +149,22 @@ final class BrowserStore: ObservableObject {
     }
 
     // @lat: [[architecture#UI preferences]]
+    var downloadDirectory: URL {
+        get {
+            if let sharedStore { return sharedStore.downloadDirectory }
+            guard let path = session.downloadDirectory, path.hasPrefix("/") else { return BrowserDownloads.defaultDirectory }
+            return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+        }
+        set {
+            if let sharedStore { sharedStore.downloadDirectory = newValue; return }
+            guard newValue.isFileURL else { return }
+            let directory = newValue.standardizedFileURL
+            session.downloadDirectory = directory.path == BrowserDownloads.defaultDirectory.path ? nil : directory.path
+            downloads.directory = directory
+            saveSoon()
+        }
+    }
+
     var commandClickDestination: CommandClickDestination {
         get {
             sharedStore?.commandClickDestination ?? session.commandClickDestination
@@ -174,9 +194,12 @@ final class BrowserStore: ObservableObject {
         }
     }
 
+    static let defaultSidebarWidth: CGFloat = 250
+    static let sidebarWidthRange: ClosedRange<CGFloat> = 200...400
+
     var sidebarWidth: CGFloat {
-        let width = session.sidebarWidth ?? 236
-        return width.isFinite ? min(300, max(100, width)) : 236
+        let width = session.sidebarWidth.map { CGFloat($0) } ?? Self.defaultSidebarWidth
+        return width.isFinite ? min(Self.sidebarWidthRange.upperBound, max(Self.sidebarWidthRange.lowerBound, width)) : Self.defaultSidebarWidth
     }
 
     var windowGlass: GlassAppearance {
@@ -201,7 +224,7 @@ final class BrowserStore: ObservableObject {
 
     func resizeSidebar(to width: CGFloat) {
         guard width.isFinite else { return }
-        let clamped = min(300, max(100, width))
+        let clamped = min(Self.sidebarWidthRange.upperBound, max(Self.sidebarWidthRange.lowerBound, width))
         guard clamped != sidebarWidth else { return }
         session.sidebarWidth = clamped
         saveSoon()
@@ -363,7 +386,8 @@ final class BrowserStore: ObservableObject {
         focus(id); zoomedPane = zoomedPane == id ? nil : id
     }
 
-    func newTab(in workspace: UUID? = nil, address: String = "browse://start", linkOpener: UUID? = nil) {
+    func newTab(in workspace: UUID? = nil, address: String = "browse://start", linkOpener: UUID? = nil,
+                closeIfDownload: Bool = false) {
         let previousTabID = session.selectedTab, previousZoom = zoomedPane
         let index = session.workspaces.firstIndex { $0.id == workspace }
             ?? session.workspaces.firstIndex { $0.tabs.contains { $0.id == session.selectedTab } } ?? 0
@@ -373,6 +397,28 @@ final class BrowserStore: ObservableObject {
         pendingAddressEntry = address == "browse://start" ? PendingAddressEntry(tabID: tab.id, paneID: tab.pages[0].id,
             kind: .tab(previousTabID: previousTabID), previousZoom: previousZoom) : nil
         if address == "browse://start" { requestAddress() }
+        if closeIfDownload {
+            controller(for: tab.pages[0]).onInitialDownload = { [weak self] in
+                self?.discardDownloadTab(tab.id, paneID: tab.pages[0].id, previousTabID: previousTabID,
+                                         previousZoom: previousZoom)
+            }
+        }
+    }
+
+    private func discardDownloadTab(_ tabID: UUID, paneID: UUID, previousTabID: UUID, previousZoom: UUID?) {
+        guard let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == tabID } }),
+              let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == tabID }),
+              session.workspaces[wi].tabs[ti].pages.map(\.id) == [paneID],
+              session.workspaces[wi].tabs.count > 1 else { return }
+        removeController(paneID)
+        session.workspaces[wi].tabs.remove(at: ti)
+        if session.selectedTab == tabID {
+            let previous = session.workspaces.flatMap(\.tabs).first { $0.id == previousTabID }
+            select(previous?.id ?? session.workspaces[wi].tabs[min(ti, session.workspaces[wi].tabs.count - 1)].id)
+            if let previousZoom, selectedTab.pages.contains(where: { $0.id == previousZoom }) { zoomedPane = previousZoom }
+        }
+        // This tab never displayed a document; it must not enter closed-tab history.
+        saveSoon()
     }
 
     func finishInitialAddressEntry(for paneID: UUID) {
@@ -562,7 +608,7 @@ final class BrowserStore: ObservableObject {
     func controller(for page: Page) -> PageController {
         if let existing = browsers[page.id] { return existing }
         let extensionURL = URL(string: page.address).flatMap { $0.scheme == "webkit-extension" ? $0 : nil }
-        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, websiteSettings: websiteSettings, configure: { [weak self] configuration in
+        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, websiteSettings: websiteSettings, downloads: downloads, configure: { [weak self] configuration in
             if #available(macOS 15.4, *) { self?.extensions.configure(configuration) }
         })
         bindController(controller, to: page)
@@ -613,7 +659,7 @@ final class BrowserStore: ObservableObject {
             switch adjacent ? self.commandClickDestination : .newTab {
             case .newPane: self.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame)
             case .dedicatedPane: self.openInDedicatedPane(address: address, from: page.id, fromMainFrame: mainFrame)
-            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil)
+            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, closeIfDownload: true)
             }
         }
         controller.onFocus = { [weak self] in self?.focus(page.id) }
@@ -895,6 +941,7 @@ class FocusWebView: WKWebView {
 
 @MainActor
 final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
+    let downloads: BrowserDownloads
     let media = PageMediaController()
     @Published private(set) var webView: FocusWebView
     var configure: (WKWebViewConfiguration) -> Void
@@ -916,6 +963,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     var onNewTab: ((String) -> Void)?
     var onNewPane: ((String) -> Void)?
     var onNewLink: ((String, Bool, Bool) -> Void)?
+    var onInitialDownload: (() -> Void)?
     var onFocus: (() -> Void)?
     private var observations: [NSKeyValueObservation] = []
     var onVisit: ((String, String) -> Void)?
@@ -940,8 +988,10 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }()
 
     init(address: String, paneID: UUID? = nil, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil,
-         externalApplications: ExternalApplicationLinks = .shared, javaScriptDialogs: JavaScriptDialogs = .shared, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
+         externalApplications: ExternalApplicationLinks = .shared, javaScriptDialogs: JavaScriptDialogs = .shared,
+         downloads: BrowserDownloads = BrowserDownloads(), configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
+        self.downloads = downloads
         self.externalApplications = externalApplications
         self.javaScriptDialogs = javaScriptDialogs
         self.websiteSettings = websiteSettings
@@ -1013,6 +1063,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     // Only the extension host may authorize a top-level extension document.
     func navigateExtension(_ url: URL, configuration: WKWebViewConfiguration) {
+        onInitialDownload = nil
         if extensionOrigin?.scheme != url.scheme || extensionOrigin?.host != url.host {
             extensionOrigin = url
             replaceWebView(configuration: configuration)
@@ -1027,6 +1078,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func navigate(_ input: String) {
+        onInitialDownload = nil
         let localURL = URL(string: input).flatMap { LocalWebDocument.accepts($0) ? $0 : nil }
         guard let url = localURL ?? AddressResolver.resolve(input) else { error = "Enter a web address or search phrase."; return }
         if extensionOrigin != nil {
@@ -1119,6 +1171,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         resetFavicon(for: webView.url)
     }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        onInitialDownload = nil
         discardFavicon(ifLeaving: webView.url)
         javaScriptDialogs.didCommitNavigation(in: webView)
         if webView.url?.isFileURL != true { localDocumentDirectory = nil }
@@ -1163,7 +1216,12 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     func show(_ failure: Error) {
         InputDiagnostics.transition(.webLoad, .cancelled, view: webView)
         completedAddress = nil
-        if (failure as NSError).code != NSURLErrorCancelled { error = failure.localizedDescription }
+        let nativeError = failure as NSError
+        // WebKit still uses the legacy policy-interruption error when a
+        // navigation becomes a WKDownload. The existing page remains valid.
+        let policyInterruption = nativeError.domain == "WebKitErrorDomain" && nativeError.code == 102
+        let cancelled = nativeError.domain == NSURLErrorDomain && nativeError.code == NSURLErrorCancelled
+        if !cancelled && !policyInterruption { error = failure.localizedDescription }
         refresh()
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -1205,6 +1263,10 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
             originalHandler(policy)
         }
         guard let url = action.request.url else { decisionHandler(.cancel); return }
+        if action.shouldPerformDownload, BrowserDownloads.supports(url) {
+            decisionHandler(.download)
+            return
+        }
         if url.isFileURL {
             let allowed = localDocumentDirectory.map { LocalWebDocument.contains(url, in: $0) } ?? false
             decisionHandler(allowed ? .allow : .cancel)
@@ -1227,9 +1289,37 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         if openExternalApplication(action, from: webView) { decisionHandler(.cancel); return }
         decisionHandler(["https", "http", "about"].contains(url.scheme?.lowercased() ?? "") ? .allow : .cancel)
     }
+    func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
+                 decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void) {
+        let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")?
+            .split(separator: ";", maxSplits: 1).first?.trimmingCharacters(in: .whitespaces).lowercased()
+        let shouldDownload = !response.canShowMIMEType || disposition == "attachment"
+        decisionHandler(shouldDownload && BrowserDownloads.supports(response.response.url) ? .download : .allow)
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        downloads.receive(download, from: webView)
+        if navigationAction.targetFrame?.isMainFrame == true { finishInitialDownload() }
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        downloads.receive(download, from: webView)
+        if navigationResponse.isForMainFrame { finishInitialDownload() }
+    }
+
+    private func finishInitialDownload() {
+        let completion = onInitialDownload
+        onInitialDownload = nil
+        completion?()
+    }
+
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         InputDiagnostics.transition(.newWindowLink, .requested, view: webView)
+        if action.shouldPerformDownload, BrowserDownloads.supports(action.request.url) {
+            downloads.start(action.request, in: webView)
+            return nil
+        }
         if openCommandClickedLink(action) { return nil }
         if openExternalApplication(action, from: webView) { return nil }
         if action.targetFrame == nil, let url = action.request.url,

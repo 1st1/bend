@@ -291,7 +291,7 @@ The native preview layer is observed during continuous movement and edge changes
 
 [PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) sends window mouse events through the actual browser shell, unified titlebar, and glass container in an ordered offscreen window.
 
-Header hit testing reaches the compact title handles, which drive hover feedback and pane dragging. Mouse-down focuses the pane; small motion does not move the window or begin a drag, and mouse-up clears tracking. Empty header and sidebar backgrounds request native window dragging. Tab rows, toolbar controls, sidebar resize handles, and traffic lights are excluded; native clicks still activate the sidebar new-tab and toggle buttons.
+Header hit testing reaches the compact title handles, which drive hover feedback and pane dragging. Mouse-down focuses the pane; small motion does not move the window or begin a drag, and mouse-up clears tracking. Empty header and sidebar backgrounds request native window dragging. Tab rows, toolbar controls, sidebar resize handles, and traffic lights are excluded; native clicks still activate the sidebar toggle without creating a tab.
 
 Every background window-drag request must originate inside AppKit's normal event dispatch, so activating clicks cannot skip native window appearance bookkeeping. Outside mouse-down dispatch the background targets do not claim hit testing, preserving underlying scroll and hover behavior.
 
@@ -424,6 +424,14 @@ Regression coverage includes bare-host completion of www. URLs, typed-case prese
 ## Sidebar resize tracking and restoration
 
 [PaneResizingTests.swift](../Tests/BrowseTests/PaneResizingTests.swift) drives the sidebar edge in a native window, checking repeated pointer positions, reversals, bounds, repeated drags, pane resizing, live controllers, hide/show, and saved-width restoration.
+
+The allowed range is 200–400 points with a 250-point default. Existing in-range widths remain unchanged; out-of-range widths clamp and nonfinite stored values use the default.
+
+## Sidebar visibility animation
+
+[PaneResizingTests.swift](../Tests/BrowseTests/PaneResizingTests.swift) samples native canvas geometry during sidebar collapse and restoration, checking intermediate positions, final bounds, reversal, and unchanged live WebView/controller identity.
+
+Disabling animations applies the final layout immediately without intermediate frames.
 
 ## Native sidebar tab dragging
 
@@ -648,6 +656,58 @@ Run with `BEND_FULLSCREEN_TEST=1` because the test activates a temporary app win
 ## Page fullscreen availability
 
 [ElementFullscreenTests.swift](../Tests/BrowseTests/ElementFullscreenTests.swift) loads a browser page and verifies the document reports fullscreen enabled and exposes the video request API without entering fullscreen automatically.
+
+## Website downloads
+
+[DownloadTests.swift](../Tests/BrowseTests/DownloadTests.swift) uses real WebKit navigation to download attachments, explicit links, unsupported MIME types, redirects with cookies, POST responses, and blob/data files while preserving the source document.
+
+Existing filenames must remain unchanged, repeated downloads receive distinct names, completed transfers leave no staging folders, and clearing the list preserves downloaded files.
+
+Converting navigation into a download must not display a page error, while genuine connection errors remain visible.
+
+## Download cancellation and retry
+
+[DownloadTests.swift](../Tests/BrowseTests/DownloadTests.swift) cancels a throttled transfer after progress arrives, releases its source controller, retries to completion, and verifies an HTTP failure can be retried without publishing its error body.
+
+A separate running transfer must finish after its source web view is released.
+
+## Download filenames
+
+[DownloadTests.swift](../Tests/BrowseTests/DownloadTests.swift) checks traversal paths, Windows separators, hidden names, control and directional characters, and oversized Unicode names become bounded filenames; unsupported URL schemes cannot start downloads.
+
+## Download destination preferences
+
+[DownloadTests.swift](../Tests/BrowseTests/DownloadTests.swift) verifies the download folder defaults to Downloads, persists across store recreation, and is shared across windows.
+
+An active transfer keeps its original destination after a preference change, while the next download uses the new folder. Resetting to Downloads removes the custom preference.
+
+## Download-only tabs
+
+[DownloadTests.swift](../Tests/BrowseTests/DownloadTests.swift) opens real new-window download links, directly and through redirects, verifying their temporary tabs disappear while transfers complete and the source document remains intact.
+
+Cleanup restores the preceding tab only if the temporary tab is still selected, does not add closed-tab history, and retains tabs that committed a document before downloading.
+
+## Download database retention and transactions
+
+[DownloadDatabaseTests.swift](../Tests/BrowseTests/DownloadDatabaseTests.swift) verifies SQLite round trips, stable order, 256-record pruning, transactional rollback after an injected failure, retry, and durable clearing without deleting files.
+
+## Download history recovery
+
+[DownloadDatabaseTests.swift](../Tests/BrowseTests/DownloadDatabaseTests.swift) preserves unreadable storage, retries after repair, and restores unfinished transfers as interrupted without replaying POST requests or starting downloads automatically.
+
+## Persistent download history
+
+[DownloadTests.swift](../Tests/BrowseTests/DownloadTests.swift) recreates the manager after real completed and interrupted downloads, retries a restored GET, and verifies durable clearing and automatic retention while saved files remain intact.
+
+## Combined download progress
+
+[DownloadDatabaseTests.swift](../Tests/BrowseTests/DownloadDatabaseTests.swift) verifies byte-weighted progress across transfers, unknown-size and idle states, bounded invalid counts, and large byte totals without integer overflow.
+
+## Downloads with collapsed sidebar
+
+[DownloadTests.swift](../Tests/BrowseTests/DownloadTests.swift) verifies one visible Downloads control remains inside the window across sidebar toggles, pane zoom, and tab switching, beside the sidebar toggle when collapsed; clearing the list removes it.
+
+Both controls retain their 28-point size and two-point gap in expanded and collapsed layouts.
 
 ## External application consent
 

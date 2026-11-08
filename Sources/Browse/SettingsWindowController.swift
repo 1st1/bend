@@ -259,6 +259,21 @@ private struct UISettingsView: View {
         Form {
             DefaultBrowserSettingsSection()
             Section {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Save files to")
+                        Text(store.downloadDirectory.path).font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle).help(store.downloadDirectory.path)
+                    }
+                    Spacer()
+                    Button("Change…") { chooseDownloadDirectory() }
+                    Button("Use Downloads") { store.downloadDirectory = BrowserDownloads.defaultDirectory }
+                        .disabled(store.downloadDirectory.path == BrowserDownloads.defaultDirectory.path)
+                }
+            } header: {
+                Text("Downloads")
+            }
+            Section {
                 Picker("Command-click a link", selection: $store.commandClickDestination) {
                     Text("Always open a new pane").tag(CommandClickDestination.newPane)
                     Text("Reuse one dedicated pane per tab").tag(CommandClickDestination.dedicatedPane)
@@ -368,6 +383,19 @@ private struct UISettingsView: View {
                 GlassSettingsSection(title: "Pane headers", appearance: $store.paneHeaderGlass, defaults: .headerDefault)
             }
         }.formStyle(.grouped)
+    }
+
+    private func chooseDownloadDirectory() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Download Folder"
+        panel.prompt = "Choose"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = store.downloadDirectory
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
+        store.downloadDirectory = directory
     }
 }
 

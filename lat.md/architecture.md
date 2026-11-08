@@ -44,9 +44,9 @@ Both built-in start pages show a centered, muted-gray keyboard shortcut referenc
 
 The sidebar presents one continuous column of tabs without group headings or group creation. Each tab contains one or more browser panes. Selection changes the displayed tab; closing the final tab creates a replacement. The sidebar can be resized or hidden, with session-save errors shown at the bottom only when needed.
 
-The sidebar header places a new-tab button beside a right-aligned sidebar toggle, without a brand label or a trailing new-tab row. The header sits above the sidebar scroll view in hit-test order, and that scroll view is clipped to its own content shape so it cannot intercept the header’s clicks. Command-T and the File menu also create tabs. Panes use six-point outer margins and divider gaps, starting at the top window inset with no shared navigation bar. When the sidebar is hidden, the upper-left pane reserves space for window controls and exposes the sidebar toggle.
+The sidebar header right-aligns downloads beside the sidebar toggle and hides downloads when its list is empty. The header sits above the clipped sidebar scroll view. Command-T and the File menu create tabs; there is no plus button. Panes use six-point outer margins and divider gaps. When the sidebar is hidden, downloads remains beside the sidebar toggle near the window controls in the upper-left visible pane, including when a different pane is zoomed. Both layouts keep Downloads on the left and the sidebar toggle on the right, with matching 28-point controls and a two-point gap. [[tests#Downloads with collapsed sidebar]] covers their visibility, sizing, and spacing.
 
-Each pane has one compact title row with extensions, reload/stop, split, zoom, and close controls, using shared [[architecture#Toolbar button styling]]. Reload focuses its pane and becomes stop while loading; it is disabled on start pages. The persistent address row is replaced by the [[architecture#Location popup]]. Back/forward remain available through the View menu and shortcuts; tab creation remains in the sidebar and File menu.
+Each pane has one compact title row with extensions, reload/stop, split, zoom, and close controls, using shared [[architecture#Toolbar button styling]]. Reload focuses its pane and becomes stop while loading; it is disabled on start pages. The persistent address row is replaced by the [[architecture#Location popup]]. Back/forward remain available through the View menu and shortcuts; tab creation remains in the File menu and Command-T.
 
 [BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) attaches an empty unified native toolbar to give the traffic lights standard toolbar-height spacing. AppKit manages their placement through resizing and full-screen transitions; their native size and position do not change when the sidebar toggles. Sidebar controls and pane titles share the traffic lights’ fixed vertical centerline, accounting for the pane’s outer margin. The transparent titlebar has no separator or shared toolbar actions. [[tests#Window control alignment]] covers sidebar toggles and window resizing.
 
@@ -94,9 +94,11 @@ Native ownership revisions invalidate queued work after a newer start. Each fram
 
 ## Sidebar sizing
 
-[SidebarResizing.swift](../Sources/Browse/SidebarResizing.swift) supplies an invisible eight-point handle at the sidebar's right edge, with a horizontal resize cursor and immediate resizing between 100 and 300 points.
+[SidebarResizing.swift](../Sources/Browse/SidebarResizing.swift) supplies an invisible eight-point handle at the sidebar's right edge, with a horizontal resize cursor and immediate resizing between 200 and 400 points.
 
-Dragging measures pointer movement in window coordinates so resizing the sidebar cannot feed movement back into the gesture. [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) clamps and saves the width in the session; older sessions default to 236 points. Hiding the sidebar preserves its width, and resizing retains live pane controllers. At narrow widths, header buttons move below the window controls and pane-count labels disappear to leave room for tab titles.
+Dragging measures pointer movement in window coordinates so resizing the sidebar cannot feed movement back into the gesture. [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) clamps and saves the width in the session. Missing or nonfinite widths default to 250 points; saved widths inside the range remain unchanged and out-of-range values are clamped. Hiding the sidebar preserves its width, and resizing retains live pane controllers.
+
+[BrowserView.swift](../Sources/Browse/BrowserView.swift) animates collapse and restoration over 200 ms with an ease-in-out curve. The sidebar slides and fades at the leading edge while the native pane canvas resizes in place, retaining its WebViews and document state. Rapid toggles reverse toward the latest layout. Reduce Motion disables the animation; width dragging remains immediate. [[tests#Sidebar visibility animation]] covers intermediate geometry, stable native parents, retained form state, and reversal.
 
 ## Floating sidebar
 
@@ -208,7 +210,35 @@ Command-click routing uses WebKit's navigation-action modifiers and left-button 
 
 Pane headers display [[architecture#Page favicons|site favicons]] or a site initial when no usable icon is available. Internal pages retain their app symbols. Same-origin navigation keeps the last successful icon while refreshing it; leaving the origin clears it. Pending work is cancelled so stale results cannot replace the next page's icon.
 
-Custom URL schemes use the confirmed [[architecture#External application links|external-app handoff]]. Downloads, website media permissions, native Safari App Extensions, and Safari session sharing are outside the implemented prototype. Safari Web Extensions use the separate [[architecture#Web extensions|Bend extension host]].
+Custom URL schemes use the confirmed [[architecture#External application links|external-app handoff]]. Website files use [[architecture#Browser downloads]]. Website media permissions, native Safari App Extensions, and Safari session sharing are outside the implemented prototype. Safari Web Extensions use the separate [[architecture#Web extensions|Bend extension host]].
+
+## Browser downloads
+
+[BrowserDownloads.swift](../Sources/Browse/BrowserDownloads.swift) owns native WebKit downloads across all browser windows, with persistent history and a configurable destination that defaults to Downloads.
+
+Settings → UI → Downloads offers a folder chooser and a reset to Downloads. [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) persists the custom path in the shared session preferences. Existing sessions without the preference retain the default. Each transfer captures its destination when added; changing the preference affects new transfers, while active downloads and retries retain their original folder. [[tests#Download destination preferences]] covers persistence, sharing, and destination changes during a transfer.
+
+[PageController](../Sources/Browse/BrowserStore.swift) converts download links, attachment responses, and unsupported MIME types into native downloads. WebKit retains the original navigation request, including cookies and POST bodies; explicit blob and data download links are supported. Downloads retain their native transfer independently of their source tab. Redirects remain limited to HTTP and HTTPS, and authentication uses default system handling.
+
+Tabs created by new-window links (or Command-click configured for a new tab) are removed when their initial main-frame navigation becomes a download, including after redirects. The transfer is retained before its web view is released. Cleanup creates no closed-tab history and restores the previous selection and zoom only if that temporary tab remains selected. A committed document, explicit navigation elsewhere, additional panes, or a moved pane prevents this cleanup. Existing tabs and manually created tabs remain open. [[tests#Download-only tabs]] covers this handoff and focus behavior.
+
+Files first land in private, uniquely named staging directories under their destination folder. Suggested names are reduced to a bounded visible filename without path components, control characters, or directional formatting. An atomic no-replace rename publishes completed files, preserving native download metadata and adding numeric suffixes on collision. Cancelled and failed transfers never publish partial files. Clearing finished entries leaves completed files intact; normal app shutdown cancels active transfers and removes staging files.
+
+The shared manager polls active progress at four updates per second and stops polling when idle. Cancellation keeps WebKit resume data in memory when available. Retry resumes that transfer or restarts an HTTP(S) GET using the originating website data store; it does not replay non-resumable POST requests or expired generated-file URLs. [[architecture#Download database]] retains download records across restarts. Interrupted transfers restore as failed without restarting automatically; HTTP(S) GET retries use WebKit's default website data store after restart.
+
+[DownloadsButton.swift](../Sources/Browse/DownloadsButton.swift) presents filenames, progress, failure details, cancel/retry controls, and Show in Finder in a popover. A circular ring around the arrow shows combined byte-weighted progress for all active transfers. If any transfer's total size is unknown, a rotating arc indicates activity; Reduce Motion keeps that arc stationary. Idle state restores the ordinary circled arrow. [[tests#Combined download progress]] covers aggregation and unknown sizes.
+
+The same shared list is available in every window, including when the sidebar is hidden. Clear Finished removes inactive entries from memory and the database. An empty list hides the button and dismisses its popover unless transfers are still running or a persistence error needs attention. [[tests#Website downloads]], [[tests#Download cancellation and retry]], and [[tests#Download filenames]] cover transfers and file handling with local fixtures.
+
+## Download database
+
+[DownloadDatabase.swift](../Sources/Browse/DownloadDatabase.swift) stores the newest 256 download records in SQLite at Downloads.db beside the root session file, shared by all windows.
+
+Each record has a stable UUID, insertion sequence, and encoded metadata containing its filename, state, byte counts, source URL and method, destination folder, saved file URL, and failure message. Updates retain insertion order. Headers, cookies, POST bodies, embedded URL credentials, generated-file URLs, and native resume data are not persisted. Restored active or cancelling records become interrupted failures. Normal shutdown cancels transfers, removes staging files, and persists that interrupted state.
+
+Lifecycle changes use incremental upserts and deletions in transactions with WAL, full synchronous commits, and secure deletion. Progress polling does not write the database. The manager and database both enforce the 256-record limit, discarding oldest metadata without deleting completed files or cancelling live transfers. Evicted live transfers remain owned until completion and still contribute to the progress ring. [[tests#Download database retention and transactions]] and [[tests#Persistent download history]] cover pruning, rollback, clearing, and restart behavior.
+
+Unreadable or unsupported databases are preserved. A message in the downloads popover offers Retry while new transfers can continue in memory. Retrying a successful read merges retained in-memory downloads with the stored history; failed writes retain the last committed snapshot. [[tests#Download history recovery]] covers preservation and interrupted records.
 
 ## Developer tools
 

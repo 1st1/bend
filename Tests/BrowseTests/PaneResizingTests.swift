@@ -64,6 +64,60 @@ func dividerPointerTracking(axis: SplitAxis) async throws {
     #expect(abs(try divider().firstLength - initial.firstLength + 40) < 2)
 }
 
+// @lat: [[tests#Sidebar visibility animation]]
+@Test(.serialized, arguments: [false, true]) @MainActor
+func sidebarVisibilityAnimation(animationsDisabled: Bool) async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSidebarAnimation-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let page = store.selectedTab.pages[0]
+    let controller = store.controller(for: page)
+    controller.isStartPage = false
+    controller.webView.loadHTMLString("<title>Sidebar animation</title><input value='unsaved'>", baseURL: nil)
+    let host = NSHostingView(rootView: BrowserView(store: store)
+        .transaction { if animationsDisabled { $0.disablesAnimations = true } }.ignoresSafeArea())
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1100, height: 700),
+                          styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+    window.contentView = host; window.orderFront(nil)
+    defer { store.downloads.shutdown(); controller.media.detach(); controller.webView.stopLoading(); window.orderOut(nil); window.contentView = nil }
+    func mounted(in view: NSView) -> MountedTabHost? {
+        if let view = view as? MountedTabHost { return view }
+        return view.subviews.lazy.compactMap { mounted(in: $0) }.first
+    }
+    for _ in 0..<8 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(30)) }
+    let canvas = try #require(mounted(in: host))
+    let originalWebView = controller.webView
+    let originalParent = try #require(originalWebView.superview)
+    let expanded = canvas.convert(canvas.bounds, to: nil)
+    for visible in [false, true] {
+        store.sidebarVisible = visible
+        var positions: [CGFloat] = []
+        for _ in 0..<30 {
+            host.layoutSubtreeIfNeeded()
+            let frame = canvas.convert(canvas.bounds, to: nil)
+            positions.append(frame.minX)
+            #expect(abs(frame.maxX - expanded.maxX) < 0.5)
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let collapsedX = expanded.minX - store.sidebarWidth
+        let expected = visible ? expanded.minX : collapsedX
+        #expect(abs(positions.last! - expected) < 0.5)
+        let intermediate = positions.contains { position in position > collapsedX + 1 && position < expanded.minX - 1 }
+        let shouldAnimate = !animationsDisabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #expect(intermediate == shouldAnimate)
+        #expect(mounted(in: host) === canvas)
+        #expect(store.existingController(for: page.id) === controller)
+        #expect(controller.webView === originalWebView && originalWebView.superview === originalParent)
+        #expect(try await originalWebView.evaluateJavaScript("document.querySelector('input').value") as? String == "unsaved")
+    }
+    store.sidebarVisible = false
+    try await Task.sleep(for: .milliseconds(50))
+    store.sidebarVisible = true
+    for _ in 0..<10 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(30)) }
+    #expect(abs(canvas.convert(canvas.bounds, to: nil).minX - expanded.minX) < 0.5)
+}
+
 // @lat: [[tests#Sidebar resize tracking and restoration]]
 @Test @MainActor func sidebarResizeTracking() async throws {
     _ = NSApplication.shared
@@ -74,7 +128,7 @@ func dividerPointerTracking(axis: SplitAxis) async throws {
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     try JSONEncoder().encode(BrowserSession()).write(to: file)
     let store = BrowserStore(sessionFile: file, persistentExtensions: false)
-    #expect(store.sidebarWidth == 236)
+    #expect(store.sidebarWidth == 250)
     let host = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
     let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1100, height: 800),
         styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
@@ -105,32 +159,36 @@ func dividerPointerTracking(axis: SplitAxis) async throws {
             let point = NSPoint(x: down.x + delta, y: down.y)
             try sendPaneMouse(.leftMouseDragged, at: point, to: window)
             try await settle()
-            #expect(abs(store.sidebarWidth - min(300, max(100, startWidth + delta))) < 0.5)
+            #expect(abs(store.sidebarWidth - min(400, max(200, startWidth + delta))) < 0.5)
         }
         let up = NSPoint(x: down.x + (deltas.last ?? 0), y: down.y)
         try sendPaneMouse(.leftMouseUp, at: up, to: window)
         try await settle()
     }
-    try await drag([20, 40, 40, -40, -40, -136, -200, 64, 200, 0, -36])
+    try await drag([20, 40, 40, -40, -40, -136, -200, 64, 200, 0, -50])
     #expect(store.sidebarWidth == 200)
     #expect(pane.bounds.width > originalPaneWidth)
     // A second drag must start from the new width, without stale tracking.
-    try await drag([20, 20, -50])
-    #expect(store.sidebarWidth == 150)
+    try await drag([20, 20, 100, 100, 50])
+    #expect(store.sidebarWidth == 250)
     #expect(store.existingController(for: store.selectedTab.pages[0].id) === controller)
     store.sidebarVisible = false
     try await settle()
     store.sidebarVisible = true
     try await settle()
-    #expect(store.sidebarWidth == 150)
+    #expect(store.sidebarWidth == 250)
     store.resizeSidebar(to: .nan)
-    #expect(store.sidebarWidth == 150)
+    #expect(store.sidebarWidth == 250)
     store.save()
     let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
-    #expect(restored.sidebarWidth == 150)
+    #expect(restored.sidebarWidth == 250)
     #expect(restored.session.isValid)
     restored.session.sidebarWidth = 900
-    #expect(restored.sidebarWidth == 300)
+    #expect(restored.sidebarWidth == 400)
     restored.session.sidebarWidth = -5
-    #expect(restored.sidebarWidth == 100)
+    #expect(restored.sidebarWidth == 200)
+    restored.session.sidebarWidth = 236
+    #expect(restored.sidebarWidth == 236)
+    restored.session.sidebarWidth = .nan
+    #expect(restored.sidebarWidth == 250)
 }

@@ -24,7 +24,7 @@ final class SidebarResizeView: NSView {
         InputDiagnostics.record(.sidebarResize, event: event, view: self)
         InputDiagnostics.transition(.sidebarResizeLifetime, .started, view: self)
         startX = event.locationInWindow.x
-        startWidth = store?.sidebarWidth ?? 236
+        startWidth = store?.sidebarWidth ?? BrowserStore.defaultSidebarWidth
     }
 
     override func mouseDragged(with event: NSEvent) {

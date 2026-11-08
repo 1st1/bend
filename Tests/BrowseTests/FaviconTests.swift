@@ -227,7 +227,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
         return true
     }
     try await settle { icon.image === controller.favicon }
-    for width in [100.0, 300.0, 236.0] {
+    for width in [200.0, 400.0, 250.0] {
         store.resizeSidebar(to: width)
         context.window.contentView?.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(80))

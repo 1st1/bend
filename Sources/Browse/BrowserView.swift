@@ -11,12 +11,14 @@ enum Chrome {
     static let headerCenterY: CGFloat = 26
     static let paneInset: CGFloat = PaneGeometry.gap
     static let paneHeaderHeight = 2 * (headerCenterY - paneInset)
+    static let sidebarControlSpacing: CGFloat = 2
     static let accent = Color(red: 0.66, green: 0.81, blue: 0.73)
     static let muted = Color.white.opacity(0.42)
 }
 
 struct BrowserView: View {
     @ObservedObject var store: BrowserStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 0) {
@@ -26,6 +28,7 @@ struct BrowserView: View {
                         SidebarResizeHandle(store: store).frame(width: 8)
                             .background(WindowDragArea(excluded: true)).offset(x: 4)
                     }
+                    .transition(reduceMotion ? .identity : .move(edge: .leading).combined(with: .opacity))
                     .zIndex(1)
             }
             MountedTabContent(store: store)
@@ -36,6 +39,7 @@ struct BrowserView: View {
                 }
             }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.sidebarVisible)
         .overlay(alignment: .topLeading) {
             if !store.sidebarVisible && store.sidebarFloating {
                 sidebar(floating: true)
@@ -61,10 +65,11 @@ struct BrowserView: View {
 
     private func sidebar(floating: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 2) {
-                Spacer()
-                iconButton("plus", "New tab · ⌘T", prominent: true) { store.newTab() }
-                    .background(WindowDragArea(excluded: true))
+            HStack(spacing: Chrome.sidebarControlSpacing) {
+                Spacer(minLength: 0)
+                if !floating {
+                    DownloadsButton(downloads: store.downloads)
+                }
                 iconButton("sidebar.left", floating ? "Keep sidebar open · ⌘⇧S" : "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
                     .background(WindowDragArea(excluded: true))
             }.padding(.horizontal, 15).frame(height: 2 * Chrome.headerCenterY)
@@ -387,8 +392,11 @@ private struct BrowserPane: View {
         HStack(spacing: 9) {
             if hostsWindowControls {
                 if !store.isFullScreen { Color.clear.frame(width: 66) }
-                iconButton("sidebar.left", "Show sidebar · ⌘⇧S") { store.sidebarVisible = true }
-                    .background(WindowDragArea(excluded: true))
+                HStack(spacing: Chrome.sidebarControlSpacing) {
+                    if tab.id == store.session.selectedTab { DownloadsButton(downloads: store.downloads) }
+                    iconButton("sidebar.left", "Show sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible = true }
+                        .background(WindowDragArea(excluded: true))
+                }
             }
             HStack(spacing: 0) {
                 HStack(spacing: 7) {

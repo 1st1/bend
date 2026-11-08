@@ -113,10 +113,9 @@ import BrowseCore
         try await Task.sleep(for: .milliseconds(150))
     }
     let tabsBefore = store.session.workspaces.flatMap(\.tabs).count
-    try await clickSidebarButton(x: store.sidebarWidth - 59)
-    #expect(store.session.workspaces.flatMap(\.tabs).count == tabsBefore + 1)
     try await clickSidebarButton(x: store.sidebarWidth - 29)
     #expect(!store.sidebarVisible)
+    #expect(store.session.workspaces.flatMap(\.tabs).count == tabsBefore)
 }
 
 @MainActor

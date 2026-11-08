@@ -172,6 +172,7 @@ public struct BrowserSession: Codable, Sendable {
     public var paneHeaderGlass: GlassAppearance?
     public var paneHighlight: PaneHighlight?
     public var paneBorders: PaneBorders?
+    public var downloadDirectory: String?
 
     public init() {
         let initial = BrowserTab(title: "Start here", pages: [Page(), Page(address: "browse://guide")])

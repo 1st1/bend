@@ -88,7 +88,7 @@ final class BrowserWindows {
         } catch { sharedStore.persistenceError = "Open windows could not be saved: \(error.localizedDescription)" }
     }
 
-    func prepareToQuit() { terminating = true; save() }
+    func prepareToQuit() { terminating = true; sharedStore.downloads.shutdown(); save() }
 }
 
 @MainActor
