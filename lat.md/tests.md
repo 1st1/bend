@@ -117,6 +117,12 @@ The mounted-window test verifies the canvas frame and retained WebView identitie
 
 Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files. The test checks Bend's bundle name and executable, the retained profile identifier, the icon resource and plist entry, HTTP/HTTPS URL-handler and HTML/XHTML document-viewer declarations, and precedence of the new signing override over the legacy override. These checks do not exercise macOS signing or WebKit runtime behavior.
 
+## Production installer publication
+
+[test-build-prod.sh](../scripts/test-build-prod.sh) exercises the production script with isolated native-tool stand-ins, checking notarization, ticket validation, packaging order, and failure-safe publication.
+
+App or DMG rejection, Finder layout failure, invalid tickets, and disk-image verification failure retain the previous installer and detach temporary mounts. Successful publication requires the app ticket before packaging and the DMG ticket before final assessment. The development app remains untouched by stapling. These tests do not substitute for Apple's real service or Finder visual verification.
+
 ## Catalog download integrity and identity
 
 [ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) rejects modified, empty, oversized, non-HTTPS, or unsuccessful catalog downloads and mismatched package identities before installation.

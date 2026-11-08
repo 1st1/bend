@@ -36,6 +36,16 @@ The generated icon uses a top-aligned square crop that trims extra wall below an
 
 [generate-app-icon.swift](../scripts/generate-app-icon.swift) renders the artwork with rounded corners, transparent margins, and a subtle shadow into standard and Retina icon sizes. Run `swift scripts/generate-app-icon.swift` on macOS to regenerate [AppIcon.png](../Assets/AppIcon.png) and [AppIcon.icns](../Assets/AppIcon.icns). [build-app.sh](../scripts/build-app.sh) copies the ICNS into bundle resources and sets the icon entry in Info.plist before signing.
 
+## Production installer
+
+[build-prod.sh](../scripts/build-prod.sh) creates a signed, notarized drag-to-Applications DMG, separate from the fast [[architecture#Development signing|development build]].
+
+Run `./scripts/build-prod.sh` from a logged-in macOS desktop session. It defaults to the saved `bend-notary` Keychain profile; `--keychain-profile NAME` or `BEND_NOTARY_PROFILE` selects another. Signing uses the same Developer ID identity override as the development build. Credentials stay in Keychain. The script builds the host architecture and names the installer `dist/Bend-VERSION-ARCH.dmg` from the app plist and executable, without implying a universal build.
+
+A private copy of the app receives a timestamped Developer ID Application signature, is submitted with `notarytool`, and has its accepted ticket stapled and validated before packaging. The development bundle stays separate from this stapled copy. [render-dmg-background.swift](../scripts/render-dmg-background.swift) draws a Retina installer background with instructions and an arrow. [layout-dmg.applescript](../scripts/layout-dmg.applescript) uses Finder to save a fixed icon-view window with Bend and an Applications shortcut. Finder automation may require macOS consent on first use.
+
+The compressed, read-only DMG is signed, notarized, stapled, and checked by Gatekeeper and disk-image verification before replacing an existing installer. App and DMG submission results and service logs remain under `dist/notary-*`. Rejected or timed-out submissions and failed checks abort publication. Stapling retries briefly while Apple's ticket propagates. Cleanup detaches only the script's mounted image; detach failures retain its working files for recovery. [[tests#Production installer publication]] checks failure preservation and sequencing with isolated command stand-ins; real notarization and Finder rendering require the native production run.
+
 ## Application shell
 
 [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) owns menus, keyboard shortcuts, and application lifetime. [BrowserWindows.swift](../Sources/Browse/BrowserWindows.swift) owns the browser windows. [BrowserView.swift](../Sources/Browse/BrowserView.swift) renders a dark sidebar, vertical tabs, pane controls, and start pages.

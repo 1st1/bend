@@ -552,3 +552,14 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     process.waitUntilExit()
     #expect(process.terminationStatus == 0)
 }
+
+// @lat: [[tests#Production installer publication]]
+@Test func productionInstallerPublication() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/bash")
+    process.arguments = [root.appendingPathComponent("scripts/test-build-prod.sh").path]
+    try process.run()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0)
+}
