@@ -6,25 +6,22 @@ private typealias DownloadViewState<Value> = SwiftUI.State<Value>
 struct DownloadsButton: View {
     @ObservedObject var downloads: BrowserDownloads
     @DownloadViewState private var showing = false
-    @DownloadViewState private var hovered = false
 
     var body: some View {
         Group {
             if !downloads.items.isEmpty || downloads.activeCount > 0 || downloads.persistenceError != nil { button }
         }
         .onChange(of: downloads.items.isEmpty) { _, empty in
-            if empty && downloads.activeCount == 0 && downloads.persistenceError == nil { showing = false; hovered = false }
+            if empty && downloads.activeCount == 0 && downloads.persistenceError == nil { showing = false }
         }
     }
 
     private var button: some View {
         Button { showing.toggle() } label: {
-            DownloadProgressIcon(active: downloads.activeCount > 0, fraction: downloads.progressFraction,
-                                 highlighted: hovered || showing)
+            DownloadProgressIcon(active: downloads.activeCount > 0, fraction: downloads.progressFraction)
         }
         .buttonStyle(ChromeButtonStyle(prominent: true))
         .help("Downloads")
-        .onHover { hovered = $0 }
         .accessibilityLabel("Downloads")
         .accessibilityValue(downloads.activeCount == 0 ? "No active downloads" :
             "\(downloads.activeCount) active downloads" + (downloads.progressFraction.map { ", \(Int($0 * 100)) percent" } ?? ""))
@@ -38,13 +35,12 @@ struct DownloadsButton: View {
 struct DownloadProgressIcon: View {
     let active: Bool
     let fraction: Double?
-    var highlighted = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if active {
             ZStack {
-                Circle().stroke(.white.opacity(0.25), lineWidth: 1.5)
+                Circle().stroke(lineWidth: 1.5).opacity(0.25)
                 if let fraction {
                     Circle().trim(from: 0, to: min(1, max(0, fraction)))
                         .stroke(.tint, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
@@ -59,11 +55,9 @@ struct DownloadProgressIcon: View {
                     }
                 }
                 Image(systemName: "arrow.down").font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.white.opacity(highlighted ? 0.85 : 0.65))
             }.frame(width: 16, height: 16).accessibilityHidden(true)
         } else {
             Image(systemName: "arrow.down.circle")
-                .foregroundStyle(.white.opacity(highlighted ? 0.85 : 0.55))
         }
     }
 }
