@@ -50,10 +50,12 @@ struct BrowserView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                     .shadow(color: .black.opacity(0.35), radius: 14, x: 4, y: 4)
                     .padding(.leading, FloatingSidebarTrackingView.inset)
-                    .padding(.top, FloatingSidebarTrackingView.topInset(fullScreen: store.isFullScreen))
+                    .padding(.top, FloatingSidebarTrackingView.inset)
                     .padding(.bottom, FloatingSidebarTrackingView.inset)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: store.sidebarFloating)
         .overlay { FloatingSidebarTracking(store: store).accessibilityHidden(true) }
         .background(PaneShadowPlane(store: store).allowsHitTesting(false).accessibilityHidden(true))
         .background {
@@ -69,14 +71,13 @@ struct BrowserView: View {
         let trailingInset = Chrome.sidebarHorizontalInset - (floating ? 0 : Chrome.paneInset)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Chrome.sidebarControlSpacing) {
+                if floating && !store.isFullScreen { Color.clear.frame(width: 66) }
                 Spacer(minLength: 0)
-                if !floating {
-                    DownloadsButton(downloads: store.downloads)
-                }
+                DownloadsButton(downloads: store.downloads)
                 iconButton("sidebar.left", floating ? "Keep sidebar open · ⌘⇧S" : "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
                     .background(WindowDragArea(excluded: true))
             }.padding(.leading, Chrome.sidebarHorizontalInset).padding(.trailing, trailingInset)
-                .frame(height: 2 * Chrome.headerCenterY)
+                .frame(height: 2 * (Chrome.headerCenterY - (floating ? FloatingSidebarTrackingView.inset : 0)))
                 .padding(.top, !floating && store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
                 .zIndex(1)
 

@@ -109,7 +109,7 @@ This opt-in check uses no saved sign-in and depends on the site's availability, 
 
 [FloatingSidebarTests.swift](../Tests/BrowseTests/FloatingSidebarTests.swift) exercises edge reveal, hover retention, delayed dismissal, tab selection through native hit testing, pinning, fullscreen edge geometry, and deactivation.
 
-The mounted-window test verifies the canvas frame and retained WebView identities remain unchanged while the panel opens, switches tabs, and closes. Presses over a covered pane header must not begin a pane drag.
+The mounted-window test verifies the canvas frame and retained WebView identities remain unchanged while the panel opens, switches tabs, and closes. The panel reaches the top inset behind the traffic lights, which remain native hit targets. The top-row pin button receives clicks above the pane header; covered pane headers cannot begin a pane drag.
 
 ## Build bundle publication
 

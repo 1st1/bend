@@ -13,7 +13,6 @@ struct FloatingSidebarTracking: NSViewRepresentable {
 @MainActor
 final class FloatingSidebarTrackingView: NSView {
     static let inset: CGFloat = 6
-    static func topInset(fullScreen: Bool) -> CGFloat { fullScreen ? inset : 52 }
     weak var store: BrowserStore?
     private var area: NSTrackingArea?
     private var dismissal: Task<Void, Never>?
@@ -22,9 +21,8 @@ final class FloatingSidebarTrackingView: NSView {
 
     var panelRect: NSRect {
         guard let store else { return .zero }
-        let top = Self.topInset(fullScreen: store.isFullScreen)
-        return NSRect(x: Self.inset, y: top, width: store.sidebarWidth,
-                      height: max(0, bounds.height - top - Self.inset))
+        return NSRect(x: Self.inset, y: Self.inset, width: store.sidebarWidth,
+                      height: max(0, bounds.height - 2 * Self.inset))
     }
 
     override func updateTrackingAreas() {

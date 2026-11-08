@@ -75,6 +75,25 @@ import BrowseCore
     let row = try #require(descendants(TabDragSourceView.self, content).first { $0.tabID == secondTab })
     let point = row.convert(NSPoint(x: row.bounds.midX, y: row.bounds.midY), to: nil)
     let frameView = try #require(content.superview)
+    // The panel reaches behind native window controls and over pane titles.
+    #expect(tracker.panelRect.minY == 6)
+    #expect(tracker.panelRect.height == tracker.bounds.height - 12)
+    for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+        let button = try #require(window.standardWindowButton(kind))
+        let center = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
+        let hit = frameView.hitTest(frameView.convert(center, from: nil))
+        #expect(hit === button || hit?.isDescendant(of: button) == true)
+    }
+    let pinPoint = tracker.convert(NSPoint(x: tracker.panelRect.maxX - Chrome.sidebarHorizontalInset - 14,
+                                          y: Chrome.headerCenterY), to: nil)
+    #expect(FloatingSidebarTrackingView.covers(pinPoint, in: window))
+    let pinHit = try #require(frameView.hitTest(frameView.convert(pinPoint, from: nil)))
+    #expect(!(pinHit is PaneDragSourceView))
+    if let path = ProcessInfo.processInfo.environment["BEND_FLOATING_SIDEBAR_SNAPSHOT"],
+       let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
+        content.cacheDisplay(in: content.bounds, to: bitmap)
+        try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
     #expect(frameView.hitTest(frameView.convert(point, from: nil)) === row)
     try sendPaneMouse(.leftMouseDown, at: point, to: window)
     try sendPaneMouse(.leftMouseUp, at: point, to: window)
@@ -108,8 +127,11 @@ import BrowseCore
     #expect(originalWeb.bounds == originalBounds)
     #expect(try await originalWeb.evaluateJavaScript("window.sidebarResizes") as? Int == 0)
     try move(NSPoint(x: 3, y: 200))
-    store.sidebarVisible = true
     try await settle()
+    try sendPaneMouse(.leftMouseDown, at: pinPoint, to: window)
+    try sendPaneMouse(.leftMouseUp, at: pinPoint, to: window)
+    try await settle()
+    #expect(store.sidebarVisible)
     #expect(!store.sidebarFloating)
     try move(NSPoint(x: 3, y: 200))
     #expect(!store.sidebarFloating)
