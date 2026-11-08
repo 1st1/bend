@@ -637,7 +637,7 @@ The closed page remains reopenable. Repeating Command-W from the popup keeps the
 
 [PaneShadowTests.swift](../Tests/BrowseTests/PaneShadowTests.swift) renders the shadow layer to a bitmap, checking visible falloff beyond canvas bounds, clear pane interiors, ignored hit tests, and updates for moved or hidden panes.
 
-The bitmap checks also verify that glow colors only the focused pane’s shadow, follows focus changes, respects intensity and spread, and has matching top/bottom and left/right falloff. Leaving glow mode restores the ordinary black shadow. Outline checks cover independent gap and thickness, drawing beyond the canvas, focus changes, hiding, and clear pane interiors even when a thick ring reaches a neighbor.
+The neutral outer edge fades in through the header, leaves the top rim unlit, keeps pane interiors clear at its fixed subtle intensity. The bitmap checks also verify that glow colors only the focused pane’s shadow, follows focus changes, respects intensity and spread, and has matching top/bottom and left/right falloff. Leaving glow mode restores the ordinary black shadow. Outline checks cover independent gap and thickness, drawing beyond the canvas, focus changes, hiding, and clear pane interiors even when a thick ring reaches a neighbor.
 
 ## Cross-window live transfers
 

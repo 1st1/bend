@@ -38,7 +38,7 @@ final class PaneShadowView: NSView {
         guard let root = window?.contentView, let context = NSGraphicsContext.current?.cgContext else { return }
         context.saveGState()
         defer { context.restoreGState() }
-        var shapes: [(path: CGPath, viewport: CGRect, color: CGColor, blur: CGFloat,
+        var shapes: [(path: CGPath, rect: CGRect, viewport: CGRect, color: CGColor, blur: CGFloat,
                       offset: CGSize, outline: (path: CGPath, color: CGColor)?)] = []
         func collect(_ view: NSView) {
             guard !view.isHiddenOrHasHiddenAncestor else { return }
@@ -75,7 +75,7 @@ final class PaneShadowView: NSView {
                     }
                 }
                 let reach = max(48, blur * 3 + 3, outlineReach)
-                shapes.append((shape, viewport.insetBy(dx: -reach, dy: -reach), color.cgColor, blur, offset, outline))
+                shapes.append((shape, rect, viewport.insetBy(dx: -reach, dy: -reach), color.cgColor, blur, offset, outline))
                 return
             }
             for child in view.subviews { collect(child) }
@@ -88,6 +88,12 @@ final class PaneShadowView: NSView {
             context.setFillColor(NSColor.black.cgColor)
             context.addPath(shadow.path)
             context.fillPath()
+            context.restoreGState()
+        }
+        for decoration in shapes {
+            context.saveGState()
+            context.clip(to: decoration.viewport)
+            drawEdgeLight(around: decoration.rect, in: context)
             context.restoreGState()
         }
         for decoration in shapes {
@@ -105,6 +111,31 @@ final class PaneShadowView: NSView {
         for shadow in shapes {
             context.addPath(shadow.path)
             context.fillPath()
+        }
+    }
+
+    private func drawEdgeLight(around rect: CGRect, in context: CGContext) {
+        let intensity: CGFloat = 0.03
+        // Continue the glass header's side highlights around the page without
+        // putting a reflective line across the top or washing out web content.
+        // The soft shoulder stays within the divider gap; neither pass insets a pane.
+        for (width, opacity): (CGFloat, CGFloat) in [(1.25, intensity * (0.025 / 0.14)), (0.5, intensity)] {
+            let ring = CGMutablePath()
+            ring.addRoundedRect(in: rect.insetBy(dx: -width, dy: -width),
+                                cornerWidth: 12 + width, cornerHeight: 12 + width)
+            ring.addRoundedRect(in: rect, cornerWidth: 12, cornerHeight: 12)
+            let colors = [0.0, 0.0, 0.35, 0.82, 1.0].map {
+                NSColor.white.withAlphaComponent(opacity * $0).cgColor
+            }
+            guard let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
+                colors: colors as CFArray, locations: [0, 0.18, 0.5, 0.78, 1]) else { continue }
+            context.saveGState()
+            context.addPath(ring)
+            context.clip(using: .evenOdd)
+            context.drawLinearGradient(gradient, start: CGPoint(x: rect.midX, y: rect.minY),
+                end: CGPoint(x: rect.midX, y: rect.minY + min(48, rect.height / 2)),
+                options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+            context.restoreGState()
         }
     }
 }

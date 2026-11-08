@@ -38,6 +38,12 @@ import BrowseCore
     #expect(try alpha(x: 100, y: 120) == 0)
     #expect(try alpha(x: 10, y: 120) == 0)
     #expect(shadows.hitTest(NSPoint(x: 37, y: 120)) == nil)
+    // The neutral edge fades in below the glass header and never enters the page.
+    let edge = try color(x: 39, y: 120)
+    let headerEdge = try color(x: 39, y: 184)
+    #expect(edge.redComponent * edge.alphaComponent > headerEdge.redComponent * headerEdge.alphaComponent)
+    #expect(edge.redComponent > 0 && abs(edge.redComponent - edge.greenComponent) < 0.01)
+    #expect(try color(x: 120, y: 200).redComponent == 0)
     pane.isHidden = true
     #expect(try alpha(x: 37, y: 120) == 0)
     pane.isHidden = false
@@ -87,13 +93,15 @@ import BrowseCore
     store.paneHighlight.outlineGap = 1
     store.paneHighlight.outlineWidth = 1
     // The ring is beyond the canvas edge, with an empty gap next to the pane.
-    #expect(try color(x: 240, y: 120).greenComponent == 0)
+    let gapEdge = try color(x: 240, y: 120)
+    #expect(abs(gapEdge.greenComponent - gapEdge.redComponent) < 0.01)
     #expect(try color(x: 241, y: 120).greenComponent > 0.9)
     #expect(try color(x: 243, y: 120).greenComponent == 0)
     store.paneHighlight.outlineWidth = 2
     #expect(try color(x: 242, y: 120).greenComponent > 0.9)
     store.paneHighlight.outlineGap = 2.5
-    #expect(try color(x: 241, y: 120).greenComponent == 0)
+    let widerGap = try color(x: 241, y: 120)
+    #expect(abs(widerGap.greenComponent - widerGap.redComponent) < 0.01)
     #expect(try color(x: 243, y: 120).greenComponent > 0.9)
     store.focus(tab.pages[0].id)
     #expect(try color(x: 243, y: 120).greenComponent == 0)
