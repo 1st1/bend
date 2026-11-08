@@ -126,14 +126,14 @@ private struct SidebarTabRow: View {
                 TabDragHandle(store: store, tabID: tab.id, title: tab.title, reduceMotion: reduceMotion)
                     .accessibilityHidden(true)
             }
-            Button { store.closeTab(tab.id) } label: {
-                Image(systemName: "xmark").font(.system(size: 9))
-                    .frame(width: 16, height: 22).contentShape(Rectangle())
+            if selected || hovered {
+                Button { store.closeTab(tab.id) } label: {
+                    Image(systemName: "xmark").font(.system(size: 9))
+                        .frame(width: 16, height: 22).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).foregroundStyle(Chrome.muted).help("Close tab · ⌘⇧W")
+                .transition(.opacity)
             }
-            .buttonStyle(.plain).foregroundStyle(Chrome.muted).help("Close tab · ⌘⇧W")
-            .opacity(selected || hovered ? 1 : 0)
-            .allowsHitTesting(selected || hovered)
-            .accessibilityHidden(!selected && !hovered)
         }
         .padding(.horizontal, 11).frame(height: 34)
         .background {
@@ -145,6 +145,7 @@ private struct SidebarTabRow: View {
         .onHover { hovered = $0 }
         .onDisappear { hovered = false }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: hovered)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: selected)
         .background(WindowDragArea(excluded: true))
         .background(PaneSidebarTarget(store: store, destination: .tab(tab.id)))
         .contextMenu {
