@@ -82,6 +82,9 @@ private final class LinkAction: WKNavigationAction {
     let source = try #require(originalTab.pages.first)
     let controller = store.controller(for: source)
     let initialCount = originalTab.pages.count
+    store.newTab(address: "browse://guide")
+    let trailingTab = store.selectedTab.id
+    store.select(originalTab.id)
 
     controller.onNewLink?("https://example.com/adjacent", true, true)
     #expect(store.selectedTab.id == originalTab.id)
@@ -96,6 +99,10 @@ private final class LinkAction: WKNavigationAction {
     #expect(store.selectedTab.id != originalTab.id)
     #expect(store.selectedTab.pages.count == 1)
     #expect(store.selectedTab.pages[0].address == "https://example.com/tab")
+    let linkTab = store.selectedTab.id
+    let originalIndex = try #require(store.session.workspaces[0].tabs.firstIndex { $0.id == originalTab.id })
+    #expect(store.session.workspaces[0].tabs[originalIndex + 1].id == linkTab)
+    #expect(store.session.workspaces[0].tabs.last?.id == trailingTab)
     #expect(store.linkOpeners[store.selectedTab.focusedPane] == source.id)
     #expect(store.session.workspaces[0].tabs.first { $0.id == originalTab.id }?.pages.count == initialCount + 1)
 
@@ -103,6 +110,8 @@ private final class LinkAction: WKNavigationAction {
     controller.onNewLink?("https://example.com/window", false, false)
     #expect(store.selectedTab.id != originalTab.id)
     #expect(store.linkOpeners[store.selectedTab.focusedPane] == nil)
+    #expect(store.session.workspaces[0].tabs[originalIndex + 2].id == store.selectedTab.id)
+    #expect(store.session.workspaces[0].tabs.last?.id == trailingTab)
     controller.onNewLink?("https://example.com/adjacent-again", true, false)
     #expect(store.selectedTab.id == originalTab.id)
     #expect(store.selectedTab.pages.count == initialCount + 2)

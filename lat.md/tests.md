@@ -483,6 +483,8 @@ Success contents are excluded entirely, unknown enum values become a generic lab
 
 [LinkNavigationTests.swift](../Tests/BrowseTests/LinkNavigationTests.swift) verifies live Command-click destination changes on an existing controller, adjacent placement, source preservation, ordinary new-window behavior, and main-frame opener tracking.
 
+Link-created tabs insert immediately after the active tab, ahead of existing later tabs, for both Command-click and ordinary new-window links.
+
 ## UI preference persistence
 
 [AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) verifies legacy session defaults, preference persistence across store recreation, preserved tab identity, and numeric bounds and nonfinite-value handling.

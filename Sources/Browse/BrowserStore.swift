@@ -414,13 +414,15 @@ final class BrowserStore: ObservableObject {
     }
 
     func newTab(in workspace: UUID? = nil, address: String = "browse://start", linkOpener: UUID? = nil,
-                closeIfDownload: Bool = false) {
+                closeIfDownload: Bool = false, afterCurrent: Bool = false) {
         let previousTabID = session.selectedTab, previousZoom = zoomedPane
         let index = session.workspaces.firstIndex { $0.id == workspace }
             ?? session.workspaces.firstIndex { $0.tabs.contains { $0.id == session.selectedTab } } ?? 0
         let tab = BrowserTab(title: address == "browse://history" ? "History" : "New tab", pages: [Page(address: address)])
         if let linkOpener { linkOpeners[tab.pages[0].id] = linkOpener }
-        session.workspaces[index].tabs.append(tab); select(tab.id)
+        let insertion = afterCurrent ? session.workspaces[index].tabs.firstIndex { $0.id == previousTabID }.map { $0 + 1 } : nil
+        session.workspaces[index].tabs.insert(tab, at: insertion ?? session.workspaces[index].tabs.count)
+        select(tab.id)
         pendingAddressEntry = address == "browse://start" ? PendingAddressEntry(tabID: tab.id, paneID: tab.pages[0].id,
             kind: .tab(previousTabID: previousTabID), previousZoom: previousZoom) : nil
         if address == "browse://start" { requestAddress() }
@@ -679,14 +681,14 @@ final class BrowserStore: ObservableObject {
                 }
             }
         }
-        controller.onNewTab = { [weak self] address in self?.newTab(address: address) }
+        controller.onNewTab = { [weak self] address in self?.newTab(address: address, afterCurrent: true) }
         controller.onNewPane = { [weak self] address in self?.openPane(address: address, toRightOf: page.id) }
         controller.onNewLink = { [weak self] address, adjacent, mainFrame in
             guard let self else { return }
             switch adjacent ? self.commandClickDestination : .newTab {
             case .newPane: self.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame)
             case .dedicatedPane: self.openInDedicatedPane(address: address, from: page.id, fromMainFrame: mainFrame)
-            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, closeIfDownload: true)
+            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, closeIfDownload: true, afterCurrent: true)
             }
         }
         controller.onFocus = { [weak self] in self?.focus(page.id) }
