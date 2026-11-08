@@ -12,6 +12,7 @@ enum Chrome {
     static let paneInset: CGFloat = PaneGeometry.gap
     static let paneHeaderHeight = 2 * (headerCenterY - paneInset)
     static let sidebarControlSpacing: CGFloat = 2
+    static let sidebarHorizontalInset: CGFloat = 10
     static let accent = Color(red: 0.66, green: 0.81, blue: 0.73)
     static let muted = Color.white.opacity(0.42)
 }
@@ -64,7 +65,9 @@ struct BrowserView: View {
     }
 
     private func sidebar(floating: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // The docked canvas contributes its own gap after the sidebar.
+        let trailingInset = Chrome.sidebarHorizontalInset - (floating ? 0 : Chrome.paneInset)
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Chrome.sidebarControlSpacing) {
                 Spacer(minLength: 0)
                 if !floating {
@@ -72,7 +75,8 @@ struct BrowserView: View {
                 }
                 iconButton("sidebar.left", floating ? "Keep sidebar open · ⌘⇧S" : "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
                     .background(WindowDragArea(excluded: true))
-            }.padding(.horizontal, 15).frame(height: 2 * Chrome.headerCenterY)
+            }.padding(.leading, Chrome.sidebarHorizontalInset).padding(.trailing, trailingInset)
+                .frame(height: 2 * Chrome.headerCenterY)
                 .padding(.top, !floating && store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
                 .zIndex(1)
 
@@ -82,7 +86,7 @@ struct BrowserView: View {
                         SidebarTabRow(store: store, tab: tab)
                     }
 
-                }.padding(.horizontal, 10).padding(.top, 6)
+                }.padding(.leading, Chrome.sidebarHorizontalInset).padding(.trailing, trailingInset).padding(.top, 6)
             }
             .clipped()
             .contentShape(Rectangle())
