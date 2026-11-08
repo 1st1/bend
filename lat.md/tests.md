@@ -67,7 +67,7 @@ HTML fallback fixtures also verify duration and seeking for attached and detache
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) plays a silent WAV in an open shadow root and in off-DOM audio elements, verifying discovery, commands, exclusive playback, and cleanup.
 
-Both `new Audio()` and `document.createElement` fixtures work without DOM insertion or declared Media Session playback state. Play/pause/volume controls, page-title fallback, and resuming work in all cases; removing and emptying the player retires it.
+Both `new Audio()` and `document.createElement` fixtures work without DOM insertion or declared Media Session playback state. Play/pause controls, page-title fallback, and resuming work in all cases; volume commands are rejected without changing page volume; removing and emptying the player retires it.
 
 ## Sidebar media ownership
 
@@ -294,6 +294,14 @@ The native preview layer is observed during continuous movement and edge changes
 Header hit testing reaches the compact title handles, which drive hover feedback and pane dragging. Mouse-down focuses the pane; small motion does not move the window or begin a drag, and mouse-up clears tracking. Empty header and sidebar backgrounds request native window dragging. Tab rows, toolbar controls, sidebar resize handles, and traffic lights are excluded; native clicks still activate the sidebar toggle without creating a tab.
 
 Every background window-drag request must originate inside AppKit's normal event dispatch, so activating clicks cannot skip native window appearance bookkeeping. Outside mouse-down dispatch the background targets do not claim hit testing, preserving underlying scroll and hover behavior.
+
+## Pane history controls
+
+[PaneNavigationTests.swift](../Tests/BrowseTests/PaneNavigationTests.swift) verifies Back/Forward through the mounted browser shell using local pages and native mouse events.
+
+The complete focused toolbar stays visible; inactive pane buttons appear together on whole-pane hover without shifting the title or stealing focus. Disabled clicks do not navigate. History clicks focus and navigate only their own pane, preserving other page state. Window deactivation and hidden tabs clear hover, while reactivation refreshes it.
+
+Long titles fill the available header width without overlapping or pushing out the trailing buttons at different window sizes.
 
 ## Input logging preference
 

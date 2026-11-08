@@ -31,7 +31,6 @@ struct MediaSessionState: Equatable, Identifiable {
     let playing: Bool
     let playbackRevision: Int
     let actions: Set<String>
-    let volume: Double?
     let timeline: MediaTimeline?
 }
 
@@ -45,7 +44,7 @@ final class PageMediaController: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var inactiveTasks: [String: Task<Void, Never>] = [:]
     private var generation = 0
-    private static let actions: Set<String> = ["play", "pause", "previoustrack", "nexttrack", "volume", "seekto"]
+    private static let actions: Set<String> = ["play", "pause", "previoustrack", "nexttrack", "seekto"]
 
     func attach(to web: FocusWebView) {
         webView?.mediaController = nil
@@ -85,7 +84,7 @@ final class PageMediaController: ObservableObject {
         }
         sessions[index] = MediaSessionState(id: state.id, playerID: state.playerID,
             title: state.title, artist: state.artist, site: state.site, playing: false,
-            playbackRevision: state.playbackRevision, actions: [], volume: state.volume, timeline: timeline)
+            playbackRevision: state.playbackRevision, actions: [], timeline: timeline)
         inactiveTasks[id] = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: .seconds(2)) } catch { return }
             self?.remove(id)
@@ -114,11 +113,9 @@ final class PageMediaController: ObservableObject {
         let origin = message.frameInfo.securityOrigin
         let site = origin.host.isEmpty ? (message.frameInfo.isMainFrame ? (webView?.url?.host ?? "Local media") : "Embedded media") : origin.host
         let title = Self.clean(body["title"])
-        let volume = (body["volume"] as? NSNumber)?.doubleValue
         let state = MediaSessionState(id: id, playerID: playerID,
             title: title.isEmpty ? site : title, artist: Self.clean(body["artist"]), site: site,
             playing: playing, playbackRevision: playbackRevision, actions: Set(rawActions).intersection(Self.actions),
-            volume: volume.flatMap { $0.isFinite && (0...1).contains($0) ? $0 : nil },
             timeline: MediaTimeline(body["timeline"], playing: playing))
         inactiveTasks.removeValue(forKey: id)?.cancel()
         frames[id] = message.frameInfo

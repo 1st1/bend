@@ -321,12 +321,15 @@ struct PaneChromeBackground: View {
 }
 
 private struct BrowserPane: View {
+    // The 24-point buttons have a 36-point center pitch across group boundaries.
+    private static let controlGroupSpacing: CGFloat = 12
     @ObservedObject var store: BrowserStore
     @ObservedObject var controller: PageController
     let tab: BrowserTab
     let pageID: UUID
     @ViewState<CGFloat> private var headerHeight: CGFloat = Chrome.paneHeaderHeight
     @ViewState<Bool> private var titleHovered = false
+    @ViewState<Bool> private var paneHovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
     private var focused: Bool { tab.focusedPane == pageID }
@@ -344,7 +347,8 @@ private struct BrowserPane: View {
     }
 
     var body: some View {
-        ClippedPaneContent(content: decoratedPane, store: store, tabID: tab.id, pageID: pageID)
+        ClippedPaneContent(content: decoratedPane, store: store, tabID: tab.id, pageID: pageID,
+                           onHover: { paneHovered = $0 })
             // Reserve the ring inside the pane's layout slot so it remains
             // visible at canvas edges and never overlaps a neighboring pane.
             .padding(store.paneHighlight.style == .outline ? store.paneHighlight.outlineWidth + 1 / max(1, displayScale) : 0)
@@ -389,7 +393,7 @@ private struct BrowserPane: View {
     }
 
     private var header: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: Self.controlGroupSpacing) {
             if hostsWindowControls {
                 if !store.isFullScreen { Color.clear.frame(width: 66) }
                 HStack(spacing: Chrome.sidebarControlSpacing) {
@@ -408,6 +412,7 @@ private struct BrowserPane: View {
                             .opacity(titleHovered ? 1 : 0)
                     }.frame(width: 14, height: 14).accessibilityHidden(true)
                     Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                        .truncationMode(.tail)
                         .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
                 }
                 .padding(.horizontal, 7).frame(height: 24)
@@ -415,25 +420,43 @@ private struct BrowserPane: View {
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: titleHovered)
                 .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title,
                     onHover: { titleHovered = $0 }))
+                .layoutPriority(1)
                 Spacer(minLength: 0)
                     .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
-            HStack(spacing: 0) {
-                if #available(macOS 15.4, *) {
-                    PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
-                        store.focus(pageID); store.onSettingsRequested?()
-                    }
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            HStack(spacing: Self.controlGroupSpacing) {
+                HStack(spacing: 0) {
+                    iconButton("chevron.left", "Back · ⌘[") {
+                        store.focus(pageID); controller.webView.goBack()
+                    }.disabled(controller.isStartPage || !controller.canGoBack)
+                    iconButton("chevron.right", "Forward · ⌘]") {
+                        store.focus(pageID); controller.webView.goForward()
+                    }.disabled(controller.isStartPage || !controller.canGoForward)
                 }
                 iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
                     store.focus(pageID)
                     if controller.isLoading { controller.webView.stopLoading() }
                     else if !controller.isStartPage { controller.webView.reload() }
                 }.disabled(controller.isStartPage)
-                iconButton("rectangle.split.2x1", "Split this pane right") { store.focus(pageID); store.split(.horizontal) }
-                iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
-                iconButton("xmark", "Close pane · ⌘W") { store.closePane(pageID) }
-            }.background(WindowDragArea(excluded: true))
+                HStack(spacing: 0) {
+                    if #available(macOS 15.4, *) {
+                        PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
+                            store.focus(pageID); store.onSettingsRequested?()
+                        }
+                    }
+                    iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
+                    iconButton("xmark", "Close pane · ⌘W") { store.closePane(pageID) }
+                }
+            }
+            .fixedSize()
+            .opacity(focused || paneHovered ? 1 : 0)
+            .allowsHitTesting(focused || paneHovered)
+            .accessibilityHidden(!focused && !paneHovered)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused || paneHovered)
+            .background {
+                if focused || paneHovered { WindowDragArea(excluded: true) }
+            }
         }.padding(.horizontal, 12).frame(height: Chrome.paneHeaderHeight)
         .background(WindowDragArea(onPress: { store.focus(pageID) }))
         .background {
@@ -496,28 +519,36 @@ private struct ClippedPaneContent<Content: View>: NSViewRepresentable {
     let store: BrowserStore
     let tabID: UUID
     let pageID: UUID
+    var onHover: ((Bool) -> Void)?
     @Environment(\.self) private var environment
 
     func makeNSView(context: Context) -> ClippedPaneHost {
         let host = ClippedPaneHost(content: AnyView(content.environment(\.self, environment)))
         host.store = store; host.tabID = tabID; host.pageID = pageID
+        host.onPaneHover = onHover
         InputDiagnostics.transition(.paneRoot, .created, view: host, tabID: tabID)
         return host
     }
 
     static func dismantleNSView(_ host: ClippedPaneHost, coordinator: ()) {
+        host.stopHoverTracking()
         InputDiagnostics.transition(.paneRoot, .removed, view: host, tabID: host.tabID)
     }
 
     func updateNSView(_ host: ClippedPaneHost, context: Context) {
         host.store = store; host.tabID = tabID; host.pageID = pageID
+        host.onPaneHover = onHover
         InputDiagnostics.transition(.paneRoot, .replaced, view: host, tabID: tabID)
         host.content.rootView = AnyView(content.environment(\.self, environment))
     }
 }
 
+// @lat: [[architecture#Pane navigation controls]]
 final class ClippedPaneHost: PaneDropHost {
     let content: NSHostingView<AnyView>
+    var onPaneHover: ((Bool) -> Void)?
+    private var hoverTracking: NSTrackingArea?
+    private(set) var isPaneHovered = false
 
     init(content rootView: AnyView) {
         content = NSHostingView(rootView: rootView)
@@ -535,6 +566,60 @@ final class ClippedPaneHost: PaneDropHost {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTracking { removeTrackingArea(hoverTracking) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(area); hoverTracking = area
+        refreshHover()
+    }
+
+    override func mouseEntered(with event: NSEvent) { refreshHover() }
+    override func mouseExited(with event: NSEvent) { setPaneHovered(false) }
+    override func layout() { super.layout(); refreshHover() }
+    override func viewDidHide() { super.viewDidHide(); setPaneHovered(false) }
+    override func viewDidUnhide() { super.viewDidUnhide(); refreshHover() }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        if let window {
+            for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+                NotificationCenter.default.addObserver(self, selector: #selector(windowFocusChanged), name: name, object: window)
+            }
+        }
+        refreshHover()
+    }
+
+    @objc private func windowFocusChanged(_ notification: Notification) { refreshHover() }
+
+    private func refreshHover() {
+        let hovered = window.map { window in
+            window.isKeyWindow && !isHiddenOrHasHiddenAncestor && store?.session.selectedTab == tabID &&
+                visibleRect.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+        } ?? false
+        setPaneHovered(hovered)
+    }
+
+    private func setPaneHovered(_ hovered: Bool) {
+        guard hovered != isPaneHovered else { return }
+        isPaneHovered = hovered
+        // Native layout/hiding may occur during a SwiftUI update. Deliver only
+        // the latest hover state on the next turn to avoid reentrant updates.
+        Task { @MainActor [weak self] in
+            guard let self, self.isPaneHovered == hovered else { return }
+            self.onPaneHover?(hovered)
+        }
+    }
+
+    func stopHoverTracking() {
+        NotificationCenter.default.removeObserver(self)
+        if let hoverTracking { removeTrackingArea(hoverTracking); self.hoverTracking = nil }
+        setPaneHovered(false)
+        onPaneHover = nil
+    }
 }
 
 private struct WebSurface: NSViewRepresentable {

@@ -263,7 +263,7 @@ private let mediaSessionFixture = #"""
     try await mediaWait { controller.media.sessions.first?.playing == true && controller.media.sessions.first?.actions.contains("seekto") == true }
     var state = try #require(controller.media.sessions.first)
     #expect(state.title == "Audio fallback")
-    #expect(state.actions == ["play", "pause", "volume", "seekto"])
+    #expect(state.actions == ["play", "pause", "seekto"])
     #expect(state.timeline?.duration == 8)
     #expect(await controller.media.send("pause", to: state))
     try await mediaWait { controller.media.sessions.first?.playing == false }
@@ -271,8 +271,8 @@ private let mediaSessionFixture = #"""
     #expect(await controller.media.send("seekto", to: state, value: 4))
     try await mediaWait { abs((controller.media.sessions.first?.timeline?.position ?? 0) - 4) < 0.1 }
     #expect(try await web.evaluateJavaScript("audio.currentTime") as? Double == 4)
-    #expect(await controller.media.send("volume", to: state, value: 0.25))
-    try await mediaWait { controller.media.sessions.first?.volume == 0.25 }
+    #expect(!(await controller.media.send("volume", to: state, value: 0.25)))
+    #expect(try await web.evaluateJavaScript("audio.volume") as? Double == 1)
     #expect(await controller.media.send("play", to: state))
     try await mediaWait { controller.media.sessions.first?.playing == true }
     let focus = MediaPlaybackFocus()
@@ -460,10 +460,10 @@ private let mediaSessionFixture = #"""
     _ = NSApplication.shared
     let source = SidebarMediaSource(paneID: UUID(), state: MediaSessionState(
         id: "one", playerID: "session", title: "First track", artist: "Artist", site: "first.example",
-        playing: true, playbackRevision: 1, actions: [], volume: nil, timeline: nil))
+        playing: true, playbackRevision: 1, actions: [], timeline: nil))
     let other = SidebarMediaSource(paneID: UUID(), state: MediaSessionState(
         id: "two", playerID: "session", title: "Second track", artist: "Artist", site: "second.example",
-        playing: false, playbackRevision: 1, actions: [], volume: nil, timeline: nil))
+        playing: false, playbackRevision: 1, actions: [], timeline: nil))
     let favicon = NSImage(size: NSSize(width: 32, height: 32), flipped: false) { rect in
         NSColor.systemGreen.setFill(); rect.fill(); return true
     }

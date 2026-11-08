@@ -6,8 +6,9 @@ private typealias MediaViewState<Value> = SwiftUI.State<Value>
 struct SidebarMediaPlayer: View {
     @ObservedObject var coordinator: WindowMediaCoordinator
     @ObservedObject var store: BrowserStore
-    @MediaViewState<Bool> private var showsVolume = false
+    @MediaViewState<Bool> private var hovered = false
     @MediaViewState private var sourceMenu = MediaSourceMenu()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if let source = coordinator.selected {
@@ -27,6 +28,10 @@ struct SidebarMediaPlayer: View {
                     }.buttonStyle(.plain).help(source.state.title + " — Show playing pane")
                     Button { coordinator.dismiss() } label: { Image(systemName: "xmark") }
                         .buttonStyle(ChromeButtonStyle()).help("Dismiss player")
+                        .opacity(hovered ? 1 : 0)
+                        .allowsHitTesting(hovered)
+                        .accessibilityHidden(!hovered)
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: hovered)
                 }
                 .padding(.horizontal, store.sidebarWidth < 140 ? 6 : 12)
                 .frame(height: Chrome.paneHeaderHeight)
@@ -51,18 +56,6 @@ struct SidebarMediaPlayer: View {
                     .overlay(alignment: .leading) {
                         if store.sidebarWidth >= 200 { sourcePicker(source) }
                     }
-                    .overlay(alignment: .trailing) {
-                        if store.sidebarWidth >= 180 && source.state.actions.contains("volume") {
-                            Button { showsVolume.toggle() } label: {
-                                Image(systemName: source.state.volume == 0 ? "speaker.slash" : "speaker.wave.2")
-                            }.buttonStyle(ChromeButtonStyle()).help("Volume")
-                                .popover(isPresented: $showsVolume) {
-                                    Slider(value: Binding(get: { coordinator.selected?.state.volume ?? 1 },
-                                        set: { value in Task { await coordinator.send("volume", to: source, value: value) } }), in: 0...1)
-                                        .frame(width: 120).padding(12).accessibilityLabel("Media volume")
-                                }
-                        }
-                    }
                     if store.sidebarWidth < 200 { sourcePicker(source) }
                     if let error = coordinator.commandError {
                         Text(error).font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
@@ -73,6 +66,9 @@ struct SidebarMediaPlayer: View {
                 .background(PaneChromeBackground(cornerRadius: 12, roundsTopCorners: false))
             }
             .clipShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(Rectangle())
+            .onHover { hovered = $0 }
+            .onDisappear { hovered = false }
             .background(WindowDragArea(excluded: true))
             // The pane canvas supplies the six-point gap on the right.
             .padding(.leading, PaneGeometry.gap)

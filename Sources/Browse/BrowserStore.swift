@@ -1039,6 +1039,8 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
             webView.observe(\.estimatedProgress) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
             webView.observe(\.isLoading) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
             webView.observe(\.title) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
+            webView.observe(\.canGoBack) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
+            webView.observe(\.canGoForward) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
             webView.observe(\.url) { [weak self] _, _ in Task { @MainActor in self?.refresh() } }
         ]
     }

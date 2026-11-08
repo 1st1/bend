@@ -72,7 +72,7 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
             const active = hasSession || !!(current && played.has(current) && !current.ended);
             const actions = [...handlers.keys()];
             if (current) {
-                for (const action of ['play', 'pause', 'volume']) if (!actions.includes(action)) actions.push(action);
+                for (const action of ['play', 'pause']) if (!actions.includes(action)) actions.push(action);
                 if (Number.isFinite(current.duration) && current.duration > 0 && current.seekable.length
                     && !actions.includes('seekto')) actions.push('seekto');
             }
@@ -91,8 +91,7 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
             return {
                 active, playerID, playbackRevision, playing: isPlaying,
                 title: text(metadata?.title) || text(current?.getAttribute('aria-label')) || text(current?.title) || text(document.title),
-                artist: text(metadata?.artist), actions, timeline,
-                volume: current ? (current.muted ? 0 : current.volume) : null
+                artist: text(metadata?.artist), actions, timeline
             };
         };
         const publish = (force = false) => {
@@ -184,9 +183,6 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
                         if (!seekable) return false;
                         current.currentTime = value;
                     } else return false;
-                } else if (action === 'volume') {
-                    if (!current || !Number.isFinite(value)) return false;
-                    current.volume = Math.max(0, Math.min(1, value)); current.muted = false;
                 } else if (handlers.has(action)) {
                     await handlers.get(action)({action});
                 } else if (current && action === 'play') { await current.play(); }
