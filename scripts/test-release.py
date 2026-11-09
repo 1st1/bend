@@ -64,6 +64,14 @@ class ReleaseTests(unittest.TestCase):
             (self.root / "VERSION").write_text(value + "\n")
             self.release("check", success=False)
 
+    def test_initial_version_is_not_a_release(self):
+        self.command("git", "rm", "VERSION")
+        self.command("git", "commit", "-qm", "Fixture before version tracking")
+        base = self.command("git", "rev-parse", "HEAD").stdout.strip()
+        (self.root / "VERSION").write_text("0.1.0\n")
+        self.command("git", "add", "VERSION")
+        self.assertIn("version_changed=false", self.release("check", "--base-ref", base).stdout)
+
     def test_fragment_requirement(self):
         (self.root / "Sources").mkdir()
         (self.root / "Sources/Feature.swift").write_text("// feature\n")

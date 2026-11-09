@@ -46,7 +46,8 @@ def check(base_ref=None, allow_no_fragment=False):
         run("git", "rev-parse", "--verify", f"{base_ref}^{{commit}}")
         files = run("git", "ls-tree", "--name-only", base_ref, "VERSION").splitlines()
         previous = run("git", "show", f"{base_ref}:VERSION") if files else None
-        changed = previous != current
+        # Introducing VERSION establishes a baseline; only later bumps release.
+        changed = previous is not None and previous != current
         if previous and version < version_tuple(previous):
             raise ValueError("VERSION cannot decrease")
         if changed and previous:
