@@ -81,9 +81,15 @@ struct BrowserView: View {
                 .padding(.top, !floating && store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
                 .zIndex(1)
 
+            if !store.favorites.isEmpty {
+                SidebarFavorites(store: store)
+                    .padding(.leading, Chrome.sidebarHorizontalInset).padding(.trailing, trailingInset)
+                    .padding(.top, 6).padding(.bottom, 10)
+            }
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 7) {
-                    ForEach(store.session.workspaces.flatMap(\.tabs)) { tab in
+                    ForEach(store.sidebarTabs) { tab in
                         SidebarTabRow(store: store, tab: tab)
                     }
 
@@ -156,6 +162,13 @@ private struct SidebarTabRow: View {
         .background(PaneSidebarTarget(store: store, destination: .tab(tab.id)))
         .contextMenu {
             Button("New tab") { store.newTab() }
+            if let favorite = store.favorite(for: tab) {
+                Button("Remove from Favorites") { store.removeFavorite(favorite.id) }
+            } else {
+                Button(store.favorites.count >= SidebarFavorite.limit ? "Add to Favorites (9 maximum)" : "Add to Favorites") {
+                    store.addFavorite(tab.id)
+                }.disabled(!store.canFavorite(tab))
+            }
             Button(tab.isPinned ? "Unpin tab" : "Pin tab") { store.toggleTabPinned(tab.id) }
             Button("Close tab") { store.closeTab(tab.id) }.disabled(tab.isPinned)
         }

@@ -118,16 +118,18 @@ public struct Page: Codable, Identifiable, Sendable {
     public var id: UUID
     public var address: String
     public var isPinned: Bool
+    public var favoriteID: UUID?
     public init(address: String = "browse://start", isPinned: Bool = false) {
         id = UUID(); self.address = address; self.isPinned = isPinned
     }
 
-    private enum CodingKeys: String, CodingKey { case id, address, isPinned }
+    private enum CodingKeys: String, CodingKey { case id, address, isPinned, favoriteID }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
         address = try values.decode(String.self, forKey: .address)
         isPinned = try values.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        favoriteID = try values.decodeIfPresent(UUID.self, forKey: .favoriteID)
     }
 }
 
@@ -194,6 +196,7 @@ public struct BrowserSession: Codable, Sendable {
     public var paneHeaderBottomRimClipping: Double?
     public var paneHighlight: PaneHighlight?
     public var downloadDirectory: String?
+    public var favorites: [SidebarFavorite]?
 
     public init() {
         let initial = BrowserTab(title: "Start here", pages: [Page(), Page(address: "browse://guide")])

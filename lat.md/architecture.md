@@ -120,6 +120,18 @@ In the key window, moving within thirteen points of the left edge reveals a roun
 
 [BrowserView.swift](../Sources/Browse/BrowserView.swift) overlays the panel above the unchanged mounted canvas. [BrowseWindow.swift](../Sources/Browse/BrowseWindow.swift) routes panel presses directly to AppKit so underlying pane and window drag regions cannot capture them. [[tests#Floating sidebar interaction]] covers native hit testing, selection, hover lifetime, and preserved canvas geometry.
 
+## Sidebar favorites
+
+[[Sources/Browse/SidebarFavorites.swift#SidebarFavorites]] places up to nine saved websites in a three-column favicon grid above the tab list, in both docked and floating sidebars.
+
+A tab’s context menu offers Add to Favorites for HTTP(S) pages and Remove from Favorites for an associated page. For split tabs the focused pane supplies the saved address. Favoriting moves the existing tab’s sidebar representation into the grid without replacing its live pages, split layout, pin state, or selection. [[Sources/Browse/BrowserFavorites.swift#BrowserStore#sidebarTabs]] hides tabs represented by a favorite; removal returns them to the list. Grid context menus also allow closing the open tab, respecting pins, while retaining the saved favorite.
+
+[[Sources/BrowseCore/SidebarFavorite.swift#SidebarFavorite]] saves a stable identity, original URL, title, and bounded PNG favicon in the shared profile’s session. Favorites appear in every window and remain separate between Debug and production profiles. [[Sources/BrowseCore/Session.swift#Page]] retains the favorite association through navigation, restoration, and pane/window transfers. Older sessions default to no favorites. Restored collections are capped at nine and reject invalid addresses, duplicate identities/addresses, and oversized icons.
+
+[[Sources/Browse/BrowserFavorites.swift#BrowserStore#openFavorite]] selects the current window’s associated pane without navigating or reloading it, otherwise adopts a tab at the exact saved URL or opens a new one. Closing a favorite’s tab keeps its tile; reopening uses the original saved URL. Each window can have its own live instance. Adding an already-saved URL reuses its tile and makes the clicked tab its target, leaving the previous tab available in the regular list. Split layouts remain intact when selected through a tile.
+
+[[Sources/Browse/BrowserFavorites.swift#BrowserStore#refreshFavoriteIcon]] snapshots only an existing controller’s bounded favicon from the saved site’s origin. Late favicon arrivals update the tile, while navigation to another origin cannot replace the saved icon. Restored tiles render saved icons or a hostname initial without creating WebViews or making independent network requests. Hover changes only the rounded tile fill; selection has a subtle rim, and tooltips and accessibility labels identify the site. [[tests#Favorite tabs and persistence]], [[tests#Shared favorites and pane transfers]], [[tests#Favorite favicon snapshots]], and [[tests#Favorite tile interaction]] cover the feature.
+
 ## Sidebar tab reordering
 
 [TabReordering.swift](../Sources/Browse/TabReordering.swift) uses native sidebar drags to reorder or join tabs, with distinct insertion-line and whole-row previews.

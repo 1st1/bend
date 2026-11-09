@@ -102,6 +102,7 @@ final class BrowserStore: ObservableObject {
            let restored = try? JSONDecoder().decode(BrowserSession.self, from: data), restored.isValid {
             session = restored
         } else { session = BrowserSession() }
+        if let favorites = session.favorites { session.favorites = SidebarFavorite.validated(favorites) }
         // Keep the persisted workspace envelope compatible, but expose one tab list.
         if session.workspaces.count > 1 {
             let tabs = session.workspaces.flatMap(\.tabs)
@@ -699,7 +700,10 @@ final class BrowserStore: ObservableObject {
     }
 
     private func bindController(_ controller: PageController, to page: Page) {
-        controller.onFaviconChanged = { [weak self] in self?.objectWillChange.send() }
+        controller.onFaviconChanged = { [weak self] in
+            self?.objectWillChange.send()
+            self?.refreshFavoriteIcon(for: page.id)
+        }
         mediaPlaybackFocus.register(controller.media)
         mediaCoordinator.register(page.id, controller: controller.media)
         controller.configure = { [weak self] configuration in

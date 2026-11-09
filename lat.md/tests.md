@@ -878,3 +878,19 @@ Set `BROWSE_TEST_UBLOCK_SAFARI_PACKAGE` to the ZIP and `BROWSE_TEST_UBLOCK_SAFAR
 [[Tests/BrowseTests/AppProfileTests.swift#buildProfileIsolation]] verifies separate debug and production names, bundle IDs, support directories, preference domains, window-state keys, and WebKit store identities.
 
 A unique temporary preference and cookie marker written in Debug must be absent from production, and both markers are removed after the test. The debug extension manager must use the debug extension and website stores. Simulated packaged-host identities must select standard UserDefaults, covering the case missed by a test bundle with a different identifier. The signed executable’s `--print-build-profile` path also reads preferences before returning. [[tests#Build bundle publication]] and [[tests#Production installer publication]] verify the packaging boundary independently of runtime storage.
+
+## Favorite tabs and persistence
+
+[[Tests/BrowseTests/FavoritesTests.swift#favoriteTabsAndPersistence]] verifies the nine-site cap, duplicate handling, tab-to-tile representation, original-URL reopening, lazy restoration, invalid URL rejection, removal, and compatibility with older sessions.
+
+## Shared favorites and pane transfers
+
+[[Tests/BrowseTests/FavoritesTests.swift#sharedFavoritesAndTransfers]] verifies shared favorites across windows, separate live instances, association preservation during transfers and splitting, focused-pane selection, persistence, and removal from another window.
+
+## Favorite favicon snapshots
+
+[[Tests/BrowseTests/FavoritesTests.swift#favoriteFaviconSnapshots]] verifies late favicon capture, persisted PNG restoration without creating a WebView, rejection of cross-origin icon replacements, and validation of duplicate, invalid, or oversized saved entries.
+
+## Favorite tile interaction
+
+[[Tests/BrowseTests/FavoritesTests.swift#favoriteTileInteraction]] mounts nine tiles in a native window, verifies the three-column layout and window-drag exclusions, and clicks a tile through native mouse dispatch to select its hidden sidebar tab.
