@@ -166,10 +166,10 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
         guard let notificationID = body["id"] as? String, !notificationID.isEmpty, notificationID.utf8.count <= 512 else {
             throw failure("A notification ID of 1–512 bytes is required.")
         }
-        let key = key(id, notificationID)
+        let notificationKey = key(id, notificationID)
         if operation == "clear" {
-            let exists = await notifications.keys().contains(key)
-            notifications.remove(keys: [key]); notices[id]?[notificationID] = nil
+            let exists = await notifications.keys().contains(notificationKey)
+            notifications.remove(keys: [notificationKey]); notices[id]?[notificationID] = nil
             if exists { emit(id, event: "notifications.onClosed", arguments: [notificationID, false]) }
             return exists
         }
@@ -186,10 +186,10 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
         let buttons = buttonOptions.compactMap { $0["title"] as? String }
         guard buttons.count == buttonOptions.count, buttons.count <= 2 else { throw failure("Notifications support at most two titled buttons.") }
         guard (notices[id]?.count ?? 0) < 64 || notices[id]?[notificationID] != nil else { throw failure("Too many active notifications.") }
-        try await notifications.post(key: key, title: "\(name): \(title)", message: message, buttons: buttons)
+        try await notifications.post(key: notificationKey, title: "\(name): \(title)", message: message, buttons: buttons)
         // A permission prompt can outlive disable/uninstall. Do not leave a notification behind.
         if let expectedContext, (!expectedContext.isLoaded || manager?.contexts[id] !== expectedContext || !expectedContext.hasPermission(.init(rawValue: "notifications"))) {
-            notifications.remove(keys: [key]); throw failure("The extension was disabled.")
+            notifications.remove(keys: [notificationKey]); throw failure("The extension was disabled.")
         }
         notices[id, default: [:]][notificationID] = options
         return operation == "update" ? true : notificationID
