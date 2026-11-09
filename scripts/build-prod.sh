@@ -81,11 +81,12 @@ staple() {
   return 1
 }
 
-./scripts/build-app.sh
 payload="$work/payload"
 mkdir -p "$payload/.background"
-ditto dist/Bend.app "$payload/Bend.app"
 app="$payload/Bend.app"
+./scripts/build-app.sh --production --output "$app"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :BendBuildProfile' "$app/Contents/Info.plist")" == production ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" == dev.yury.browse.prototype ]]
 # Sign the private release copy with an explicit secure timestamp.
 codesign --force --options runtime --timestamp --sign "$identity" "$app"
 codesign --verify --strict "$app"
@@ -112,7 +113,10 @@ ln -s /Applications "$payload/Applications"
 swift scripts/render-dmg-background.swift "$payload/.background/background.tiff"
 size_kb="$(du -sk "$payload" | awk '{print $1}')"
 size_mb=$((size_kb / 1024 + 40))
-hdiutil create -volname Bend -fs HFS+ -format UDRW -size "${size_mb}m" \
+# Finder resolves root-folder aliases through volume names. Avoid targeting an
+# already-mounted, read-only Bend installer while configuring this writable one.
+volume_name="Bend Installer ${work##*.}"
+hdiutil create -volname "$volume_name" -fs HFS+ -format UDRW -size "${size_mb}m" \
   -srcfolder "$payload" "$work/installer.dmg"
 mkdir -p "$mount"
 hdiutil attach "$work/installer.dmg" -readwrite -noverify -noautoopen -nobrowse -mountpoint "$mount"
@@ -124,6 +128,7 @@ for attempt in 1 2 3 4 5; do
   sleep 1
 done
 [[ -f "$mount/.DS_Store" ]] || { printf 'Finder did not save the installer layout\n' >&2; exit 1; }
+diskutil renameVolume "$mount" Bend
 sync
 hdiutil detach "$mount"
 attached=false

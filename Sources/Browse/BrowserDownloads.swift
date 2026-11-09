@@ -41,7 +41,7 @@ final class BrowserDownload: ObservableObject, Identifiable {
 
     init(record: DownloadRecord) {
         id = record.id; directory = record.directory
-        dataStore = .default()
+        dataStore = AppProfile.current.websiteDataStore
         name = record.name; state = record.state
         received = max(0, record.received); total = max(0, record.total)
         error = record.error; fileURL = record.fileURL

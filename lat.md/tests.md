@@ -117,13 +117,13 @@ The mounted-window test verifies the canvas frame and retained WebView identitie
 
 [test-build-app.sh](../scripts/test-build-app.sh) runs the packaging script with isolated compiler and signing stand-ins, verifying failure preservation and replacement without changing an open descriptor to the previous executable.
 
-Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files. The test checks Bend's bundle name and executable, the retained profile identifier, the icon resource and plist entry, HTTP/HTTPS URL-handler and HTML/XHTML document-viewer declarations, and precedence of the new signing override over the legacy override. These checks do not exercise macOS signing or WebKit runtime behavior.
+Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files. The test checks Debug’s distinct name, identifier, compiler configuration, and profile marker, production’s explicit Release flag and retained identifier, publication without touching the other channel, the icon resource and plist entry, HTTP/HTTPS URL-handler and HTML/XHTML document-viewer declarations, and precedence of the new signing override over the legacy override. These checks do not exercise macOS signing or WebKit runtime behavior.
 
 ## Production installer publication
 
 [test-build-prod.sh](../scripts/test-build-prod.sh) exercises the production script with isolated native-tool stand-ins, checking notarization, ticket validation, packaging order, and failure-safe publication.
 
-App or DMG rejection, Finder layout failure, invalid tickets, and disk-image verification failure retain the previous installer and detach temporary mounts. Successful publication requires the app ticket before packaging and the DMG ticket before final assessment. The development app remains untouched by stapling. These tests do not substitute for Apple's real service or Finder visual verification.
+App or DMG rejection, Finder layout failure, invalid tickets, and disk-image verification failure retain the previous installer and detach temporary mounts. Successful publication requires the app ticket before packaging and the DMG ticket before final assessment. The development app remains untouched by production compilation, packaging, and stapling; the production script must explicitly request its profile and output path. These tests do not substitute for Apple's real service or Finder visual verification.
 
 ## Catalog download integrity and identity
 
@@ -141,7 +141,7 @@ Set `BROWSE_TEST_CATALOG_DOWNLOAD=1` to exercise the real catalog network path. 
 
 [[Tests/BrowseTests/UBlockLiteTests.swift#safariUBlockLiteSmoke]] probes the unmodified Safari uBlock Origin Lite package in an isolated Bend host with temporary extension and website storage.
 
-Set `BROWSE_TEST_UBLOCK_SAFARI_PACKAGE` to the Safari extension bundle. The package must report Safari from its own browser-detection module in both its live background page and popup, resolve real resource URLs on that origin, and select the Safari-specific disabled strict-blocking default. Diagnostic-only background-view access reads the loaded modules and logs their values. The probe verifies its identity, starts its background, tests an EasyList-matched script against a local HTTP fixture, and clicks the popup’s site filtering controls to turn blocking off and back on, then checks extension disable/re-enable behavior. A baseline verifies the script runs without the extension. The probe never changes the user's installed extensions.
+Set `BROWSE_TEST_UBLOCK_SAFARI_PACKAGE` to the Safari extension bundle or official Safari ZIP. The package must report Safari from its own browser-detection module in both its live background page and popup, resolve real resource URLs on that origin, and select the Safari-specific disabled strict-blocking default. Diagnostic-only background-view access reads the loaded modules and logs their values. The probe verifies its identity, starts its background, tests an EasyList-matched script against a local HTTP fixture, and clicks the popup’s site filtering controls to turn blocking off and back on, then checks extension disable/re-enable behavior. A baseline verifies the script runs without the extension. The probe never changes the user's installed extensions.
 
 ## uBlock origin migration and isolation
 
@@ -850,3 +850,31 @@ Drag thumbnails must not bitmap-render a live pane or disturb its native glass, 
 Moving a live page between windows must preserve a single header material, viewport geometry, scrolling, and unsaved document state.
 
 [[Tests/BrowseTests/HeaderGlassTransferTests.swift#headerGlassAfterWindowTransfer]] mounts two identical pages, repeatedly detaches one into a new window and returns it, then compares the moved and untouched headers. The real WebKit scroll-pocket view remains hidden while Bend's glass stays visible. Scrolling down and back to the top and switching tabs preserve suppression, the content inset, live controller, document token, and form value. A full-app visual check of the reported Hacker News page confirms matching headers after the same round trip.
+
+## Extension update metadata
+
+[[Tests/BrowseTests/ExtensionUpdateTests.swift#extensionUpdateMetadata]] verifies approved release selection, package identity, expected download hosts, SHA-256 metadata, size limits, prerelease rejection, and numeric version comparisons.
+
+## Automatic extension updates
+
+[[Tests/BrowseTests/ExtensionUpdateTests.swift#automaticExtensionUpdates]] exercises manual and scheduled checks, request coalescing, persisted preferences, explicit and automatic installation, permission review, failure retention, and removal during download.
+
+Fixtures use isolated extension storage and injected network boundaries. Scheduling checks cover the four-hour interval and unconditional startup check. The installed extension retains its origin, and downloads run without holding the manager’s mutation lock. [[tests#Owned extension packages and updates]] separately verifies native storage preservation and transaction rollback.
+
+## Extension update service smoke test
+
+[[Tests/BrowseTests/ExtensionUpdateTests.swift#extensionUpdateServiceSmoke]] optionally queries the official release APIs and downloads each published package with digest validation, without installing it or modifying the user profile.
+
+Set `BROWSE_TEST_EXTENSION_UPDATES=1` to enable all live network checks, or supply comma-separated catalog IDs to select sources. Public API rate limits remain real failures and are not bypassed with application credentials.
+
+## Safari direct-download migration
+
+[[Tests/BrowseTests/UBlockLiteTests.swift#safariUBlockDirectMigration]] replaces the real Safari bundle with its official release ZIP in isolated persistent storage and verifies UUID, origin, enablement, saved data, and restoration.
+
+Set `BROWSE_TEST_UBLOCK_SAFARI_PACKAGE` to the ZIP and `BROWSE_TEST_UBLOCK_SAFARI_PREVIOUS` to the app extension bundle. The package contents remain unmodified, and [[tests#Safari uBlock Lite compatibility]] additionally exercises detection and request blocking with the ZIP.
+
+## Build profile isolation
+
+[[Tests/BrowseTests/AppProfileTests.swift#buildProfileIsolation]] verifies separate debug and production names, bundle IDs, support directories, preference domains, window-state keys, and WebKit store identities.
+
+A unique temporary preference and cookie marker written in Debug must be absent from production, and both markers are removed after the test. The debug extension manager must use the debug extension and website stores. Simulated packaged-host identities must select standard UserDefaults, covering the case missed by a test bundle with a different identifier. The signed executable’s `--print-build-profile` path also reads preferences before returning. [[tests#Build bundle publication]] and [[tests#Production installer publication]] verify the packaging boundary independently of runtime storage.

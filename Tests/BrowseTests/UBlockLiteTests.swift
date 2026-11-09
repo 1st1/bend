@@ -33,7 +33,8 @@ import WebKit
     }
     try await loadFixture()
     try #require(try await web.evaluateJavaScript("window.blockedScriptRan === true") as? Bool == true)
-    try await manager.importExtension(from: package, expectedIdentifier: "safari:net.raymondhill.uBlock-Origin-Lite.Extension")
+    try await manager.importExtension(from: package, expectedIdentifier: "safari:net.raymondhill.uBlock-Origin-Lite.Extension",
+        catalogID: package.pathExtension == "appex" ? nil : "ublock-lite")
     let id = try #require(manager.records.first?.id)
     try await manager.enable(true, id: id) { _, _ in true }
     let context = try #require(manager.contexts[id])
@@ -103,4 +104,50 @@ import WebKit
     print("UBOL_FINAL_ERRORS", context.errors.map(\.localizedDescription))
     #expect(context.errors.isEmpty)
     try await manager.enable(false, id: id) { _, _ in true }
+}
+
+// @lat: [[tests#Safari direct-download migration]]
+@Test @MainActor func safariUBlockDirectMigration() async throws {
+    guard #available(macOS 15.4, *),
+          let archive = ProcessInfo.processInfo.environment["BROWSE_TEST_UBLOCK_SAFARI_PACKAGE"],
+          let previous = ProcessInfo.processInfo.environment["BROWSE_TEST_UBLOCK_SAFARI_PREVIOUS"] else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSafariMigration-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let storageID = UUID()
+    let websiteStore = WKWebsiteDataStore(forIdentifier: UUID())
+    var manager = ExtensionManager(root: root, storageIdentifier: storageID, websiteDataStore: websiteStore,
+        notifications: TestNotifications())
+    let entry = CatalogExtension.curated[0]
+    try await manager.importExtension(from: URL(fileURLWithPath: previous), expectedIdentifier: entry.packageIdentifier)
+    let record = try #require(manager.records.first)
+    try await manager.enable(true, id: record.id) { _, _ in true }
+    let oldContext = try #require(manager.contexts[record.id])
+    let navigation = ExtensionTestNavigation()
+    var web: WKWebView? = WKWebView(frame: .zero, configuration: try #require(oldContext.webViewConfiguration))
+    web?.navigationDelegate = navigation
+    try await navigation.load(try #require(web), url: try #require(oldContext.optionsPageURL))
+    _ = try await web?.callAsyncJavaScript("await browser.storage.local.set({bendMigrationMarker: 'retained'});", arguments: [:], in: nil, contentWorld: .page)
+    web = nil
+    try await manager.applyCatalogUpdate(record.id, from: URL(fileURLWithPath: archive), entry: entry,
+        version: entry.download.version, replacing: record.source)
+    let replaced = try #require(manager.contexts[record.id])
+    #expect(replaced.baseURL == oldContext.baseURL)
+    #expect(manager.records[0].catalogID == entry.id)
+    #expect(!manager.records[0].isBundle)
+    #expect(manager.isEnabled(record.id))
+    try manager.controller.unload(replaced)
+    manager = ExtensionManager(root: root, storageIdentifier: storageID, websiteDataStore: websiteStore,
+        notifications: TestNotifications())
+    manager.start(); await manager.restorationTask?.value
+    let restored = try #require(manager.contexts[record.id])
+    #expect(restored.baseURL == oldContext.baseURL)
+    #expect(manager.isEnabled(record.id))
+    web = WKWebView(frame: .zero, configuration: try #require(restored.webViewConfiguration))
+    web?.navigationDelegate = navigation
+    try await navigation.load(try #require(web), url: try #require(restored.optionsPageURL))
+    let marker = try await web?.callAsyncJavaScript("return (await browser.storage.local.get('bendMigrationMarker')).bendMigrationMarker;", arguments: [:], in: nil, contentWorld: .page)
+    #expect(marker as? String == "retained")
+    web = nil
+    try await manager.uninstall(record.id)
 }

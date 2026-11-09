@@ -13,7 +13,7 @@ final class SettingsWindowController {
     init(store: BrowserStore) {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 880, height: 680),
             styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "Bend Settings"
+        window.title = "\(AppProfile.current.name) Settings"
         window.titleVisibility = .hidden
         if #available(macOS 15.0, *) {
             window.titlebarAppearsTransparent = true
@@ -22,13 +22,14 @@ final class SettingsWindowController {
         window.isReleasedWhenClosed = false
         window.toolbarStyle = .unified
         window.toolbar = NSToolbar(identifier: "BendSettingsTitlebar")
-        window.setFrameAutosaveName("BrowseSettings")
+        window.setFrameAutosaveName(AppProfile.current.frameName("BrowseSettings"))
         let hosting = NSHostingController(rootView: BrowserSettingsView(store: store, navigation: navigation, onScrollUnderHeader: { [weak window] scrolled in
             window?.titlebarAppearsTransparent = !scrolled
             window?.titlebarSeparatorStyle = scrolled ? .automatic : .none
         })
             .frame(width: 880)
-            .frame(minHeight: 480))
+            .frame(minHeight: 480)
+            .defaultAppStorage(AppProfile.current.defaults))
         // Derive both native bounds from the fixed-width layout so SwiftUI's
         // sizing updates preserve the constraint after every section change.
         hosting.sizingOptions = [.minSize, .maxSize]
@@ -517,10 +518,6 @@ private struct ExtensionSettingsView: View {
             }
             ExtensionCatalogView(manager: manager)
         }
-        .onAppear { manager.discoverInstalled() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            manager.discoverInstalled()
-        }
     }
 }
 
@@ -536,8 +533,9 @@ struct ExtensionManagementView: View {
                 Text("Installed version \(version)").font(.caption).foregroundStyle(.secondary)
             }
             if let failure = manager.failures[record.id] { Text(failure).font(.callout).foregroundStyle(.red) }
-            Text(manager.ownsPackage(record) ? "Installed in Bend · Updated manually" : "Import pending")
-                .font(.caption).foregroundStyle(.secondary)
+            if !manager.ownsPackage(record) {
+                Text("Import pending").font(.caption).foregroundStyle(.secondary)
+            }
             if let notice = manager.compatibilityNotice(record.id) {
                 Label(notice, systemImage: "exclamationmark.triangle")
                     .font(.callout).foregroundStyle(.orange).textSelection(.enabled)
@@ -548,9 +546,6 @@ struct ExtensionManagementView: View {
             if manager.diagnostics.writeFailed {
                 Text("Diagnostic log could not be saved. Copy Diagnostics still includes this session.")
                     .font(.caption).foregroundStyle(.orange)
-            }
-            if let errors = context?.errors, !errors.isEmpty {
-                Text(errors.map(\.localizedDescription).joined(separator: "\n")).font(.caption).foregroundStyle(.orange)
             }
             if let description = context?.webExtension.displayDescription, !description.isEmpty {
                 Text(description).font(.callout).foregroundStyle(.secondary).lineLimit(3)
@@ -570,7 +565,6 @@ struct ExtensionManagementView: View {
                 }
                 .help("Copy extension lifecycle and desktop connection events across restarts. No passwords or message contents.")
                 Spacer()
-                Button("Update from File…") { manager.chooseUpdate(record.id) }.disabled(manager.busy)
                 Button("Remove…") { manager.remove(record.id) }.disabled(manager.busy)
             }
         }

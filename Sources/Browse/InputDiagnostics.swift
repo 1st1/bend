@@ -6,7 +6,7 @@ import WebKit
 final class InputDiagnostics {
     static let enabledPreferenceKey = "inputAndPaneLoggingEnabled"
 
-    static func applyPreferences(defaults: UserDefaults = .standard, root: URL? = nil) {
+    static func applyPreferences(defaults: UserDefaults = AppProfile.current.defaults, root: URL? = nil) {
         if defaults.bool(forKey: enabledPreferenceKey) {
             start(root: root)
         } else {
@@ -50,9 +50,8 @@ final class InputDiagnostics {
 
     static func start(root: URL? = nil) {
         guard shared == nil else { return }
-        let directory = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("BrowsePrototype/InputDiagnostics", isDirectory: true)
-        if let directory { shared = InputDiagnostics(root: directory) }
+        let directory = root ?? AppProfile.current.supportDirectory.appendingPathComponent("InputDiagnostics", isDirectory: true)
+        shared = InputDiagnostics(root: directory)
     }
 
     static func flush() { shared?.output.flush(); shared?.activity.flush() }

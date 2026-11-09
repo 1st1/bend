@@ -6,7 +6,7 @@ import WebKit
 @testable import Browse
 
 @MainActor
-private func extensionFixture(at root: URL) throws -> URL {
+func extensionFixture(at root: URL) throws -> URL {
     let source = root.appendingPathComponent("fixture", isDirectory: true)
     try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
     try Data(#"""
@@ -525,7 +525,7 @@ private func extensionFixture(at root: URL) throws -> URL {
 }
 
 @MainActor
-private final class ExtensionTestNavigation: NSObject, WKNavigationDelegate {
+final class ExtensionTestNavigation: NSObject, WKNavigationDelegate {
     var continuation: CheckedContinuation<Void, Error>?
     func load(_ web: WKWebView, url: URL) async throws {
         try await withCheckedThrowingContinuation { continuation in
@@ -585,7 +585,7 @@ private final class ExtensionTestNavigation: NSObject, WKNavigationDelegate {
 @Test(arguments: ["1password", "dark-reader"]) @MainActor func catalogDownloadSmoke(entryID: String) async throws {
     guard #available(macOS 15.4, *), ProcessInfo.processInfo.environment["BROWSE_TEST_CATALOG_DOWNLOAD"] == "1" else { return }
     let entry = try #require(CatalogExtension.curated.first { $0.id == entryID })
-    guard case .download(let download) = entry.installation else { Issue.record("Expected downloadable package"); return }
+    let download = entry.download
     let data = try await download.fetch()
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseCatalogDownload-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }

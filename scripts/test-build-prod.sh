@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 root="$(mktemp -d "${TMPDIR:-/tmp}/bend-prod-test.XXXXXX")"
+root="$(cd "$root" && pwd)"
 trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/scripts" "$root/bin" "$root/dist/Bend.app/Contents/MacOS"
 cp "$(dirname "$0")/build-prod.sh" "$root/scripts/"
@@ -11,10 +12,19 @@ export BEND_NOTARY_PROFILE='test-profile'
 cat > "$root/dist/Bend.app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0"?><plist version="1.0"><dict>
 <key>CFBundleShortVersionString</key><string>1.2.3</string>
+<key>CFBundleIdentifier</key><string>dev.yury.browse.prototype</string>
+<key>BendBuildProfile</key><string>production</string>
 </dict></plist>
 PLIST
 printf 'executable' > "$root/dist/Bend.app/Contents/MacOS/Bend"
-printf '#!/bin/bash\nexit 0\n' > "$root/scripts/build-app.sh"
+cat > "$root/scripts/build-app.sh" <<'SH'
+#!/bin/bash
+set -euo pipefail
+[[ "$1" == --production && "$2" == --output ]]
+ditto "$BEND_PROD_TEST_ROOT/dist/Bend.app" "$3"
+SH
+mkdir -p "$root/dist/Bend Debug.app"
+printf 'debug sentinel' > "$root/dist/Bend Debug.app/sentinel"
 cat > "$root/bin/codesign" <<'SH'
 #!/bin/bash
 if [[ "$1" == --display ]]; then
@@ -50,6 +60,7 @@ case "$command" in
   create)
     output="${!#}"
     while [[ $# -gt 0 ]]; do
+      if [[ "$1" == -volname ]]; then [[ "$2" == 'Bend Installer '* ]]; fi
       if [[ "$1" == -srcfolder ]]; then payload="$2"; shift; fi
       shift
     done
@@ -64,6 +75,10 @@ case "$command" in
   verify) [[ "${BEND_PROD_TEST_FAIL:-}" != dmg-verify ]] ;;
   *) exit 2 ;;
 esac
+SH
+cat > "$root/bin/diskutil" <<'SH'
+#!/bin/bash
+[[ "$1" == renameVolume && "$2" == "$BEND_PROD_TEST_ROOT"/dist/.build-prod.*/mount && "$3" == Bend ]]
 SH
 cat > "$root/bin/osascript" <<'SH'
 #!/bin/bash
@@ -98,4 +113,5 @@ BEND_NOTARY_PROFILE=ignored bash "$root/scripts/build-prod.sh" --keychain-profil
 [[ -z "$(find "$root/dist" -maxdepth 1 -name '.build-prod.*' -print)" ]]
 expected=$'app-notary\napp-staple\nimage-create\ndmg-sign\ndmg-notary\ndmg-staple\ndmg-assess'
 [[ "$(cat "$root/events")" == "$expected" ]]
+[[ "$(cat "$root/dist/Bend Debug.app/sentinel")" == 'debug sentinel' ]]
 printf 'Production installer publication tests passed\n'

@@ -42,6 +42,7 @@ final class BrowserStore: ObservableObject {
         extensionStorage = manager
         manager.store = self
         manager.start()
+        if persistentExtensions { manager.updates.start() }
         return manager
     }
     @Published var persistenceError: String?
@@ -89,8 +90,7 @@ final class BrowserStore: ObservableObject {
         self.sharedStore = sharedStore
         mediaPlaybackFocus = sharedStore?.mediaPlaybackFocus ?? MediaPlaybackFocus()
         self.persistentExtensions = sharedStore?.persistentExtensions ?? persistentExtensions
-        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("BrowsePrototype", isDirectory: true)
+        let root = AppProfile.current.supportDirectory
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
         downloads = sharedStore?.downloads ?? BrowserDownloads(
             databaseFile: self.sessionFile.deletingLastPathComponent().appendingPathComponent("Downloads.db"))
@@ -1090,7 +1090,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         self.configure = configure
         let configuration = WKWebViewConfiguration()
         configuration.applicationNameForUserAgent = Self.websiteApplicationName
-        configuration.websiteDataStore = .default()
+        configuration.websiteDataStore = AppProfile.current.websiteDataStore
         configure(configuration)
         webView = suppliedWebView ?? FocusWebView(frame: .zero, configuration: configuration)
         super.init()
@@ -1179,7 +1179,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
             extensionOrigin = nil
             let configuration = WKWebViewConfiguration()
             configuration.applicationNameForUserAgent = Self.websiteApplicationName
-            configuration.websiteDataStore = .default()
+            configuration.websiteDataStore = AppProfile.current.websiteDataStore
             configure(configuration)
             replaceWebView(configuration: configuration)
         }

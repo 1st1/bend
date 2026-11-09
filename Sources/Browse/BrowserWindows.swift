@@ -13,8 +13,7 @@ final class BrowserWindows {
     private var terminating = false
 
     init(root: URL? = nil, persistentExtensions: Bool = true) {
-        self.root = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("BrowsePrototype", isDirectory: true)
+        self.root = root ?? AppProfile.current.supportDirectory
         sharedStore = BrowserStore(sessionFile: self.root.appendingPathComponent("session.json"),
                                    persistentExtensions: persistentExtensions)
     }
@@ -141,7 +140,7 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
         window.browserStore = store
-        window.title = "Bend"
+        window.title = AppProfile.current.name
         window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified; window.toolbar = NSToolbar(identifier: "BrowseTitlebar")
         window.titlebarSeparatorStyle = .none
@@ -151,7 +150,7 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
         window.minSize = NSSize(width: 780, height: 500)
         window.delegate = self; window.isReleasedWhenClosed = false
         window.center()
-        let frameName = id == "main" ? "BrowseMainWindow" : "BrowseWindow-\(id)"
+        let frameName = AppProfile.current.frameName(id == "main" ? "BrowseMainWindow" : "BrowseWindow-\(id)")
         window.setFrameAutosaveName(frameName)
         window.setFrameUsingName(frameName)
         if #available(macOS 15.4, *) { store.extensions.attachWindow(window, store: store) }

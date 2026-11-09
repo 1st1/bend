@@ -3,11 +3,6 @@ import Foundation
 
 // @lat: [[architecture#Curated extension catalog]]
 struct CatalogExtension: Identifiable, Sendable {
-    enum Installation: Sendable {
-        case safari(bundleIdentifier: String, storeURL: URL)
-        case download(CatalogDownload)
-    }
-
     let id: String
     let name: String
     let publisher: String
@@ -18,7 +13,8 @@ struct CatalogExtension: Identifiable, Sendable {
     let symbol: String
     let packageIdentifier: String
     let website: URL
-    let installation: Installation
+    let download: CatalogDownload
+    let updateSource: ExtensionUpdateSource
 
     func matches(_ query: String) -> Bool {
         query.split(whereSeparator: \.isWhitespace).allSatisfy { word in
@@ -33,26 +29,30 @@ struct CatalogExtension: Identifiable, Sendable {
             experimental: false, symbol: "shield.lefthalf.filled",
             packageIdentifier: "safari:net.raymondhill.uBlock-Origin-Lite.Extension",
             website: URL(string: "https://github.com/uBlockOrigin/uBOL-home")!,
-            installation: .safari(bundleIdentifier: "net.raymondhill.uBlock-Origin-Lite.Extension",
-                storeURL: URL(string: "https://apps.apple.com/app/ublock-origin-lite/id6745342698")!)),
+            download: .init(version: "2026.1103.1743",
+                url: URL(string: "https://github.com/uBlockOrigin/uBOL-home/releases/download/2026.1103.1743/uBOLite_2026.1103.1743.safari.zip")!,
+                sha256: "7be53009c38dd47726ce26b3fa02e93ac93e77ac5d276543e855997650128a9c"),
+            updateSource: .uBlockSafari),
         .init(id: "1password", name: "1Password", publisher: "1Password", category: "Passwords",
             summary: "Keep passwords and vault items close at hand as you browse.",
             compatibility: "Sign in directly to your 1Password account. Vault items have been confirmed in Bend; autofill still needs testing. Desktop connection requires adding Bend in 1Password’s trusted browsers; Touch ID remains unverified. Use this version instead of 1Password for Safari.",
             experimental: true, symbol: "key.fill",
             packageIdentifier: "gecko:{d634138d-c276-4fc8-924b-40a0ea21d284}",
             website: URL(string: "https://addons.mozilla.org/firefox/addon/1password-x-password-manager/")!,
-            installation: .download(.init(version: "8.12.41.1",
+            download: .init(version: "8.12.41.1",
                 url: URL(string: "https://addons.mozilla.org/firefox/downloads/file/5097307/1password_x_password_manager-8.12.41.1.xpi")!,
-                sha256: "6b00acff73253865303af49e99329245a940348484cbd931ea39f9fa215134f5"))),
+                sha256: "6b00acff73253865303af49e99329245a940348484cbd931ea39f9fa215134f5"),
+            updateSource: .mozilla(slug: "1password-x-password-manager")),
         .init(id: "dark-reader", name: "Dark Reader", publisher: "Dark Reader Ltd", category: "Appearance",
             summary: "Give websites a dark theme with adjustable brightness and contrast.",
             compatibility: "Dark themes, on/off controls, and per-site toggles passed Bend's compatibility test. Appearance may vary by website.",
             experimental: true, symbol: "moon.fill",
             packageIdentifier: "gecko:addon@darkreader.org",
             website: URL(string: "https://darkreader.org/")!,
-            installation: .download(.init(version: "4.9.134",
+            download: .init(version: "4.9.134",
                 url: URL(string: "https://addons.mozilla.org/firefox/downloads/file/5175215/darkreader-4.9.134.xpi")!,
-                sha256: "700633395aa2f639a1bed4253e27309eb676f346d599b0ae2b7a0453232e0aec")))
+                sha256: "700633395aa2f639a1bed4253e27309eb676f346d599b0ae2b7a0453232e0aec"),
+            updateSource: .mozilla(slug: "darkreader"))
     ]
 }
 
@@ -100,7 +100,7 @@ enum CatalogError: LocalizedError {
         switch self {
         case .invalidResponse: "The extension download failed. Try again later."
         case .invalidSize: "The extension download is empty or too large. Nothing was installed."
-        case .checksumMismatch: "The download does not match the reviewed package. Nothing was installed."
+        case .checksumMismatch: "The download does not match its published checksum. Nothing was installed."
         }
     }
 }

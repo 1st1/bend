@@ -6,6 +6,19 @@ import BrowseCore
 @MainActor
 enum BrowseApp {
     static func main() {
+        if CommandLine.arguments.dropFirst().elementsEqual(["--print-build-profile"]) {
+            let profile = AppProfile.current
+            let fields = ["profile": profile.rawValue, "name": profile.name,
+                "bundleIdentifier": Bundle.main.bundleIdentifier ?? "unbundled",
+                "profileBundleIdentifier": profile.bundleIdentifier,
+                "diagnosticsEnabled": String(profile.defaults.bool(forKey: InputDiagnostics.enabledPreferenceKey)),
+                "supportDirectory": profile.supportDirectory.path,
+                "websiteStorage": profile.websiteStorageIdentifier?.uuidString ?? "default",
+                "extensionStorage": profile.extensionStorageIdentifier?.uuidString ?? "default"]
+            if let data = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]),
+               let output = String(data: data, encoding: .utf8) { print(output) }
+            return
+        }
         if CommandLine.arguments.dropFirst().elementsEqual(["--diagnose-1password"]) {
             OnePasswordConnectionProbe.run()
             return
@@ -116,13 +129,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func installMenus() {
         let main = NSMenu()
-        let appMenu = NSMenu(title: "Bend")
-        appMenu.addItem(withTitle: "About Bend", action: #selector(about), keyEquivalent: "").target = self
+        let appMenu = NSMenu(title: AppProfile.current.name)
+        appMenu.addItem(withTitle: "About \(AppProfile.current.name)", action: #selector(about), keyEquivalent: "").target = self
         appMenu.addItem(.separator())
         add("Settings…", #selector(showSettings), ",", to: appMenu)
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide Bend", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit Bend", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Hide \(AppProfile.current.name)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit \(AppProfile.current.name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         append(appMenu, to: main)
 
         let file = NSMenu(title: "File")
@@ -300,7 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func back() { focused.webView.goBack() }
     @objc private func forward() { focused.webView.goForward() }
     @objc private func about() {
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Bend", .applicationVersion: "0.1 Prototype",
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: AppProfile.current.name, .applicationVersion: "0.1 Prototype",
             .credits: NSAttributedString(string: "A native, tiled WebKit browser. Inspired by Rex.")])
     }
 }
