@@ -4,9 +4,16 @@ import Foundation
 public struct SidebarFavorite: Codable, Identifiable, Sendable {
     public static let limit = 9
     public let id: UUID
-    public let address: String
+    public var address: String
     public let title: String
     public var iconPNG: Data?
+    public var googleAccountEmail: String?
+
+    public var launchAddress: String {
+        guard let email = googleAccountEmail, GoogleFavoriteService.normalizedEmail(email) == email,
+              let service = GoogleFavoriteService(address: address) else { return address }
+        return service.launchAddress(email: email)
+    }
 
     public init(address: String, title: String, iconPNG: Data? = nil) {
         id = UUID()

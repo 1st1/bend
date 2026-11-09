@@ -24,12 +24,15 @@ struct SidebarFavorites: View {
                         .frame(maxWidth: .infinity).frame(height: 44)
                 }
                 .buttonStyle(FavoriteTileStyle(selected: selected))
-                .help("\(favorite.title)\n\(favorite.address)")
-                .accessibilityLabel(favorite.title)
+                .help("\(favorite.title)\n\(favorite.googleAccountEmail ?? favorite.address)")
+                .accessibilityLabel(favorite.googleAccountEmail.map { "\(favorite.title), \($0)" } ?? favorite.title)
                 .accessibilityValue(selected ? "Selected" : "")
                 .accessibilityIdentifier("favorite-\(favorite.id)")
                 .background(WindowDragArea(excluded: true))
                 .contextMenu {
+                    if GoogleFavoriteService(address: favorite.address) != nil {
+                        Button("Google Account…") { store.customizeFavorite(favorite.id) }
+                    }
                     Button("Remove from Favorites") { store.removeFavorite(favorite.id) }
                     if let target {
                         Button("Close tab") { store.closeTab(target.tab.id) }.disabled(target.tab.isPinned)

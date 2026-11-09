@@ -303,7 +303,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     @objc private func submit() {
         InputDiagnostics.transition(.addressSubmit, .requested, window: panel, paneID: targetPane)
         guard let targetPane,
-              let page = store.selectedTab.pages.first(where: { $0.id == targetPane }) else {
+              store.selectedTab.pages.contains(where: { $0.id == targetPane }) else {
             dismiss(restoreFocus: true)
             return
         }
@@ -320,7 +320,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         if let suggestion = result?.history {
             store.recordHistoryChoice(url: suggestion.url, query: showingFrequent ? "" : typedQuery)
         }
-        store.controller(for: page).navigate(address)
+        store.openLocation(address, for: targetPane)
         dismiss(restoreFocus: true)
     }
 

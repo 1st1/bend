@@ -7,6 +7,7 @@ import WebKitFindSupport
 @MainActor
 final class BrowserStore: ObservableObject {
     @Published var session: BrowserSession
+    @Published var favoriteCustomization: FavoriteCustomizationRequest?
     @Published var sidebarVisible = true {
         didSet { if sidebarVisible { sidebarFloating = false } }
     }
@@ -103,6 +104,19 @@ final class BrowserStore: ObservableObject {
             session = restored
         } else { session = BrowserSession() }
         if let favorites = session.favorites { session.favorites = SidebarFavorite.validated(favorites) }
+        // Google account numbers in visited URLs depend on sign-in order. Restore
+        // account-specific favorites through their saved email hint instead.
+        let savedFavorites = sharedStore?.favorites ?? session.favorites ?? []
+        for wi in session.workspaces.indices {
+            for ti in session.workspaces[wi].tabs.indices {
+                for pi in session.workspaces[wi].tabs[ti].pages.indices {
+                    let id = session.workspaces[wi].tabs[ti].pages[pi].favoriteID
+                    if let favorite = savedFavorites.first(where: { $0.id == id && $0.googleAccountEmail != nil }) {
+                        session.workspaces[wi].tabs[ti].pages[pi].address = favorite.launchAddress
+                    }
+                }
+            }
+        }
         // Keep the persisted workspace envelope compatible, but expose one tab list.
         if session.workspaces.count > 1 {
             let tabs = session.workspaces.flatMap(\.tabs)

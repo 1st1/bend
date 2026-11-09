@@ -30,18 +30,22 @@ extension BrowserStore {
     }
 
     @discardableResult
-    func addFavorite(_ tabID: UUID) -> UUID? {
+    func addFavorite(_ tabID: UUID, address: String? = nil, googleAccountEmail: String? = nil) -> UUID? {
         guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }),
               let page = favoritePage(in: tab) else { return nil }
         if let existing = favorite(for: tab) { return existing.id }
-        guard canFavorite(tab) else { return nil }
+        let address = address ?? page.address
+        guard SidebarFavorite.websiteURL(address) != nil,
+              favorites.count < SidebarFavorite.limit || favorites.contains(where: { $0.address == address }) else { return nil }
         let favorite: SidebarFavorite
-        if let existing = favorites.first(where: { $0.address == page.address }) {
+        if let existing = favorites.first(where: { $0.address == address }) {
             favorite = existing
         } else {
             let pageTitle = existingController(for: page.id)?.title ?? tab.title
             let title = pageTitle.isEmpty || pageTitle == "New tab" ? URL(string: page.address)?.host ?? page.address : pageTitle
-            favorite = SidebarFavorite(address: page.address, title: title)
+            var created = SidebarFavorite(address: address, title: googleAccountEmail == nil ? title : GoogleFavoriteService(address: address)?.name ?? title)
+            created.googleAccountEmail = googleAccountEmail
+            favorite = created
             preferencesStore.session.favorites = favorites + [favorite]
             preferencesStore.saveSoon()
         }
@@ -76,12 +80,29 @@ extension BrowserStore {
             select(target.tab.id)
             focus(target.page.id)
         } else {
-            newTab(address: favorite.address)
+            newTab(address: favorite.launchAddress)
             editTab { tab in
                 tab.title = favorite.title
                 tab.pages[0].favoriteID = id
             }
         }
+    }
+
+    // Only location-entry navigation is redirected. Ordinary page links and
+    // same-site address changes retain the favorite's live document.
+    @discardableResult
+    func openLocation(_ input: String, for pageID: UUID) -> Bool {
+        guard let page = selectedTab.pages.first(where: { $0.id == pageID }),
+              let destination = AddressResolver.resolve(input) else { return false }
+        if let favorite = favorites.first(where: { $0.id == page.favoriteID }),
+           !FaviconLoader.sameOrigin(URL(string: favorite.address), destination) {
+            newTab(address: destination.absoluteString, afterCurrent: true)
+        } else {
+            focus(pageID)
+            finishInitialAddressEntry(for: pageID)
+            controller(for: page).navigate(input)
+        }
+        return true
     }
 
     private func associateFavorite(_ id: UUID, with pageID: UUID) {

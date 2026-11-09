@@ -64,6 +64,9 @@ struct BrowserView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(item: $store.favoriteCustomization) { request in
+            FavoriteCustomizationView(store: store, request: request)
+        }
     }
 
     private func sidebar(floating: Bool) -> some View {
@@ -166,7 +169,7 @@ private struct SidebarTabRow: View {
                 Button("Remove from Favorites") { store.removeFavorite(favorite.id) }
             } else {
                 Button(store.favorites.count >= SidebarFavorite.limit ? "Add to Favorites (9 maximum)" : "Add to Favorites") {
-                    store.addFavorite(tab.id)
+                    store.requestFavorite(tab.id)
                 }.disabled(!store.canFavorite(tab))
             }
             Button(tab.isPinned ? "Unpin tab" : "Pin tab") { store.toggleTabPinned(tab.id) }
