@@ -8,6 +8,8 @@ Earlier prototype builds used the version `0.1` without a versioned changelog; `
 ## v0.1.1
 ### Changed
 - Bend now requires macOS 26 or later, with Liquid Glass and extension support available on every supported macOS version.
+### Fixed
+- Prevent native extension connections from stalling background work on Macs with limited CPU resources.
 
 ## v0.1.0
 

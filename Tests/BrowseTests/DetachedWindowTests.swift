@@ -259,7 +259,8 @@ import WebKit
         #expect(!green.isNull)
         #expect(abs(green.width - green.height) <= 2)
         // Bottom and side pixels must contain the blue web capture, not a letterbox.
-        for point in [NSPoint(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh - 4),
+        // Stay outside the central green square even in the shallow preview.
+        for point in [NSPoint(x: bitmap.pixelsWide / 4, y: bitmap.pixelsHigh - 4),
                       NSPoint(x: 4, y: bitmap.pixelsHigh / 2),
                       NSPoint(x: bitmap.pixelsWide - 5, y: bitmap.pixelsHigh / 2)] {
             let c = try #require(bitmap.colorAt(x: Int(point.x), y: Int(point.y))?.usingColorSpace(.deviceRGB))

@@ -69,6 +69,9 @@ jobs:
             -Xlinker -platform_version -Xlinker macos -Xlinker 26.0 -Xlinker "$sdk_version" \
             2>&1 | tee ci-logs/build.log
       - name: Run Swift tests
+        timeout-minutes: 15
+        env:
+          LIBDISPATCH_COOPERATIVE_POOL_STRICT: '1'
         run: |
           sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
           swift test --disable-sandbox --no-parallel \

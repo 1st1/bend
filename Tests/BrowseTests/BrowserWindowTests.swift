@@ -50,7 +50,8 @@ import BrowseCore
             split.setPosition(position, ofDividerAt: 0)
             try await Task.sleep(for: .milliseconds(100))
             content.layoutSubtreeIfNeeded()
-            #expect(abs(split.arrangedSubviews[0].frame.width - 200) < 1)
+            // AppKit's split-item wrapper includes OS-dependent glass margins.
+            #expect(abs(sidebar.enclosingScrollView!.frame.width - 200) < 1)
         }
         #expect(settings.window.titlebarAppearsTransparent)
         #expect(settings.window.minSize.width == 880)
@@ -194,9 +195,9 @@ import BrowseCore
     #expect(first.store.commandClickDestination == .newTab)
     #expect(first.store.inactivePaneDimAmount == 0.35)
     second.store.paneHighlight.style = .outline
-    second.store.paneHighlight.outlineWidth = 4
+    second.store.paneHighlight.outlineWidth = 1.5
     #expect(first.store.paneHighlight.style == .outline)
-    #expect(first.store.paneHighlight.outlineWidth == 4)
+    #expect(first.store.paneHighlight.outlineWidth == 1.5)
     if #available(macOS 26.0, *) {
         let glass = try #require(second.window.contentView as? BrowserWindowGlass)
         first.store.windowGlass = GlassAppearance(clear: true)

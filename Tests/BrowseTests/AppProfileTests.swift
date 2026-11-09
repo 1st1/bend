@@ -33,10 +33,14 @@ import WebKit
     #expect(debug.defaults.string(forKey: key) == "debug-only")
     #expect(production.defaults.object(forKey: key) == nil)
     let cookie = try #require(HTTPCookie(properties: [.domain: "bend-isolation.invalid", .path: "/", .name: key, .value: "debug-only", .secure: "TRUE"]))
-    await debug.websiteDataStore.httpCookieStore.setCookie(cookie)
-    let debugCookies = await debug.websiteDataStore.httpCookieStore.allCookies()
-    let productionCookies = await production.websiteDataStore.httpCookieStore.allCookies()
-    await debug.websiteDataStore.httpCookieStore.deleteCookie(cookie)
+    // Keep the store alive across async operations; the profile getter may
+    // construct a fresh WebKit store wrapper on each access.
+    let debugStore = debug.websiteDataStore
+    let productionStore = production.websiteDataStore
+    await debugStore.httpCookieStore.setCookie(cookie)
+    let debugCookies = await debugStore.httpCookieStore.allCookies()
+    let productionCookies = await productionStore.httpCookieStore.allCookies()
+    await debugStore.httpCookieStore.deleteCookie(cookie)
     #expect(debugCookies.contains { $0.name == key })
     #expect(!productionCookies.contains { $0.name == key })
     if #available(macOS 15.4, *) {
