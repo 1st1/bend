@@ -479,7 +479,7 @@ The first twenty transfers in each layout hover to select the destination before
 
 [ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) exercises real WebKit native-message calls with an isolated Python echo helper, including restoration, revocation, disconnects, and invalid frames.
 
-One-shot and persistent messages cross the delegate boundary and handle fragmented JSON replies. Recreated managers restore permission and reconnect; permission denial and context teardown empty the connection registry. Host crashes and oversized frames reject promises. Unit checks cover Unicode, concatenated frames, manifest allowlists, missing hosts, and traversal rejection. The opt-in Firefox onboarding smoke verifies the real 1Password package requests its registered helper, while an injected resolver prevents access to the user's desktop vault. Touch ID and authenticated desktop unlocking require a separate manual test.
+One-shot and persistent messages cross the delegate boundary and handle fragmented JSON replies. CI restricts Swift's cooperative pool to one worker to expose blocking pipe reads that would starve other async work. Recreated managers restore permission and reconnect; permission denial and context teardown empty the connection registry. Host crashes and oversized frames reject promises. Unit checks cover Unicode, concatenated frames, manifest allowlists, missing hosts, and traversal rejection. The opt-in Firefox onboarding smoke verifies the real 1Password package requests its registered helper, while an injected resolver prevents access to the user's desktop vault. Touch ID and authenticated desktop unlocking require a separate manual test.
 
 ## Extension diagnostic logging
 
@@ -605,7 +605,7 @@ The native Settings window hides the centered window title and keeps full-size c
 
 [BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies that the native Settings toolbar contains the section title and that sidebar selection updates the window title for UI, Websites, Extensions, and Development.
 
-The toolbar test verifies targeted Extensions presentation in fresh, visible, and reopened Settings windows, and that general presentation preserves the current selection. It also verifies reopening centers Settings on each available screen after moving it offscreen. It scrolls overflowing detail content beneath the stationary title and back to the top, checking that native titlebar transparency changes with the overlap. It also verifies native toolbar insets and fixed width bounds across all sections while allowing vertical resizing. The sidebar stays 200 points wide across section changes, including attempts to move the native divider in both directions.
+The toolbar test verifies targeted Extensions presentation in fresh, visible, and reopened Settings windows, and that general presentation preserves the current selection. It also verifies reopening centers Settings on each available screen after moving it offscreen. It scrolls overflowing detail content beneath the stationary title and back to the top, checking that native titlebar transparency changes with the overlap. It also verifies native toolbar insets and fixed width bounds across all sections while allowing vertical resizing. The visible sidebar stays 200 points wide across section changes, including attempts to move the native divider in both directions; assertions exclude OS-dependent margins on the native split-item wrapper.
 
 ## Pane-centered location popup
 
@@ -879,7 +879,7 @@ Set `BROWSE_TEST_UBLOCK_SAFARI_PACKAGE` to the ZIP and `BROWSE_TEST_UBLOCK_SAFAR
 
 [[Tests/BrowseTests/AppProfileTests.swift#buildProfileIsolation]] verifies separate debug and production names, bundle IDs, support directories, preference domains, window-state keys, and WebKit store identities.
 
-A unique temporary preference and cookie marker written in Debug must be absent from production, and both markers are removed after the test. The debug extension manager must use the debug extension and website stores. Simulated packaged-host identities must select standard UserDefaults, covering the case missed by a test bundle with a different identifier. The signed executable’s `--print-build-profile` path also reads preferences before returning. [[tests#Build bundle publication]] and [[tests#Production installer publication]] verify the packaging boundary independently of runtime storage.
+A unique temporary preference and cookie marker written in Debug must be absent from production, and both markers are removed after the test. Store wrappers remain retained throughout the async cookie checks. The debug extension manager must use the debug extension and website stores. Simulated packaged-host identities must select standard UserDefaults, covering the case missed by a test bundle with a different identifier. The signed executable’s `--print-build-profile` path also reads preferences before returning. [[tests#Build bundle publication]] and [[tests#Production installer publication]] verify the packaging boundary independently of runtime storage.
 
 ## Favorite tabs and persistence
 

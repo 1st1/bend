@@ -99,16 +99,20 @@ final class NativeMessageConnection {
         try? input.fileHandleForReading.close()
         try? output.fileHandleForWriting.close()
         let handle = output.fileHandleForReading
-        Task.detached { [weak self] in
+        // A pipe may stay idle indefinitely. Never occupy a Swift cooperative
+        // worker with its blocking read: a few connections can starve async work.
+        DispatchQueue(label: "Browse.native-messaging.read").async { [weak self] in
             defer { try? handle.close() }
             do {
                 while true {
                     let data = try Self.readChunk(handle)
                     if data.isEmpty { break }
-                    guard await self?.accept(data) == true else { return }
+                    guard DispatchQueue.main.sync(execute: { [weak self] in self?.accept(data) == true }) else { return }
                 }
-                await self?.eof()
-            } catch { await self?.finish(NativeMessagingError("Native application connection closed.")) }
+                DispatchQueue.main.async { [weak self] in self?.eof() }
+            } catch {
+                DispatchQueue.main.async { [weak self] in self?.finish(NativeMessagingError("Native application connection closed.")) }
+            }
         }
     }
     nonisolated private static func readChunk(_ handle: FileHandle) throws -> Data {

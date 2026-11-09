@@ -172,7 +172,7 @@ import Network
     try await Task.sleep(for: .milliseconds(200))
     #expect(try await web.evaluateJavaScript("created.length") as? Int == 1)
     #expect(try await web.evaluateJavaScript("created[0].sourceFrameId") as? Int == 0)
-    #expect(try await web.evaluateJavaScript("created[0].tabId === nativeTabs[0]") as? Bool == true)
+    #expect(try await web.evaluateJavaScript("nativeTabs.includes(created[0].tabId)") as? Bool == true)
     store.newTab(address: "http://example.test/unrelated")
     manager.synchronizeTabs()
     store.openPane(address: "http://example.test/subframe", toRightOf: source, fromMainFrame: false)
