@@ -359,6 +359,28 @@ import Network
 @Test @MainActor func extensionDocumentAuthenticationRoundTrip() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
+    // Keep the promise and its result rooted in the document. An unreferenced
+    // callAsyncJavaScript completion can be collected while WebKit awaits it.
+    func asyncValue(_ expression: String, in web: WKWebView) async throws -> Any? {
+        _ = try await web.evaluateJavaScript("""
+            window.authProbe = { done: false };
+            window.authProbe.promise = (async () => (\(expression)))().then(
+                value => { window.authProbe.value = value; window.authProbe.done = true; },
+                error => { window.authProbe.error = String(error); window.authProbe.done = true; });
+            void 0;
+            """)
+        for _ in 0..<100 {
+            let result = try await web.evaluateJavaScript("({done: authProbe.done, value: authProbe.value ?? null, error: authProbe.error ?? null})") as? [String: Any]
+            if result?["done"] as? Bool == true {
+                if let error = result?["error"] as? String {
+                    throw NSError(domain: "Browse.Tests", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(expression): \(error)"])
+                }
+                return result?["value"]
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        throw NSError(domain: "Browse.Tests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Timed out: \(expression)"])
+    }
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseAuthRoundTrip-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     let manager = ExtensionManager(root: root.appendingPathComponent("installed"), persistent: false,
@@ -378,7 +400,8 @@ import Network
         if (try? await document.web.evaluateJavaScript("document.body?.textContent")) as? String == "Compatibility test" { break }
         try await Task.sleep(for: .milliseconds(30))
     }
-    let tabID = try #require(try await document.web.callAsyncJavaScript("sessionStorage.setItem('setupAnswered', 'yes'); return (await browser.tabs.getCurrent()).id", arguments: [:], in: nil, contentWorld: .page) as? Int)
+    _ = try await document.web.evaluateJavaScript("sessionStorage.setItem('setupAnswered', 'yes')")
+    let tabID = try #require(try await asyncValue("(await browser.tabs.getCurrent()).id", in: document.web) as? Int)
     let pageCount = store.session.workspaces.flatMap(\.tabs).flatMap(\.pages).count
     let server = try await ExtensionHTTPFixture.start()
     defer { server.listener.cancel() }
@@ -395,19 +418,19 @@ import Network
     #expect(document.web.url?.host == "127.0.0.1")
     #expect(manager.pages.count == pageCount)
     #expect(try await document.web.evaluateJavaScript("sessionStorage.getItem('setupAnswered') === null && !globalThis.browser?.runtime?.id && typeof chrome === 'undefined'") as? Bool == true)
-    #expect(try await document.web.callAsyncJavaScript("try { await webkit.messageHandlers.browseExtension.postMessage({operation:'privacySetting', setting:'passwordSavingEnabled', action:'get', details:{}}); return false; } catch { return true; }", arguments: [:], in: nil, contentWorld: .page) as? Bool == true)
+    #expect(try await asyncValue("(async () => { try { await webkit.messageHandlers.browseExtension.postMessage({operation:'privacySetting', setting:'passwordSavingEnabled', action:'get', details:{}}); return false; } catch { return true; } })()", in: document.web) as? Bool == true)
     // A website cannot authorize its own promotion into an extension document.
     let extensionLiteral = String(decoding: try JSONEncoder().encode(url.absoluteString), as: UTF8.self)
     _ = try await document.web.evaluateJavaScript("location.href = \(extensionLiteral)")
     try await Task.sleep(for: .milliseconds(150))
     #expect(document.web.url?.host == "127.0.0.1")
-    _ = try await control.callAsyncJavaScript("return await browser.tabs.update(tabID, {url: address})", arguments: ["tabID": tabID, "address": url.absoluteString], in: nil, contentWorld: .page)
+    _ = try await asyncValue("browser.tabs.update(\(tabID), {url: \(extensionLiteral)})", in: control)
     for _ in 0..<100 {
         if (try? await document.web.evaluateJavaScript("sessionStorage.getItem('setupAnswered')")) as? String == "yes" { break }
         try await Task.sleep(for: .milliseconds(30))
     }
     #expect(try await document.web.evaluateJavaScript("sessionStorage.getItem('setupAnswered')") as? String == "yes")
-    #expect(try await document.web.callAsyncJavaScript("return (await browser.tabs.getCurrent()).id", arguments: [:], in: nil, contentWorld: .page) as? Int == tabID)
+    #expect(try await asyncValue("(await browser.tabs.getCurrent()).id", in: document.web) as? Int == tabID)
     try await manager.enable(false, id: id) { _, _ in true }
 }
 
