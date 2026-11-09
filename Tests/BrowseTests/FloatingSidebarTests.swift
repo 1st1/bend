@@ -116,7 +116,9 @@ import BrowseCore
     try sendPaneMouse(.leftMouseUp, at: covered, to: window)
     // Leaving briefly and reentering cancels dismissal; sustained departure hides it.
     try move(NSPoint(x: 500, y: 200))
-    try await Task.sleep(for: .milliseconds(60))
+    #expect(store.sidebarFloating)
+    // Deliver reentry in the same main-actor turn: a timed sleep can resume
+    // after the dismissal deadline on a loaded runner and simulate a long exit.
     try move(NSPoint(x: 100, y: 200))
     try await settle()
     #expect(store.sidebarFloating)
