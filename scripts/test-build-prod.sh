@@ -9,6 +9,7 @@ export BEND_PROD_TEST_ROOT="$root"
 export PATH="$root/bin:$PATH"
 export BEND_SIGNING_IDENTITY='Developer ID Application: Test (TESTTEAM)'
 export BEND_NOTARY_PROFILE='test-profile'
+export BEND_NOTARY_KEYCHAIN="$root/signing.keychain-db"
 cat > "$root/dist/Bend.app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0"?><plist version="1.0"><dict>
 <key>CFBundleShortVersionString</key><string>1.2.3</string>
@@ -38,6 +39,7 @@ cat > "$root/bin/xcrun" <<'SH'
 set -euo pipefail
 if [[ "$1 $2" == 'notarytool submit' ]]; then
   [[ "$*" == *'--keychain-profile test-profile'* ]]
+  [[ "$*" == *"--keychain $BEND_NOTARY_KEYCHAIN"* ]]
   if [[ "$3" == *.zip ]]; then label=app; else label=dmg; fi
   printf '%s-notary\n' "$label" >> "$BEND_PROD_TEST_ROOT/events"
   if [[ "${BEND_PROD_TEST_FAIL:-}" == "$label-notary" ]]; then status=Invalid; else status=Accepted; fi

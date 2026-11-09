@@ -11,6 +11,7 @@ Requires macOS, Python 3, and Apple's build/signing tools. No Finder session nee
 
 Environment:
   BEND_NOTARY_PROFILE    Keychain credentials profile (default: bend-notary)
+  BEND_NOTARY_KEYCHAIN   Optional explicit keychain path (used by CI)
   BEND_SIGNING_IDENTITY  Developer ID Application certificate
 HELP
 }
@@ -25,6 +26,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 identity="${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}"
+notary_credentials=(--keychain-profile "$profile")
+if [[ -n "${BEND_NOTARY_KEYCHAIN:-}" ]]; then notary_credentials+=(--keychain "$BEND_NOTARY_KEYCHAIN"); fi
 mkdir -p dist
 work="$(mktemp -d "$PWD/dist/.build-prod.XXXXXX")"
 logs="$(mktemp -d "$PWD/dist/notary-$(date +%Y%m%d-%H%M%S).XXXXXX")"
@@ -48,14 +51,14 @@ notarize() {
   local artifact="$1" label="$2" result="$logs/$2-submission.json"
   printf 'Notarizing %s (Keychain profile: %s)…\n' "$label" "$profile"
   local submitted=0
-  xcrun notarytool submit "$artifact" --keychain-profile "$profile" \
+  xcrun notarytool submit "$artifact" "${notary_credentials[@]}" \
     --wait --timeout 30m --output-format json > "$result" || submitted=$?
   local submission status
   submission="$(plutil -extract id raw -o - "$result" 2>/dev/null || true)"
   status="$(plutil -extract status raw -o - "$result" 2>/dev/null || true)"
   if [[ -n "$submission" ]]; then
     printf 'Submission %s: %s\n' "$submission" "$status"
-    xcrun notarytool log "$submission" --keychain-profile "$profile" "$logs/$label-log.json" || true
+    xcrun notarytool log "$submission" "${notary_credentials[@]}" "$logs/$label-log.json" || true
   fi
   if [[ $submitted -ne 0 || "$status" != Accepted ]]; then
     cat "$result" >&2

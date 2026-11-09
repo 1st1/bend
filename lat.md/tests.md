@@ -917,4 +917,10 @@ A unique temporary preference and cookie marker written in Debug must be absent 
 
 [[scripts/test-release.py#ReleaseTests]] runs real Changie in disposable repositories to verify version-driven release preparation and PR checks without changing the working project.
 
-The tests verify fragment consumption, matching version notes and changelog generation, refusal to reuse or decrease versions, invalid version rejection, required fragments for user-facing changes, the internal-only escape, stale changelog detection, and immutable historical release notes. Run `python3 scripts/test-release.py`; no signing credentials are required.
+The tests verify fragment consumption, matching version notes and changelog generation, refusal to reuse or decrease versions, baseline initialization without a release trigger, invalid version rejection, required fragments for user-facing changes, the internal-only escape, stale changelog detection, and immutable historical release notes. Run `python3 scripts/test-release.py`; no signing credentials are required.
+
+## CI signing credential lifecycle
+
+[[scripts/test-ci-signing.py#SigningTests]] verifies temporary credential handling with mocked system commands, without touching a real keychain or contacting Apple.
+
+Coverage includes restrictive file permissions, raw credential removal after import, original keychain search-list restoration, cleanup after notarization setup failure, removal even when keychain commands fail, and missing-secret rejection before system changes. Run `python3 scripts/test-ci-signing.py`.

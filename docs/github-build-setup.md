@@ -1,57 +1,53 @@
-# GitHub production build setup
+# GitHub production builds
 
-The changelog/version validation workflow is implemented. The steps below describe the remaining production workflow and repository setup; signed GitHub builds and publication are not enabled yet.
+Bend CI is defined in `.github/workflows/changelog.yml`. Every PR and main push validates release metadata, compiles production, and runs the Swift tests on an Apple Silicon macOS 26 runner with Xcode 26.6. A same-repository PR increasing VERSION also builds a signed, notarized DMG candidate. The initial addition of VERSION establishes a baseline without requesting a release.
 
-## Release contract
+Every update to a release PR rebuilds its candidate. The workflow compares VERSION with the PR base rather than using a paths filter, and all jobs check out the same event commit. The aggregate **CI** check requires the production job only for version-bump PRs. Actions are pinned to reviewed commit SHAs.
 
-`VERSION` is the source of truth. A pull request increasing it, with matching prepared changelog notes, should build a production candidate. Every subsequent code update to that release PR should rebuild the candidate, even when the update does not itself edit VERSION. Ordinary PRs run checks without signing a release.
+Candidates are uploaded as Actions artifacts with checksums, release notes, and build provenance. This workflow does not create tags or publish GitHub Releases. The signing job uses temporary credentials, cleans them up on success or failure, and runs only for trusted same-repository release PRs. Fork PRs never receive signing secrets.
 
-Compare the checked-out PR with its base using `python3 scripts/release.py check --base-ref "$BASE_SHA"`; its `version_changed` output is suitable for a job condition. Do not use a workflow-level `paths: [VERSION]` filter: use the semantic comparison and keep required status checks present on every PR. Checkout the same commit for validation, tests, and packaging. Include the commit SHA and build number in uploaded artifact names.
+## One-time credential setup
 
-Candidates belong in Actions artifacts. Merging and publishing a GitHub Release should be a separate step, so an unmerged PR never becomes the public latest release. A later publishing workflow should build the merged commit, tag that exact commit, attach the DMG/checksum/release notes to a draft release, then publish only after verification. Never silently replace an already published version.
+The repository's `release-signing` environment, `BEND_SIGNING_IDENTITY` variable, and `no-changelog` label have been created. The private signing and notarization secrets below must be supplied before a production candidate can succeed.
 
-## 1. Select a working macOS toolchain
+### Export the signing identity
 
-Use an Apple Silicon macOS 26 runner and pin a tested Xcode installation instead of relying on `macos-latest`. GitHub's [macOS 26 ARM64 image inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md) currently lists Xcode 26.x SDKs.
+Open **Keychain Access → My Certificates**. Find **Developer ID Application: Yury Selivanov (QA7X6JBN4H)**, expand it, and confirm its private key is present. Export the identity to a password-protected `.p12` file. A `.cer` file alone is insufficient because CI needs the private key to sign.
 
-The media menu uses a guarded dynamic call for the public `NSMenuItem.preferredImageVisibility` preference, so the macOS 27 SDK is not required. Use a macOS 26.5 SDK and keep the deployment target at 26.0. Verify the app and its tests with the selected GitHub toolchain before adding signing credentials; local SDK validation does not establish hosted-runner UI-test behavior.
+Save the file outside the repository. Upload it directly to the environment secret, replacing the example path:
 
-## 2. Create the signing environment
+```sh
+base64 -i "/path/to/Bend.p12" | gh secret set BEND_CERTIFICATE_P12_BASE64 --repo 1st1/bend --env release-signing
+gh secret set BEND_CERTIFICATE_PASSWORD --repo 1st1/bend --env release-signing
+```
 
-In the repository, open **Settings → Environments** and create `release-signing`. Restrict signed builds to trusted same-repository release PRs; fork PRs run the metadata and unsigned checks only. Use `pull_request`, not `pull_request_target` with PR code. Configure environment review if contributors can push branches that should not automatically receive signing credentials.
+The second command prompts for the export password. Do not put that password in the command line or commit either credential file.
 
-Export the **Developer ID Application** certificate together with its private key from Keychain Access as a password-protected `.p12`. Add these environment secrets:
+### Create the notarization API key
 
-| Secret | Value |
-| --- | --- |
-| `BEND_CERTIFICATE_P12_BASE64` | Base64 contents of that `.p12` |
-| `BEND_CERTIFICATE_PASSWORD` | Export password |
-| `BEND_NOTARY_KEY_P8` | App Store Connect team API private key contents |
-| `BEND_NOTARY_KEY_ID` | API key ID |
-| `BEND_NOTARY_ISSUER_ID` | Team API issuer ID |
+In **App Store Connect → Users and Access → Integrations → App Store Connect API → Team Keys**, create a key named **Bend CI** with **Developer** access. Use a team API key because the workflow supplies an Issuer ID. If API access has not been enabled, the Account Holder must request it first. Download the `.p8` private key and record its Key ID and Issuer ID. Apple permits only one private-key download. See [Apple's API key instructions](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api).
 
-Add environment variable `BEND_SIGNING_IDENTITY` with the full Developer ID Application certificate name. The API key must be authorized for notarization. The existing local `bend-notary` profile and private key do not automatically exist on a hosted runner.
+Upload the key and enter the identifiers at the prompts:
 
-## 3. Add the production candidate job
+```sh
+gh secret set BEND_NOTARY_KEY_P8 --repo 1st1/bend --env release-signing < "/path/to/AuthKey_KEYID.p8"
+gh secret set BEND_NOTARY_KEY_ID --repo 1st1/bend --env release-signing
+gh secret set BEND_NOTARY_ISSUER_ID --repo 1st1/bend --env release-signing
+```
 
-Add a job to the PR workflow, dependent on successful metadata validation, with `environment: release-signing` and a condition requiring a VERSION increase and a same-repository PR. Configure a timeout covering both notarization submissions. Pin third-party actions to reviewed commits.
+These credentials authorize notarization; distributing Bend as a DMG does not require listing it on the App Store. GitHub's [signing guide](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications) describes the temporary-keychain approach used by `scripts/ci-signing.py`.
 
-The job must:
+### Verify configuration
 
-1. Check out the validated commit and select the tested Xcode toolchain. Confirm `uname -m` is `arm64` and print Swift/SDK versions.
-2. Run the Swift tests, `bash scripts/test-build-app.sh`, and `bash scripts/test-build-prod.sh`. Test native UI behavior on the runner before making those checks mandatory.
-3. Decode the certificate into `$RUNNER_TEMP`, create/unlock a temporary keychain, import the `.p12`, and set its key partition list to `apple-tool:,apple:` so codesign works without a prompt. Preserve and restore the original keychain search list.
-4. Write the API private key into `$RUNNER_TEMP` with restrictive permissions and run `xcrun notarytool store-credentials bend-notary --key PATH --key-id ID --issuer ISSUER --keychain TEMP_KEYCHAIN`. Include this keychain in the user's keychain search list so the existing build script can find the profile.
-5. Allocate a unique increasing numeric `BEND_BUILD_NUMBER` for every candidate, including retries. A single workflow can derive it from `github.run_number` and `github.run_attempt` with a bounded retry field; do not reset the counter when recreating the workflow. Export `BEND_SIGNING_IDENTITY` and `BEND_NOTARY_PROFILE=bend-notary`.
-6. Run `./scripts/build-prod.sh`. It builds production from source, signs/notarizes/staples the app, creates the DMG with dmgbuild, signs/notarizes/staples the DMG, verifies Gatekeeper, and then publishes the local artifact. Python 3 and network access to PyPI are needed for its first dmgbuild setup; dependencies are pinned in `scripts/dmgbuild-requirements.txt`.
-7. Generate a SHA-256 file and upload only the final `dist/Bend-VERSION-arm64.dmg`, checksum, `.changes/vVERSION.md`, and build provenance. Upload `dist/notary-*` as diagnostic artifacts on failure. Do not upload the whole work directory or keychain.
-8. In an `always()` cleanup step, restore the keychain search list, delete the temporary keychain, and remove the `.p12` and `.p8` files.
+List secret names without revealing values:
 
-GitHub documents the [temporary-keychain signing approach](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications). Only the eventual publication job needs repository `contents: write`; candidate building and artifact uploading do not require a personal access token.
+```sh
+gh secret list --repo 1st1/bend --env release-signing
+```
 
-## 4. Turn on required checks and run the first candidate
+The list must contain all five names: BEND_CERTIFICATE_P12_BASE64, BEND_CERTIFICATE_PASSWORD, BEND_NOTARY_KEY_P8, BEND_NOTARY_KEY_ID, and BEND_NOTARY_ISSUER_ID. The environment variable BEND_SIGNING_IDENTITY is already configured with the full Developer ID certificate name.
 
-Push the workflow and enable Actions. Add **Changelog and version** as a required check in the main-branch ruleset. Create the `no-changelog` label for internal-only PRs. Once the native job has passed on the selected runner, require its aggregate status too; non-release PRs must satisfy that status without needing a signing job.
+## First production candidate
 
 On a release branch, edit VERSION to `0.2.0` and run:
 
@@ -61,4 +57,8 @@ python3 scripts/release.py check
 git add VERSION CHANGELOG.md .changes
 ```
 
-Commit and open a PR. Confirm the candidate job runs, download its artifact, and smoke-test it on macOS 26 and the current macOS release. A second commit to that PR should produce a new candidate with the same app version and a higher build number. A PR that only adds a normal changelog fragment must not start production signing.
+Commit and open a PR. Successful metadata and native jobs unlock the production job, which signs, notarizes, and staples the app and DMG. Download the **Bend-VERSION-arm64-RUN-ATTEMPT** artifact from the workflow run. It contains the DMG, SHA256SUMS, RELEASE_NOTES.md, and build.json. Signing failures retain notarization diagnostics when available.
+
+Each candidate uses `run_number * 1000 + run_attempt` as BEND_BUILD_NUMBER, with attempts bounded below 1000. Fresh runs and retries within a run increase it; rerunning an older workflow retains the older number range. The app version remains the value in VERSION.
+
+Smoke-test a signed candidate on macOS 26 and the current release before publishing it. Once native checks are confirmed on GitHub, **CI** can be made a required check in the main-branch ruleset. Public publication remains a separate workflow to implement; PR candidates never become the public latest release automatically.

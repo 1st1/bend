@@ -2,5 +2,6 @@
 .swiftpm/
 dist/
 .DS_Store
+__pycache__/
 .codex/config.toml
 .codex/hooks.json
