@@ -70,8 +70,18 @@ struct DownloadsList: View {
             HStack {
                 Text("Downloads").font(.headline)
                 Spacer()
-                Button("Clear Finished") { downloads.clearFinished() }
-                    .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                Button { downloads.clearFinished() } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Image(systemName: "eraser")
+                            .font(.system(size: 9, weight: .regular))
+                            .alignmentGuide(.firstTextBaseline) { dimensions in
+                                dimensions[VerticalAlignment.center] + NSFont.systemFont(ofSize: 12).capHeight / 2
+                            }
+                            .accessibilityHidden(true)
+                        Text("Clear").font(.system(size: 12))
+                    }
+                }
+                    .buttonStyle(ChromeButtonStyle(pill: true))
                     .disabled(!downloads.items.contains { $0.state != .downloading && $0.state != .cancelling })
             }.padding(14)
             Divider()

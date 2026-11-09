@@ -45,6 +45,9 @@ struct ChromeButtonStyle: ButtonStyle {
                     Capsule()
                         .fill(ChromeButtonStyle.highlightBackground.opacity(highlighted ? 1 : 0))
                         .frame(width: pill ? nil : (prominent ? 28 : 22), height: prominent ? 28 : 22)
+                        // Fade only the hover fill. Animating hierarchical
+                        // foreground styles can crossfade text through clear.
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: highlighted)
                 }
                 .contentShape(Rectangle())
                 .onHover { hovered = $0 }
@@ -56,8 +59,6 @@ struct ChromeButtonStyle: ButtonStyle {
                 .onReceive(NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)) { _ in
                     hovered = false
                 }
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: highlighted)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: configuration.isPressed)
         }
     }
 }
