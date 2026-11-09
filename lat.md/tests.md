@@ -917,7 +917,7 @@ A unique temporary preference and cookie marker written in Debug must be absent 
 
 [[scripts/test-release.py#ReleaseTests]] runs real Changie in disposable repositories to verify version-driven release preparation and PR checks without changing the working project.
 
-The tests verify fragment consumption, matching version notes and changelog generation, refusal to reuse or decrease versions, baseline initialization without a release trigger, invalid version rejection, required fragments for user-facing changes, the internal-only escape, stale changelog detection, and immutable historical release notes. Run `python3 scripts/test-release.py`; no signing credentials are required.
+The tests verify fragment consumption, validation when a clean checkout omits the empty fragment directory, malformed-fragment rejection, matching version notes and changelog generation, refusal to reuse or decrease versions, baseline initialization without a release trigger, invalid version rejection, required fragments for user-facing changes, the internal-only escape, stale changelog detection, and immutable historical release notes. Run `python3 scripts/test-release.py`; no signing credentials are required.
 
 ## CI signing credential lifecycle
 
