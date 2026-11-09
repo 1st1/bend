@@ -31,13 +31,37 @@ import WebKit
         #expect(throws: CatalogError.self) { try parse(json) }
     }
     let safari = CatalogExtension.curated[0]
-    var release: [String: Any] = ["tag_name": safari.download.version, "draft": false, "prerelease": false,
-        "assets": [["name": safari.download.url.lastPathComponent, "state": "uploaded", "size": 9000000,
-            "digest": "sha256:" + safari.download.sha256, "browser_download_url": safari.download.url.absoluteString]]]
-    #expect(try safari.updateSource.parse(JSONSerialization.data(withJSONObject: release), packageIdentifier: safari.packageIdentifier).sha256 == safari.download.sha256)
-    release["prerelease"] = true
-    #expect(throws: CatalogError.self) {
-        try safari.updateSource.parse(JSONSerialization.data(withJSONObject: release), packageIdentifier: safari.packageIdentifier)
+    let releaseURL = URL(string: "https://github.com/uBlockOrigin/uBOL-home/releases/tag/\(safari.download.version)")!
+    #expect(try GitHubReleasePage.version(from: releaseURL) == safari.download.version)
+    let filename = safari.download.url.lastPathComponent
+    let row = """
+    <li><a class="asset" href="\(safari.download.url.path)"><span>\(filename)</span></a>
+    <span class="Truncate-text">sha256:\(safari.download.sha256)</span></li>
+    """
+    func parseAssets(_ html: String) throws -> CatalogDownload {
+        try GitHubReleasePage.download(from: Data(html.utf8), version: safari.download.version,
+                                       packageIdentifier: safari.packageIdentifier)
+    }
+    let parsed = try parseAssets("<ul>" + row + "</ul>")
+    #expect(parsed.sha256 == safari.download.sha256)
+    #expect(parsed.url == safari.download.url)
+    for invalid in [
+        row + row,
+        row.replacingOccurrences(of: "sha256:", with: "sha512:"),
+        row.replacingOccurrences(of: safari.download.sha256, with: "bad"),
+        row.replacingOccurrences(of: "</li>", with: "<span>sha256:" + hash + "</span></li>"),
+        row.replacingOccurrences(of: safari.download.url.path, with: "https://evil.example/package.zip"),
+        row.replacingOccurrences(of: ".safari.zip", with: ".chromium.zip"),
+        "<li><a href='\(safari.download.url.path)'>Safari</a></li><li><span>sha256:\(safari.download.sha256)</span></li>",
+        "<html>Markup changed</html>"
+    ] {
+        #expect(throws: (any Error).self) { try parseAssets(invalid) }
+    }
+    for address in ["https://evil.example/uBlockOrigin/uBOL-home/releases/tag/1.0",
+                    "https://github.com/other/repo/releases/tag/1.0",
+                    "https://github.com/uBlockOrigin/uBOL-home/releases/tag/1.0-beta",
+                    "https://github.com/uBlockOrigin/uBOL-home/releases/tag/1.0?unexpected=true"] {
+        #expect(throws: CatalogError.self) { try GitHubReleasePage.version(from: URL(string: address)!) }
     }
     #expect(ExtensionVersion.isNewer("1.10", than: "1.9"))
     #expect(!ExtensionVersion.isNewer("1.0.0", than: "1.0"))
@@ -93,6 +117,11 @@ import WebKit
     #expect(downloadCalls == 0)
     #expect(updater.candidates[record.id]?.download.version == "2.0")
     #expect(manager.contexts[record.id]?.webExtension.version == "1.0")
+    let pending = ExtensionUpdater(manager: manager)
+    pending.fetchLatest = { _ in metadataCalls += 1; return download }
+    pending.start(); await pending.task?.value; pending.stop()
+    #expect(metadataCalls == 1)
+    #expect(pending.candidates[record.id]?.download.version == "2.0")
     updater.update(record.id)
     await updater.task?.value
     #expect(downloadCalls == 1)
@@ -109,10 +138,26 @@ import WebKit
     let restored = ExtensionUpdater(manager: manager)
     #expect(!restored.automaticallyInstall)
     #expect(restored.lastChecked != nil)
-    updater.start() // Startup checks even with a recent last-check time.
-    await updater.task?.value
+    restored.fetchLatest = { _ in
+        metadataCalls += 1
+        return download
+    }
+    restored.start() // Reuse persisted metadata and reconstruct the visible status.
+    await restored.task?.value
+    #expect(metadataCalls == 2)
+    #expect(restored.messages[record.id] == "Up to date.")
+    restored.stop()
+    restored.check() // An explicit check bypasses the cache.
+    await restored.task?.value
     #expect(metadataCalls == 3)
-    updater.stop()
+    #expect(!ExtensionUpdater.CachedCheck(checkedAt: Date().addingTimeInterval(60), download: download, error: nil).isFresh(at: Date()))
+    restored.fetchLatest = { _ in throw UpdateServiceError.rateLimited(service: "Mozilla") }
+    restored.check(); await restored.task?.value
+    let failed = ExtensionUpdater(manager: manager)
+    failed.fetchLatest = { _ in metadataCalls += 1; return download }
+    failed.start(); await failed.task?.value; failed.stop()
+    #expect(metadataCalls == 3)
+    #expect(failed.messages[record.id]?.contains("Mozilla") == true)
     updater.automaticallyInstall = true
     // A metadata/package version mismatch must leave the running revision intact.
     let currentSource = manager.records[0].source

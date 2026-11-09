@@ -105,12 +105,18 @@ for failure in app-notary layout dmg-notary dmg-validate dmg-verify; do
   [[ ! -e "$root/mounted" ]]
   [[ -z "$(find "$root/dist" -maxdepth 1 -name '.build-prod.*' -print)" ]]
 done
+failed_logs="$(find "$root/dist" -maxdepth 1 -type d -name 'notary-*' -print | sort)"
+[[ "$(printf '%s\n' "$failed_logs" | wc -l | tr -d ' ')" == 5 ]]
+while IFS= read -r log_dir; do
+  [[ -s "$log_dir/app-submission.json" && -s "$log_dir/app-log.json" ]]
+done <<< "$failed_logs"
 : > "$root/events"
 BEND_NOTARY_PROFILE=ignored bash "$root/scripts/build-prod.sh" --keychain-profile test-profile \
   > "$root/test.log" 2>&1 || { cat "$root/test.log"; exit 1; }
 [[ "$(cat "$installer")" == 'new installer' ]]
 [[ ! -e "$root/mounted" && ! -e "$root/dist/Bend.app/.ticket" ]]
 [[ -z "$(find "$root/dist" -maxdepth 1 -name '.build-prod.*' -print)" ]]
+[[ "$(find "$root/dist" -maxdepth 1 -type d -name 'notary-*' -print | sort)" == "$failed_logs" ]]
 expected=$'app-notary\napp-staple\nimage-create\ndmg-sign\ndmg-notary\ndmg-staple\ndmg-assess'
 [[ "$(cat "$root/events")" == "$expected" ]]
 [[ "$(cat "$root/dist/Bend Debug.app/sentinel")" == 'debug sentinel' ]]

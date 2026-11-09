@@ -123,7 +123,7 @@ Signing and verification failures retain the previous bundle and executable inod
 
 [test-build-prod.sh](../scripts/test-build-prod.sh) exercises the production script with isolated native-tool stand-ins, checking notarization, ticket validation, packaging order, and failure-safe publication.
 
-App or DMG rejection, Finder layout failure, invalid tickets, and disk-image verification failure retain the previous installer and detach temporary mounts. Successful publication requires the app ticket before packaging and the DMG ticket before final assessment. The development app remains untouched by production compilation, packaging, and stapling; the production script must explicitly request its profile and output path. These tests do not substitute for Apple's real service or Finder visual verification.
+App or DMG rejection, Finder layout failure, invalid tickets, and disk-image verification failure retain the previous installer and detach temporary mounts. Successful publication requires the app ticket before packaging and the DMG ticket before final assessment. Failures retain their notarization logs; success removes only its own log folder while preserving earlier failure logs. The development app remains untouched by production compilation, packaging, and stapling; the production script must explicitly request its profile and output path. These tests do not substitute for Apple's real service or Finder visual verification.
 
 ## Catalog download integrity and identity
 
@@ -853,19 +853,19 @@ Moving a live page between windows must preserve a single header material, viewp
 
 ## Extension update metadata
 
-[[Tests/BrowseTests/ExtensionUpdateTests.swift#extensionUpdateMetadata]] verifies approved release selection, package identity, expected download hosts, SHA-256 metadata, size limits, prerelease rejection, and numeric version comparisons.
+[[Tests/BrowseTests/ExtensionUpdateTests.swift#extensionUpdateMetadata]] verifies Mozilla package metadata and GitHub release-page parsing, including exact Safari asset/checksum association, duplicate or missing assets, foreign hosts, invalid tags, changed markup, and numeric version comparisons.
 
 ## Automatic extension updates
 
 [[Tests/BrowseTests/ExtensionUpdateTests.swift#automaticExtensionUpdates]] exercises manual and scheduled checks, request coalescing, persisted preferences, explicit and automatic installation, permission review, failure retention, and removal during download.
 
-Fixtures use isolated extension storage and injected network boundaries. Scheduling checks cover the four-hour interval and unconditional startup check. The installed extension retains its origin, and downloads run without holding the manager’s mutation lock. [[tests#Owned extension packages and updates]] separately verifies native storage preservation and transaction rollback.
+Fixtures use isolated extension storage and injected network boundaries. Scheduling checks cover the four-hour interval, persisted results and failures reused on startup, restored update candidates, explicit checks bypassing the cache, and future-dated cache rejection. The installed extension retains its origin, and downloads run without holding the manager’s mutation lock. [[tests#Owned extension packages and updates]] separately verifies native storage preservation and transaction rollback.
 
 ## Extension update service smoke test
 
-[[Tests/BrowseTests/ExtensionUpdateTests.swift#extensionUpdateServiceSmoke]] optionally queries the official release APIs and downloads each published package with digest validation, without installing it or modifying the user profile.
+[[Tests/BrowseTests/ExtensionUpdateTests.swift#extensionUpdateServiceSmoke]] optionally queries the official release pages or APIs and downloads each published package with digest validation, without installing it or modifying the user profile.
 
-Set `BROWSE_TEST_EXTENSION_UPDATES=1` to enable all live network checks, or supply comma-separated catalog IDs to select sources. Public API rate limits remain real failures and are not bypassed with application credentials.
+Set `BROWSE_TEST_EXTENSION_UPDATES=1` to enable all live network checks, or supply comma-separated catalog IDs to select sources. Public-service rate limits remain real failures; no application credentials are used.
 
 ## Safari direct-download migration
 

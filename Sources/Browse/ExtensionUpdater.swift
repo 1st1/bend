@@ -9,7 +9,7 @@ enum ExtensionUpdateSource: Sendable {
     var metadataURL: URL {
         switch self {
         case .mozilla(let slug): URL(string: "https://addons.mozilla.org/api/v5/addons/addon/\(slug)/")!
-        case .uBlockSafari: URL(string: "https://api.github.com/repos/uBlockOrigin/uBOL-home/releases/latest")!
+        case .uBlockSafari: URL(string: "https://github.com/uBlockOrigin/uBOL-home/releases/latest")!
         }
     }
 
@@ -20,16 +20,31 @@ enum ExtensionUpdateSource: Sendable {
         configuration.timeoutIntervalForResource = 45
         let session = URLSession(configuration: configuration)
         defer { session.invalidateAndCancel() }
-        var request = URLRequest(url: metadataURL)
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, url) = try await fetchMetadata(metadataURL, session: session)
+        switch self {
+        case .mozilla:
+            return try parse(data, packageIdentifier: packageIdentifier)
+        case .uBlockSafari:
+            let version = try GitHubReleasePage.version(from: url)
+            let assetsURL = URL(string: "https://github.com/uBlockOrigin/uBOL-home/releases/expanded_assets/\(version)")!
+            let (assets, finalURL) = try await fetchMetadata(assetsURL, session: session)
+            guard finalURL == assetsURL else { throw CatalogError.invalidResponse }
+            return try GitHubReleasePage.download(from: assets, version: version, packageIdentifier: packageIdentifier)
+        }
+    }
+
+    private func fetchMetadata(_ url: URL, session: URLSession) async throws -> (Data, URL) {
+        var request = URLRequest(url: url)
+        request.setValue(url.host == "github.com" ? "text/html" : "application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bend-Extension-Updater", forHTTPHeaderField: "User-Agent")
         let (bytes, response) = try await session.bytes(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode == 429 ||
             (http.statusCode == 403 && http.value(forHTTPHeaderField: "X-RateLimit-Remaining") == "0") {
-            throw UpdateServiceError.rateLimited
+            throw UpdateServiceError.rateLimited(service: url.host == "github.com" ? "GitHub" : "Mozilla")
         }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-              response.url?.scheme == "https", response.url?.host == metadataURL.host,
+              let finalURL = response.url, finalURL.scheme == "https", finalURL.host == url.host,
+              finalURL.user == nil, finalURL.password == nil, finalURL.port == nil,
               response.expectedContentLength <= 1_048_576 else { throw CatalogError.invalidResponse }
         var data = Data()
         for try await byte in bytes {
@@ -37,7 +52,7 @@ enum ExtensionUpdateSource: Sendable {
             data.append(byte)
         }
         try Task.checkCancellation()
-        return try parse(data, packageIdentifier: packageIdentifier)
+        return (data, finalURL)
     }
 
     func parse(_ data: Data, packageIdentifier: String) throws -> CatalogDownload {
@@ -60,15 +75,7 @@ enum ExtensionUpdateSource: Sendable {
             }
             version = number; file = asset; address = url; digest = hash
         case .uBlockSafari:
-            guard packageIdentifier == "safari:net.raymondhill.uBlock-Origin-Lite.Extension",
-                  object["draft"] as? Bool == false, object["prerelease"] as? Bool == false,
-                  let number = object["tag_name"] as? String,
-                  let assets = object["assets"] as? [[String: Any]],
-                  let asset = assets.first(where: { $0["name"] as? String == "uBOLite_\(number).safari.zip" }),
-                  asset["state"] as? String == "uploaded",
-                  let url = asset["browser_download_url"] as? String,
-                  let hash = asset["digest"] as? String else { throw CatalogError.invalidResponse }
-            version = number; file = asset; address = url; digest = hash
+            throw CatalogError.invalidResponse // Safari metadata comes from GitHubReleasePage.
         }
         guard ExtensionVersion.components(version) != nil,
               let size = file["size"] as? Int, size > 0, size <= CatalogDownload.maximumBytes,
@@ -93,8 +100,13 @@ enum ExtensionUpdateSource: Sendable {
 }
 
 enum UpdateServiceError: LocalizedError {
-    case rateLimited
-    var errorDescription: String? { "The update service is temporarily rate-limited. Bend will try again at its next scheduled check." }
+    case rateLimited(service: String)
+    var errorDescription: String? {
+        switch self {
+        case .rateLimited(let service):
+            "\(service) temporarily refused update requests because its request limit was reached. Your installed extension is unaffected."
+        }
+    }
 }
 
 enum ExtensionVersion {
@@ -130,11 +142,22 @@ final class ExtensionUpdater: ObservableObject {
         let download: CatalogDownload
         let installedSource: URL
     }
+    struct CachedCheck: Codable {
+        let checkedAt: Date
+        let download: CatalogDownload?
+        let error: String?
+
+        func isFresh(at now: Date) -> Bool {
+            let age = now.timeIntervalSince(checkedAt)
+            return age >= 0 && age < ExtensionUpdater.checkInterval
+        }
+    }
     struct Preferences: Codable {
         var automaticallyInstall = true
         var lastChecked: Date?
+        var cachedChecks: [String: CachedCheck]?
     }
-    static let checkInterval: TimeInterval = 4 * 60 * 60
+    nonisolated static let checkInterval: TimeInterval = 4 * 60 * 60
     @Published private(set) var checking = false
     @Published private(set) var installing: UUID?
     @Published private(set) var candidates: [UUID: Candidate] = [:]
@@ -146,6 +169,7 @@ final class ExtensionUpdater: ObservableObject {
     private let preferencesURL: URL
     private var timer: AnyCancellable?
     private var startupCheckPending = false
+    private var cachedChecks: [String: CachedCheck] = [:]
     private(set) var task: Task<Void, Never>?
     // Injectable boundaries keep tests deterministic and off public services.
     var fetchLatest: (CatalogExtension) async throws -> CatalogDownload = {
@@ -159,14 +183,15 @@ final class ExtensionUpdater: ObservableObject {
         if let data = try? Data(contentsOf: preferencesURL), let saved = try? JSONDecoder().decode(Preferences.self, from: data) {
             automaticallyInstall = saved.automaticallyInstall
             lastChecked = saved.lastChecked
+            cachedChecks = saved.cachedChecks ?? [:]
         }
     }
 
     func start() {
         guard timer == nil else { return }
-        // Startup always checks after extension restoration, even if the last run was recent.
+        // Restore recent results after loading extensions; only stale sources need a request.
         startupCheckPending = true
-        check()
+        check(force: false)
         timer = Timer.publish(every: 60, tolerance: 15, on: .main, in: .common).autoconnect().sink { [weak self] _ in
             self?.checkIfDue()
         }
@@ -174,7 +199,7 @@ final class ExtensionUpdater: ObservableObject {
 
     func checkIfDue(now: Date = Date()) {
         guard startupCheckPending || lastChecked == nil || now.timeIntervalSince(lastChecked!) >= Self.checkInterval else { return }
-        check()
+        check(force: false, now: now)
     }
 
     func stop() {
@@ -182,7 +207,7 @@ final class ExtensionUpdater: ObservableObject {
         task?.cancel()
     }
 
-    func check() {
+    func check(force: Bool = true, now: Date = Date()) {
         guard task == nil else { return }
         checking = true
         task = Task { [weak self] in
@@ -194,12 +219,29 @@ final class ExtensionUpdater: ObservableObject {
             guard !manager.busy else { return }
             let records = manager.records
             candidates = candidates.filter { id, _ in records.contains { $0.id == id } }
+            var fetchedMetadata = false
             for record in records {
                 guard !Task.isCancelled else { return }
                 guard let entry = CatalogExtension.curated.first(where: { $0.packageIdentifier == record.packageIdentifier }),
                       let version = manager.contexts[record.id]?.webExtension.version else { continue }
                 do {
-                    let download = try await fetchLatest(entry)
+                    let result: CachedCheck
+                    if !force, let cached = cachedChecks[entry.id], cached.isFresh(at: now) {
+                        result = cached
+                    } else {
+                        fetchedMetadata = true
+                        do {
+                            let download = try await fetchLatest(entry)
+                            result = CachedCheck(checkedAt: Date(), download: download, error: nil)
+                        } catch is CancellationError { return }
+                        catch { result = CachedCheck(checkedAt: Date(), download: nil, error: error.localizedDescription) }
+                        try Task.checkCancellation()
+                        cachedChecks[entry.id] = result
+                    }
+                    guard let download = result.download else {
+                        messages[record.id] = "Couldn’t check for updates: \(result.error ?? "No release information was returned.")"
+                        continue
+                    }
                     try Task.checkCancellation()
                     guard manager.records.contains(where: { $0.id == record.id && $0.source == record.source }) else { continue }
                     let migration = entry.id == "ublock-lite" && record.isBundle && download.version == version
@@ -216,7 +258,8 @@ final class ExtensionUpdater: ObservableObject {
             }
             guard !Task.isCancelled else { return }
             startupCheckPending = false
-            lastChecked = Date(); savePreferences()
+            if fetchedMetadata { lastChecked = Date() }
+            savePreferences()
         }
     }
 
@@ -253,7 +296,7 @@ final class ExtensionUpdater: ObservableObject {
     private func savePreferences() {
         do {
             try FileManager.default.createDirectory(at: preferencesURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(Preferences(automaticallyInstall: automaticallyInstall, lastChecked: lastChecked))
+            try JSONEncoder().encode(Preferences(automaticallyInstall: automaticallyInstall, lastChecked: lastChecked, cachedChecks: cachedChecks))
                 .write(to: preferencesURL, options: .atomic)
             preferenceError = nil
         } catch { preferenceError = "Update preferences could not be saved." }

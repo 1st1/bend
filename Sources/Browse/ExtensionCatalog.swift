@@ -7,8 +7,8 @@ struct CatalogExtension: Identifiable, Sendable {
     let name: String
     let publisher: String
     let category: String
+    // Official English manifest descriptions, used before a package is installed.
     let summary: String
-    let compatibility: String
     let experimental: Bool
     let symbol: String
     let packageIdentifier: String
@@ -24,8 +24,7 @@ struct CatalogExtension: Identifiable, Sendable {
 
     static let curated: [CatalogExtension] = [
         .init(id: "ublock-lite", name: "uBlock Origin Lite", publisher: "Raymond Hill", category: "Privacy",
-            summary: "Block ads and trackers with lightweight, built-in filter lists.",
-            compatibility: "Blocking reported working in Bend with the Safari package. Advanced filtering and site-specific behavior may vary.",
+            summary: "An efficient content blocker. Blocks ads, trackers, miners, and more immediately upon installation.",
             experimental: false, symbol: "shield.lefthalf.filled",
             packageIdentifier: "safari:net.raymondhill.uBlock-Origin-Lite.Extension",
             website: URL(string: "https://github.com/uBlockOrigin/uBOL-home")!,
@@ -34,8 +33,7 @@ struct CatalogExtension: Identifiable, Sendable {
                 sha256: "7be53009c38dd47726ce26b3fa02e93ac93e77ac5d276543e855997650128a9c"),
             updateSource: .uBlockSafari),
         .init(id: "1password", name: "1Password", publisher: "1Password", category: "Passwords",
-            summary: "Keep passwords and vault items close at hand as you browse.",
-            compatibility: "Sign in directly to your 1Password account. Vault items have been confirmed in Bend; autofill still needs testing. Desktop connection requires adding Bend in 1Password’s trusted browsers; Touch ID remains unverified. Use this version instead of 1Password for Safari.",
+            summary: "The best way to experience 1Password in your browser. Easily sign in to sites, generate passwords, and store secure information.",
             experimental: true, symbol: "key.fill",
             packageIdentifier: "gecko:{d634138d-c276-4fc8-924b-40a0ea21d284}",
             website: URL(string: "https://addons.mozilla.org/firefox/addon/1password-x-password-manager/")!,
@@ -44,8 +42,7 @@ struct CatalogExtension: Identifiable, Sendable {
                 sha256: "6b00acff73253865303af49e99329245a940348484cbd931ea39f9fa215134f5"),
             updateSource: .mozilla(slug: "1password-x-password-manager")),
         .init(id: "dark-reader", name: "Dark Reader", publisher: "Dark Reader Ltd", category: "Appearance",
-            summary: "Give websites a dark theme with adjustable brightness and contrast.",
-            compatibility: "Dark themes, on/off controls, and per-site toggles passed Bend's compatibility test. Appearance may vary by website.",
+            summary: "Dark mode for every website. Take care of your eyes, use dark theme for night and daily browsing.",
             experimental: true, symbol: "moon.fill",
             packageIdentifier: "gecko:addon@darkreader.org",
             website: URL(string: "https://darkreader.org/")!,
@@ -56,7 +53,7 @@ struct CatalogExtension: Identifiable, Sendable {
     ]
 }
 
-struct CatalogDownload: Sendable {
+struct CatalogDownload: Codable, Sendable {
     let version: String
     let url: URL
     let sha256: String

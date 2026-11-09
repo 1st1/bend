@@ -529,9 +529,6 @@ struct ExtensionManagementView: View {
     var body: some View {
         let context = manager.contexts[record.id]
         VStack(alignment: .leading, spacing: 10) {
-            if let version = context?.webExtension.displayVersion {
-                Text("Installed version \(version)").font(.caption).foregroundStyle(.secondary)
-            }
             if let failure = manager.failures[record.id] { Text(failure).font(.callout).foregroundStyle(.red) }
             if !manager.ownsPackage(record) {
                 Text("Import pending").font(.caption).foregroundStyle(.secondary)
@@ -540,15 +537,9 @@ struct ExtensionManagementView: View {
                 Label(notice, systemImage: "exclamationmark.triangle")
                     .font(.callout).foregroundStyle(.orange).textSelection(.enabled)
             }
-            if let context, context.hasPermission(.init(rawValue: "nativeMessaging")) {
-                Text(manager.nativeMessaging.status(for: context)).font(.caption).foregroundStyle(.secondary)
-            }
             if manager.diagnostics.writeFailed {
                 Text("Diagnostic log could not be saved. Copy Diagnostics still includes this session.")
                     .font(.caption).foregroundStyle(.orange)
-            }
-            if let description = context?.webExtension.displayDescription, !description.isEmpty {
-                Text(description).font(.callout).foregroundStyle(.secondary).lineLimit(3)
             }
             DisclosureGroup("Permissions and website access") {
                 VStack(alignment: .leading, spacing: 4) {

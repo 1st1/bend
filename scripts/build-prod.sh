@@ -40,7 +40,11 @@ cleanup() {
     fi
   fi
   rm -rf "$work"
-  if [[ $status -ne 0 ]]; then printf 'Production build failed. Notarization logs: %s\n' "$logs" >&2; fi
+  if [[ $status -eq 0 ]]; then
+    rm -rf "$logs"
+  else
+    printf 'Production build failed. Notarization logs: %s\n' "$logs" >&2
+  fi
   exit "$status"
 }
 trap cleanup EXIT
@@ -141,4 +145,4 @@ hdiutil verify "$work/Bend.dmg"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$work/Bend.dmg"
 # Replace an earlier release only after every validation succeeds.
 mv -f "$work/Bend.dmg" "$output"
-printf '\nReady to distribute: %s\nNotarization logs: %s\n' "$output" "$logs"
+printf '\nReady to distribute: %s\n' "$output"

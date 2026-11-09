@@ -17,6 +17,8 @@ struct ExtensionCatalogView: View {
 
     private func card(_ entry: CatalogExtension) -> some View {
         let record = manager.catalogRecord(entry)
+        let description = record.flatMap { manager.contexts[$0.id]?.webExtension.displayDescription }
+            .flatMap { $0.isEmpty ? nil : $0 } ?? entry.summary
         return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 14) {
                 Group {
@@ -32,13 +34,12 @@ struct ExtensionCatalogView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(entry.name).font(.system(size: 17, weight: .semibold))
                     Text("\(entry.publisher) · \(entry.category)").font(.caption).foregroundStyle(.secondary)
-                    Text(entry.summary).font(.callout).padding(.top, 3)
                 }
                 Spacer(minLength: 0)
+                ExtensionCardBadges(updater: manager.updates, entry: entry, id: record?.id,
+                    version: record.flatMap { manager.contexts[$0.id]?.webExtension.displayVersion })
             }
-            Text(entry.id == "ublock-lite" ? "Safari package · Direct download" : "Firefox package")
-                .font(.caption).foregroundStyle(.secondary)
-            Text(entry.compatibility).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(description).font(.callout).fixedSize(horizontal: false, vertical: true)
             HStack {
                 Link("About this extension ↗", destination: entry.website).font(.callout)
                 Spacer()
@@ -64,6 +65,35 @@ struct ExtensionCatalogView: View {
         }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
             .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(.primary.opacity(0.06), lineWidth: 1))
+    }
+}
+
+@available(macOS 15.4, *)
+private struct ExtensionCardBadges: View {
+    @ObservedObject var updater: ExtensionUpdater
+    let entry: CatalogExtension
+    let id: UUID?
+    let version: String?
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            HStack(spacing: 6) {
+                pill(entry.id == "ublock-lite" ? "Safari package" : "Firefox package")
+                if let version {
+                    pill(version).help("Installed version \(version)")
+                        .accessibilityLabel("Installed version \(version)")
+                }
+            }
+            if let id, updater.messages[id] == "Up to date.", updater.installing != id {
+                pill("Up to date")
+            }
+        }.fixedSize()
+    }
+
+    private func pill(_ title: String) -> some View {
+        Text(title).font(.caption).foregroundStyle(.secondary)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(.quaternary.opacity(0.6), in: Capsule())
     }
 }
 
@@ -98,7 +128,9 @@ private struct ExtensionUpdateStatus: View {
                 ProgressView().controlSize(.small)
                 Text("Updating…").font(.caption)
             } else {
-                if let message = updater.messages[id] { Text(message).font(.caption).foregroundStyle(.secondary) }
+                if let message = updater.messages[id], message != "Up to date." {
+                    Text(message).font(.caption).foregroundStyle(.secondary)
+                }
                 if updater.candidates[id] != nil {
                     Spacer()
                     Button("Update") { updater.update(id) }
