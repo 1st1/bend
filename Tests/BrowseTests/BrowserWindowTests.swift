@@ -82,6 +82,28 @@ import BrowseCore
             #expect(settings.window.titlebarAppearsTransparent)
         }
     }
+    // A targeted presentation must update the existing sidebar and detail,
+    // not just seed the selection when the SwiftUI view is first created.
+    settings.show(section: .extensions)
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(settings.window.title == "Extensions")
+    #expect(sidebar.selectedRow == 2)
+    settings.show()
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(sidebar.selectedRow == 2)
+    sidebar.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+    try await Task.sleep(for: .milliseconds(100))
+    settings.window.close()
+    settings.show(section: .extensions)
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(settings.window.title == "Extensions")
+    #expect(sidebar.selectedRow == 2)
+    let fresh = SettingsWindowController(store: store)
+    defer { fresh.window.close() }
+    fresh.show(section: .extensions)
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(fresh.window.title == "Extensions")
+    #expect(table(in: try #require(fresh.window.contentView))?.selectedRow == 2)
 }
 
 // @lat: [[tests#Settings close shortcut]]

@@ -467,7 +467,7 @@ private struct BrowserPane: View {
                     HStack(spacing: 0) {
                         if #available(macOS 15.4, *) {
                             PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
-                                store.focus(pageID); store.onSettingsRequested?()
+                                store.focus(pageID); store.onSettingsRequested?(.extensions)
                             }
                         }
                         iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }

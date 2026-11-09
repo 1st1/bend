@@ -18,7 +18,7 @@ final class BrowserStore: ObservableObject {
     let downloads: BrowserDownloads
     @Published private(set) var paneMoveRevision = 0
     var onAddressRequested: ((UUID) -> Void)?
-    var onSettingsRequested: (() -> Void)?
+    var onSettingsRequested: ((SettingsSection) -> Void)?
     var onEmptiedByTransfer: ((BrowserStore) -> Void)?
     var onNewWindowDrop: ((UUID, UUID?, NSPoint) -> Bool)?
     var onNewLinkWindow: ((String) -> Void)?

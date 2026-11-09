@@ -591,7 +591,7 @@ The native Settings window hides the centered window title and keeps full-size c
 
 [BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies that the native Settings toolbar contains the section title and that sidebar selection updates the window title for UI, Websites, Extensions, and Development.
 
-The toolbar test verifies reopening centers Settings on each available screen after moving it offscreen. It scrolls overflowing detail content beneath the stationary title and back to the top, checking that native titlebar transparency changes with the overlap. It also verifies native toolbar insets and fixed width bounds across all sections while allowing vertical resizing. The sidebar stays 200 points wide across section changes, including attempts to move the native divider in both directions.
+The toolbar test verifies targeted Extensions presentation in fresh, visible, and reopened Settings windows, and that general presentation preserves the current selection. It also verifies reopening centers Settings on each available screen after moving it offscreen. It scrolls overflowing detail content beneath the stationary title and back to the top, checking that native titlebar transparency changes with the overlap. It also verifies native toolbar insets and fixed width bounds across all sections while allowing vertical resizing. The sidebar stays 200 points wide across section changes, including attempts to move the native divider in both directions.
 
 ## Pane-centered location popup
 

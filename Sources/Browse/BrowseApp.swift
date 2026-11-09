@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         InputDiagnostics.transition(.launch, .started)
-        browserWindows.onSettings = { [weak self] in self?.showSettings() }
+        browserWindows.onSettings = { [weak self] section in self?.presentSettings(section: section) }
         restoreBrowserWindows()
         installMenus()
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { event in
@@ -192,9 +192,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func newWindow() { browserWindows.newWindow() }
     @objc private func newTab() { store.newTab() }
     @objc private func showSettings() {
+        presentSettings()
+    }
+    private func presentSettings(section: SettingsSection? = nil) {
         addressPanel?.dismiss(restoreFocus: false)
         if settingsWindow == nil { settingsWindow = SettingsWindowController(store: browserWindows.sharedStore) }
-        settingsWindow?.show(centeredOn: browserWindows.active?.window.screen)
+        settingsWindow?.show(section: section, centeredOn: browserWindows.active?.window.screen)
     }
     @objc private func openLocation() { store.requestAddress() }
     private var activeWebPage: PageController? {

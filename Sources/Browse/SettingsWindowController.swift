@@ -9,6 +9,7 @@ private typealias ViewState<Value> = SwiftUI.State<Value>
 @MainActor
 final class SettingsWindowController {
     let window: NSWindow
+    private let navigation = SettingsNavigation()
     init(store: BrowserStore) {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 880, height: 680),
             styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
@@ -22,7 +23,7 @@ final class SettingsWindowController {
         window.toolbarStyle = .unified
         window.toolbar = NSToolbar(identifier: "BendSettingsTitlebar")
         window.setFrameAutosaveName("BrowseSettings")
-        let hosting = NSHostingController(rootView: BrowserSettingsView(store: store, onScrollUnderHeader: { [weak window] scrolled in
+        let hosting = NSHostingController(rootView: BrowserSettingsView(store: store, navigation: navigation, onScrollUnderHeader: { [weak window] scrolled in
             window?.titlebarAppearsTransparent = !scrolled
             window?.titlebarSeparatorStyle = scrolled ? .automatic : .none
         })
@@ -36,7 +37,8 @@ final class SettingsWindowController {
         window.minSize = NSSize(width: 880, height: 480)
         window.maxSize = NSSize(width: 880, height: window.maxSize.height)
     }
-    func show(centeredOn screen: NSScreen? = nil) {
+    func show(section: SettingsSection? = nil, centeredOn screen: NSScreen? = nil) {
+        if let section { navigation.selection = section }
         let screen = screen ?? NSApp.keyWindow?.screen ?? NSScreen.main
         window.makeKeyAndOrderFront(nil)
         window.contentView?.layoutSubtreeIfNeeded()
@@ -61,7 +63,7 @@ final class SettingsWindowController {
     }
 }
 
-private enum SettingsSection: String, CaseIterable, Identifiable {
+enum SettingsSection: String, CaseIterable, Identifiable {
     case ui = "UI"
     case websites = "Websites"
     case extensions = "Extensions"
@@ -86,15 +88,21 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     }
 }
 
+@MainActor
+final class SettingsNavigation: ObservableObject {
+    @Published var selection: SettingsSection? = .ui
+}
+
 struct BrowserSettingsView: View {
     @ObservedObject var store: BrowserStore
+    @ObservedObject var navigation: SettingsNavigation
     var onScrollUnderHeader: (Bool) -> Void = { _ in }
-    @ViewState<SettingsSection?> private var selection = .ui
     @ViewState<Bool> private var contentUnderHeader = false
+    private var selection: SettingsSection? { navigation.selection }
 
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
-            List(SettingsSection.allCases, selection: $selection) { section in
+            List(SettingsSection.allCases, selection: $navigation.selection) { section in
                 HStack(spacing: 10) {
                     Image(systemName: section.symbol)
                         .font(.system(size: 12, weight: .semibold))

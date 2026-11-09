@@ -9,7 +9,7 @@ final class BrowserWindows {
     private let root: URL
     private(set) var windows: [BrowserWindowSession] = []
     private weak var lastActive: BrowserWindowSession?
-    var onSettings: (() -> Void)?
+    var onSettings: ((SettingsSection) -> Void)?
     private var terminating = false
 
     init(root: URL? = nil, persistentExtensions: Bool = true) {
@@ -66,7 +66,7 @@ final class BrowserWindows {
             return self.detach(tab: tab, pane: pane, from: store, at: point) != nil
         }
         store.onNewLinkWindow = { [weak self] address in self?.openLinkInNewWindow(address) }
-        store.onSettingsRequested = { [weak self] in self?.onSettings?() }
+        store.onSettingsRequested = { [weak self] section in self?.onSettings?(section) }
         store.onEmptiedByTransfer = { [weak self, weak context] destination in
             guard let self, let context, self.windows.count > 1,
                   self.windows.contains(where: { $0 === context }),
