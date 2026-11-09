@@ -55,7 +55,6 @@ import BrowseCore
         if (try? await web.evaluateJavaScript("document.body?.textContent.includes('Fixture')")) as? Bool == true { break }
         try await Task.sleep(for: .milliseconds(50))
     }
-    let stamp = try await web.evaluateJavaScript("performance.timeOrigin") as? Double
     _ = try await web.evaluateJavaScript("document.body.innerHTML='<input id=transfer value=retained>'; window.transferToken='alive'")
     let adapter = try #require(manager.tabs[pageID])
     #expect(store.existingController(for: second.pages[0].id) == nil)
@@ -91,7 +90,7 @@ import BrowseCore
     #expect(store.existingController(for: pageID) === controller)
     #expect(controller.webView === web)
     #expect(web.window === window && !web.isHiddenOrHasHiddenAncestor)
-    #expect(try await web.evaluateJavaScript("performance.timeOrigin") as? Double == stamp)
+    #expect(try await web.evaluateJavaScript("window.transferToken") as? String == "alive")
     #expect(try await web.evaluateJavaScript("document.querySelector('#transfer').value") as? String == "retained")
     #expect(manager.tabs[pageID] === adapter)
     #expect(!store.canReopenClosed)
@@ -166,7 +165,6 @@ import BrowseCore
     #expect(store.selectedTab.pages.map(\.id) == [pageID])
     #expect(store.existingController(for: pageID) === controller)
     #expect(try await web.evaluateJavaScript("window.transferToken") as? String == "alive")
-    #expect(try await web.evaluateJavaScript("performance.timeOrigin") as? Double == stamp)
     #expect(manager.tabs[pageID] === adapter)
     #expect(store.session.isValid)
     #expect(!store.canReopenClosed)
@@ -187,7 +185,7 @@ import BrowseCore
     #expect(store.zoomedPane == nil)
     #expect(store.selectedTab.layout.paneIDs == [second.pages[0].id, pageID])
     #expect(!store.session.workspaces.flatMap(\.tabs).contains { $0.id == detachedID })
-    #expect(try await web.evaluateJavaScript("performance.timeOrigin") as? Double == stamp)
+    #expect(try await web.evaluateJavaScript("window.transferToken") as? String == "alive")
     #expect(try await web.evaluateJavaScript("document.querySelector('#transfer').value") as? String == "retained")
     #expect(!store.canReopenClosed)
     store.save()
@@ -215,7 +213,7 @@ import BrowseCore
     #expect(right == sourceLayout)
     #expect(store.existingController(for: pageID) === controller)
     #expect(controller.webView === web)
-    #expect(try await web.evaluateJavaScript("performance.timeOrigin") as? Double == stamp)
+    #expect(try await web.evaluateJavaScript("window.transferToken") as? String == "alive")
     #expect(try await web.evaluateJavaScript("document.querySelector('#transfer').value") as? String == "retained")
     #expect(manager.tabs[pageID] === adapter)
     #expect(!store.canReopenClosed)
@@ -402,8 +400,6 @@ import BrowseCore
         try await Task.sleep(for: .milliseconds(50))
     }
     _ = try await web.evaluateJavaScript("window.roundTripToken='retained'; document.body.innerHTML='<input id=draft value=unsaved>'")
-    let initialOrigin = try await web.evaluateJavaScript("performance.timeOrigin")
-    let stamp = try #require(initialOrigin as? Double)
     window.makeFirstResponder(web)
     for index in 0..<24 {
         let destination = index.isMultiple(of: 2) ? second.id : first.id
@@ -452,11 +448,6 @@ import BrowseCore
         #expect(store.existingController(for: moving.id) === controller)
         #expect(web.window === window && !web.isHiddenOrHasHiddenAncestor)
         #expect(try await web.evaluateJavaScript("window.roundTripToken") as? String == "retained")
-        let currentOrigin = try await web.evaluateJavaScript("performance.timeOrigin")
-        let actualStamp = try #require(currentOrigin as? Double)
-        // WebKit can quantize this timestamp to adjacent millisecond buckets.
-        // The token and unsaved DOM input above/below prove document identity.
-        #expect(abs(actualStamp - stamp) <= 2)
         #expect(try await web.evaluateJavaScript("document.querySelector('#draft').value") as? String == "unsaved")
         #expect(descendants(PaneDragSurface.self, window.contentView!).isEmpty)
         #expect(!store.canReopenClosed)

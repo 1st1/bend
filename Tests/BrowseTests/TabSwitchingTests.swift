@@ -103,7 +103,6 @@ import BrowseCore
     #expect(host.mounted.count == 1)
     #expect(store.existingController(for: second.pages[0].id) == nil)
     #expect(store.existingController(for: unvisited.pages[0].id) == nil)
-    let stamp = try await web.evaluateJavaScript("performance.timeOrigin") as? Double
     _ = try await web.evaluateJavaScript("""
         window.tabSwitchToken = 'retained';
         document.body.innerHTML = '<input id="draft"><div style="height:3000px"></div>';
@@ -144,7 +143,6 @@ import BrowseCore
     #expect(firstHost.frame == host.bounds)
     #expect(try await web.evaluateJavaScript("window.tabSwitchToken") as? String == "retained")
     #expect(try await web.evaluateJavaScript("document.getElementById('draft').value") as? String == "unsaved input")
-    #expect(try await web.evaluateJavaScript("performance.timeOrigin") as? Double == stamp)
     #expect(try await web.evaluateJavaScript("scrollY") as? Double == scroll)
     #expect(host.mounted[unvisited.id] == nil)
     #expect(store.existingController(for: unvisited.pages[0].id) == nil)
@@ -194,7 +192,6 @@ import BrowseCore
     #expect(otherWeb.superview === otherParent)
     #expect(try await web.evaluateJavaScript("window.tabSwitchToken") as? String == "retained")
     #expect(try await web.evaluateJavaScript("document.getElementById('draft').value") as? String == "unsaved input")
-    #expect(try await web.evaluateJavaScript("performance.timeOrigin") as? Double == stamp)
 
     let secondHost = try #require(host.mounted[second.id])
     store.closeTab(second.id)

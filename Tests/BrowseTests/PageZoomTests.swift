@@ -52,7 +52,7 @@ import Testing
             characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
         #expect(try #require(NSApp.mainMenu).performKeyEquivalent(with: event))
     }
-    let origin = try await pages[0].webView.evaluateJavaScript("performance.timeOrigin") as? Double
+    _ = try await pages[0].webView.evaluateJavaScript("window.zoomDocumentToken = 'retained'; document.querySelector('input').value = 'edited'")
     #expect(pages.allSatisfy { $0.webView.allowsMagnification })
     pages[0].webView.setMagnification(2, centeredAt: NSPoint(x: 250, y: 250))
     #expect(pages[0].webView.magnification == 2)
@@ -82,8 +82,8 @@ import Testing
     #expect(!delegate.validateMenuItem(zoomOut))
     try key("0", code: 29)
     #expect(pages[1].webView.pageZoom == 1)
-    #expect(try await pages[0].webView.evaluateJavaScript("performance.timeOrigin") as? Double == origin)
-    #expect(try await pages[0].webView.evaluateJavaScript("document.querySelector('input').value") as? String == "keep me")
+    #expect(try await pages[0].webView.evaluateJavaScript("window.zoomDocumentToken") as? String == "retained")
+    #expect(try await pages[0].webView.evaluateJavaScript("document.querySelector('input').value") as? String == "edited")
     #expect(store.zoomedPane == nil)
     pages[1].isStartPage = true
     #expect(!delegate.validateMenuItem(zoomIn))

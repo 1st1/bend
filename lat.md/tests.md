@@ -201,7 +201,7 @@ The fixture stores a configured flag before restarting its host, then uses the p
 
 [ExtensionCompatibilityTests.swift](../Tests/BrowseTests/ExtensionCompatibilityTests.swift) verifies that same-tab extension-to-website-to-extension navigation preserves session storage and tab identity without giving the website extension privileges.
 
-A local website cannot read the extension's session storage, call the compatibility bridge, or authorize its own return to a privileged document. An explicit extension tab update returns to the retained view with the original setup marker; the flow creates no extra browser pane. Navigation triggers use synchronous JavaScript evaluation so the test does not depend on an injected async function surviving a document transition.
+A local website cannot read the extension's session storage, call the compatibility bridge, or authorize its own return to a privileged document. An explicit extension tab update returns to the retained view with the original setup marker; the flow creates no extra browser pane. Navigation triggers use synchronous JavaScript evaluation so the test does not depend on an injected async function surviving a document transition. Asynchronous API probes retain their promise and result in the document and poll with a bounded timeout, preserving API errors without depending on a collectable injected completion handler.
 
 ## Dark Reader compatibility smoke test
 
@@ -275,7 +275,7 @@ Opening a link splits its source pane to the right even when another pane is foc
 
 [TabSwitchingTests.swift](../Tests/BrowseTests/TabSwitchingTests.swift) switches between real offscreen WebKit tabs and verifies native parents, document identity, unsaved input, and scroll position survive.
 
-The test uses local HTTP fixtures and ephemeral storage in a full-content window with a unified toolbar. It checks that the titlebar adds no extra top inset. Narrowing and widening columns verifies CSS viewport width matches the native web view, media queries switch layouts, and resize events fire. Both the HTTP request received by the fixture and JavaScript expose Safari-compatible product tokens plus Bend’s identifier. Unvisited tabs remain uncreated, hidden tabs keep their viewport and ignore other tabs' zoom, selection resizes the active host, and tab or background-pane closure removes retained content.
+Document identity is checked with an injected JavaScript marker and unsaved DOM state, rather than a wall-clock-derived performance timestamp. The test uses local HTTP fixtures and ephemeral storage in a full-content window with a unified toolbar. It checks that the titlebar adds no extra top inset. Narrowing and widening columns verifies CSS viewport width matches the native web view, media queries switch layouts, and resize events fire. Both the HTTP request received by the fixture and JavaScript expose Safari-compatible product tokens plus Bend’s identifier. Unvisited tabs remain uncreated, hidden tabs keep their viewport and ignore other tabs' zoom, selection resizes the active host, and tab or background-pane closure removes retained content.
 
 After switching back beneath a later-mounted hidden tab, the test verifies the inactive hosting root rejects hit tests and each visible pane's center resolves to its web view in None, Transparency, Outline, Outline glow, and Title tint modes. Switching highlight styles preserves the same WebView and native parent. On macOS 26 and later, the web surface reaches the pane’s top edge without a border inset. The test also sends a complete mouse gesture through the window: header press, drag across nine interior points of a real web view, and release. Each point activates the target preview; release rearranges the panes and removes the drag surface while preserving native WebKit parents, document identity, and unsaved input.
 
@@ -473,7 +473,7 @@ Disabling animations applies the final layout immediately without intermediate f
 
 [PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) moves the same live pane between two surviving tabs 24 times per layout, using normal and scrolling layouts to check the third drag and later round trips.
 
-The first twenty transfers in each layout hover to select the destination before dropping onto a pane; the remainder drop directly onto the tab row. Each press must reach exactly one visible handle with current tab ownership. The window must consume every mouse event in that gesture and return to idle after release. Synthetic window events verify retained page controllers, document tokens, unsaved form contents, and unique model ownership while both tab trees remain mounted.
+The first twenty transfers in each layout hover to select the destination before dropping onto a pane; the remainder drop directly onto the tab row. Each press must reach exactly one visible handle with current tab ownership. The window must consume every mouse event in that gesture and return to idle after release. Synthetic window events verify retained page controllers, document tokens, unsaved form contents, and unique model ownership while both tab trees remain mounted. Document tokens are injected after navigation and must survive every move; wall-clock-derived performance timestamps are not identity checks.
 
 ## Native extension messaging
 
@@ -581,7 +581,7 @@ Clicks from different source panes reuse the target, independent tabs receive in
 
 [PageZoomTests.swift](../Tests/BrowseTests/PageZoomTests.swift) invokes native menu shortcuts against two web panes to verify zoom-in aliases, zoom-out, reset, focused-pane isolation, bounds, and disabled internal or hidden pages.
 
-Changing page zoom preserves the document and form contents and leaves the independent pane-maximizing layout mode untouched. Native magnification is enabled, scales only one pane, and remains independent of keyboard page zoom. The test applies magnification through WebKit’s public API; physical trackpad gesture delivery requires a manual check.
+Changing page zoom preserves an injected document marker and edited form contents and leaves the independent pane-maximizing layout mode untouched. Native magnification is enabled, scales only one pane, and remains independent of keyboard page zoom. The test applies magnification through WebKit’s public API; physical trackpad gesture delivery requires a manual check.
 
 ## Find in page
 
