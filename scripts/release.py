@@ -39,8 +39,10 @@ def check(base_ref=None, allow_no_fragment=False):
         raise ValueError("Release note heading does not match VERSION")
     if changie("merge", "--dry-run") != (ROOT / "CHANGELOG.md").read_text().strip():
         raise ValueError("CHANGELOG.md is stale; run scripts/changie.sh merge")
-    # Exercise Changie's own fragment parser without mutating any files.
-    changie("batch", "patch", "--dry-run")
+    # Git omits this directory after a release consumes the last fragment.
+    # Exercise Changie's parser only when the directory exists, without writes.
+    if (ROOT / ".changes/unreleased").exists():
+        changie("batch", "patch", "--dry-run")
     changed = False
     if base_ref:
         run("git", "rev-parse", "--verify", f"{base_ref}^{{commit}}")

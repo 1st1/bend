@@ -57,7 +57,15 @@ class ReleaseTests(unittest.TestCase):
         self.command("git", "add", ".")
         self.command("git", "diff", "--cached", "--check")
         self.assertIn("version_changed=true", self.release("check", "--base-ref", self.base).stdout)
+        # A fresh checkout omits the now-empty, untracked fragment directory.
+        (self.root / ".changes/unreleased").rmdir()
+        self.assertIn("version_changed=true", self.release("check", "--base-ref", self.base).stdout)
+        self.assertFalse((self.root / ".changes/unreleased").exists())
         self.release("prepare", success=False)
+
+    def test_malformed_fragment(self):
+        (self.root / ".changes/unreleased/broken.yaml").write_text("kind: [invalid\n")
+        self.release("check", success=False)
 
     def test_invalid_versions(self):
         for value in ("0.2.0", "0.0.9", "01.2.3", "1.2", "1.2.3-beta"):
