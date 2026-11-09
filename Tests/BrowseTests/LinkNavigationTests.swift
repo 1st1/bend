@@ -5,7 +5,20 @@ import WebKit
 @testable import Browse
 
 @MainActor
+private final class LinkFrameProbe: NSObject, WKNavigationDelegate {
+    var main: WKFrameInfo?
+    var child: WKFrameInfo?
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
+        if action.sourceFrame.isMainFrame { main = action.sourceFrame }
+        else { child = action.sourceFrame }
+        decisionHandler(.allow)
+    }
+}
+
+@MainActor
 private final class LinkAction: WKNavigationAction {
+    var source: WKFrameInfo?
     var modifiers: NSEvent.ModifierFlags = .command
     // WKNavigationAction uses a button mask: left = 1, right = 2, middle = 4.
     var button = 1
@@ -16,6 +29,7 @@ private final class LinkAction: WKNavigationAction {
     override var navigationType: WKNavigationType { kind }
     override var request: URLRequest { URLRequest(url: destination) }
     override var targetFrame: WKFrameInfo? { nil }
+    override var sourceFrame: WKFrameInfo { source ?? super.sourceFrame }
 }
 
 // @lat: [[tests#Command-click navigation]]
@@ -233,5 +247,103 @@ private final class LinkAction: WKNavigationAction {
         let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
         #expect(restored.commandClickDestination == .dedicatedPane)
         #expect(restored.session.selectedTab == session.selectedTab)
+    }
+}
+
+// @lat: [[tests#Command-Shift-click destinations]]
+@Test @MainActor func commandShiftClickDestinations() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendShiftLink-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    defer { owner.prepareToQuit(); for context in owner.windows { context.window.close() } }
+    let origin = try #require(owner.active)
+    let store = origin.store
+    let original = store.selectedTab, page = original.pages[0]
+    let controller = store.controller(for: page)
+    #expect(store.commandShiftClickDestination == .newTab)
+    store.commandClickDestination = .dedicatedPane
+    store.newTab(address: "browse://guide")
+    let trailing = store.selectedTab.id
+    store.select(original.id)
+    let action = LinkAction()
+    let configuration = WKWebViewConfiguration()
+    configuration.websiteDataStore = .nonPersistent()
+    let probeWeb = WKWebView(frame: .zero, configuration: configuration)
+    let probe = LinkFrameProbe()
+    probeWeb.navigationDelegate = probe
+    probeWeb.loadHTMLString("<iframe srcdoc=\"<script>location.href='about:blank'</script>\"></iframe>", baseURL: nil)
+    for _ in 0..<100 where probe.main == nil || probe.child == nil { try await Task.sleep(for: .milliseconds(20)) }
+    defer { probeWeb.stopLoading() }
+    action.source = try #require(probe.main)
+    action.modifiers = [.command, .shift]
+    action.destination = URL(string: "http://127.0.0.1:9/shift-click")!
+    func click(popup: Bool) {
+        if popup {
+            #expect(controller.webView(controller.webView, createWebViewWith: WKWebViewConfiguration(),
+                for: action, windowFeatures: WKWindowFeatures()) == nil)
+        } else {
+            var policy: WKNavigationActionPolicy?
+            controller.webView(controller.webView, decidePolicyFor: action) { policy = $0 }
+            #expect(policy == .cancel)
+        }
+    }
+    click(popup: false)
+    #expect(store.selectedTab.id != original.id)
+    #expect(store.selectedTab.pages.map(\.address) == [action.destination.absoluteString])
+    #expect(store.session.workspaces[0].tabs.map(\.id) == [original.id, store.selectedTab.id, trailing])
+    #expect(store.linkOpeners[store.selectedTab.focusedPane] == page.id)
+    #expect(controller.address == page.address)
+    #expect(store.session.workspaces[0].tabs[0].commandClickPaneID == nil)
+
+    store.commandShiftClickDestination = .newPane
+    action.source = try #require(probe.child)
+    click(popup: true)
+    #expect(store.selectedTab.id == original.id)
+    #expect(store.selectedTab.pages.count == original.pages.count + 1)
+    #expect(store.selectedTab.layout.paneIDs.firstIndex(of: store.selectedTab.focusedPane) == 1)
+    #expect(store.selectedTab.commandClickPaneID == nil)
+    #expect(store.linkOpeners[store.selectedTab.focusedPane] == nil)
+    #expect(controller.address == page.address)
+
+    // Shift is independent of the existing dedicated-pane Command-click choice.
+    action.modifiers = .command
+    action.source = try #require(probe.main)
+    click(popup: false)
+    #expect(store.selectedTab.commandClickPaneID == store.selectedTab.focusedPane)
+    let sourceIDs = store.selectedTab.pages.map(\.id)
+    let sourceTabIDs = store.session.workspaces[0].tabs.map(\.id)
+    action.modifiers = [.command, .shift]
+    store.commandShiftClickDestination = .newWindow
+    for popup in [false, true] {
+        let count = owner.windows.count
+        click(popup: popup)
+        #expect(owner.windows.count == count + 1)
+        let destination = try #require(owner.windows.last)
+        #expect(destination !== origin && destination.window.isVisible)
+        #expect(destination.store.session.workspaces.flatMap(\.tabs).count == 1)
+        #expect(destination.store.selectedTab.pages.map(\.address) == [action.destination.absoluteString])
+        #expect(destination.store.commandShiftClickDestination == .newWindow)
+        #expect(store.selectedTab.pages.map(\.id) == sourceIDs)
+        #expect(store.session.workspaces[0].tabs.map(\.id) == sourceTabIDs)
+        let saved = try JSONDecoder().decode(BrowserSession.self,
+            from: Data(contentsOf: root.appendingPathComponent("Windows/\(destination.id).json")))
+        #expect(saved.workspaces[0].tabs[0].pages[0].address == action.destination.absoluteString)
+    }
+    // Preference changes from a secondary window reach the existing source controller.
+    let secondary = try #require(owner.windows.last).store
+    secondary.commandShiftClickDestination = .newTab
+    #expect(store.commandShiftClickDestination == .newTab)
+    click(popup: true)
+    #expect(store.selectedTab.pages.count == 1)
+    #expect(store.selectedTab.pages[0].address == action.destination.absoluteString)
+    #expect(owner.windows.count == 3)
+    for choice in [CommandShiftClickDestination.newTab, .newPane, .newWindow] {
+        secondary.commandShiftClickDestination = choice
+        owner.save()
+        let saved = try JSONDecoder().decode(BrowserSession.self, from: Data(contentsOf: root.appendingPathComponent("session.json")))
+        #expect(saved.commandShiftClickDestination == choice)
+        #expect(saved.commandClickDestination == .dedicatedPane)
     }
 }

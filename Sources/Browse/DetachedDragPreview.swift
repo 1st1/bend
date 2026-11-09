@@ -92,21 +92,23 @@ final class DetachedDragPreview {
             canvas.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -4)
         ])
         for page in pages {
-            if let host = mounted.first(where: { $0.pageID == page.id }), !host.isHiddenOrHasHiddenAncestor,
-               let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
-                host.cacheDisplay(in: host.bounds, to: bitmap)
-                let image = NSImage(size: host.bounds.size); image.addRepresentation(bitmap)
-                canvas.images[page.id] = image
-            }
+            // Never bitmap-render the live pane: its native glass backdrop is
+            // window-composited. Draw miniature chrome separately and ask only
+            // WebKit for page pixels, leaving the live header tree untouched.
+            canvas.titles[page.id] = store.existingController(for: page.id)?.title
             if let controller = store.existingController(for: page.id), !controller.isStartPage,
                let host = mounted.first(where: { $0.pageID == page.id }),
                controller.webView.isDescendant(of: host), !controller.webView.bounds.isEmpty {
-                let webRect = host.convert(controller.webView.bounds, from: controller.webView)
+                let captureRect = (controller.webView.superview as? WebSurfaceHost)?.snapshotContentRect
+                    ?? controller.webView.bounds
+                guard !captureRect.isEmpty else { continue }
+                let webRect = host.convert(captureRect, from: controller.webView)
                 let body = NSRect(x: webRect.minX - host.bounds.minX,
                     y: host.isFlipped ? webRect.minY - host.bounds.minY : host.bounds.maxY - webRect.maxY,
                     width: webRect.width, height: webRect.height)
+                canvas.headerHeights[page.id] = body.minY
                 let configuration = WKSnapshotConfiguration()
-                configuration.rect = controller.webView.bounds
+                configuration.rect = captureRect
                 configuration.snapshotWidth = 640
                 controller.webView.takeSnapshot(with: configuration) { [weak self] image, _ in
                     guard let self, let image else { return }
@@ -185,6 +187,8 @@ final class DragPreviewCanvas: NSView {
     let paneFrames: [UUID: NSRect]
     let pages: [Page]
     var images: [UUID: NSImage] = [:]
+    var titles: [UUID: String] = [:]
+    var headerHeights: [UUID: CGFloat] = [:]
     override var isFlipped: Bool { true }
     init(layout: PaneLayout, pages: [Page], viewport: NSSize, frames: [UUID: NSRect] = [:]) {
         self.pages = pages
@@ -223,14 +227,14 @@ final class DragPreviewCanvas: NSView {
                               width: frame.width * scale, height: frame.height * scale)
             NSColor(calibratedWhite: 0.08, alpha: 0.86).setFill()
             NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3).fill()
-            let header = NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: min(15, rect.height))
-            if images[page.id] == nil {
-                NSColor.white.withAlphaComponent(0.045).setFill(); header.fill()
-                let paragraph = NSMutableParagraphStyle(); paragraph.lineBreakMode = .byTruncatingTail
-                NSString(string: page.address).draw(
-                    in: header.insetBy(dx: 4, dy: 3), withAttributes: [.font: NSFont.systemFont(ofSize: 6),
-                        .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph])
-            }
+            let header = NSRect(x: rect.minX, y: rect.minY, width: rect.width,
+                                height: min((headerHeights[page.id] ?? Chrome.paneHeaderHeight) * scale, rect.height))
+            NSColor.white.withAlphaComponent(0.045).setFill(); header.fill()
+            let paragraph = NSMutableParagraphStyle(); paragraph.lineBreakMode = .byTruncatingTail
+            NSString(string: titles[page.id] ?? page.address).draw(
+                in: header.insetBy(dx: 12 * scale, dy: 10 * scale),
+                withAttributes: [.font: NSFont.systemFont(ofSize: 12 * scale),
+                    .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph])
             if let image = images[page.id] {
                 image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 0.92, respectFlipped: true, hints: nil)
             }

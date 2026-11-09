@@ -42,11 +42,11 @@ final class BrowserWindows {
         return result
     }
 
-    private func create(id: String, fresh: Bool, show: Bool) -> BrowserWindowSession {
+    private func create(id: String, fresh: Bool, show: Bool, address: String = "browse://start") -> BrowserWindowSession {
         let store = id == "main" ? sharedStore : BrowserStore(
             sessionFile: root.appendingPathComponent("Windows/\(id).json"), sharedStore: sharedStore)
         if fresh {
-            let tab = BrowserTab(title: "New tab")
+            let tab = BrowserTab(title: "New tab", pages: [Page(address: address)])
             store.session.workspaces = [Workspace(name: "Tabs", tabs: [tab])]
             store.session.selectedTab = tab.id
         }
@@ -65,6 +65,7 @@ final class BrowserWindows {
             guard let self, let store else { return false }
             return self.detach(tab: tab, pane: pane, from: store, at: point) != nil
         }
+        store.onNewLinkWindow = { [weak self] address in self?.openLinkInNewWindow(address) }
         store.onSettingsRequested = { [weak self] in self?.onSettings?() }
         store.onEmptiedByTransfer = { [weak self, weak context] destination in
             guard let self, let context, self.windows.count > 1,
@@ -80,6 +81,12 @@ final class BrowserWindows {
         }
         if show { context.window.makeKeyAndOrderFront(nil) }
         return context
+    }
+
+    func openLinkInNewWindow(_ address: String) {
+        let context = create(id: UUID().uuidString, fresh: true, show: false, address: address)
+        context.window.makeKeyAndOrderFront(nil)
+        save()
     }
 
     // @lat: [[architecture#Dragging into a new window]]

@@ -362,6 +362,20 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         layoutSubtreeIfNeeded()
     }
 
+    // Page pixels visible below overlaid chrome, in WebKit's coordinates.
+    // A drag thumbnail must not recapture the web content hidden by the header
+    // and stretch it into the shorter visible body.
+    var snapshotContentRect: NSRect {
+        guard let webView = hostedWebView else { return .zero }
+        var rect = webView.bounds
+        if #available(macOS 26.0, *) {
+            let inset = min(rect.height, topContentInset + (isFindBarVisible ? (findBarView?.frame.height ?? 0) : 0))
+            if webView.isFlipped { rect.origin.y += inset }
+            rect.size.height -= inset
+        }
+        return rect
+    }
+
     override func layout() {
         super.layout()
         guard let webView = hostedWebView, webView.superview === self else { return }
@@ -389,10 +403,25 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
                 InputDiagnostics.transition(.surfaceInset, .changed, view: webView, flags: ["obscured": inset > 0])
                 webView.obscuredContentInsets = NSEdgeInsets(top: inset, left: 0, bottom: 0, right: 0)
             }
+            updateWebKitHeaderEffect(webView)
         } else {
             webView.frame = NSRect(x: 0, y: toolsHeight, width: pageWidth, height: max(0, bounds.height - barHeight - toolsHeight))
         }
         linkPreview.place(in: webView.frame, avoiding: linkPreviewPointer)
+    }
+
+    // @lat: [[architecture#Pane materials]]
+    private func updateWebKitHeaderEffect(_ webView: WKWebView) {
+        // WebKit's obscured inset creates its own scroll-pocket blur. Moving
+        // between windows can turn that effect opaque beneath our glass,
+        // producing a second, frosted material. Bend supplies the header
+        // effect, so suppress only this redundant native view, not page pixels.
+        // There is no public macOS WKWebView API for it. Keep the optional SPI
+        // guarded and reapply during layout in case WebKit replaces the view.
+        let selector = NSSelectorFromString("_topScrollPocket")
+        guard webView.responds(to: selector),
+              let pocket = webView.perform(selector)?.takeUnretainedValue() as? NSView else { return }
+        pocket.isHidden = headerGlass != nil
     }
 }
 

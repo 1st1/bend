@@ -2,6 +2,7 @@ import Foundation
 
 public enum SplitAxis: String, Codable, Sendable { case horizontal, vertical }
 public enum CommandClickDestination: String, Codable, Sendable { case newPane, dedicatedPane, newTab }
+public enum CommandShiftClickDestination: String, Codable, Sendable { case newTab, newPane, newWindow }
 
 // @lat: [[architecture#Tiling model]]
 public indirect enum PaneLayout: Codable, Equatable, Sendable {
@@ -185,6 +186,7 @@ public struct BrowserSession: Codable, Sendable {
     public var sidebarWidth: Double?
     public var commandClickOpensNewTab: Bool?
     public var commandClickDestination: CommandClickDestination?
+    public var commandShiftClickDestination: CommandShiftClickDestination?
     public var inactivePaneDimAmount: Double?
     public var windowGlass: GlassAppearance?
     public var paneHeaderGlass: GlassAppearance?

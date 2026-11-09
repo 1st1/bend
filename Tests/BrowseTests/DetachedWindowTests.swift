@@ -271,3 +271,68 @@ import WebKit
         }
     }
 }
+
+private final class PreviewCapturePane: PaneDropHost {
+    var nativeCaptureCount = 0
+    override func cacheDisplay(in rect: NSRect, to bitmapImageRep: NSBitmapImageRep) {
+        nativeCaptureCount += 1
+    }
+}
+
+// @lat: [[tests#Drag preview glass isolation]]
+@Test @MainActor func dragPreviewGlassIsolation() async throws {
+    guard #available(macOS 26.0, *) else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPreviewIsolation-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let page = store.selectedTab.pages[0]
+    let controller = store.controller(for: page)
+    controller.isStartPage = false
+    let source = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 800, height: 600),
+                          styleMask: [.borderless], backing: .buffered, defer: false)
+    source.isReleasedWhenClosed = false
+    defer { source.close() }
+    let pane = PreviewCapturePane(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+    pane.pageID = page.id
+    source.contentView = pane
+    let surface = WebSurfaceHost(frame: pane.bounds)
+    pane.addSubview(surface)
+    surface.update(webView: controller.webView, topContentInset: 40, headerAppearance: store.paneHeaderGlass)
+    source.orderFront(nil)
+    controller.webView.loadHTMLString("<body style='background:white'><h1>Preview isolation</h1><script>window.previewMarker=42</script></body>", baseURL: nil)
+    var ready = false
+    for _ in 0..<100 {
+        if let marker = try? await controller.webView.evaluateJavaScript("window.previewMarker"),
+           marker as? Int == 42 { ready = true; break }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(ready)
+    let webFrame = controller.webView.frame
+    let inset = controller.webView.obscuredContentInsets
+    let header = try #require(surface.subviews.first { String(describing: type(of: $0)) == "PaneHeaderGlass" })
+    let headerFrame = header.frame
+    let contentRect = surface.snapshotContentRect
+    #expect(contentRect.width == 800)
+    #expect(contentRect.height == 560)
+    let visibleInPane = pane.convert(contentRect, from: controller.webView)
+    #expect(abs(visibleInPane.maxY - header.frame.minY) < 0.5)
+    let preview = DetachedDragPreview(store: store, tab: store.selectedTab, pane: page.id, title: "Preview", source: source)
+    defer { preview.close() }
+    let canvas = try #require(preview.panel.contentView?.subviews.compactMap { $0 as? DragPreviewCanvas }.first)
+    for _ in 0..<100 {
+        if canvas.images[page.id] != nil { break }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(canvas.images[page.id] != nil)
+    #expect(canvas.headerHeights[page.id] == 40)
+    preview.update(at: NSPoint(x: 1200, y: 500), expanded: true)
+    preview.hide()
+    #expect(pane.nativeCaptureCount == 0)
+    #expect(surface.subviews.contains { $0 === header })
+    #expect(header.frame == headerFrame)
+    #expect(controller.webView.superview === surface)
+    #expect(controller.webView.frame == webFrame)
+    #expect(controller.webView.obscuredContentInsets.top == inset.top)
+    #expect(try await controller.webView.evaluateJavaScript("window.previewMarker") as? Int == 42)
+}

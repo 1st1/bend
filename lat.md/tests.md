@@ -819,4 +819,22 @@ The fully clipped case has a null intersection with an infinite origin, matching
 
 [[Tests/BrowseTests/DetachedWindowTests.swift#dragPreviewRenderedProportions]] renders wide, tall, and shallow pane previews, checking that captured squares stay square and web content reaches the thumbnail edges after capped resizing.
 
-A web-only snapshot replaces its original content rectangle inside the full-pane capture, retaining header geometry. Long titles must truncate rather than widen portrait cards. Compact, expanded, and restored compact renders preserve proportions within native pixel rounding without letterboxing; shallow panes retain their captured height rather than layout minimums.
+A web-only snapshot occupies its original content rectangle inside the miniature pane, retaining header geometry. Long titles must truncate rather than widen portrait cards. Compact, expanded, and restored compact renders preserve proportions within native pixel rounding without letterboxing; shallow panes retain their captured height rather than layout minimums.
+
+## Command-Shift-click destinations
+
+[[Tests/BrowseTests/LinkNavigationTests.swift#commandShiftClickDestinations]] verifies independent Command-Shift-click preferences across WebKit navigation and popup callbacks, preserving the source while opening a new tab, pane, or window.
+
+Missing settings default to New tab and insert below the active sidebar row. New panes are adjacent without claiming the dedicated Command-click pane, and iframe links omit opener metadata. Ordinary Command-click retains its own mode. New windows contain one destination pane and persist the URL and window membership. Changes through secondary stores reach existing controllers; all three choices persist independently of Command-click.
+
+## Drag preview glass isolation
+
+Drag thumbnails must not bitmap-render a live pane or disturb its native glass, page state, or viewport.
+
+[[Tests/BrowseTests/DetachedWindowTests.swift#dragPreviewGlassIsolation]] mounts a real web surface with glass, waits for a WebKit thumbnail, and rejects native pane captures. The visible snapshot excludes the header; showing and cancelling the preview preserves the header instance and frame, WebView ownership and geometry, content inset, and document state.
+
+## Header glass after window transfer
+
+Moving a live page between windows must preserve a single header material, viewport geometry, scrolling, and unsaved document state.
+
+[[Tests/BrowseTests/HeaderGlassTransferTests.swift#headerGlassAfterWindowTransfer]] mounts two identical pages, repeatedly detaches one into a new window and returns it, then compares the moved and untouched headers. The real WebKit scroll-pocket view remains hidden while Bend's glass stays visible. Scrolling down and back to the top and switching tabs preserve suppression, the content inset, live controller, document token, and form value. A full-app visual check of the reported Hacker News page confirms matching headers after the same round trip.

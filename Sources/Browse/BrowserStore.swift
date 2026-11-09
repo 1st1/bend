@@ -21,6 +21,7 @@ final class BrowserStore: ObservableObject {
     var onSettingsRequested: (() -> Void)?
     var onEmptiedByTransfer: ((BrowserStore) -> Void)?
     var onNewWindowDrop: ((UUID, UUID?, NSPoint) -> Bool)?
+    var onNewLinkWindow: ((String) -> Void)?
     private struct PendingAddressEntry {
         let tabID: UUID
         let paneID: UUID
@@ -175,6 +176,15 @@ final class BrowserStore: ObservableObject {
             if let sharedStore { sharedStore.commandClickDestination = newValue; return }
             session.commandClickDestination = newValue
             session.commandClickOpensNewTab = newValue == .newTab
+            saveSoon()
+        }
+    }
+
+    var commandShiftClickDestination: CommandShiftClickDestination {
+        get { sharedStore?.commandShiftClickDestination ?? session.commandShiftClickDestination ?? .newTab }
+        set {
+            if let sharedStore { sharedStore.commandShiftClickDestination = newValue; return }
+            session.commandShiftClickDestination = newValue
             saveSoon()
         }
     }
@@ -717,6 +727,17 @@ final class BrowserStore: ObservableObject {
             case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, closeIfDownload: true, afterCurrent: true)
             }
         }
+        controller.onCommandShiftLink = { [weak self] address, mainFrame in
+            guard let self else { return }
+            switch self.commandShiftClickDestination {
+            case .newTab:
+                self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, closeIfDownload: true, afterCurrent: true)
+            case .newPane:
+                self.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame)
+            case .newWindow:
+                self.onNewLinkWindow?(address)
+            }
+        }
         controller.onFocus = { [weak self] in self?.focus(page.id) }
         controller.onVisit = { [weak self] url, title in self?.recordVisit(url: url, title: title) }
         controller.onHistoryTitleChanged = { [weak self] url, title in
@@ -845,6 +866,7 @@ final class BrowserStore: ObservableObject {
         }
         browsers.removeAll()
         onAddressRequested = nil; onSettingsRequested = nil; onEmptiedByTransfer = nil; onNewWindowDrop = nil
+        onNewLinkWindow = nil
     }
 
     func revealPage(_ id: UUID) {
@@ -1029,6 +1051,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     var onNewTab: ((String) -> Void)?
     var onNewPane: ((String) -> Void)?
     var onNewLink: ((String, Bool, Bool) -> Void)?
+    var onCommandShiftLink: ((String, Bool) -> Void)?
     var onInitialDownload: (() -> Void)?
     var onFocus: (() -> Void)?
     private var observations: [NSKeyValueObservation] = []
@@ -1302,7 +1325,15 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         // WebKit reports left-click as 1 (a button mask), unlike NSEvent's zero-based buttonNumber.
         guard action.navigationType == .linkActivated, action.modifierFlags.contains(.command),
               action.buttonNumber == 1, let url = action.request.url,
-              ["http", "https"].contains(url.scheme?.lowercased() ?? ""), let onNewPane else { return false }
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return false }
+        if action.modifierFlags.contains(.shift) {
+            guard onCommandShiftLink != nil || onNewTab != nil else { return false }
+            InputDiagnostics.transition(.commandLink, .allowed, view: webView)
+            if let onCommandShiftLink { onCommandShiftLink(url.absoluteString, action.sourceFrame.isMainFrame) }
+            else { onNewTab?(url.absoluteString) }
+            return true
+        }
+        guard let onNewPane else { return false }
         InputDiagnostics.transition(.commandLink, .allowed, view: webView)
         if let onNewLink { onNewLink(url.absoluteString, true, action.sourceFrame.isMainFrame) }
         else { onNewPane(url.absoluteString) }

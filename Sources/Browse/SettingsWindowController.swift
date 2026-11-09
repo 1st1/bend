@@ -279,6 +279,11 @@ private struct UISettingsView: View {
                     Text("Reuse one dedicated pane per tab").tag(CommandClickDestination.dedicatedPane)
                     Text("Open in a new tab").tag(CommandClickDestination.newTab)
                 }
+                Picker("Command-Shift-click a link", selection: $store.commandShiftClickDestination) {
+                    Text("Open in a new tab").tag(CommandShiftClickDestination.newTab)
+                    Text("Open in a new pane").tag(CommandShiftClickDestination.newPane)
+                    Text("Open in a new window").tag(CommandShiftClickDestination.newWindow)
+                }
             } header: {
                 Text("Links")
             }
