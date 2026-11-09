@@ -1,0 +1,33 @@
+# Releases
+
+Bend keeps its app version in [[VERSION]] and user-facing release notes in [[CHANGELOG.md]]. [[.changie.yaml]] configures Changie to collect independent fragments and group them by change type.
+
+## Change entries
+
+Each user-facing feature, fix, or behavior change adds a fragment under [[.changes/unreleased]]. Internal-only changes do not need public release notes.
+
+Run `./scripts/changie.sh new` and choose Added, Changed, Fixed, Removed, or Security. Describe the effect on the user in a short sentence. Commit the generated YAML with the implementation. [[scripts/changie.sh]] downloads Changie 1.26.0 into the ignored build cache and verifies the pinned platform-specific SHA-256 before execution; no global installation is required.
+
+[[.github/workflows/changelog.yml]] validates metadata on pull requests and pushes to main. PRs changing Sources, Assets, or Package.swift require a newly added fragment unless they prepare a release or carry the `no-changelog` label. That label waives only the fragment requirement, not version or changelog validation. The workflow has read-only repository permissions and does not access signing secrets or publish artifacts.
+
+## Version and build identity
+
+[[scripts/version.sh]] reads the checked-in [[VERSION]] for both debug and production app versions. [[scripts/build-app.sh]] writes it into the app plist, and [[scripts/build-prod.sh]] derives the DMG filename from that plist.
+
+Versions have exactly three numeric components with no leading zeroes, prefix, or prerelease suffix. Feature releases increment the minor version while Bend is pre-1.0; fixes increment the patch version. The initial 0.1.0 entry normalizes the earlier 0.1 prototype baseline without inventing historical release notes.
+
+`BEND_BUILD_NUMBER` supplies a positive integer for the separate bundle build number and defaults to 1 for local builds. Release CI must allocate increasing build numbers independently of the marketing version. Invalid version or build-number values fail before compilation or bundle replacement. Both profiles require macOS 26 or later; architecture remains the build host architecture.
+
+## Prepare a release
+
+Edit [[VERSION]] to the intended new version, then run `python3 scripts/release.py prepare`. The command batches pending fragments into that version’s release notes and regenerates [[CHANGELOG.md]].
+
+For example, change VERSION from `0.1.0` to `0.2.0`, then run the preparation command. Review and commit VERSION, CHANGELOG.md, and all changes under `.changes`, including consumed fragment deletions, in the release PR. The command refuses to reuse or decrease an existing version and requires at least one fragment. It does not commit, tag, sign, or publish anything.
+
+Run `python3 scripts/release.py check` locally, or add `--base-ref COMMIT` to validate against a PR base. [[scripts/release.py#check]] requires VERSION to match the latest notes, checks the generated changelog against Changie output, validates pending fragments, rejects historical note rewrites, and reports whether VERSION changed. Release PRs must consume all pending fragments. Changing VERSION without preparing matching notes fails validation. [[tests#Release metadata and changelog]] covers preparation and rejection cases.
+
+## Current automation boundary
+
+The GitHub workflow validates changelog and version metadata only. Signed production builds run through [[architecture#Production installer]]; GitHub production building and public release publication are not configured.
+
+The installer uses headless dmgbuild with dependencies pinned by [[scripts/dmgbuild-requirements.txt]], and a saved notarization keychain profile. [[Sources/Browse/MediaSourceMenu.swift#MediaSourceMenu#makeMenu]] accesses the optional public menu-image visibility preference dynamically, so it does not require macOS 27 SDK declarations. The deployment target remains macOS 26. GitHub setup instructions are in [[docs/github-build-setup.md]].

@@ -83,6 +83,8 @@ Both `new Audio()` and `document.createElement` fixtures work without DOM insert
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) verifies native player menu rows include correctly sized favicon and fallback images, explicitly visible images on macOS 27, selected state, and actions bound to their source.
 
+The test and application compile with the macOS 26 SDK using SDK-independent property access; no newer enum or property declaration is referenced.
+
 ## Media source selection
 
 [MediaPlayerTests.swift](../Tests/BrowseTests/MediaPlayerTests.swift) checks most-recent playback selection, explicit source selection, commands affecting only that source, persistent dismissal, reappearance on new playback, and cleanup on native-page navigation.
@@ -117,13 +119,13 @@ The mounted-window test verifies the canvas frame and retained WebView identitie
 
 [test-build-app.sh](../scripts/test-build-app.sh) runs the packaging script with isolated compiler and signing stand-ins, verifying failure preservation and replacement without changing an open descriptor to the previous executable.
 
-Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files. The test checks Debug’s distinct name, identifier, compiler configuration, and profile marker, production’s explicit Release flag and retained identifier, publication without touching the other channel, the icon resource and plist entry, HTTP/HTTPS URL-handler and HTML/XHTML document-viewer declarations, and precedence of the new signing override over the legacy override. These checks do not exercise macOS signing or WebKit runtime behavior.
+Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files. The test checks VERSION and BEND_BUILD_NUMBER propagation into both profiles, invalid metadata rejection without replacing an existing bundle, the macOS 26 minimum in both profiles and the linker arguments, Debug’s distinct name, identifier, compiler configuration, and profile marker, production’s explicit Release flag and retained identifier, publication without touching the other channel, the icon resource and plist entry, HTTP/HTTPS URL-handler and HTML/XHTML document-viewer declarations, and precedence of the new signing override over the legacy override. These checks do not exercise macOS signing or WebKit runtime behavior.
 
 ## Production installer publication
 
 [test-build-prod.sh](../scripts/test-build-prod.sh) exercises the production script with isolated native-tool stand-ins, checking notarization, ticket validation, packaging order, and failure-safe publication.
 
-App or DMG rejection, Finder layout failure, invalid tickets, and disk-image verification failure retain the previous installer and detach temporary mounts. Successful publication requires the app ticket before packaging and the DMG ticket before final assessment. Failures retain their notarization logs; success removes only its own log folder while preserving earlier failure logs. The development app remains untouched by production compilation, packaging, and stapling; the production script must explicitly request its profile and output path. These tests do not substitute for Apple's real service or Finder visual verification.
+App or DMG rejection, headless packaging failure, invalid tickets, and disk-image verification failure retain the previous installer and detach temporary mounts. Successful publication requires the app ticket before packaging and the DMG ticket before final assessment. Failures retain their notarization logs; success removes only its own log folder while preserving earlier failure logs. The development app remains untouched by production compilation, packaging, and stapling; the production script must explicitly request its profile and output path. These tests do not substitute for Apple's real service or native disk-image layout verification.
 
 ## Catalog download integrity and identity
 
@@ -910,3 +912,9 @@ A unique temporary preference and cookie marker written in Debug must be absent 
 ## Google favorite popup presentation
 
 [[Tests/BrowseTests/GoogleFavoriteTests.swift#googleFavoritePopupPresentation]] opens the Google account sheet from a browser window, verifies its editable email field, and dismisses with Escape without creating a favorite or changing the tab.
+
+## Release metadata and changelog
+
+[[scripts/test-release.py#ReleaseTests]] runs real Changie in disposable repositories to verify version-driven release preparation and PR checks without changing the working project.
+
+The tests verify fragment consumption, matching version notes and changelog generation, refusal to reuse or decrease versions, invalid version rejection, required fragments for user-facing changes, the internal-only escape, stale changelog detection, and immutable historical release notes. Run `python3 scripts/test-release.py`; no signing credentials are required.

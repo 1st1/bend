@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Bend",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("26.0")],
     products: [.executable(name: "Bend", targets: ["Browse"])],
     targets: [
         .target(name: "BrowseCore"),

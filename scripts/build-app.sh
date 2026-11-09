@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/version.sh
 configuration=debug
 profile=debug
 app_name='Bend Debug'
@@ -25,10 +26,10 @@ app="${output:-$PWD/dist/$app_name.app}"
 mkdir -p "$(dirname "$app")"
 app="$(cd "$(dirname "$app")" && pwd)/$(basename "$app")"
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache"
-# Retain the real linked SDK while deploying to macOS 14.
+# Retain the real linked SDK while deploying to macOS 26.
 sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
 swift build -c "$configuration" --disable-sandbox "${compiler_flags[@]}" \
-  -Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker "$sdk_version"
+  -Xlinker -platform_version -Xlinker macos -Xlinker 26.0 -Xlinker "$sdk_version"
 mkdir -p "$PWD/dist"
 staging="$(mktemp -d "$(dirname "$app")/.build-app.XXXXXX")"
 cleanup() {
@@ -74,9 +75,9 @@ cat > "$candidate/Contents/Info.plist" <<PLIST
     <key>CFBundleTypeRole</key><string>Viewer</string>
     <key>CFBundleURLSchemes</key><array><string>http</string><string>https</string></array>
   </dict></array>
-  <key>CFBundleShortVersionString</key><string>0.1</string>
-  <key>CFBundleVersion</key><string>1</string>
-  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>CFBundleShortVersionString</key><string>$version</string>
+  <key>CFBundleVersion</key><string>$build_number</string>
+  <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoadsInWebContent</key><true/></dict>
 </dict></plist>

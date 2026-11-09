@@ -481,7 +481,9 @@ private let mediaSessionFixture = #"""
     #expect(menu.items.map(\.state) == [.on, .off])
     for item in menu.items {
         #expect(item.image?.size == NSSize(width: 16, height: 16))
-        if #available(macOS 27.0, *) { #expect(item.preferredImageVisibility == .visible) }
+        if #available(macOS 27.0, *) {
+            #expect((item.value(forKey: "preferredImageVisibility") as? NSNumber)?.intValue == 1)
+        }
     }
     #expect(favicon.size == NSSize(width: 32, height: 32))
     let item = menu.items[1]

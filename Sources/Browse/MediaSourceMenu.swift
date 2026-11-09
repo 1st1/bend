@@ -20,7 +20,11 @@ final class MediaSourceMenu: NSObject {
             let original = favicon(source.paneID) ?? NSImage(systemSymbolName: "music.note", accessibilityDescription: nil)
             item.image = original?.copy() as? NSImage
             item.image?.size = NSSize(width: 16, height: 16)
-            if #available(macOS 27.0, *) { item.preferredImageVisibility = .visible }
+            // This public macOS 27 property is optional at runtime. KVC keeps
+            // the macOS 26 SDK buildable; 1 is NSMenuItemImageVisibilityVisible.
+            if item.responds(to: NSSelectorFromString("setPreferredImageVisibility:")) {
+                item.setValue(1, forKey: "preferredImageVisibility")
+            }
             menu.addItem(item)
         }
         return menu

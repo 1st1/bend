@@ -7,7 +7,7 @@ usage() {
 Usage: ./scripts/build-prod.sh [--keychain-profile NAME]
 
 Build a signed, notarized drag-to-Applications installer in dist/.
-Requires a logged-in macOS desktop session (Finder configures the DMG layout).
+Requires macOS, Python 3, and Apple's build/signing tools. No Finder session needed.
 
 Environment:
   BEND_NOTARY_PROFILE    Keychain credentials profile (default: bend-notary)
@@ -28,17 +28,9 @@ identity="${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Appli
 mkdir -p dist
 work="$(mktemp -d "$PWD/dist/.build-prod.XXXXXX")"
 logs="$(mktemp -d "$PWD/dist/notary-$(date +%Y%m%d-%H%M%S).XXXXXX")"
-mount="$work/mount"
-attached=false
 cleanup() {
   local status=$?
   trap - EXIT
-  if [[ "$attached" == true ]]; then
-    if ! hdiutil detach "$mount"; then
-      printf 'Could not detach installer volume; retained working files at %s\n' "$work" >&2
-      exit 1
-    fi
-  fi
   rm -rf "$work"
   if [[ $status -eq 0 ]]; then
     rm -rf "$logs"
@@ -113,30 +105,9 @@ notarize "$work/Bend.zip" app
 staple "$app"
 spctl --assess --type execute --verbose=2 "$app"
 
-ln -s /Applications "$payload/Applications"
 swift scripts/render-dmg-background.swift "$payload/.background/background.tiff"
-size_kb="$(du -sk "$payload" | awk '{print $1}')"
-size_mb=$((size_kb / 1024 + 40))
-# Finder resolves root-folder aliases through volume names. Avoid targeting an
-# already-mounted, read-only Bend installer while configuring this writable one.
-volume_name="Bend Installer ${work##*.}"
-hdiutil create -volname "$volume_name" -fs HFS+ -format UDRW -size "${size_mb}m" \
-  -srcfolder "$payload" "$work/installer.dmg"
-mkdir -p "$mount"
-hdiutil attach "$work/installer.dmg" -readwrite -noverify -noautoopen -nobrowse -mountpoint "$mount"
-attached=true
-osascript scripts/layout-dmg.applescript "$mount"
-# Finder writes its icon layout asynchronously when the window closes.
-for attempt in 1 2 3 4 5; do
-  [[ ! -f "$mount/.DS_Store" ]] || break
-  sleep 1
-done
-[[ -f "$mount/.DS_Store" ]] || { printf 'Finder did not save the installer layout\n' >&2; exit 1; }
-diskutil renameVolume "$mount" Bend
-sync
-hdiutil detach "$mount"
-attached=false
-hdiutil convert "$work/installer.dmg" -format UDZO -imagekey zlib-level=9 -o "$work/Bend.dmg"
+./scripts/dmgbuild.sh -s scripts/dmg-settings.py -D "app=$app" \
+  -D "background=$payload/.background/background.tiff" Bend "$work/Bend.dmg"
 codesign --force --timestamp --sign "$identity" "$work/Bend.dmg"
 codesign --verify --strict "$work/Bend.dmg"
 notarize "$work/Bend.dmg" dmg

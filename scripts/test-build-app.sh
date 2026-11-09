@@ -5,6 +5,9 @@ root="$(mktemp -d "${TMPDIR:-/tmp}/browse-build-test.XXXXXX")"
 trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/scripts" "$root/bin" "$root/dist/Bend Debug.app/Contents/MacOS"
 cp "$(dirname "$0")/build-app.sh" "$root/scripts/build-app.sh"
+cp "$(dirname "$0")/version.sh" "$root/scripts/version.sh"
+printf '2.3.4\n' > "$root/VERSION"
+export BEND_BUILD_NUMBER=42
 mkdir -p "$root/Assets"
 cp "$(dirname "$0")/../Assets/AppIcon.icns" "$root/Assets/AppIcon.icns"
 export BROWSE_BUILD_TEST_ROOT="$root"
@@ -42,6 +45,10 @@ bash "$root/scripts/build-app.sh"
 [[ "$(cat <&9)" == 'previous executable' ]]
 exec 9<&-
 plist="$root/dist/Bend Debug.app/Contents/Info.plist"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == 2.3.4 ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" == 42 ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist")" == 26.0 ]]
+grep -q -- '-platform_version -Xlinker macos -Xlinker 26.0' "$root/swift-arguments"
 for key in CFBundleName CFBundleDisplayName; do
   [[ "$(/usr/libexec/PlistBuddy -c "Print :$key" "$plist")" == "Bend Debug" ]]
 done
@@ -71,8 +78,24 @@ debug_inode="$(stat -f %i "$root/dist/Bend Debug.app/Contents/MacOS/Bend")"
 bash "$root/scripts/build-app.sh" --production --output "$root/release/Bend.app"
 [[ "$(stat -f %i "$root/dist/Bend Debug.app/Contents/MacOS/Bend")" == "$debug_inode" ]]
 plist="$root/release/Bend.app/Contents/Info.plist"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == 2.3.4 ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" == 42 ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist")" == 26.0 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$plist")" == Bend ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == dev.yury.browse.prototype ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :BendBuildProfile' "$plist")" == production ]]
 grep -q -- '-c release --disable-sandbox -Xswiftc -DBEND_PRODUCTION' "$root/swift-arguments"
 printf 'Debug/production build isolation tests passed\n'
+production_inode="$(stat -f %i "$root/release/Bend.app/Contents/MacOS/Bend")"
+for invalid in 1.2 01.2.3 1.2.3-beta '<invalid>'; do
+  printf '%s\n' "$invalid" > "$root/VERSION"
+  if bash "$root/scripts/build-app.sh" --production --output "$root/release/Bend.app"; then
+    printf 'Expected invalid VERSION rejection\n' >&2; exit 1
+  fi
+done
+printf '2.3.4\n' > "$root/VERSION"
+if BEND_BUILD_NUMBER=0 bash "$root/scripts/build-app.sh" --production --output "$root/release/Bend.app"; then
+  printf 'Expected invalid build number rejection\n' >&2; exit 1
+fi
+[[ "$(stat -f %i "$root/release/Bend.app/Contents/MacOS/Bend")" == "$production_inode" ]]
+printf 'Version metadata tests passed\n'

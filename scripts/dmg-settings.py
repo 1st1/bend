@@ -1,0 +1,19 @@
+"""Headless Finder layout, preserving the existing Bend installer design."""
+format = "UDZO"
+compression_level = 9
+filesystem = "HFS+"
+files = [defines["app"]]
+symlinks = {"Applications": "/Applications"}
+background = defines["background"]
+window_rect = ((120, 120), (640, 400))
+icon_locations = {"Bend.app": (170, 200), "Applications": (470, 200)}
+icon_size = 96
+text_size = 13
+default_view = "icon-view"
+arrange_by = None
+show_status_bar = False
+show_tab_view = False
+show_toolbar = False
+show_pathbar = False
+show_sidebar = False
+show_icon_preview = False

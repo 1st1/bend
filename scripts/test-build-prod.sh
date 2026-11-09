@@ -52,38 +52,24 @@ elif [[ "$1" == stapler ]]; then
   elif [[ "${BEND_PROD_TEST_FAIL:-}" == "$label-validate" ]]; then exit 1; fi
 else exit 2; fi
 SH
-cat > "$root/bin/hdiutil" <<'SH'
+cat > "$root/scripts/dmgbuild.sh" <<'SH'
 #!/bin/bash
 set -euo pipefail
-command="$1"; shift
-case "$command" in
-  create)
-    output="${!#}"
-    while [[ $# -gt 0 ]]; do
-      if [[ "$1" == -volname ]]; then [[ "$2" == 'Bend Installer '* ]]; fi
-      if [[ "$1" == -srcfolder ]]; then payload="$2"; shift; fi
-      shift
-    done
-    [[ -f "$payload/Bend.app/.ticket" ]]
-    [[ "$(readlink "$payload/Applications")" == /Applications ]]
-    [[ -f "$payload/.background/background.tiff" ]]
-    printf 'image-create\n' >> "$BEND_PROD_TEST_ROOT/events"
-    printf 'new installer' > "$output" ;;
-  attach) touch "$BEND_PROD_TEST_ROOT/mounted" ;;
-  detach) rm "$BEND_PROD_TEST_ROOT/mounted" ;;
-  convert) cp "$1" "${!#}" ;;
-  verify) [[ "${BEND_PROD_TEST_FAIL:-}" != dmg-verify ]] ;;
-  *) exit 2 ;;
-esac
+[[ "${BEND_PROD_TEST_FAIL:-}" != layout ]] || exit 1
+[[ "$1" == -s && "$2" == scripts/dmg-settings.py ]]
+[[ "$3" == -D && "$4" == app=* && "$5" == -D && "$6" == background=* && "$7" == Bend ]]
+[[ -f "${4#app=}/.ticket" && -f "${6#background=}" ]]
+printf 'image-create\n' >> "$BEND_PROD_TEST_ROOT/events"
+printf 'new installer' > "$8"
 SH
-cat > "$root/bin/diskutil" <<'SH'
+cat > "$root/bin/hdiutil" <<'SH'
 #!/bin/bash
-[[ "$1" == renameVolume && "$2" == "$BEND_PROD_TEST_ROOT"/dist/.build-prod.*/mount && "$3" == Bend ]]
+[[ "$1" == verify && "${BEND_PROD_TEST_FAIL:-}" != dmg-verify ]]
 SH
+# No path in production packaging may fall back to Finder automation.
 cat > "$root/bin/osascript" <<'SH'
 #!/bin/bash
-[[ "${BEND_PROD_TEST_FAIL:-}" != layout ]] || exit 1
-touch "$2/.DS_Store"
+exit 99
 SH
 cat > "$root/bin/swift" <<'SH'
 #!/bin/bash
@@ -94,7 +80,7 @@ cat > "$root/bin/spctl" <<'SH'
 if [[ "${!#}" == *.dmg ]]; then printf 'dmg-assess\n' >> "$BEND_PROD_TEST_ROOT/events"; fi
 SH
 printf '#!/bin/bash\nprintf "arm64\\n"\n' > "$root/bin/lipo"
-chmod +x "$root/bin/"* "$root/scripts/build-app.sh"
+chmod +x "$root/bin/"* "$root/scripts/build-app.sh" "$root/scripts/dmgbuild.sh"
 installer="$root/dist/Bend-1.2.3-arm64.dmg"
 printf 'previous installer' > "$installer"
 for failure in app-notary layout dmg-notary dmg-validate dmg-verify; do

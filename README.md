@@ -11,3 +11,5 @@ A native macOS browser with vertical tabs and tiled panes.
 - [Settings and extensions](lat.md/architecture.md#extension-settings)
 - [Per-website settings](lat.md/architecture.md#website-settings)
 - [Tests and verification](lat.md/tests.md)
+- [Changelog](CHANGELOG.md)
+- [Adding changelog entries and preparing releases](lat.md/releases.md)
