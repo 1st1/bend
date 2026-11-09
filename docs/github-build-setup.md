@@ -8,7 +8,7 @@ Candidates are uploaded as Actions artifacts with checksums, release notes, and 
 
 ## One-time credential setup
 
-The repository's `release-signing` environment, `BEND_SIGNING_IDENTITY` variable, and `no-changelog` label have been created. The private signing and notarization secrets below must be supplied before a production candidate can succeed.
+The repository's `release-signing` environment, `BEND_SIGNING_IDENTITY` variable, `no-changelog` label, and all five signing and notarization secrets are configured. The signing job validates the credentials when it runs. The instructions below describe how to provision or replace them.
 
 ### Export the signing identity
 
