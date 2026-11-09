@@ -230,7 +230,7 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
 
     static let javascript = #"""
     (() => {
-        if (location.protocol !== 'webkit-extension:' || !globalThis.browser?.runtime?.id) return;
+        if (!['webkit-extension:', 'safari-web-extension:'].includes(location.protocol) || !globalThis.browser?.runtime?.id) return;
         const native = globalThis.browser;
         const bridge = window.webkit.messageHandlers.browseExtension;
         const call = (operation, values = {}) => bridge.postMessage({operation, ...values});

@@ -81,6 +81,7 @@ import WebKit
     #expect(JavaScriptDialogs.originLabel(scheme: "https", host: "example.com", port: 443) == "https://example.com")
     #expect(JavaScriptDialogs.originLabel(scheme: "http", host: "::1", port: 8000) == "http://[::1]:8000")
     #expect(JavaScriptDialogs.originLabel(scheme: "file", host: "", port: 0) == "a local file")
+    #expect(JavaScriptDialogs.originLabel(scheme: "safari-web-extension", host: "extension-id", port: 0) == "safari-web-extension://extension-id")
     #expect(JavaScriptDialogs.originLabel(scheme: "", host: "", port: 0) == "an unknown origin")
 }
 

@@ -137,6 +137,18 @@ A rejected package leaves no installed record or package files. A matching impor
 
 Set `BROWSE_TEST_CATALOG_DOWNLOAD=1` to exercise the real catalog network path. The test verifies package identity and version without enabling the extension, opening windows, or touching the user's profile.
 
+## Safari uBlock Lite compatibility
+
+[[Tests/BrowseTests/UBlockLiteTests.swift#safariUBlockLiteSmoke]] probes the unmodified Safari uBlock Origin Lite package in an isolated Bend host with temporary extension and website storage.
+
+Set `BROWSE_TEST_UBLOCK_SAFARI_PACKAGE` to the Safari extension bundle. The package must report Safari from its own browser-detection module in both its live background page and popup, resolve real resource URLs on that origin, and select the Safari-specific disabled strict-blocking default. Diagnostic-only background-view access reads the loaded modules and logs their values. The probe verifies its identity, starts its background, tests an EasyList-matched script against a local HTTP fixture, and clicks the popup’s site filtering controls to turn blocking off and back on, then checks extension disable/re-enable behavior. A baseline verifies the script runs without the extension. The probe never changes the user's installed extensions.
+
+## uBlock origin migration and isolation
+
+[[Tests/BrowseTests/ExtensionTests.swift#uBlockOriginMigrationAndIsolation]] checks that uBlock Lite receives a Safari-style origin while preserving saved extension settings and keeping unrelated packages on their original scheme.
+
+The test uses a Safari extension bundle fixture to seed native extension storage under the old origin, restores the same installed record, and verifies settings, UUID, enablement, compatibility-bridge access, and a saved page URL including its query. A lookalike display name with another package identity does not opt into the override. The opt-in [[tests#Safari uBlock Lite compatibility]] test verifies the real Safari package's browser detector, popup controls, and request blocking.
+
 ## Extension content injection and blocking
 
 [ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) loads a local HTTP fixture in real WebKit, verifies content injection and declarative blocking, then checks both disappear after disable/reload. It also verifies pane registration and active-tab changes.

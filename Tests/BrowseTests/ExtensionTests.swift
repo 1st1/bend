@@ -131,6 +131,97 @@ private func extensionFixture(at root: URL) throws -> URL {
     try await manager.uninstall(id)
 }
 
+// @lat: [[tests#uBlock origin migration and isolation]]
+@Test @MainActor func uBlockOriginMigrationAndIsolation() async throws {
+    guard #available(macOS 15.4, *) else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseUBlockOrigin-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try extensionFixture(at: root)
+    let manifestURL = fixture.appendingPathComponent("manifest.json")
+    var manifest = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any])
+    manifest["permissions"] = ["storage", "privacy"]
+    try JSONSerialization.data(withJSONObject: manifest).write(to: manifestURL)
+    let source = root.appendingPathComponent("UBlockFixture.appex")
+    let contents = source.appendingPathComponent("Contents")
+    try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+    try FileManager.default.copyItem(at: fixture, to: contents.appendingPathComponent("Resources"))
+    let bundleInfo: [String: Any] = [
+        "CFBundleIdentifier": "net.raymondhill.uBlock-Origin-Lite.Extension",
+        "CFBundlePackageType": "XPC!", "CFBundleVersion": "1", "CFBundleShortVersionString": "1.0",
+        "NSExtension": ["NSExtensionPointIdentifier": "com.apple.Safari.web-extension"]
+    ]
+    try PropertyListSerialization.data(fromPropertyList: bundleInfo, format: .xml, options: 0)
+        .write(to: contents.appendingPathComponent("Info.plist"))
+    // WebKit validates resources in Safari bundles, including test fixtures.
+    let signer = Process()
+    signer.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+    signer.arguments = ["--force", "--sign", "-", "--timestamp=none", source.path]
+    try signer.run()
+    signer.waitUntilExit()
+    try #require(signer.terminationStatus == 0)
+    let storageID = UUID()
+    let websiteStore = WKWebsiteDataStore(forIdentifier: UUID())
+    let installed = root.appendingPathComponent("installed")
+    var manager = ExtensionManager(root: installed, storageIdentifier: storageID, websiteDataStore: websiteStore,
+        notifications: TestNotifications())
+    try await manager.importExtension(from: source)
+    let id = try #require(manager.records.first?.id)
+    let legacy = try #require(manager.contexts[id])
+    // Seed the prior release's real origin and persistent browser.storage namespace.
+    legacy.baseURL = URL(string: "webkit-extension://\(id.uuidString.lowercased())/")!
+    try await manager.enable(true, id: id) { _, _ in true }
+    let oldOptions = legacy.baseURL.appendingPathComponent("options.html").appending(queryItems: [URLQueryItem(name: "source", value: "saved")])
+    var web: WKWebView? = WKWebView(frame: .zero, configuration: try #require(legacy.webViewConfiguration))
+    let navigation = ExtensionTestNavigation()
+    web?.navigationDelegate = navigation
+    try await navigation.load(try #require(web), url: oldOptions)
+    _ = try await web?.callAsyncJavaScript("await browser.storage.local.set({filteringMode: 2, customFilters: ['example.test##.ad']});", arguments: [:], in: nil, contentWorld: .page)
+    web = nil
+    try manager.controller.unload(legacy)
+    manager = ExtensionManager(root: installed, storageIdentifier: storageID, websiteDataStore: websiteStore,
+        notifications: TestNotifications())
+    manager.start()
+    await manager.restorationTask?.value
+    let context = try #require(manager.contexts[id])
+    defer { if context.isLoaded { try? manager.controller.unload(context) } }
+    #expect(context.baseURL.scheme == "safari-web-extension")
+    #expect(context.uniqueIdentifier == legacy.uniqueIdentifier)
+    #expect(context.baseURL.host == legacy.baseURL.host)
+    #expect(manager.isEnabled(id))
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
+    store.session.workspaces[0].tabs[0].pages[0].address = oldOptions.absoluteString
+    let restored = store.controller(for: store.selectedTab.pages[0])
+    for _ in 0..<50 {
+        if restored.webView.url?.scheme == "safari-web-extension", !restored.webView.isLoading { break }
+        try await Task.sleep(for: .milliseconds(100))
+    }
+    #expect(restored.webView.url == manager.restoredExtensionURL(oldOptions))
+    let settings = try await restored.webView.callAsyncJavaScript("return await browser.storage.local.get(null);", arguments: [:], in: nil, contentWorld: .page) as? [String: Any]
+    #expect(settings?["filteringMode"] as? Int == 2)
+    #expect(settings?["customFilters"] as? [String] == ["example.test##.ad"])
+    // The compatibility bridge must remain available and authorized on the new origin.
+    let privacy = try await restored.webView.callAsyncJavaScript("return (await chrome.privacy.services.passwordSavingEnabled.get({})).value;", arguments: [:], in: nil, contentWorld: .page)
+    #expect(privacy as? Bool == false)
+    #expect(try await restored.webView.evaluateJavaScript("browser.runtime.getURL('options.html').startsWith('safari-web-extension:')") as? Bool == true)
+    // A lookalike display name must not opt another package into this behavior.
+    manifest["name"] = "uBlock Origin Lite"
+    manifest["browser_specific_settings"] = ["gecko": ["id": "unrelated@example.test"]]
+    try JSONSerialization.data(withJSONObject: manifest).write(to: manifestURL)
+    let otherSource = root.appendingPathComponent("unrelated")
+    try FileManager.default.copyItem(at: fixture, to: otherSource)
+    try await manager.importExtension(from: otherSource)
+    let other = try #require(manager.records.first { $0.id != id })
+    #expect(manager.contexts[other.id]?.baseURL.scheme == "webkit-extension")
+    let otherURL = try #require(manager.contexts[other.id]?.baseURL).appendingPathComponent("options.html")
+    #expect(manager.restoredExtensionURL(otherURL) == otherURL)
+    #expect(ExtensionManager.usesSafariOrigin("safari:net.raymondhill.uBlock-Origin-Lite.Extension"))
+    #expect(!ExtensionManager.usesSafariOrigin("gecko:uBlock0@raymondhill.net"))
+    #expect(!ExtensionManager.usesSafariOrigin("gecko:uBOLiteRedux@raymondhill.net"))
+    try await manager.uninstall(id)
+    try await manager.uninstall(other.id)
+}
+
 // @lat: [[tests#Extension startup content injection]]
 @Test @MainActor func extensionStartupContentInjection() async throws {
     guard #available(macOS 15.4, *) else { return }
@@ -512,17 +603,17 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     let listener: NWListener
     var port: UInt16 { listener.port!.rawValue }
     init() throws { listener = try NWListener(using: .tcp, on: .any) }
-    static func start() async throws -> ExtensionHTTPFixture {
+    static func start(scriptPath: String = "/blocked.js") async throws -> ExtensionHTTPFixture {
         let server = try ExtensionHTTPFixture()
         server.listener.newConnectionHandler = { connection in
             connection.start(queue: .global())
             connection.receive(minimumIncompleteLength: 1, maximumLength: 16384) { data, _, _, _ in
                 let request = String(data: data ?? Data(), encoding: .utf8) ?? ""
-                let script = request.hasPrefix("GET /blocked.js ")
+                let script = request.hasPrefix("GET \(scriptPath) ")
                 let userAgent = request.components(separatedBy: "\r\n").first { $0.lowercased().hasPrefix("user-agent:") } ?? ""
                 let encodedAgent = (try? JSONSerialization.data(withJSONObject: userAgent, options: .fragmentsAllowed))
                     .flatMap { String(data: $0, encoding: .utf8) } ?? "null"
-                let body = script ? "window.blockedScriptRan = true;" : "<html><body>Fixture<script>window.requestUserAgent=\(encodedAgent)</script><script src='/blocked.js'></script></body></html>"
+                let body = script ? "window.blockedScriptRan = true;" : "<html><body>Fixture<script>window.requestUserAgent=\(encodedAgent)</script><script src='\(scriptPath)'></script></body></html>"
                 let type = script ? "text/javascript" : "text/html"
                 let response = "HTTP/1.1 200 OK\r\nContent-Type: \(type)\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
                 connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })

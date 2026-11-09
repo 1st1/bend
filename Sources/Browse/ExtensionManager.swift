@@ -173,7 +173,12 @@ final class ExtensionManager: NSObject, ObservableObject {
         // Production uses the default persistent store and keeps this disabled.
         context.hasAccessToPrivateData = controller.configuration.defaultWebsiteDataStore?.isPersistent == false
         context.uniqueIdentifier = record.id.uuidString
-        context.baseURL = URL(string: "webkit-extension://\(record.id.uuidString.lowercased())/")!
+        let identity = packageIdentifier(record, extension: webExtension)
+        let scheme = Self.usesSafariOrigin(identity) ? "safari-web-extension" : "webkit-extension"
+        if scheme == "safari-web-extension" {
+            WKWebExtension.MatchPattern.registerCustomURLScheme(scheme)
+        }
+        context.baseURL = URL(string: "\(scheme)://\(record.id.uuidString.lowercased())/")!
         context.unsupportedAPIs = ["browser.windows.create", "browser.tabs.move", "browser.tabs.group", "browser.tabs.ungroup"]
         for permission in record.permissions {
             context.setPermissionStatus(.grantedExplicitly, for: WKWebExtension.Permission(rawValue: permission))
@@ -184,6 +189,21 @@ final class ExtensionManager: NSObject, ObservableObject {
             }
         }
         return context
+    }
+
+    // uBlock Lite selects WebKit workarounds from runtime.getURL's scheme.
+    // Keep its UUID (and browser.storage namespace) stable across this change.
+    static func usesSafariOrigin(_ identity: String?) -> Bool {
+        identity == "safari:net.raymondhill.uBlock-Origin-Lite.Extension"
+    }
+
+    func restoredExtensionURL(_ url: URL) -> URL {
+        guard url.scheme == "webkit-extension",
+              let context = contexts.values.first(where: {
+                  $0.baseURL.scheme == "safari-web-extension" && $0.baseURL.host == url.host
+              }), var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        components.scheme = context.baseURL.scheme
+        return components.url ?? url
     }
 
     func discoverInstalled(in directories: [URL]? = nil) {

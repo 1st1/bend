@@ -672,7 +672,9 @@ final class BrowserStore: ObservableObject {
 
     func controller(for page: Page) -> PageController {
         if let existing = browsers[page.id] { return existing }
-        let extensionURL = URL(string: page.address).flatMap { $0.scheme == "webkit-extension" ? $0 : nil }
+        let extensionURL = URL(string: page.address).flatMap {
+            ["webkit-extension", "safari-web-extension"].contains($0.scheme ?? "") ? $0 : nil
+        }
         let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, websiteSettings: websiteSettings, downloads: downloads, configure: { [weak self] configuration in
             if #available(macOS 15.4, *) { self?.extensions.configure(configuration) }
         })
@@ -684,6 +686,7 @@ final class BrowserStore: ObservableObject {
                 await manager.restorationTask?.value
                 guard let controller, manager.store(for: page.id)?.existingController(for: page.id) === controller,
                       controller.address == "browse://start" else { return }
+                let extensionURL = manager.restoredExtensionURL(extensionURL)
                 guard let context = manager.controller.extensionContext(for: extensionURL), context.isLoaded,
                       let configuration = context.webViewConfiguration else {
                     controller.error = "This extension page is unavailable. Enable its extension in Settings."

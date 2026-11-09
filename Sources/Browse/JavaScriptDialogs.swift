@@ -53,7 +53,7 @@ final class JavaScriptDialogs {
 
     static func originLabel(scheme: String, host: String, port: Int) -> String {
         if scheme == "file" { return "a local file" }
-        guard ["http", "https", "webkit-extension"].contains(scheme), !host.isEmpty,
+        guard ["http", "https", "webkit-extension", "safari-web-extension"].contains(scheme), !host.isEmpty,
               host.unicodeScalars.allSatisfy({ $0.isASCII && !CharacterSet.controlCharacters.contains($0) }) else {
             return "an unknown origin"
         }

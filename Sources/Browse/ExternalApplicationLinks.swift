@@ -33,7 +33,7 @@ final class ExternalApplicationLinks {
 
     static func isExternal(_ url: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased() else { return false }
-        return !["http", "https", "about", "file", "data", "javascript", "blob", "browse", "applewebdata", "webkit-extension"].contains(scheme)
+        return !["http", "https", "about", "file", "data", "javascript", "blob", "browse", "applewebdata", "webkit-extension", "safari-web-extension"].contains(scheme)
     }
 
     @discardableResult
