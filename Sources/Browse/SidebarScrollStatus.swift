@@ -23,14 +23,14 @@ struct SidebarOverflowPill: View {
     let above: Bool
 
     var body: some View {
-        Text("\(count) \(count == 1 ? "tab" : "tabs")")
+        Text("\(count) more \(count == 1 ? "tab" : "tabs")")
             .font(.system(size: 9, weight: .medium))
             .monospacedDigit()
             .foregroundStyle(.white.opacity(0.8))
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background { Capsule().fill(.regularMaterial).opacity(0.8) }
             .fixedSize()
-            .accessibilityLabel("\(count) \(count == 1 ? "tab" : "tabs") \(above ? "above" : "below")")
+            .accessibilityLabel("\(count) more \(count == 1 ? "tab" : "tabs") \(above ? "above" : "below")")
             .allowsHitTesting(false)
     }
 }
