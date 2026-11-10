@@ -953,4 +953,10 @@ Window closure clears every remaining pane's store. Regular browsing cannot see 
 
 ## Private extension access
 
-[[Tests/BrowseTests/ExtensionTests.swift#privateExtensionAccess]] verifies persisted opt-ins, private-tab queries, script injection, request blocking, revocation, and return from extension pages to temporary website storage.
+[[Tests/BrowseTests/ExtensionTests.swift#privateExtensionAccess]] verifies persisted opt-ins, private-tab queries, script injection, request blocking, revocation, and refusal to supply shared extension configurations to private panes.
+
+## Private extension iframe isolation
+
+[[Tests/BrowseTests/ExtensionTests.swift#privateExtensionIframeIsolation]] verifies private panes reject extension documents that would let HTTP iframes read or write regular-profile cookies, including after opt-in.
+
+A loopback HTTP iframe first demonstrates both cookie access and writes in an isolated regular profile. The regression then exercises configuration lookup, direct controller navigation, extension tab navigation and creation, lazy page loading, and popup rejection. Private views remain nonpersistent, and the regular cookie store remains unchanged both before and after private-window teardown.
