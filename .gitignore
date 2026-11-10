@@ -5,3 +5,5 @@ dist/
 __pycache__/
 .codex/config.toml
 .codex/hooks.json
+.lat-build
+lat.md/.cache/
