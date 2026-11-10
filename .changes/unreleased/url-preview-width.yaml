@@ -1,0 +1,3 @@
+kind: Fixed
+body: Avoid unnecessary URL preview truncation and stale title URLs when hovering page links.
+time: 2026-11-10T04:43:54.895866Z

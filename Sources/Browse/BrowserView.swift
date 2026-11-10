@@ -7,6 +7,8 @@ import BrowseCore
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
 enum Chrome {
+    static let sidebarTabHeight: CGFloat = 34
+    static let sidebarItemCornerRadius = sidebarTabHeight / 2
     // Match the fixed centerline of the native unified-toolbar traffic lights.
     static let headerCenterY: CGFloat = 26
     static let paneInset: CGFloat = PaneGeometry.gap
@@ -150,12 +152,12 @@ private struct SidebarTabRow: View {
                     .transition(.opacity)
             }
         }
-        .padding(.horizontal, 11).frame(height: 34)
+        .padding(.horizontal, 11).frame(height: Chrome.sidebarTabHeight)
         .background {
             Capsule().fill(ChromeButtonStyle.highlightBackground)
                 .opacity(hovered && !selected ? 1 : 0)
         }
-        .modifier(TabSelectionMaterial(selected: selected))
+        .modifier(TabSelectionMaterial(selected: selected, shape: Capsule()))
         .contentShape(Capsule())
         .onHover { hovered = $0 }
         .onDisappear { hovered = false }
@@ -302,15 +304,16 @@ private struct WindowMaterial: NSViewRepresentable {
     }
 }
 
-private struct TabSelectionMaterial: ViewModifier {
+struct TabSelectionMaterial<SelectionShape: Shape>: ViewModifier {
     let selected: Bool
+    let shape: SelectionShape
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
-            content.glassEffect(selected ? .regular.interactive() : .identity, in: Capsule())
+            content.glassEffect(selected ? .regular.interactive() : .identity, in: shape)
         } else if selected {
-            content.background(.regularMaterial, in: Capsule())
+            content.background(.regularMaterial, in: shape)
         } else {
             content
         }

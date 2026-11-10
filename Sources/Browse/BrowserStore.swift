@@ -974,6 +974,11 @@ class FocusWebView: WKWebView {
         didSet { (superview as? WebSurfaceHost)?.showLinkPreview(hoveredLink) }
     }
 
+    func clearURLPreview() {
+        (superview as? WebSurfaceHost)?.showTitlePreview("")
+        hoveredLink = ""
+    }
+
     override init(frame: NSRect, configuration: WKWebViewConfiguration) {
         // WebKit defaults this off, including for video players' fullscreen controls.
         configuration.preferences.isElementFullscreenEnabled = true
@@ -1037,13 +1042,13 @@ class FocusWebView: WKWebView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil { onDialogInvalidated?() }
-        hoveredLink = ""
+        clearURLPreview()
         InputDiagnostics.transition(.webAttachment, window == nil ? .detached : .attached, view: self)
     }
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
         if superview == nil { onDialogInvalidated?() }
-        hoveredLink = ""
+        clearURLPreview()
         InputDiagnostics.transition(.webAttachment, superview == nil ? .detached : .attached, view: self, flags: ["superview": true])
     }
 }
@@ -1206,7 +1211,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     private func load(_ url: URL) {
         javaScriptDialogs.cancel(for: webView)
-        webView.hoveredLink = ""
+        webView.clearURLPreview()
         InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "browse"])
         resetFavicon(for: url)
         error = nil; address = url.absoluteString
@@ -1272,7 +1277,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         javaScriptDialogs.cancel(for: webView)
-        (webView as? FocusWebView)?.hoveredLink = ""
+        (webView as? FocusWebView)?.clearURLPreview()
         (webView.superview as? WebSurfaceHost)?.hideFindBar(restoreFocus: false)
         InputDiagnostics.transition(.webLoad, .started, view: webView)
         resetFavicon(for: webView.url ?? URL(string: address))

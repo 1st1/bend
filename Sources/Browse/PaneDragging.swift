@@ -13,11 +13,13 @@ struct PaneDragHandle: NSViewRepresentable {
     static func dismantleNSView(_ view: PaneDragSourceView, coordinator: ()) {
         // SwiftUI may retire this handle while AppKit still keeps it mounted.
         InputDiagnostics.transition(.paneHandleLifetime, .removed, view: view, tabID: view.tabID)
+        view.clearTitlePreview()
         view.onHover = nil
         view.cancelDrag()
     }
     func updateNSView(_ view: PaneDragSourceView, context: Context) {
         let changed = view.pageID != pageID
+        if changed { view.clearTitlePreview() }
         view.store = store; view.tabID = tabID; view.pageID = pageID; view.title = title
         if changed { InputDiagnostics.transition(.paneHandleLifetime, .created, view: view, tabID: tabID) }
         view.onHover = onHover
@@ -31,6 +33,7 @@ final class PaneDragSourceView: NSView {
     var pageID: UUID?
     var title = ""
     var onHover: ((Bool) -> Void)?
+    private weak var titlePreviewHost: WebSurfaceHost?
     private var hoverTracking: NSTrackingArea?
     private(set) var isHovering = false
     private(set) var mouseDownPoint: NSPoint?
@@ -52,13 +55,31 @@ final class PaneDragSourceView: NSView {
     private func setHovering(_ hovering: Bool) {
         guard isHovering != hovering else { return }
         isHovering = hovering
+        clearTitlePreview()
+        if hovering, let pageID, let controller = store?.existingController(for: pageID),
+           !controller.isStartPage, controller.error == nil,
+           let host = controller.webView.superview as? WebSurfaceHost {
+            titlePreviewHost = host
+            host.showTitlePreview(controller.address)
+        }
         onHover?(hovering)
+    }
+
+    func clearTitlePreview() {
+        titlePreviewHost?.showTitlePreview("")
+        titlePreviewHost = nil
+    }
+
+    override func viewDidHide() {
+        super.viewDidHide()
+        setHovering(false)
     }
 
     override func mouseEntered(with event: NSEvent) { setHovering(true) }
     override func mouseExited(with event: NSEvent) { setHovering(false) }
 
     override func mouseDown(with event: NSEvent) {
+        clearTitlePreview()
         InputDiagnostics.record(.paneHandle, event: event, view: self)
         cancelDrag()
         guard let store, let tabID, let pageID, store.selectedTab.id == tabID else { return }

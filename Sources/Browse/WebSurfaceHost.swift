@@ -76,6 +76,12 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     }
     let linkPreview = LinkHoverPreview()
     private var linkTrackingArea: NSTrackingArea?
+    private var titlePreviewURL = ""
+
+    func showTitlePreview(_ url: String) {
+        titlePreviewURL = LinkHoverObserver.displayURL(url)
+        showLinkPreview((hostedWebView as? FocusWebView)?.hoveredLink ?? "")
+    }
 
     private var linkPreviewPointer: NSPoint? {
         window.map { convert($0.mouseLocationOutsideOfEventStream, from: nil) }
@@ -86,7 +92,9 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         let pointer = convert(window?.mouseLocationOutsideOfEventStream ?? .zero, from: nil)
         let content = NSRect(x: web.frame.minX, y: web.frame.minY, width: web.frame.width,
                              height: max(0, web.frame.height - topContentInset - (isFindBarVisible ? 38 : 0)))
-        linkPreview.url = window?.isVisible == true && !isHiddenOrHasHiddenAncestor && content.contains(pointer) ? url : ""
+        let visible = window?.isVisible == true && !isHiddenOrHasHiddenAncestor
+        if content.contains(pointer) { titlePreviewURL = "" }
+        linkPreview.url = visible ? (!titlePreviewURL.isEmpty ? titlePreviewURL : (content.contains(pointer) ? url : "")) : ""
         linkPreview.place(in: web.frame, avoiding: linkPreviewPointer)
     }
 
@@ -107,6 +115,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     }
 
     override func mouseExited(with event: NSEvent) {
+        titlePreviewURL = ""
         (hostedWebView as? FocusWebView)?.hoveredLink = ""
         linkPreview.url = ""
         super.mouseExited(with: event)
@@ -114,6 +123,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
 
     override func viewDidHide() {
         super.viewDidHide()
+        titlePreviewURL = ""
         linkPreview.url = ""
     }
 
@@ -324,6 +334,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
             }
         }
         if hostedWebView !== webView {
+            titlePreviewURL = ""
             (hostedWebView as? FocusWebView)?.closeInspector()
             if webView.superview !== self { (webView as? FocusWebView)?.closeInspector() }
             linkPreview.url = ""

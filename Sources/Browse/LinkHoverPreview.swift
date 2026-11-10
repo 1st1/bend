@@ -48,6 +48,10 @@ final class LinkHoverObserver: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let web = message.webView as? FocusWebView, let url = message.body as? String else { return }
+        web.hoveredLink = Self.displayURL(url)
+    }
+
+    static func displayURL(_ url: String) -> String {
         // Keep URLs encoded and remove invisible direction/control characters;
         // page-supplied text must not visually reorder the destination.
         let visible = url.prefix(4096).unicodeScalars.filter {
@@ -55,7 +59,7 @@ final class LinkHoverObserver: NSObject, WKScriptMessageHandler {
             ![0x061C, 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
               0x2066, 0x2067, 0x2068, 0x2069].contains($0.value)
         }
-        web.hoveredLink = String(String.UnicodeScalarView(visible))
+        return String(String.UnicodeScalarView(visible))
     }
 }
 
@@ -92,7 +96,11 @@ final class LinkHoverPreview: NSView {
 
     func place(in bounds: NSRect, avoiding pointer: NSPoint? = nil) {
         let available = bounds.insetBy(dx: min(8, bounds.width / 2), dy: 0)
-        let width = min(label.intrinsicContentSize.width + 14, available.width)
+        // The cell includes internal text-layout padding that neither the
+        // attributed string width nor drawingRect reports. Round up so a
+        // fractional fitting width cannot trigger middle truncation.
+        let fittingWidth = label.cell?.cellSize.width ?? label.intrinsicContentSize.width
+        let width = min(ceil(fittingWidth) + 14, available.width)
         var placement = NSRect(x: available.minX, y: bounds.minY + 8, width: width, height: 22)
         let clearance: CGFloat = 12
         // Always compare against the preferred left position, not the current

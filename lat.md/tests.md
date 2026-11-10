@@ -777,7 +777,7 @@ HTML and XHTML are accepted, while other file types and remote file hosts are re
 
 Verify relative, nested, shadow-root, and iframe links display their destinations through an isolated WebKit bridge. Leaving a link and navigating clear the preview; its bounded pane-local bubble ignores clicks.
 
-Pointer movement within one link switches the preview to the right and back without duplicate URL messages or oscillation. Long URLs truncate clear of the cursor at either edge, including after a pane resize.
+Pointer movement within one link switches the preview to the right and back without duplicate URL messages or oscillation. Long URLs truncate clear of the cursor at either edge, including after a pane resize. Short and long GitHub URLs fit their full text when the pane has room; changing URLs recomputes the width. Rendered previews must match the same label with truncation disabled, catching internal text-cell padding that geometric assertions miss. `BEND_URL_PREVIEW_SNAPSHOTS` optionally saves those renders for visual inspection.
 
 ## Developer tools
 
@@ -930,3 +930,9 @@ Coverage includes restrictive file permissions, raw credential removal after imp
 [[scripts/test-publish-release.py#PublicationTests]] exercises release publication with temporary build artifacts and a simulated GitHub service, without pushing tags or creating real releases.
 
 Coverage includes exact-commit tags, complete asset upload before publication, draft recovery after partial upload failure, rejection of conflicting tags and mismatched checksums, notes, or provenance, upload digest verification, and reruns that leave published binaries untouched. [[scripts/test-publish-release.py#APIErrorTests]] distinguishes a missing resource from permission or network errors so API failures cannot silently trigger creation. Run `python3 scripts/test-publish-release.py`.
+
+## Title URL preview
+
+[[Tests/BrowseTests/LinkHoverPreviewTests.swift#titleURLPreview]] sends native hover events to a pane title handle and verifies the page URL appears in the existing bottom preview even when the pointer is above page content.
+
+Delayed DOM link events cannot erase or replace the title URL while the pointer is in the header. Entering page content gives the hovered link priority even when the native title-exit event arrives late. Exit restores ordinary link previews; title presses, hiding, removal, and navigation clearing remove the title preview. Both sources preserve encoded URLs and strip invisible control and directional characters.

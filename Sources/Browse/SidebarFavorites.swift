@@ -1,8 +1,6 @@
 import SwiftUI
 import BrowseCore
 
-private typealias FavoriteState<Value> = SwiftUI.State<Value>
-
 // @lat: [[architecture#Sidebar favorites]]
 struct SidebarFavorites: View {
     @ObservedObject var store: BrowserStore
@@ -53,26 +51,20 @@ private struct FavoriteTileStyle: ButtonStyle {
     private struct Tile: View {
         let configuration: ButtonStyleConfiguration
         let selected: Bool
-        @FavoriteState<Bool> private var hovered = false
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        private var shape: RoundedRectangle {
+            RoundedRectangle(cornerRadius: Chrome.sidebarItemCornerRadius)
+        }
 
         var body: some View {
             configuration.label
                 .background {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(.white.opacity(configuration.isPressed ? 0.2 : selected ? 0.15 : hovered ? 0.11 : 0.06))
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovered)
+                    shape.fill(ChromeButtonStyle.highlightBackground)
+                        .opacity(selected ? 0 : 1)
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(.white.opacity(selected ? 0.16 : 0.04), lineWidth: 0.5)
-                        .allowsHitTesting(false)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .onHover { hovered = $0 }
-                .onDisappear { hovered = false }
-                .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in hovered = false }
-                .onReceive(NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)) { _ in hovered = false }
+                .modifier(TabSelectionMaterial(selected: selected, shape: shape))
+                .contentShape(shape)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: selected)
         }
     }
 }
