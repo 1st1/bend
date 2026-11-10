@@ -34,6 +34,19 @@ private final class LinkAction: WKNavigationAction {
     override var sourceFrame: WKFrameInfo { source ?? super.sourceFrame }
 }
 
+@MainActor private final class NativeLinkNavigationProbe: NSObject, WKNavigationDelegate {
+    let controller: PageController
+    var actions: [String] = []
+
+    init(controller: PageController) { self.controller = controller }
+
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
+        actions.append("url=\(action.request.url?.absoluteString ?? "nil") type=\(action.navigationType.rawValue) button=\(action.buttonNumber) modifiers=\(action.modifierFlags.rawValue) download=\(action.shouldPerformDownload)")
+        controller.webView(webView, decidePolicyFor: action, decisionHandler: decisionHandler)
+    }
+}
+
 // @lat: [[tests#Command-click navigation]]
 @Test @MainActor func commandClickNavigation() {
     _ = NSApplication.shared
@@ -376,11 +389,15 @@ private final class LinkAction: WKNavigationAction {
     _ = NSApplication.shared
     let controller = PageController(address: "browse://start", configure: { $0.websiteDataStore = .nonPersistent() })
     let web = controller.webView
+    let probe = NativeLinkNavigationProbe(controller: controller)
+    web.navigationDelegate = probe
+    web.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
     let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 600, height: 400),
                           styleMask: [.titled], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
     window.contentView = web
-    window.orderFront(nil)
+    window.makeKeyAndOrderFront(nil)
+    window.makeFirstResponder(web)
     defer { controller.media.detach(); web.stopLoading(); window.close() }
     var links: [(String, Bool)] = []
     controller.onOptionLink = { links.append(($0, $1)) }
@@ -390,20 +407,43 @@ private final class LinkAction: WKNavigationAction {
         <a target="_blank" href="http://127.0.0.1:9/blank">New window</a>
         <iframe srcdoc="<style>body{margin:0}a{display:block;height:80px}</style><a href='http://127.0.0.1:9/iframe'>Frame link</a>"></iframe>
         """, baseURL: URL(string: "http://127.0.0.1:9/source"))
-    for _ in 0..<100 {
-        if (try? await web.evaluateJavaScript("document.querySelector('iframe')?.contentDocument?.querySelector('a') != null")) as? Bool == true { break }
+    let ready = "document.readyState === 'complete' && document.querySelector('iframe')?.contentDocument?.querySelector('a') != null"
+    for _ in 0..<250 {
+        if (try? await web.evaluateJavaScript(ready)) as? Bool == true { break }
         try await Task.sleep(for: .milliseconds(20))
     }
-    for (index, y) in [370.0, 310.0, 250.0].enumerated() {
+    try #require(try await web.evaluateJavaScript(ready) as? Bool == true, "Link fixture must finish loading before clicks")
+    // DOM readiness can precede WebKit's presentation update. Wait for the
+    // rendered page and derive native coordinates from the actual link bounds.
+    let snapshot = WKSnapshotConfiguration()
+    snapshot.afterScreenUpdates = true
+    _ = try await web.takeSnapshot(configuration: snapshot)
+    for index in 0..<3 {
+        let target = try #require(try await web.callAsyncJavaScript("""
+            const frame = document.querySelector('iframe');
+            const doc = index === 2 ? frame.contentDocument : document;
+            const link = doc.querySelectorAll('a')[index === 2 ? 0 : index];
+            const rect = link.getBoundingClientRect();
+            const parent = index === 2 ? frame.getBoundingClientRect() : {x: 0, y: 0};
+            window.nativeMouseEvents = [];
+            for (const type of ['mousedown', 'mouseup', 'click']) {
+                link.addEventListener(type, event => window.nativeMouseEvents.push({type, trusted: event.isTrusted, alt: event.altKey}), {once: true});
+            }
+            return [parent.x + rect.x + rect.width / 2, parent.y + rect.y + rect.height / 2];
+            """, arguments: ["index": index], in: nil, contentWorld: .page) as? [Double])
+        let local = NSPoint(x: target[0], y: web.isFlipped ? target[1] : web.bounds.height - target[1])
+        let point = web.convert(local, to: nil)
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-            let event = try #require(NSEvent.mouseEvent(with: type, location: NSPoint(x: 30, y: y),
+            let event = try #require(NSEvent.mouseEvent(with: type, location: point,
                 modifierFlags: .option, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
                 context: nil, eventNumber: index + 1, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0))
             if type == .leftMouseDown { web.mouseDown(with: event) }
             else { web.mouseUp(with: event) }
         }
         for _ in 0..<100 where links.count <= index { try await Task.sleep(for: .milliseconds(20)) }
-        try #require(links.count == index + 1)
+        let events = try await web.evaluateJavaScript("JSON.stringify(window.nativeMouseEvents)") as? String ?? "missing"
+        try #require(links.count == index + 1,
+                     "Link \(index), native point \(point), bounds \(web.bounds), DOM events \(events), navigation actions \(probe.actions)")
     }
     #expect(links.map(\.0) == ["self", "blank", "iframe"].map { "http://127.0.0.1:9/\($0)" })
     #expect(links.map(\.1) == [true, true, false])

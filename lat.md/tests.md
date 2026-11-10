@@ -979,6 +979,8 @@ Both navigation callbacks cancel source navigation. Pane placement, sidebar inse
 
 [[Tests/BrowseTests/LinkNavigationTests.swift#nativeOptionClickLinks]] sends native Option-click events to same-frame, new-window, and iframe links, verifying correct URLs and frame provenance without downloading or navigating the source.
 
+The fixture requires document and iframe readiness, waits for a rendered snapshot, and converts measured DOM link bounds into native window coordinates before clicking. Failures report DOM mouse events and WebKit navigation-action metadata to distinguish event-delivery problems from routing regressions.
+
 ## Link context menu destinations
 
 [[Tests/BrowseTests/LinkContextMenuTests.swift#linkContextMenuDestinations]] invokes WebKit's real context-menu hit testing for main-frame and iframe links and dispatches the resulting pane, tab, and window menu actions.
