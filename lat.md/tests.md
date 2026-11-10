@@ -9,9 +9,11 @@ Model, store, and navigation-delegate tests cover pane layouts, persistence, lin
 Run the test suite and documentation validation from the repository root:
 
 ```sh
-CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache" swift test --disable-sandbox
+./scripts/test.sh
 lat check
 ```
+
+[[scripts/test.sh]] uses the installed SDK's version in the linked binary, matching the app and CI. Plain SwiftPM linking can select older AppKit compatibility behavior, including different sidebar constraints. With no arguments, [[scripts/test-all.py]] discovers the full inventory, runs core tests together, and runs each native test in a fresh process. This isolates AppKit's global menus, focus, and animation workers; accumulated native animations can exhaust dispatch workers in a long-lived test host. Every discovered test must report a result or its declared skip, and failed or timed-out processes fail the run. Arguments such as `--filter` run a focused selection directly.
 
 ## Nested splits and closing
 
@@ -317,7 +319,7 @@ The native preview layer is observed during continuous movement and edge changes
 
 Ordinary header hit testing reaches the compact title handles, which drive hover feedback and pane dragging. During a title press, native dispatch instead uses the window-owned mouse target, which accepts first mouse and remains mounted through release. All three mouse event types must pass through AppKit. Mouse-down focuses the pane; small motion does not move the window or begin a drag, and mouse-up clears tracking. Empty header and sidebar backgrounds request native window dragging. Tab rows, toolbar controls, sidebar resize handles, and traffic lights are excluded; native clicks still activate the sidebar toggle without creating a tab.
 
-Every background window-drag request must originate inside AppKit's normal event dispatch, so activating clicks cannot skip native window appearance bookkeeping. Outside mouse-down dispatch the background targets do not claim hit testing, preserving underlying scroll and hover behavior.
+Background drag gestures cross the native titlebar drag threshold before asserting the request: AppKit can defer the initial mouse-down. Every background window-drag request must originate inside AppKit's normal event dispatch, so activating clicks cannot skip native window appearance bookkeeping. Outside mouse-down dispatch the background targets do not claim hit testing, preserving underlying scroll and hover behavior.
 
 ## Pane history controls
 
@@ -547,6 +549,8 @@ The test also closes every registered extension window and opens a new one, chec
 
 [BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) dispatches Command-N through the native menu, checks that it creates a separate blank browser window, and verifies tab commands follow focus between both windows.
 
+Focus transitions use the native window delegate notification so offscreen desktop activation is not a prerequisite.
+
 ## Tab merge placement
 
 [PaneTransferTests.swift](../Tests/BrowseCoreTests/PaneTransferTests.swift) checks all four merge edges, intact source trees, untouched destination branches and fractions, focus, title, persistence, and atomic rejection of stale or foreign target panes.
@@ -599,7 +603,7 @@ Match-count assertions cover case-insensitive totals, hidden-text exclusion, zer
 
 [BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) verifies Command-W closes the focused Settings window without changing browser panes, still closes a focused browser pane, and cancels a new tab from its address popup.
 
-The native Settings window hides the centered window title and keeps full-size content, with a transparent titlebar before content scrolls beneath the section heading.
+The test dispatches real menu key equivalents with an explicit focused-window provider, avoiding dependence on desktop activation in a headless test host. The native Settings window hides the centered window title and keeps full-size content, with a transparent titlebar before content scrolls beneath the section heading.
 
 ## Settings section toolbar
 
@@ -960,3 +964,7 @@ Window closure clears every remaining pane's store. Regular browsing cannot see 
 [[Tests/BrowseTests/ExtensionTests.swift#privateExtensionIframeIsolation]] verifies private panes reject extension documents that would let HTTP iframes read or write regular-profile cookies, including after opt-in.
 
 A loopback HTTP iframe first demonstrates both cookie access and writes in an isolated regular profile. The regression then exercises configuration lookup, direct controller navigation, extension tab navigation and creation, lazy page loading, and popup rejection. Private views remain nonpersistent, and the regular cookie store remains unchanged both before and after private-window teardown.
+
+## Native test runner coverage
+
+[[scripts/test-test-runner.py#TestRunnerTests]] verifies complete inventory execution, declared-skip accounting, rejection of unmatched filters and ambiguous names, failed-process propagation, and bounded timeout termination.

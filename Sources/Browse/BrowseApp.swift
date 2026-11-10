@@ -38,9 +38,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var store: BrowserStore { browserWindows.active?.store ?? browserWindows.sharedStore }
     private var window: NSWindow? { browserWindows.active?.window }
     private var addressPanel: AddressPanelController? { browserWindows.active?.addressPanel }
+    private let focusedWindow: () -> NSWindow?
 
-    init(browserWindows: BrowserWindows = BrowserWindows()) {
+    init(browserWindows: BrowserWindows = BrowserWindows(), focusedWindow: @escaping () -> NSWindow? = { NSApp.keyWindow }) {
         self.browserWindows = browserWindows
+        self.focusedWindow = focusedWindow
         super.init()
     }
     private var clickMonitor: Any?
@@ -262,7 +264,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         store.showHistory()
         window?.makeKeyAndOrderFront(nil)
     }
-    @objc private func closePane() { closeFocusedWindow(NSApp.keyWindow) }
+    @objc private func closePane() { closeFocusedWindow(focusedWindow()) }
 
     func closeFocusedWindow(_ keyWindow: NSWindow?) {
         let context = browserWindows.active
@@ -302,7 +304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         if menuItem.action == #selector(closeTab) { return !store.selectedTab.isPinned }
         if menuItem.action == #selector(closePane) {
-            if let key = NSApp.keyWindow, key !== window, addressPanel?.owns(key) != true { return true }
+            if let key = focusedWindow(), key !== window, addressPanel?.owns(key) != true { return true }
             return !store.isPanePinned(store.selectedTab.focusedPane)
         }
         return menuItem.action == #selector(reopenClosed) ? store.canReopenClosed : true
