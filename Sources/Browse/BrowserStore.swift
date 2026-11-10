@@ -714,10 +714,10 @@ final class BrowserStore: ObservableObject {
 
     @available(macOS 15.4, *)
     func extensionConfiguration(for context: WKWebExtensionContext) -> WKWebViewConfiguration? {
-        guard !isPrivate || context.hasAccessToPrivateData else { return nil }
-        // Extension origins use their context's own storage and related views,
-        // including in private windows. Website navigation replaces this view
-        // and reapplies the pane's nonpersistent store in configureWebView.
+        // The shared extension configuration also gives HTTP frames and requests
+        // access to regular website cookies. WebKit's related extension views
+        // require that store, so private panes cannot host extension documents.
+        guard !isPrivate else { return nil }
         return context.webViewConfiguration
     }
 
@@ -726,11 +726,15 @@ final class BrowserStore: ObservableObject {
         let extensionURL = URL(string: page.address).flatMap {
             ["webkit-extension", "safari-web-extension"].contains($0.scheme ?? "") ? $0 : nil
         }
-        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, websiteSettings: websiteSettings, downloads: downloads, configure: { [weak self] configuration in
+        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, downloads: downloads, configure: { [weak self] configuration in
             self?.configureWebView(configuration, for: page.id)
         })
         bindController(controller, to: page)
         browsers[page.id] = controller
+        if isPrivate, extensionURL != nil {
+            controller.error = PageController.privateExtensionPageError
+            return controller
+        }
         if #available(macOS 15.4, *), let extensionURL {
             let manager = extensions
             Task { [weak controller] in
@@ -1108,6 +1112,8 @@ class FocusWebView: WKWebView {
 
 @MainActor
 final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
+    static let privateExtensionPageError = "Extension pages are unavailable in private windows because their website storage cannot be isolated."
+    let isPrivate: Bool
     let downloads: BrowserDownloads
     let media = PageMediaController()
     @Published private(set) var webView: FocusWebView
@@ -1155,10 +1161,11 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         return "Version/\(version) Safari/605.1.15 Bend/0.1"
     }()
 
-    init(address: String, paneID: UUID? = nil, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil,
+    init(address: String, paneID: UUID? = nil, isPrivate: Bool = false, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil,
          externalApplications: ExternalApplicationLinks = .shared, javaScriptDialogs: JavaScriptDialogs = .shared,
          downloads: BrowserDownloads = BrowserDownloads(), configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
+        self.isPrivate = isPrivate
         self.downloads = downloads
         self.externalApplications = externalApplications
         self.javaScriptDialogs = javaScriptDialogs
@@ -1233,6 +1240,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     // Only the extension host may authorize a top-level extension document.
     func navigateExtension(_ url: URL, configuration: WKWebViewConfiguration) {
+        guard !isPrivate else { error = Self.privateExtensionPageError; return }
         onInitialDownload = nil
         if extensionOrigin?.scheme != url.scheme || extensionOrigin?.host != url.host {
             extensionOrigin = url

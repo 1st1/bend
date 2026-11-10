@@ -533,7 +533,7 @@ struct ExtensionManagementView: View {
                 get: { manager.records.first(where: { $0.id == record.id })?.enabledInPrivateMode ?? false },
                 set: { manager.setPrivateAccess($0, id: record.id) }))
                 .toggleStyle(.checkbox).disabled(manager.busy)
-            Text("Allow this extension to access private tabs and website data. Reload open pages after changing this setting.")
+            Text("Allow this extension to access private tabs and website data. Extension pages and popups are unavailable in private windows. Reload open pages after changing this setting.")
                 .font(.caption).foregroundStyle(.secondary)
             if let failure = manager.failures[record.id] { Text(failure).font(.callout).foregroundStyle(.red) }
             if !manager.ownsPackage(record) {

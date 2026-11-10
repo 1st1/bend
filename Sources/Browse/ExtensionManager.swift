@@ -654,6 +654,10 @@ final class ExtensionManager: NSObject, ObservableObject {
 
     func performAction(_ id: UUID, pageID: UUID) {
         guard isAvailable(id, pageID: pageID), let context = contexts[id], let tab = tabs[pageID] else { return }
+        if tab.store?.isPrivate == true, context.action(for: tab)?.presentsPopup == true {
+            tab.pageController?.error = "Extension popups are unavailable in private windows because their website storage cannot be isolated."
+            return
+        }
         store(for: pageID)?.revealPage(pageID)
         context.userGesturePerformed(in: tab)
         context.performAction(for: tab)

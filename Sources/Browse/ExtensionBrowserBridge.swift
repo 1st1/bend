@@ -107,13 +107,15 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
             completionHandler(nil, failure("This extension is not enabled in private mode.")); return
         }
         let url = configuration.url ?? URL(string: "browse://start")!
-        if !store.isPrivate, url.scheme == context.baseURL.scheme, url.host == context.baseURL.host {
+        if url.scheme == context.baseURL.scheme, url.host == context.baseURL.host {
+            guard !store.isPrivate else {
+                completionHandler(nil, failure(PageController.privateExtensionPageError)); return
+            }
             do { completionHandler(try openDocument(url: url, context: context, active: configuration.shouldBeActive), nil) }
             catch { completionHandler(nil, error) }
             return
         }
-        let ownExtensionURL = url.scheme == context.baseURL.scheme && url.host == context.baseURL.host
-        guard ["http", "https", "browse"].contains(url.scheme ?? "") || ownExtensionURL else {
+        guard ["http", "https", "browse"].contains(url.scheme ?? "") else {
             completionHandler(nil, failure("This extension URL cannot open in a browser pane. Use Extension Settings for its options page.")); return
         }
         let previous = store.session.selectedTab
@@ -133,6 +135,9 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
     func webExtensionController(_ controller: WKWebExtensionController, presentActionPopup action: WKWebExtension.Action,
         for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
         let target = action.associatedTab ?? activeID.flatMap { tabs[$0] }
+        guard (target as? ExtensionTab)?.store?.isPrivate != true else {
+            completionHandler(failure("Extension popups are unavailable in private windows because their website storage cannot be isolated.")); return
+        }
         guard let webView = target?.webView?(for: context), webView.window != nil,
               let popover = action.popupPopover else {
             completionHandler(failure("Select a visible web page before opening this extension.")); return
@@ -242,6 +247,9 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["load": true])
         guard let page, let store else {
             completionHandler(manager?.failure("This URL cannot open in a browser pane.")); return
+        }
+        if store.isPrivate, url.scheme == context.baseURL.scheme, url.host == context.baseURL.host {
+            completionHandler(manager?.failure(PageController.privateExtensionPageError)); return
         }
         if context.isLoaded, url.scheme == context.baseURL.scheme, url.host == context.baseURL.host,
            let configuration = store.extensionConfiguration(for: context) {

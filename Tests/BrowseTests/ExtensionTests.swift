@@ -723,14 +723,8 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     let restoredContext = try #require(saved.contexts[id])
     #expect(restoredContext.hasAccessToPrivateData)
     if restoredContext.isLoaded { try saved.controller.unload(restoredContext) }
-    let extensionConfig = try #require(privateWindow.store.extensionConfiguration(for: context))
-    let optionsURL = try #require(context.optionsPageURL)
-    privateController.navigateExtension(optionsURL, configuration: extensionConfig)
-    privateController.webView.navigationDelegate = optionsNavigation
-    try await optionsNavigation.load(privateController.webView, url: optionsURL)
-    #expect(try await privateController.webView.evaluateJavaScript("browser.runtime.id") as? String == context.uniqueIdentifier)
+    #expect(privateWindow.store.extensionConfiguration(for: context) == nil)
     manager.setPrivateAccess(false, id: id)
-    #expect(privateController.isStartPage)
     privateWeb = privateController.webView
     #expect(privateWeb.configuration.websiteDataStore === privateWindow.store.websiteDataStore(for: privatePage.id))
     #expect(!privateWeb.configuration.websiteDataStore.isPersistent)
@@ -743,4 +737,143 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     try await navigation.load(privateWeb, url: url)
     #expect(try await privateWeb.evaluateJavaScript("document.body.dataset.browseExtension || ''") as? String == "")
     #expect(try await privateWeb.evaluateJavaScript("window.blockedScriptRan === true") as? Bool == true)
+}
+
+// @lat: [[tests#Private extension iframe isolation]]
+@Test @MainActor func privateExtensionIframeIsolation() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("PrivateReview-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let persistentData = WKWebsiteDataStore(forIdentifier: UUID())
+    let manager = ExtensionManager(root: root.appendingPathComponent("extensions"), persistent: false, websiteDataStore: persistentData)
+    let regular = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false, extensionManager: manager)
+    await manager.restorationTask?.value
+    let privateStore = BrowserStore(sessionFile: root.appendingPathComponent("private.json"), sharedStore: regular, isPrivate: true)
+    let normalWindow = NSWindow(), privateWindow = NSWindow()
+    manager.attachWindow(normalWindow, store: regular)
+    manager.attachWindow(privateWindow, store: privateStore)
+    defer {
+        manager.detachWindow(privateWindow); privateStore.stopWindow()
+        manager.detachWindow(normalWindow); regular.stopWindow()
+        Task { await persistentData.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) }
+    }
+    try await manager.importExtension(from: extensionFixture(at: root))
+    let id = try #require(manager.records.first?.id)
+    try await manager.enable(true, id: id) { _, _ in true }
+    manager.setPrivateAccess(true, id: id)
+    let context = try #require(manager.contexts[id])
+    defer { try? manager.controller.unload(context) }
+    let cookie = try #require(HTTPCookie(properties: [.domain: "127.0.0.1", .path: "/", .name: "regularSecret", .value: "regular-session"]))
+    await persistentData.httpCookieStore.setCookie(cookie)
+    let listener = try NWListener(using: .tcp, on: .any)
+    listener.newConnectionHandler = { connection in
+        connection.start(queue: .global())
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 16384) { _, _, _, _ in
+            let body = "<script>const before=document.cookie;document.cookie='privateSecret=private-session; path=/; max-age=3600';parent.postMessage(before, '*');</script>"
+            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
+            connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
+        }
+    }
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        listener.stateUpdateHandler = { state in
+            switch state {
+            case .ready: listener.stateUpdateHandler = nil; continuation.resume()
+            case .failed(let error): listener.stateUpdateHandler = nil; continuation.resume(throwing: error)
+            default: break
+            }
+        }
+        listener.start(queue: .global())
+    }
+    defer { listener.cancel() }
+
+    let optionsURL = try #require(context.optionsPageURL)
+    let sharedConfiguration = try #require(context.webViewConfiguration)
+    let navigation = ExtensionTestNavigation()
+    func probeIframe(_ web: WKWebView) async throws -> String? {
+        web.navigationDelegate = navigation
+        try await navigation.load(web, url: optionsURL)
+        return try await web.callAsyncJavaScript("""
+        return await new Promise(resolve => {
+          const frame = document.createElement('iframe');
+          frame.src = url;
+          window.addEventListener('message', event => { frame.remove(); resolve(event.data); }, {once:true});
+          document.body.append(frame);
+          setTimeout(() => resolve('timeout'), 3000);
+        });
+        """, arguments: ["url": "http://127.0.0.1:\(listener.port!.rawValue)/"], in: nil, contentWorld: .page) as? String
+    }
+    // Positive control: this exact extension iframe can read and write the
+    // isolated regular store. Never use the user's actual profile in this test.
+    let options = WKWebView(frame: .zero, configuration: sharedConfiguration)
+    #expect(try await probeIframe(options) == "regularSecret=regular-session")
+    let controlCookies = await persistentData.httpCookieStore.allCookies()
+    #expect(controlCookies.contains { $0.name == "privateSecret" })
+    for cookie in controlCookies where cookie.name == "privateSecret" {
+        await withCheckedContinuation { continuation in
+            persistentData.httpCookieStore.delete(cookie) { continuation.resume() }
+        }
+    }
+    options.stopLoading()
+
+    let privatePage = privateStore.selectedTab.pages[0]
+    let page = privateStore.controller(for: privatePage)
+    let originalView = page.webView
+    // Exercise the original leak if a future change supplies a configuration.
+    let configuration = privateStore.extensionConfiguration(for: context)
+    #expect(configuration == nil)
+    if let configuration {
+        page.navigateExtension(optionsURL, configuration: configuration)
+        #expect(try await probeIframe(page.webView) == "")
+    }
+    // The controller also refuses a shared configuration supplied directly.
+    page.navigateExtension(optionsURL, configuration: sharedConfiguration)
+    #expect(page.webView === originalView)
+    #expect(page.isStartPage)
+    #expect(page.error != nil)
+    #expect(!page.webView.configuration.websiteDataStore.isPersistent)
+
+    let tab = try #require(manager.tabs[privatePage.id])
+    let loadError: Error? = await withCheckedContinuation { continuation in
+        tab.loadURL(optionsURL, for: context) { continuation.resume(returning: $0) }
+    }
+    #expect(loadError != nil)
+    // Both host actions and extension-initiated popups reject before asking
+    // WebKit for a popup view backed by shared website storage.
+    page.error = nil
+    manager.performAction(id, pageID: privatePage.id)
+    #expect(page.error?.contains("popups are unavailable") == true)
+    let action = try #require(context.action(for: tab))
+    let popupError: Error? = await withCheckedContinuation { continuation in
+        manager.webExtensionController(manager.controller, presentActionPopup: action, for: context) {
+            continuation.resume(returning: $0)
+        }
+    }
+    #expect(popupError?.localizedDescription.contains("popups are unavailable") == true)
+    #expect(manager.popup == nil)
+    // Creating an extension tab must reject before adding a private pane.
+    let privateTabQuery = "(await browser.tabs.query({incognito: true}))[0]"
+    let privateID = try await options.callAsyncJavaScript("return (" + privateTabQuery + ").windowId", arguments: [:], in: nil, contentWorld: .page)
+    let count = privateStore.session.workspaces.flatMap(\.tabs).count
+    #expect(try await options.callAsyncJavaScript("""
+        try { await browser.tabs.create({windowId, url}); return false; }
+        catch { return true; }
+        """, arguments: ["windowId": try #require(privateID), "url": optionsURL.absoluteString], in: nil, contentWorld: .page) as? Bool == true)
+    #expect(privateStore.session.workspaces.flatMap(\.tabs).count == count)
+
+    // Lazy controller creation must not load an extension-origin page either.
+    privateStore.newTab(address: optionsURL.absoluteString)
+    let restored = privateStore.controller(for: privateStore.selectedTab.pages[0])
+    for _ in 0..<50 {
+        if restored.error != nil { break }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(restored.isStartPage)
+    #expect(restored.error != nil)
+    #expect(!restored.webView.configuration.websiteDataStore.isPersistent)
+    let cookies = await persistentData.httpCookieStore.allCookies()
+    #expect(!cookies.contains { $0.name == "privateSecret" })
+    privateStore.stopWindow()
+    let afterClose = await persistentData.httpCookieStore.allCookies()
+    #expect(!afterClose.contains { $0.name == "privateSecret" })
+    #expect(afterClose.contains { $0.name == "regularSecret" && $0.value == "regular-session" })
 }
