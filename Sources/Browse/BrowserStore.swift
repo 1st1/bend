@@ -49,19 +49,23 @@ final class BrowserStore: ObservableObject {
     @Published var persistenceError: String?
     @Published private var localHistory = BrowsingHistory()
     @Published private var localHistoryError: String?
+    let isPrivate: Bool
+    private var privateWebsiteDataStores: [UUID: WKWebsiteDataStore] = [:]
+    private var windowStopped = false
+    var historyOwner: BrowserStore { isPrivate ? self : (sharedStore?.historyOwner ?? self) }
     let sharedStore: BrowserStore?
     let websiteSettings: WebsiteSettingsStore
     private var sharedObservation: AnyCancellable?
     var preferencesStore: BrowserStore { sharedStore?.preferencesStore ?? self }
     var historyPublisher: AnyPublisher<BrowsingHistory, Never> {
-        sharedStore?.historyPublisher ?? $localHistory.eraseToAnyPublisher()
+        isPrivate ? $localHistory.eraseToAnyPublisher() : (sharedStore?.historyPublisher ?? $localHistory.eraseToAnyPublisher())
     }
     private(set) var history: BrowsingHistory {
-        get { sharedStore?.history ?? localHistory }
+        get { isPrivate ? localHistory : (sharedStore?.history ?? localHistory) }
         set { localHistory = newValue }
     }
     private(set) var historyError: String? {
-        get { sharedStore?.historyError ?? localHistoryError }
+        get { isPrivate ? localHistoryError : (sharedStore?.historyError ?? localHistoryError) }
         set { localHistoryError = newValue }
     }
     private var browsers: [UUID: PageController] = [:]
@@ -87,19 +91,25 @@ final class BrowserStore: ObservableObject {
     private var historyDirty = false
     private var historyWritable = true
 
-    init(sessionFile: URL? = nil, persistentExtensions: Bool = true, extensionManager: AnyObject? = nil, sharedStore: BrowserStore? = nil) {
+    init(sessionFile: URL? = nil, persistentExtensions: Bool = true, extensionManager: AnyObject? = nil, sharedStore: BrowserStore? = nil, isPrivate: Bool = false) {
+        self.isPrivate = isPrivate
         self.sharedStore = sharedStore
         mediaPlaybackFocus = sharedStore?.mediaPlaybackFocus ?? MediaPlaybackFocus()
         self.persistentExtensions = sharedStore?.persistentExtensions ?? persistentExtensions
         let root = AppProfile.current.supportDirectory
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
-        downloads = sharedStore?.downloads ?? BrowserDownloads(
-            databaseFile: self.sessionFile.deletingLastPathComponent().appendingPathComponent("Downloads.db"))
-        websiteSettings = sharedStore?.websiteSettings ?? WebsiteSettingsStore(
-            file: self.sessionFile.deletingLastPathComponent().appendingPathComponent("WebsiteSettings.db"))
+        if isPrivate {
+            downloads = BrowserDownloads(directory: sharedStore?.downloadDirectory ?? BrowserDownloads.defaultDirectory)
+            websiteSettings = WebsiteSettingsStore(temporary: sharedStore?.websiteSettings.values ?? WebsiteSettings())
+        } else {
+            downloads = sharedStore?.downloads ?? BrowserDownloads(
+                databaseFile: self.sessionFile.deletingLastPathComponent().appendingPathComponent("Downloads.db"))
+            websiteSettings = sharedStore?.websiteSettings ?? WebsiteSettingsStore(
+                file: self.sessionFile.deletingLastPathComponent().appendingPathComponent("WebsiteSettings.db"))
+        }
         historyFile = self.sessionFile.deletingLastPathComponent().appendingPathComponent("History.db")
         legacyHistoryFile = self.sessionFile.deletingLastPathComponent().appendingPathComponent("history.json")
-        if let data = try? Data(contentsOf: self.sessionFile),
+        if !isPrivate, let data = try? Data(contentsOf: self.sessionFile),
            let restored = try? JSONDecoder().decode(BrowserSession.self, from: data), restored.isValid {
             session = restored
         } else { session = BrowserSession() }
@@ -129,7 +139,7 @@ final class BrowserStore: ObservableObject {
                 session.workspaces[wi].tabs[ti].commandClickPaneID = nil
             }
         }
-        if sharedStore == nil {
+        if sharedStore == nil && !isPrivate {
             do {
                 let database = try HistoryDatabase(file: historyFile, legacyFile: legacyHistoryFile)
                 historyDatabase = database
@@ -528,26 +538,27 @@ final class BrowserStore: ObservableObject {
     }
 
     func recordVisit(url: String, title: String, at date: Date = Date()) {
-        if let sharedStore { sharedStore.recordVisit(url: url, title: title, at: date); return }
-        guard history.record(url: url, title: title, at: date) else { return }
+        if historyOwner !== self { historyOwner.recordVisit(url: url, title: title, at: date); return }
+        guard (!isPrivate || !windowStopped), history.record(url: url, title: title, at: date) else { return }
         saveHistorySoon()
     }
 
     func recordHistoryChoice(url: String, query: String) {
-        if let sharedStore { sharedStore.recordHistoryChoice(url: url, query: query); return }
+        guard !isPrivate || !windowStopped else { return }
+        if historyOwner !== self { historyOwner.recordHistoryChoice(url: url, query: query); return }
         history.recordChoice(url: url, query: query)
         saveHistorySoon()
     }
 
     func removeHistory(url: String) {
-        if let sharedStore { sharedStore.removeHistory(url: url); return }
+        if historyOwner !== self { historyOwner.removeHistory(url: url); return }
         history.remove(url: url)
         historyDirty = true
         saveHistory()
     }
 
     func clearHistory() {
-        if let sharedStore { sharedStore.clearHistory(); return }
+        if historyOwner !== self { historyOwner.clearHistory(); return }
         history.clear()
         if !historyWritable {
             do {
@@ -570,6 +581,7 @@ final class BrowserStore: ObservableObject {
     }
 
     private func saveHistorySoon() {
+        guard !isPrivate else { return }
         historyDirty = true
         pendingHistorySave?.cancel()
         pendingHistorySave = Task { [weak self] in
@@ -579,7 +591,8 @@ final class BrowserStore: ObservableObject {
     }
 
     func saveHistory() {
-        if let sharedStore { sharedStore.saveHistory(); return }
+        guard !isPrivate else { return }
+        if historyOwner !== self { historyOwner.saveHistory(); return }
         pendingHistorySave?.cancel()
         pendingHistorySave = nil
         guard historyDirty, historyWritable else { return }
@@ -685,13 +698,36 @@ final class BrowserStore: ObservableObject {
         select(item.tab.id)
     }
 
+    // @lat: [[architecture#Private windows]]
+    func websiteDataStore(for paneID: UUID) -> WKWebsiteDataStore {
+        guard isPrivate else { return AppProfile.current.websiteDataStore }
+        if let existing = privateWebsiteDataStores[paneID] { return existing }
+        let store = WKWebsiteDataStore.nonPersistent()
+        privateWebsiteDataStores[paneID] = store
+        return store
+    }
+
+    func configureWebView(_ configuration: WKWebViewConfiguration, for paneID: UUID) {
+        if #available(macOS 15.4, *) { extensions.configure(configuration) }
+        if isPrivate { configuration.websiteDataStore = websiteDataStore(for: paneID) }
+    }
+
+    @available(macOS 15.4, *)
+    func extensionConfiguration(for context: WKWebExtensionContext) -> WKWebViewConfiguration? {
+        guard !isPrivate || context.hasAccessToPrivateData else { return nil }
+        // Extension origins use their context's own storage and related views,
+        // including in private windows. Website navigation replaces this view
+        // and reapplies the pane's nonpersistent store in configureWebView.
+        return context.webViewConfiguration
+    }
+
     func controller(for page: Page) -> PageController {
         if let existing = browsers[page.id] { return existing }
         let extensionURL = URL(string: page.address).flatMap {
             ["webkit-extension", "safari-web-extension"].contains($0.scheme ?? "") ? $0 : nil
         }
         let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, websiteSettings: websiteSettings, downloads: downloads, configure: { [weak self] configuration in
-            if #available(macOS 15.4, *) { self?.extensions.configure(configuration) }
+            self?.configureWebView(configuration, for: page.id)
         })
         bindController(controller, to: page)
         browsers[page.id] = controller
@@ -703,7 +739,7 @@ final class BrowserStore: ObservableObject {
                       controller.address == "browse://start" else { return }
                 let extensionURL = manager.restoredExtensionURL(extensionURL)
                 guard let context = manager.controller.extensionContext(for: extensionURL), context.isLoaded,
-                      let configuration = context.webViewConfiguration else {
+                      let configuration = manager.store(for: page.id)?.extensionConfiguration(for: context) else {
                     controller.error = "This extension page is unavailable. Enable its extension in Settings."
                     return
                 }
@@ -721,7 +757,7 @@ final class BrowserStore: ObservableObject {
         mediaPlaybackFocus.register(controller.media)
         mediaCoordinator.register(page.id, controller: controller.media)
         controller.configure = { [weak self] configuration in
-            if #available(macOS 15.4, *) { self?.extensions.configure(configuration) }
+            self?.configureWebView(configuration, for: page.id)
         }
         controller.onStateChanged = { [weak self] in
             if #available(macOS 15.4, *) { self?.extensions.pageChanged(page.id) }
@@ -762,8 +798,8 @@ final class BrowserStore: ObservableObject {
         controller.onFocus = { [weak self] in self?.focus(page.id) }
         controller.onVisit = { [weak self] url, title in self?.recordVisit(url: url, title: title) }
         controller.onHistoryTitleChanged = { [weak self] url, title in
-            guard let self else { return }
-            let owner = self.sharedStore ?? self
+            guard let self, !self.isPrivate || !self.windowStopped else { return }
+            let owner = self.historyOwner
             owner.history.updateTitle(title, for: url)
             owner.saveHistorySoon()
         }
@@ -778,13 +814,16 @@ final class BrowserStore: ObservableObject {
         controller?.media.detach()
         controller?.webView.pauseAllMediaPlayback(completionHandler: nil)
         controller?.webView.stopLoading()
+        if let dataStore = privateWebsiteDataStores.removeValue(forKey: id) {
+            dataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) {}
+        }
     }
 
     // @lat: [[architecture#Cross-window dragging]]
     @discardableResult
     func transfer(tab tabID: UUID, pane paneID: UUID? = nil, to destination: BrowserStore,
                   at placement: WindowDropPlacement) -> Bool {
-        guard self !== destination, preferencesStore === destination.preferencesStore,
+        guard self !== destination, !isPrivate, !destination.isPrivate, preferencesStore === destination.preferencesStore,
               let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == tabID } }),
               let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == tabID }) else { return false }
         let original = session.workspaces[wi].tabs[ti]
@@ -876,6 +915,7 @@ final class BrowserStore: ObservableObject {
     }
 
     func stopWindow() {
+        windowStopped = true
         mediaCoordinator.removeAll()
         save()
         pendingSave?.cancel(); pendingSave = nil
@@ -886,6 +926,17 @@ final class BrowserStore: ObservableObject {
             page.webView.stopLoading()
         }
         browsers.removeAll()
+        if isPrivate {
+            pendingHistorySave?.cancel(); pendingHistorySave = nil
+            localHistory.clear(); closedItems.removeAll(); linkOpeners.removeAll()
+            session = BrowserSession()
+            downloads.shutdown(); downloads.clearFinished()
+            websiteSettings.resetTemporary()
+            for dataStore in privateWebsiteDataStores.values {
+                dataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) {}
+            }
+            privateWebsiteDataStores.removeAll()
+        }
         onAddressRequested = nil; onSettingsRequested = nil; onEmptiedByTransfer = nil; onNewWindowDrop = nil
         onNewLinkWindow = nil
     }
@@ -927,6 +978,7 @@ final class BrowserStore: ObservableObject {
         let pageIDs = Set(session.workspaces.flatMap(\.tabs).flatMap(\.pages).map(\.id))
         linkOpeners = linkOpeners.filter { pageIDs.contains($0.key) && pageIDs.contains($0.value) }
         if #available(macOS 15.4, *), let manager = extensionStorage as? ExtensionManager { manager.synchronizeTabs() }
+        guard !isPrivate else { return }
         pendingSave?.cancel()
         pendingSave = Task { [weak self] in
             do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
@@ -935,6 +987,7 @@ final class BrowserStore: ObservableObject {
     }
 
     func save() {
+        guard !isPrivate else { return }
         do {
             try FileManager.default.createDirectory(at: sessionFile.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(session).write(to: sessionFile, options: .atomic)
@@ -1399,7 +1452,8 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
         if openCommandClickedLink(action) { decisionHandler(.cancel); return }
         if #available(macOS 15.4, *),
-           let context = webView.configuration.webExtensionController?.extensionContext(for: url), context.isLoaded {
+           let context = webView.configuration.webExtensionController?.extensionContext(for: url), context.isLoaded,
+           webView.configuration.websiteDataStore.isPersistent || context.hasAccessToPrivateData {
             // WebKit still enforces web_accessible_resources for embedded frames.
             let ownDocument = extensionOrigin?.scheme == url.scheme && extensionOrigin?.host == url.host
             decisionHandler(action.targetFrame?.isMainFrame == false || ownDocument ? .allow : .cancel)

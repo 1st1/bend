@@ -654,3 +654,93 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     process.waitUntilExit()
     #expect(process.terminationStatus == 0)
 }
+
+// @lat: [[tests#Private extension access]]
+@Test(arguments: [false, true]) @MainActor func privateExtensionAccess(createdBeforeEnable: Bool) async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePrivateExtension-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    let regular = try #require(owner.active)
+    let earlyPrivateWindow = createdBeforeEnable ? owner.newPrivateWindow(show: false) : nil
+    defer { for window in owner.windows { window.window.close() } }
+    let manager = owner.sharedStore.extensions
+    let source = try extensionFixture(at: root)
+    try await manager.importExtension(from: source)
+    let id = try #require(manager.records.first?.id)
+    try await manager.enable(true, id: id) { _, _ in true }
+    let privateWindow = earlyPrivateWindow ?? owner.newPrivateWindow(show: false)
+    let context = try #require(manager.contexts[id])
+    defer { if context.isLoaded { try? manager.controller.unload(context) } }
+    #expect(!context.hasAccessToPrivateData)
+    let privatePage = privateWindow.store.selectedTab.pages[0]
+    #expect(manager.window(for: privateWindow.store).isPrivate(for: context))
+    #expect(manager.window(for: privateWindow.store).tabs(for: context).isEmpty)
+    #expect(!manager.isAvailable(id, pageID: privatePage.id))
+    #expect(privateWindow.store.extensionConfiguration(for: context) == nil)
+    #expect(manager.webExtensionController(manager.controller, openWindowsFor: context).count == 1)
+    let options = WKWebView(frame: .zero, configuration: try #require(context.webViewConfiguration))
+    let optionsNavigation = ExtensionTestNavigation()
+    options.navigationDelegate = optionsNavigation
+    try await optionsNavigation.load(options, url: try #require(context.optionsPageURL))
+    let privateTabQuery = "return (await browser.tabs.query({})).filter(tab => tab.incognito).length;"
+    let regularPaneCount = regular.store.session.workspaces.flatMap(\.tabs).flatMap(\.pages).count
+    let tabCountQuery = "return (await browser.tabs.query({})).length;"
+    #expect(try await options.callAsyncJavaScript(privateTabQuery, arguments: [:], in: nil, contentWorld: .page) as? Int == 0)
+    let visibleCount = try await options.callAsyncJavaScript(tabCountQuery, arguments: [:], in: nil, contentWorld: .page) as? Int
+    #expect(visibleCount == regularPaneCount)
+    let server = try await ExtensionHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let url = URL(string: "http://127.0.0.1:\(server.port)/")!
+    let regularWeb = regular.store.controller(for: regular.store.selectedTab.pages[0]).webView
+    let privateController = privateWindow.store.controller(for: privatePage)
+    var privateWeb = privateController.webView
+    #expect(regularWeb.configuration.userContentController !== privateWeb.configuration.userContentController)
+    let navigation = ExtensionTestNavigation()
+    regularWeb.navigationDelegate = navigation
+    privateWeb.navigationDelegate = navigation
+    try await navigation.load(regularWeb, url: url)
+    #expect(try await regularWeb.evaluateJavaScript("document.body.dataset.browseExtension") as? String == "active")
+    try await navigation.load(privateWeb, url: url)
+    #expect(try await privateWeb.evaluateJavaScript("document.body.dataset.browseExtension || ''") as? String == "")
+    #expect(try await privateWeb.evaluateJavaScript("window.blockedScriptRan === true") as? Bool == true)
+    manager.setPrivateAccess(true, id: id)
+    #expect(context.hasAccessToPrivateData)
+    let privateCount = try await options.callAsyncJavaScript(privateTabQuery, arguments: [:], in: nil, contentWorld: .page) as? Int
+    #expect(privateCount == 1)
+    #expect(manager.isAvailable(id, pageID: privatePage.id))
+    #expect(manager.webExtensionController(manager.controller, openWindowsFor: context).count == 2)
+    #expect(manager.window(for: privateWindow.store).tabs(for: context).count == 1)
+    try await navigation.load(privateWeb, url: url)
+    #expect(try await privateWeb.evaluateJavaScript("document.body.dataset.browseExtension") as? String == "active")
+    #expect(try await privateWeb.evaluateJavaScript("window.blockedScriptRan === true") as? Bool == false)
+    // A host restart preserves the explicit opt-in; old records default to off.
+    let saved = ExtensionManager(root: manager.root, persistent: false)
+    #expect(saved.records.first?.enabledInPrivateMode == true)
+    saved.start()
+    await saved.restorationTask?.value
+    let restoredContext = try #require(saved.contexts[id])
+    #expect(restoredContext.hasAccessToPrivateData)
+    if restoredContext.isLoaded { try saved.controller.unload(restoredContext) }
+    let extensionConfig = try #require(privateWindow.store.extensionConfiguration(for: context))
+    let optionsURL = try #require(context.optionsPageURL)
+    privateController.navigateExtension(optionsURL, configuration: extensionConfig)
+    privateController.webView.navigationDelegate = optionsNavigation
+    try await optionsNavigation.load(privateController.webView, url: optionsURL)
+    #expect(try await privateController.webView.evaluateJavaScript("browser.runtime.id") as? String == context.uniqueIdentifier)
+    manager.setPrivateAccess(false, id: id)
+    #expect(privateController.isStartPage)
+    privateWeb = privateController.webView
+    #expect(privateWeb.configuration.websiteDataStore === privateWindow.store.websiteDataStore(for: privatePage.id))
+    #expect(!privateWeb.configuration.websiteDataStore.isPersistent)
+    privateWeb.navigationDelegate = navigation
+    #expect(!context.hasAccessToPrivateData)
+    let revokedCount = try await options.callAsyncJavaScript(tabCountQuery, arguments: [:], in: nil, contentWorld: .page) as? Int
+    #expect(revokedCount == regularPaneCount)
+    #expect(manager.tabs[privatePage.id]?.webView(for: context) == nil)
+    #expect(ExtensionManager(root: manager.root, persistent: false).records.first?.enabledInPrivateMode == false)
+    try await navigation.load(privateWeb, url: url)
+    #expect(try await privateWeb.evaluateJavaScript("document.body.dataset.browseExtension || ''") as? String == "")
+    #expect(try await privateWeb.evaluateJavaScript("window.blockedScriptRan === true") as? Bool == true)
+}

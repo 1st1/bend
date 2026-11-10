@@ -230,6 +230,7 @@ class PaneDropHost: NSView {
 
     func validSource(_ source: PaneDragSourceView) -> UUID? {
         guard let store, let sourceStore = source.store, sourceStore.preferencesStore === store.preferencesStore,
+              sourceStore === store || (!sourceStore.isPrivate && !store.isPrivate),
               let tabID, let sourceTabID = source.tabID,
               store.selectedTab.id == tabID, store.zoomedPane == nil,
               let sourceID = source.pageID, let pageID, sourceID != pageID,

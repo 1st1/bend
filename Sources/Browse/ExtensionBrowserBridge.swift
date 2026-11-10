@@ -27,7 +27,8 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
         browserWindows.first { $0.owningStore === store } ?? window
     }
     func attachWindow(_ native: NSWindow, store: BrowserStore) {
-        let adapter = hasRegisteredWindows ? ExtensionWindow(manager: self) : window
+        let adapter = hasRegisteredWindows || store.isPrivate ? ExtensionWindow(manager: self) : window
+        if !hasRegisteredWindows, store.isPrivate { controller.didCloseWindow(window) }
         hasRegisteredWindows = true
         adapter.owningStore = store; adapter.nativeWindow = native
         browserWindows.append(adapter)
@@ -87,11 +88,13 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, openWindowsFor context: WKWebExtensionContext) -> [any WKWebExtensionWindow] {
-        (hasRegisteredWindows ? browserWindows : [window]) + documents.values.map { $0 as any WKWebExtensionWindow }
+        (hasRegisteredWindows ? browserWindows : [window]).filter { !$0.isPrivate(for: context) || context.hasAccessToPrivateData } + documents.values.map { $0 as any WKWebExtensionWindow }
     }
     func webExtensionController(_ controller: WKWebExtensionController, focusedWindowFor context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? {
         if let document = documents.values.first(where: { $0.nativeWindow.isKeyWindow }) { return document }
-        if let active = browserWindows.first(where: { $0.nativeWindow?.isKeyWindow == true }) { return active }
+        if let active = browserWindows.first(where: { $0.nativeWindow?.isKeyWindow == true }) {
+            return !active.isPrivate(for: context) || context.hasAccessToPrivateData ? active : nil
+        }
         return !hasRegisteredWindows && (browserWindow?.isKeyWindow == true || !presentsWindows) ? window : nil
     }
 
@@ -100,13 +103,17 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
         guard let store = (configuration.window as? ExtensionWindow)?.store ?? store else {
             completionHandler(nil, failure("The browser is closed.")); return
         }
+        guard !store.isPrivate || context.hasAccessToPrivateData else {
+            completionHandler(nil, failure("This extension is not enabled in private mode.")); return
+        }
         let url = configuration.url ?? URL(string: "browse://start")!
-        if url.scheme == context.baseURL.scheme, url.host == context.baseURL.host {
+        if !store.isPrivate, url.scheme == context.baseURL.scheme, url.host == context.baseURL.host {
             do { completionHandler(try openDocument(url: url, context: context, active: configuration.shouldBeActive), nil) }
             catch { completionHandler(nil, error) }
             return
         }
-        guard ["http", "https", "browse"].contains(url.scheme ?? "") else {
+        let ownExtensionURL = url.scheme == context.baseURL.scheme && url.host == context.baseURL.host
+        guard ["http", "https", "browse"].contains(url.scheme ?? "") || ownExtensionURL else {
             completionHandler(nil, failure("This extension URL cannot open in a browser pane. Use Extension Settings for its options page.")); return
         }
         let previous = store.session.selectedTab
@@ -176,11 +183,14 @@ final class ExtensionWindow: NSObject, WKWebExtensionWindow {
     var store: BrowserStore? { owningStore ?? manager?.store }
     var native: NSWindow? { nativeWindow ?? manager?.browserWindow }
     init(manager: ExtensionManager) { self.manager = manager }
+    func isPrivate(for context: WKWebExtensionContext) -> Bool { store?.isPrivate ?? false }
     func tabs(for context: WKWebExtensionContext) -> [any WKWebExtensionTab] {
-        store?.session.workspaces.flatMap(\.tabs).flatMap(\.pages).compactMap { manager?.tabs[$0.id] } ?? []
+        guard !isPrivate(for: context) || context.hasAccessToPrivateData else { return [] }
+        return store?.session.workspaces.flatMap(\.tabs).flatMap(\.pages).compactMap { manager?.tabs[$0.id] } ?? []
     }
     func activeTab(for context: WKWebExtensionContext) -> (any WKWebExtensionTab)? {
-        guard let manager, let id = store?.selectedTab.focusedPane else { return nil }
+        guard !isPrivate(for: context) || context.hasAccessToPrivateData,
+              let manager, let id = store?.selectedTab.focusedPane else { return nil }
         return manager.tabs[id]
     }
     func frame(for context: WKWebExtensionContext) -> CGRect { native?.frame ?? .zero }
@@ -200,34 +210,41 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
     var lastTitle: String?
     var lastLoading: Bool?
     init(id: UUID, manager: ExtensionManager) { self.id = id; self.manager = manager }
+    func canAccess(_ context: WKWebExtensionContext) -> Bool {
+        guard let store else { return false }
+        return !store.isPrivate || context.hasAccessToPrivateData
+    }
     var page: Page? { manager?.pages.first { $0.id == id } }
     var store: BrowserStore? { manager?.store(for: id) }
     var pageController: PageController? { store?.existingController(for: id) }
     func window(for context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? {
+        // WebKit needs the owning window to classify this tab as private.
         guard let store else { return nil }; return manager?.window(for: store)
     }
     func parentTab(for context: WKWebExtensionContext) -> (any WKWebExtensionTab)? {
-        guard let manager, let parent = store?.linkOpeners[id] else { return nil }
+        guard canAccess(context), let manager, let parent = store?.linkOpeners[id] else { return nil }
         return manager.tabs[parent]
     }
-    func webView(for context: WKWebExtensionContext) -> WKWebView? { pageController?.webView }
-    func title(for context: WKWebExtensionContext) -> String? { pageController?.title ?? page?.address }
-    func url(for context: WKWebExtensionContext) -> URL? { (pageController?.address ?? page?.address).flatMap(URL.init(string:)) }
+    func webView(for context: WKWebExtensionContext) -> WKWebView? { canAccess(context) ? pageController?.webView : nil }
+    func title(for context: WKWebExtensionContext) -> String? { canAccess(context) ? (pageController?.title ?? page?.address) : nil }
+    func url(for context: WKWebExtensionContext) -> URL? { canAccess(context) ? (pageController?.address ?? page?.address).flatMap(URL.init(string:)) : nil }
     func isLoadingComplete(for context: WKWebExtensionContext) -> Bool { !(pageController?.isLoading ?? false) }
     func isSelected(for context: WKWebExtensionContext) -> Bool { store?.selectedTab.pages.contains { $0.id == id } ?? false }
     func activate(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        guard canAccess(context) else { completionHandler(manager?.failure("This extension cannot access this private tab.")); return }
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["activate": true])
         store?.revealPage(id)
         if let store { manager?.window(for: store).native?.makeKeyAndOrderFront(nil) }
         completionHandler(nil)
     }
     func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        guard canAccess(context) else { completionHandler(manager?.failure("This extension cannot access this private tab.")); return }
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["load": true])
         guard let page, let store else {
             completionHandler(manager?.failure("This URL cannot open in a browser pane.")); return
         }
         if context.isLoaded, url.scheme == context.baseURL.scheme, url.host == context.baseURL.host,
-           let configuration = context.webViewConfiguration {
+           let configuration = store.extensionConfiguration(for: context) {
             store.controller(for: page).navigateExtension(url, configuration: configuration)
         } else if ["https", "http"].contains(url.scheme ?? "") {
             store.controller(for: page).navigate(url.absoluteString)
@@ -237,19 +254,23 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
         completionHandler(nil)
     }
     func reload(fromOrigin: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        guard canAccess(context) else { completionHandler(manager?.failure("This extension cannot access this private tab.")); return }
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["reload": true])
         if fromOrigin { pageController?.webView.reloadFromOrigin() } else { pageController?.webView.reload() }
         completionHandler(nil)
     }
     func goBack(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        guard canAccess(context) else { completionHandler(manager?.failure("This extension cannot access this private tab.")); return }
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["back": true])
         pageController?.webView.goBack(); completionHandler(nil)
     }
     func goForward(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        guard canAccess(context) else { completionHandler(manager?.failure("This extension cannot access this private tab.")); return }
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["forward": true])
         pageController?.webView.goForward(); completionHandler(nil)
     }
     func close(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+        guard canAccess(context) else { completionHandler(manager?.failure("This extension cannot access this private tab.")); return }
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["close": true])
         guard store?.isPanePinned(id) != true else {
             completionHandler(NSError(domain: "Bend", code: 1,

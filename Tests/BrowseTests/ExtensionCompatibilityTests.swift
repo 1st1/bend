@@ -73,6 +73,7 @@ import Network
     manager.presentsWindows = false
     try await manager.importExtension(from: compatibilityFixture(root))
     let id = try #require(manager.records.first?.id)
+    manager.setPrivateAccess(true, id: id)
     try await manager.enable(true, id: id) { _, _ in true }
     let context = try #require(manager.contexts[id])
     try await context.loadBackgroundContent()
@@ -156,6 +157,7 @@ import Network
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
     try await manager.importExtension(from: compatibilityFixture(root, notifications: false))
     let id = try #require(manager.records.first?.id)
+    manager.setPrivateAccess(true, id: id)
     try await manager.enable(true, id: id) { _, _ in true }
     let context = try #require(manager.contexts[id])
     let web = WKWebView(frame: .zero, configuration: try #require(context.webViewConfiguration))
@@ -204,6 +206,7 @@ import Network
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
     try await manager.importExtension(from: source)
     let id = try #require(manager.records.first?.id)
+    manager.setPrivateAccess(true, id: id)
     try await manager.enable(true, id: id) { _, _ in true }
     let context = try #require(manager.contexts[id])
     try await context.loadBackgroundContent()
@@ -309,10 +312,12 @@ import Network
     var manager = ExtensionManager(root: installed, storageIdentifier: storageID, websiteDataStore: .nonPersistent(), notifications: TestNotifications())
     try await manager.importExtension(from: source)
     let id = try #require(manager.records.first?.id)
+    manager.setPrivateAccess(true, id: id)
     try await manager.enable(true, id: id) { _, permissions in
         #expect(permissions.contains("privacy")); return false
     }
     #expect(!manager.isEnabled(id))
+    manager.setPrivateAccess(true, id: id)
     try await manager.enable(true, id: id) { _, _ in true }
     for launch in 0..<3 {
         let context = try #require(manager.contexts[id])
@@ -389,6 +394,7 @@ import Network
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
     try await manager.importExtension(from: compatibilityFixture(root))
     let id = try #require(manager.records.first?.id)
+    manager.setPrivateAccess(true, id: id)
     try await manager.enable(true, id: id) { _, _ in true }
     let context = try #require(manager.contexts[id])
     let url = try #require(context.optionsPageURL)
@@ -462,6 +468,7 @@ import Network
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
     try await manager.importExtension(from: URL(fileURLWithPath: path))
     let id = try #require(manager.records.first?.id)
+    manager.setPrivateAccess(true, id: id)
     try await manager.enable(true, id: id) { _, _ in true }
     let context = try #require(manager.contexts[id])
     try await context.loadBackgroundContent()
@@ -541,6 +548,7 @@ import Network
     manager.presentsWindows = false
     try await manager.importExtension(from: source)
     let id = try #require(manager.records.first?.id)
+    manager.setPrivateAccess(true, id: id)
     try await manager.enable(true, id: id) { _, _ in true }
     let context = try #require(manager.contexts[id])
     defer { try? manager.controller.unload(context) }
@@ -638,6 +646,7 @@ import Network
         }
         if manager.records.isEmpty {
             try await manager.importExtension(from: source)
+            manager.setPrivateAccess(true, id: try #require(manager.records.first?.id))
             try await manager.enable(true, id: try #require(manager.records.first?.id)) { _, _ in true }
         } else { manager.start(); await manager.restorationTask?.value }
         let id = try #require(manager.records.first?.id), context = try #require(manager.contexts[id])
@@ -806,6 +815,7 @@ private struct WasmRestartProfile: Codable {
     _ = store.controller(for: store.selectedTab.pages[0])
     if phase == "install" {
         try await manager.importExtension(from: URL(fileURLWithPath: package))
+        manager.setPrivateAccess(true, id: try #require(manager.records.first?.id))
         try await manager.enable(true, id: try #require(manager.records.first?.id)) { _, _ in true }
     }
     let id = try #require(manager.records.first?.id)

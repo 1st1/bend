@@ -140,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         let file = NSMenu(title: "File")
         add("New Window", #selector(newWindow), "n", to: file)
+        add("New Private Window", #selector(newPrivateWindow), "N", modifiers: [.command, .shift], to: file)
         add("New Tab", #selector(newTab), "t", to: file)
         add("Open Location…", #selector(openLocation), "l", to: file)
         file.addItem(.separator())
@@ -203,6 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         store.controller(for: store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }!)
     }
     @objc func newWindow() { browserWindows.newWindow() }
+    @objc func newPrivateWindow() { browserWindows.newPrivateWindow() }
     @objc private func newTab() { store.newTab() }
     @objc private func showSettings() {
         presentSettings()
@@ -273,7 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if context.addressPanel.cancelInitialEntryIfPresented() { return }
         context.addressPanel.dismiss(restoreFocus: false)
         let store = context.store
-        if browserWindows.windows.count > 1,
+        if (store.isPrivate || browserWindows.windows.count > 1),
            store.session.workspaces.flatMap(\.tabs).count == 1, store.selectedTab.pages.count == 1 {
             context.window.performClose(nil)
         } else {

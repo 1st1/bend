@@ -3,7 +3,7 @@ import BrowseCore
 
 // @lat: [[architecture#Sidebar favorites]]
 extension BrowserStore {
-    var favorites: [SidebarFavorite] { preferencesStore.session.favorites ?? [] }
+    var favorites: [SidebarFavorite] { isPrivate ? [] : (preferencesStore.session.favorites ?? []) }
 
     var sidebarTabs: [BrowserTab] {
         session.workspaces.flatMap(\.tabs).filter { tab in
@@ -24,14 +24,14 @@ extension BrowserStore {
     }
 
     func canFavorite(_ tab: BrowserTab) -> Bool {
-        guard let page = favoritePage(in: tab), favorite(for: tab) == nil,
+        guard !isPrivate, let page = favoritePage(in: tab), favorite(for: tab) == nil,
               SidebarFavorite.websiteURL(page.address) != nil else { return false }
         return favorites.count < SidebarFavorite.limit || favorites.contains { $0.address == page.address }
     }
 
     @discardableResult
     func addFavorite(_ tabID: UUID, address: String? = nil, googleAccountEmail: String? = nil) -> UUID? {
-        guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }),
+        guard !isPrivate, let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }),
               let page = favoritePage(in: tab) else { return nil }
         if let existing = favorite(for: tab) { return existing.id }
         let address = address ?? page.address
@@ -55,6 +55,7 @@ extension BrowserStore {
     }
 
     func removeFavorite(_ id: UUID) {
+        guard !isPrivate else { return }
         preferencesStore.session.favorites = favorites.filter { $0.id != id }
         preferencesStore.saveSoon()
         // Old pane associations are harmless: only IDs in the shared favorites

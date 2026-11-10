@@ -41,9 +41,16 @@ final class BrowserWindows {
         return result
     }
 
-    private func create(id: String, fresh: Bool, show: Bool, address: String = "browse://start") -> BrowserWindowSession {
+    @discardableResult
+    func newPrivateWindow(show: Bool = true) -> BrowserWindowSession {
+        let result = create(id: UUID().uuidString, fresh: true, show: show, isPrivate: true)
+        if show { result.store.requestAddress() }
+        return result
+    }
+
+    private func create(id: String, fresh: Bool, show: Bool, isPrivate: Bool = false, address: String = "browse://start") -> BrowserWindowSession {
         let store = id == "main" ? sharedStore : BrowserStore(
-            sessionFile: root.appendingPathComponent("Windows/\(id).json"), sharedStore: sharedStore)
+            sessionFile: root.appendingPathComponent("Windows/\(id).json"), sharedStore: sharedStore, isPrivate: isPrivate)
         if fresh {
             let tab = BrowserTab(title: "New tab", pages: [Page(address: address)])
             store.session.workspaces = [Workspace(name: "Tabs", tabs: [tab])]
@@ -58,13 +65,15 @@ final class BrowserWindows {
             if self.lastActive === context { self.lastActive = self.windows.last }
             // Retain the final closed window for the next launch. Explicit quit
             // saves the whole open set before AppKit tears down any windows.
-            if !self.terminating, !self.windows.isEmpty { self.save() }
+            if !self.terminating, self.windows.contains(where: { !$0.store.isPrivate }) { self.save() }
         }
-        store.onNewWindowDrop = { [weak self, weak store] tab, pane, point in
-            guard let self, let store else { return false }
-            return self.detach(tab: tab, pane: pane, from: store, at: point) != nil
+        if !isPrivate {
+            store.onNewWindowDrop = { [weak self, weak store] tab, pane, point in
+                guard let self, let store else { return false }
+                return self.detach(tab: tab, pane: pane, from: store, at: point) != nil
+            }
         }
-        store.onNewLinkWindow = { [weak self] address in self?.openLinkInNewWindow(address) }
+        store.onNewLinkWindow = { [weak self] address in self?.openLinkInNewWindow(address, isPrivate: isPrivate) }
         store.onSettingsRequested = { [weak self] section in self?.onSettings?(section) }
         store.onEmptiedByTransfer = { [weak self, weak context] destination in
             guard let self, let context, self.windows.count > 1,
@@ -82,8 +91,8 @@ final class BrowserWindows {
         return context
     }
 
-    func openLinkInNewWindow(_ address: String) {
-        let context = create(id: UUID().uuidString, fresh: true, show: false, address: address)
+    func openLinkInNewWindow(_ address: String, isPrivate: Bool = false) {
+        let context = create(id: UUID().uuidString, fresh: true, show: false, isPrivate: isPrivate, address: address)
         context.window.makeKeyAndOrderFront(nil)
         save()
     }
@@ -91,7 +100,7 @@ final class BrowserWindows {
     // @lat: [[architecture#Dragging into a new window]]
     @discardableResult
     func detach(tab tabID: UUID, pane paneID: UUID?, from source: BrowserStore, at point: NSPoint) -> BrowserWindowSession? {
-        guard let original = windows.first(where: { $0.store === source }),
+        guard !source.isPrivate, let original = windows.first(where: { $0.store === source }),
               let tab = source.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }),
               paneID == nil || tab.pages.contains(where: { $0.id == paneID }) else { return nil }
         let visible = NSScreen.screens.first { $0.frame.contains(point) }?.visibleFrame
@@ -115,10 +124,11 @@ final class BrowserWindows {
     func save() {
         sharedStore.save()
         for context in windows where context.store !== sharedStore { context.store.save() }
-        guard !windows.isEmpty else { return }
+        let restorable = windows.filter { !$0.store.isPrivate }
+        guard !restorable.isEmpty else { return }
         do {
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            try JSONEncoder().encode(windows.map(\.id)).write(to: root.appendingPathComponent("windows.json"), options: .atomic)
+            try JSONEncoder().encode(restorable.map(\.id)).write(to: root.appendingPathComponent("windows.json"), options: .atomic)
         } catch { sharedStore.persistenceError = "Open windows could not be saved: \(error.localizedDescription)" }
     }
 
@@ -140,9 +150,12 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
         window.browserStore = store
-        window.title = AppProfile.current.name
+        window.title = AppProfile.current.name + (store.isPrivate ? " — Private Browsing" : "")
         window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true
-        window.toolbarStyle = .unified; window.toolbar = NSToolbar(identifier: "BrowseTitlebar")
+        window.toolbarStyle = .unified
+        // AppKit shares visibility between toolbars with the same identifier.
+        // Fullscreen must hide only this window's toolbar, including for new windows.
+        window.toolbar = NSToolbar(identifier: NSToolbar.Identifier("BrowseTitlebar-\(id)"))
         window.titlebarSeparatorStyle = .none
         window.isMovableByWindowBackground = true
         window.isOpaque = false; window.backgroundColor = .clear
@@ -151,8 +164,10 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
         window.delegate = self; window.isReleasedWhenClosed = false
         window.center()
         let frameName = AppProfile.current.frameName(id == "main" ? "BrowseMainWindow" : "BrowseWindow-\(id)")
-        window.setFrameAutosaveName(frameName)
-        window.setFrameUsingName(frameName)
+        if !store.isPrivate {
+            window.setFrameAutosaveName(frameName)
+            window.setFrameUsingName(frameName)
+        }
         if #available(macOS 15.4, *) { store.extensions.attachWindow(window, store: store) }
         let content = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
         if #available(macOS 26.0, *) { window.contentView = BrowserWindowGlass(store: store, content: content) }

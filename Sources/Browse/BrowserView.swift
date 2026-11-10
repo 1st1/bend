@@ -86,6 +86,11 @@ struct BrowserView: View {
                 .padding(.top, !floating && store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
                 .zIndex(1)
 
+            if store.isPrivate {
+                Label("Private Browsing", systemImage: "eye.slash")
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 20).padding(.vertical, 8)
+            }
             if !store.favorites.isEmpty {
                 SidebarFavorites(store: store)
                     .padding(.leading, Chrome.sidebarHorizontalInset).padding(.trailing, trailingInset)
@@ -169,7 +174,7 @@ private struct SidebarTabRow: View {
             Button("New tab") { store.newTab() }
             if let favorite = store.favorite(for: tab) {
                 Button("Remove from Favorites") { store.removeFavorite(favorite.id) }
-            } else {
+            } else if !store.isPrivate {
                 Button(store.favorites.count >= SidebarFavorite.limit ? "Add to Favorites (9 maximum)" : "Add to Favorites") {
                     store.requestFavorite(tab.id)
                 }.disabled(!store.canFavorite(tab))
@@ -454,6 +459,10 @@ private struct BrowserPane: View {
                             .foregroundStyle(.white.opacity(0.75))
                             .opacity(titleHovered ? 1 : 0)
                     }.frame(width: 14, height: 14).accessibilityHidden(true)
+                    if store.isPrivate {
+                        Image(systemName: "eye.slash").help("Private Browsing")
+                            .accessibilityLabel("Private Browsing")
+                    }
                     Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
                         .truncationMode(.tail)
                         .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
