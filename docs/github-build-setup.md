@@ -4,7 +4,7 @@ Bend CI is defined in `.github/workflows/changelog.yml`. Every PR and main push 
 
 Every update to a release PR rebuilds its candidate. The workflow compares VERSION with the PR base rather than using a paths filter, and all jobs check out the same event commit. The aggregate **CI** check requires the production job only for version-bump PRs. Actions are pinned to reviewed commit SHAs.
 
-Candidates are uploaded as Actions artifacts with checksums, release notes, and build provenance. This workflow does not create tags or publish GitHub Releases. The signing job uses temporary credentials, cleans them up on success or failure, and runs only for trusted same-repository release PRs. Fork PRs never receive signing secrets.
+The notarized DMG is uploaded as an unarchived Actions artifact for direct download. Checksums, release notes, and build provenance are uploaded separately as a build-details ZIP. This workflow does not create tags or publish GitHub Releases. The signing job uses temporary credentials, cleans them up on success or failure, and runs only for trusted same-repository release PRs. Fork PRs never receive signing secrets.
 
 ## One-time credential setup
 
@@ -57,7 +57,7 @@ python3 scripts/release.py check
 git add VERSION CHANGELOG.md .changes
 ```
 
-Commit and open a PR. Successful metadata and native jobs unlock the production job, which signs, notarizes, and staples the app and DMG. Download the **Bend-VERSION-arm64-RUN-ATTEMPT** artifact from the workflow run. It contains the DMG, SHA256SUMS, RELEASE_NOTES.md, and build.json. Signing failures retain notarization diagnostics when available.
+Commit and open a PR. Successful metadata and native jobs unlock the production job, which signs, notarizes, and staples the app and DMG. Use the DMG download link in the workflow summary, or download the **Bend-VERSION-arm64.dmg** artifact directly. No ZIP extraction is needed. The separate **Bend-VERSION-build-details-RUN-ATTEMPT** artifact contains SHA256SUMS, RELEASE_NOTES.md, and build.json. Signing failures retain notarization diagnostics when available.
 
 Each candidate uses `run_number * 1000 + run_attempt` as BEND_BUILD_NUMBER, with attempts bounded below 1000. Fresh runs and retries within a run increase it; rerunning an older workflow retains the older number range. The app version remains the value in VERSION.
 
