@@ -11,8 +11,8 @@ defaults:
   run:
     shell: bash
 concurrency:
-  group: bend-ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: bend-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   metadata:
     name: Changelog and version
@@ -28,17 +28,19 @@ jobs:
       - name: Validate changelog and release version
         id: release
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          ALLOW_NO_FRAGMENT: ${{ contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          ALLOW_NO_FRAGMENT: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
         run: |
           args=()
-          if [[ -n "$BASE_SHA" ]]; then args+=(--base-ref "$BASE_SHA"); fi
+          if [[ -n "$BASE_SHA" && ! "$BASE_SHA" =~ ^0+$ ]]; then args+=(--base-ref "$BASE_SHA"); fi
           if [[ "$ALLOW_NO_FRAGMENT" == true ]]; then args+=(--allow-no-fragment); fi
           python3 scripts/release.py check "${args[@]}"
       - name: Test release preparation and validation
         run: python3 scripts/test-release.py
       - name: Test signing credential lifecycle
         run: python3 scripts/test-ci-signing.py
+      - name: Test release publication
+        run: python3 scripts/test-publish-release.py
 
   native:
     name: macOS 26 build and tests
@@ -87,15 +89,18 @@ jobs:
           retention-days: 14
 
   production:
-    name: Signed production candidate
+    name: Signed production build
     needs: [metadata, native]
     if: >-
-      github.event_name == 'pull_request' &&
       needs.metadata.outputs.version_changed == 'true' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      ((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: macos-26
     timeout-minutes: 90
     environment: release-signing
+    outputs:
+      dmg_artifact: ${{ steps.dmg.outputs.artifact-id }}
+      details_artifact: ${{ steps.details.outputs.artifact-id }}
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       BEND_SIGNING_IDENTITY: ${{ vars.BEND_SIGNING_IDENTITY }}
@@ -143,6 +148,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload candidate metadata
+        id: details
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Bend-${{ needs.metadata.outputs.version }}-build-details-${{ github.run_id }}-${{ github.run_attempt }}
@@ -170,9 +176,38 @@ jobs:
         if: always()
         run: python3 scripts/ci-signing.py cleanup
 
+  publish:
+    name: Publish GitHub Release
+    needs: [metadata, native, production]
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      needs.metadata.outputs.version_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: bend-release-${{ needs.metadata.outputs.version }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Download this run's signed build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.production.outputs.dmg_artifact }},${{ needs.production.outputs.details_artifact }}
+          path: release-artifacts
+          merge-multiple: true
+      - name: Create tag and publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+        run: python3 scripts/publish-release.py release-artifacts
+
   status:
     name: CI
-    needs: [metadata, native, production]
+    needs: [metadata, native, production, publish]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -181,10 +216,15 @@ jobs:
           METADATA: ${{ needs.metadata.result }}
           NATIVE: ${{ needs.native.result }}
           PRODUCTION: ${{ needs.production.result }}
-          RELEASE_REQUIRED: ${{ github.event_name == 'pull_request' && needs.metadata.outputs.version_changed == 'true' }}
+          PUBLISH: ${{ needs.publish.result }}
+          RELEASE_REQUIRED: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && needs.metadata.outputs.version_changed == 'true' }}
+          PUBLISH_REQUIRED: ${{ github.event_name == 'push' && needs.metadata.outputs.version_changed == 'true' }}
         run: |
           test "$METADATA" = success
           test "$NATIVE" = success
           if [[ "$RELEASE_REQUIRED" == true ]]; then
             test "$PRODUCTION" = success
+          fi
+          if [[ "$PUBLISH_REQUIRED" == true ]]; then
+            test "$PUBLISH" = success
           fi
