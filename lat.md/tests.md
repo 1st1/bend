@@ -984,3 +984,9 @@ Both navigation callbacks cancel source navigation. Pane placement, sidebar inse
 [[Tests/BrowseTests/LinkContextMenuTests.swift#linkContextMenuDestinations]] invokes WebKit's real context-menu hit testing for main-frame and iframe links and dispatches the resulting pane, tab, and window menu actions.
 
 URLs retain query strings and fragments. Each menu keeps its own target after another menu opens. Copy Link survives and the native window action is replaced. Explicit choices ignore click preferences, preserve the source, place panes adjacent without dedicated-pane reuse, and omit opener metadata for iframe links.
+
+## Sidebar overflow counts
+
+[[Tests/BrowseTests/SidebarScrollStatusTests.swift#sidebarOverflowCounts]] verifies counts of fully hidden tabs above and below the sidebar viewport, excluding partially visible rows even at fractional scroll positions.
+
+Coverage includes exact row boundaries, the favorites inset, resizing, insertion and removal, overscroll, empty lists, and unmeasured viewports. The top fade remains absent at the start and reaches its maximum after scrolling.

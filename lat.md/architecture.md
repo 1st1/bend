@@ -136,6 +136,14 @@ In the key window, moving within thirteen points of the left edge reveals a roun
 
 [[tests#Private window lifetime]], [[tests#Private pane storage isolation]], [[tests#Private window keyboard command]], [[tests#Private extension access]], and [[tests#Private extension iframe isolation]] cover lifetime, persistence exclusion, keyboard routing, and WebKit isolation.
 
+## Sidebar overflow indicators
+
+[[Sources/Browse/SidebarScrollStatus.swift#SidebarScrollStatus]] counts tabs fully outside the visible scroll viewport. Small pills show those counts at the top and bottom fades in docked and floating sidebars.
+
+Partially visible rows are excluded. Zero counts hide their pill; an empty list or unmeasured viewport hides both. Counts follow scrolling, resizing, tab membership, and the content inset beneath favorites. The calculation shares [[Sources/Browse/BrowserView.swift#Chrome#sidebarTabHeight]] and [[Sources/Browse/BrowserView.swift#Chrome#sidebarTabSpacing]] with the fixed-height row layout.
+
+[[Sources/Browse/SidebarScrollStatus.swift#SidebarOverflowPill]] overlays a compact material capsule outside the content opacity mask, without reserving space or intercepting scrolling, selection, or dragging. Pills use 9-point text and a borderless material background at 80% opacity, with no directional icon. Their position identifies the edge; accessibility labels name both the count and edge. [[tests#Sidebar overflow counts]] covers edge positions, partial visibility, favorites, and changing viewport or tab counts.
+
 ## Sidebar favorites
 
 [[Sources/Browse/SidebarFavorites.swift#SidebarFavorites]] places up to nine saved websites in a three-column favicon grid above the tab list, in both docked and floating sidebars.

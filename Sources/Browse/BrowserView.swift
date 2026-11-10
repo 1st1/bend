@@ -8,6 +8,7 @@ private typealias ViewState<Value> = SwiftUI.State<Value>
 
 enum Chrome {
     static let sidebarTabHeight: CGFloat = 34
+    static let sidebarTabSpacing: CGFloat = 7
     static let sidebarItemCornerRadius = sidebarTabHeight / 2
     // Match the fixed centerline of the native unified-toolbar traffic lights.
     static let headerCenterY: CGFloat = 26
@@ -22,7 +23,7 @@ enum Chrome {
 
 struct BrowserView: View {
     @ObservedObject var store: BrowserStore
-    @ViewState<CGFloat> private var sidebarTopFadeHeight = 0
+    @ViewState<SidebarScrollStatus> private var sidebarScrollStatus = .init()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -100,7 +101,7 @@ struct BrowserView: View {
             }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: Chrome.sidebarTabSpacing) {
                     ForEach(store.sidebarTabs) { tab in
                         SidebarTabRow(store: store, tab: tab)
                     }
@@ -109,19 +110,30 @@ struct BrowserView: View {
                     .padding(.top, store.favorites.isEmpty ? 6 : 16)
                     .padding(.bottom, Chrome.sidebarScrollFadeHeight)
             }
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                min(Chrome.sidebarScrollFadeHeight, max(0, geometry.contentOffset.y + geometry.contentInsets.top))
-            } action: { _, height in
-                sidebarTopFadeHeight = height
+            .onScrollGeometryChange(for: SidebarScrollStatus.self) { geometry in
+                SidebarScrollStatus(visibleRect: geometry.visibleRect, tabCount: store.sidebarTabs.count,
+                                    topInset: store.favorites.isEmpty ? 6 : 16)
+            } action: { _, status in
+                sidebarScrollStatus = status
             }
             .clipped()
             .mask {
                 VStack(spacing: 0) {
                     LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                        .frame(height: sidebarTopFadeHeight)
+                        .frame(height: sidebarScrollStatus.topFadeHeight)
                     Color.black
                     LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
                         .frame(height: Chrome.sidebarScrollFadeHeight)
+                }
+            }
+            .overlay(alignment: .top) {
+                if sidebarScrollStatus.above > 0 {
+                    SidebarOverflowPill(count: sidebarScrollStatus.above, above: true).padding(.top, 2)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if sidebarScrollStatus.below > 0 {
+                    SidebarOverflowPill(count: sidebarScrollStatus.below, above: false).padding(.bottom, 6)
                 }
             }
             .contentShape(Rectangle())
