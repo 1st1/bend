@@ -98,10 +98,14 @@ import BrowseCore
         #expect(frameView.hitTest(frameView.convert(point, from: nil)) !== area)
         let before = window.windowDragRequests
         try sendPaneMouse(.leftMouseDown, at: point, to: window)
+        // AppKit may defer titlebar-background mouseDown until the pointer
+        // crosses its drag threshold. Exercise the gesture, not just a click.
+        let dragPoint = NSPoint(x: point.x + 40, y: point.y - 20)
+        try sendPaneMouse(.leftMouseDragged, at: dragPoint, to: window)
         #expect(window.windowDragRequests == before + 1)
         #expect(window.nativeDragRequests == window.windowDragRequests)
         #expect(!window.capturesPaneGesture)
-        try sendPaneMouse(.leftMouseUp, at: point, to: window)
+        try sendPaneMouse(.leftMouseUp, at: dragPoint, to: window)
     }
     for area in regions where area.excluded {
         let point = area.convert(NSPoint(x: area.bounds.midX, y: area.bounds.midY), to: nil)

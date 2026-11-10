@@ -120,7 +120,8 @@ import BrowseCore
     let original = browser.store.selectedTab
     browser.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
     browser.window.makeKeyAndOrderFront(nil)
-    let delegate = AppDelegate(browserWindows: owner)
+    var focusedWindow: NSWindow?
+    let delegate = AppDelegate(browserWindows: owner, focusedWindow: { focusedWindow })
     let previousMenu = NSApp.mainMenu
     delegate.installMenus()
     let settings = SettingsWindowController(store: owner.sharedStore)
@@ -137,24 +138,28 @@ import BrowseCore
     #expect(settings.window.titlebarAppearsTransparent)
     func closeShortcut() throws {
         let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
-            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: NSApp.keyWindow?.windowNumber ?? 0,
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: focusedWindow?.windowNumber ?? 0,
             context: nil, characters: "w", charactersIgnoringModifiers: "w", isARepeat: false, keyCode: 13))
         #expect(try #require(NSApp.mainMenu).performKeyEquivalent(with: event))
     }
-    // Supply the focused native window directly: an offscreen NSWindow cannot
-    // become key in the headless runner. The menu action uses this same route.
-    delegate.closeFocusedWindow(settings.window)
+    // Supply the OS focus input explicitly in the headless test host, while
+    // exercising the real menu shortcut, action, and close routing.
+    focusedWindow = settings.window
+    try closeShortcut()
     #expect(!settings.window.isVisible)
     #expect(browser.store.selectedTab.pages.map(\.id) == original.pages.map(\.id))
     #expect(browser.store.selectedTab.focusedPane == original.focusedPane)
     #expect(!browser.store.canReopenClosed)
     browser.window.makeKeyAndOrderFront(nil)
-    delegate.closeFocusedWindow(browser.window)
+    focusedWindow = browser.window
+    try closeShortcut()
     #expect(browser.store.selectedTab.pages.count == original.pages.count - 1)
     browser.store.newTab()
-    #expect(browser.addressPanel.owns(try #require(NSApp.keyWindow)))
+    let panel = try #require(browser.window.childWindows?.first { browser.addressPanel.owns($0) })
+    #expect(panel.isVisible)
+    focusedWindow = panel
     try closeShortcut()
-    #expect(NSApp.keyWindow.map { browser.addressPanel.owns($0) } != true)
+    #expect(!panel.isVisible)
     #expect(browser.store.session.workspaces.flatMap(\.tabs).count == 1)
 }
 
@@ -301,7 +306,11 @@ import BrowseCore
     #expect(second.store.session.workspaces.flatMap(\.tabs).count == 2)
     #expect(first.store.session.workspaces.flatMap(\.tabs).count == 1)
     first.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
-    first.window.makeKeyAndOrderFront(nil)
+    // Simulate AppKit's focus notification: offscreen test windows need not
+    // acquire the desktop's key status for command routing to be verified.
+    second.addressPanel.dismiss(restoreFocus: false)
+    second.window.orderOut(nil)
+    first.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: first.window))
     #expect(owner.active === first)
     #expect(NSApp.sendAction(try #require(tabCommand.action), to: tabCommand.target, from: tabCommand))
     #expect(first.store.session.workspaces.flatMap(\.tabs).count == 2)
