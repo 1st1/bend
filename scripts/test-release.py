@@ -67,6 +67,21 @@ class ReleaseTests(unittest.TestCase):
         (self.root / ".changes/unreleased/broken.yaml").write_text("kind: [invalid\n")
         self.release("check", success=False)
 
+    def test_merged_version_bump_and_later_push(self):
+        self.command("git", "checkout", "-qb", "release-fixture")
+        (self.root / "VERSION").write_text("0.2.0\n")
+        self.release("prepare")
+        self.command("git", "add", ".")
+        self.command("git", "commit", "-qm", "Prepare release")
+        self.command("git", "checkout", "--detach", self.base)
+        self.command("git", "merge", "--no-ff", "release-fixture", "-m", "Merge release")
+        self.assertIn("version_changed=true", self.release("check", "--base-ref", self.base,
+                                                         "--allow-no-fragment").stdout)
+        merged = self.command("git", "rev-parse", "HEAD").stdout.strip()
+        self.command("git", "commit", "--allow-empty", "-qm", "Later main push")
+        self.assertIn("version_changed=false", self.release("check", "--base-ref", merged,
+                                                          "--allow-no-fragment").stdout)
+
     def test_invalid_versions(self):
         for value in ("0.2.0", "0.0.9", "01.2.3", "1.2", "1.2.3-beta"):
             (self.root / "VERSION").write_text(value + "\n")

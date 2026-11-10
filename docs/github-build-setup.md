@@ -1,10 +1,10 @@
 # GitHub production builds
 
-Bend CI is defined in `.github/workflows/changelog.yml`. Every PR and main push validates release metadata, compiles production, and runs the Swift tests on an Apple Silicon macOS 26 runner with Xcode 26.6. A same-repository PR increasing VERSION also builds a signed, notarized DMG candidate. The initial addition of VERSION establishes a baseline without requesting a release.
+Bend CI is defined in `.github/workflows/changelog.yml`. Every PR and main push validates release metadata, compiles production, and runs the Swift tests on an Apple Silicon macOS 26 runner with Xcode 26.6. A same-repository PR increasing VERSION also builds a signed, notarized DMG candidate. Merging the version bump into main triggers a fresh signed build, then automatically creates the version tag and publishes a GitHub Release. The initial addition of VERSION establishes a baseline without requesting a release.
 
-Every update to a release PR rebuilds its candidate. The workflow compares VERSION with the PR base rather than using a paths filter, and all jobs check out the same event commit. The aggregate **CI** check requires the production job only for version-bump PRs. Actions are pinned to reviewed commit SHAs.
+Every update to a release PR rebuilds its candidate. The workflow compares VERSION with the PR base rather than using a paths filter, and all jobs check out the same event commit. Main pushes compare VERSION with the previous main commit. The aggregate **CI** check requires signing for version bumps and release publication for version-bump pushes to main. Actions are pinned to reviewed commit SHAs.
 
-The notarized DMG is uploaded as an unarchived Actions artifact for direct download. Checksums, release notes, and build provenance are uploaded separately as a build-details ZIP. This workflow does not create tags or publish GitHub Releases. The signing job uses temporary credentials, cleans them up on success or failure, and runs only for trusted same-repository release PRs. Fork PRs never receive signing secrets.
+The notarized DMG is uploaded as an unarchived Actions artifact for direct download. Checksums, release notes, and build provenance are uploaded separately as a build-details ZIP. PR builds remain candidates; main-branch version bumps publish releases. The signing job uses temporary credentials, cleans them up on success or failure, and runs only for trusted same-repository release PRs and version-bump pushes to main. Fork PRs never receive signing secrets.
 
 ## One-time credential setup
 
@@ -61,4 +61,19 @@ Commit and open a PR. Successful metadata and native jobs unlock the production 
 
 Each candidate uses `run_number * 1000 + run_attempt` as BEND_BUILD_NUMBER, with attempts bounded below 1000. Fresh runs and retries within a run increase it; rerunning an older workflow retains the older number range. The app version remains the value in VERSION.
 
-Smoke-test a signed candidate on macOS 26 and the current release before publishing it. Once native checks are confirmed on GitHub, **CI** can be made a required check in the main-branch ruleset. Public publication remains a separate workflow to implement; PR candidates never become the public latest release automatically.
+Smoke-test a signed candidate on macOS 26 and the current release before merging. **CI** can be made a required check in the main-branch ruleset.
+
+## Automatic publication after merge
+
+Merge the version-bump PR into main. Once metadata, native tests, and the fresh signed production build pass, CI creates `vVERSION` at that exact main commit and publishes **Bend VERSION** with these directly downloadable assets:
+
+- `Bend-VERSION-arm64.dmg`
+- `SHA256SUMS`
+- `RELEASE_NOTES.md`
+- `build.json`
+
+The release description comes from `.changes/vVERSION.md`. The `.dmg` asset is the installer itself, without a ZIP wrapper. Release visibility follows the repository's visibility; a private repository still requires access. GitHub's generated source archives may also appear alongside these assets.
+
+The publisher uses the workflow's built-in `GITHUB_TOKEN` with `contents: write`, so no additional secret is required. Repository or organization rules must permit that token to create version tags and releases. Only the publish job has repository-write access; signing credentials stay in the signing job.
+
+Failures before publishing leave a draft if one has already been created. Rerun failed jobs on the original main-push run to finish it. Existing tags must resolve to the built commit; the publisher refuses to move conflicting tags. Completed releases are not overwritten on rerun. Main releases are not cancelled by later pushes. Ordinary main pushes and manual workflow dispatch do not publish a release.

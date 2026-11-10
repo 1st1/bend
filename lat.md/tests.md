@@ -917,10 +917,16 @@ A unique temporary preference and cookie marker written in Debug must be absent 
 
 [[scripts/test-release.py#ReleaseTests]] runs real Changie in disposable repositories to verify version-driven release preparation and PR checks without changing the working project.
 
-The tests verify fragment consumption, validation when a clean checkout omits the empty fragment directory, malformed-fragment rejection, matching version notes and changelog generation, refusal to reuse or decrease versions, baseline initialization without a release trigger, invalid version rejection, required fragments for user-facing changes, the internal-only escape, stale changelog detection, and immutable historical release notes. Run `python3 scripts/test-release.py`; no signing credentials are required.
+The tests verify fragment consumption, validation when a clean checkout omits the empty fragment directory, malformed-fragment rejection, matching version notes and changelog generation, refusal to reuse or decrease versions, baseline initialization without a release trigger, invalid version rejection, required fragments for user-facing changes, the internal-only escape, stale changelog detection, immutable historical release notes, a merged version bump detected against the push boundary, and a later unchanged-version push that does not release. Run `python3 scripts/test-release.py`; no signing credentials are required.
 
 ## CI signing credential lifecycle
 
 [[scripts/test-ci-signing.py#SigningTests]] verifies temporary credential handling with mocked system commands, without touching a real keychain or contacting Apple.
 
 Coverage includes restrictive file permissions, raw credential removal after import, original keychain search-list restoration, cleanup after notarization setup failure, removal even when keychain commands fail, and missing-secret rejection before system changes. Run `python3 scripts/test-ci-signing.py`.
+
+## GitHub release publication
+
+[[scripts/test-publish-release.py#PublicationTests]] exercises release publication with temporary build artifacts and a simulated GitHub service, without pushing tags or creating real releases.
+
+Coverage includes exact-commit tags, complete asset upload before publication, draft recovery after partial upload failure, rejection of conflicting tags and mismatched checksums, notes, or provenance, upload digest verification, and reruns that leave published binaries untouched. [[scripts/test-publish-release.py#APIErrorTests]] distinguishes a missing resource from permission or network errors so API failures cannot silently trigger creation. Run `python3 scripts/test-publish-release.py`.
