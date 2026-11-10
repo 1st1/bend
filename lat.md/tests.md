@@ -13,7 +13,7 @@ Run the test suite and documentation validation from the repository root:
 lat check
 ```
 
-[[scripts/test.sh]] uses the installed SDK's version in the linked binary, matching the app and CI. Plain SwiftPM linking can select older AppKit compatibility behavior, including different sidebar constraints. With no arguments, [[scripts/test-all.py]] discovers the full inventory, runs core tests together, and runs each native test in a fresh process. This isolates AppKit's global menus, focus, and animation workers; accumulated native animations can exhaust dispatch workers in a long-lived test host. Every discovered test must report a result or its declared skip, and failed or timed-out processes fail the run. Arguments such as `--filter` run a focused selection directly.
+[[scripts/test.sh]] uses the installed SDK's version in the linked binary, matching the app and CI. Plain SwiftPM linking can select older AppKit compatibility behavior, including different sidebar constraints. With no arguments, [[scripts/test-all.py]] discovers the full inventory, runs core tests together, and runs each native test in a fresh process. This isolates AppKit's global menus, focus, and animation workers; accumulated native animations can exhaust dispatch workers in a long-lived test host. Every discovered test must report a result or its declared skip, and failed or timed-out processes fail the run. A crashed process, missing result, or unmatched filter is recorded as a failure while all later groups still execute; the final summary lists every failed group. Arguments such as `--filter` run a focused selection directly.
 
 ## Nested splits and closing
 
@@ -967,7 +967,7 @@ A loopback HTTP iframe first demonstrates both cookie access and writes in an is
 
 ## Native test runner coverage
 
-[[scripts/test-test-runner.py#TestRunnerTests]] verifies complete inventory execution, declared-skip accounting, rejection of unmatched filters and ambiguous names, failed-process propagation, and bounded timeout termination.
+[[scripts/test-test-runner.py#TestRunnerTests]] verifies full inventory execution, skip accounting, rejection of unmatched filters and ambiguous names, failed-process propagation, timeout termination, and continued execution after failures, crashes, timeouts, or missing results.
 
 ## Option-click destinations
 
@@ -979,7 +979,7 @@ Both navigation callbacks cancel source navigation. Pane placement, sidebar inse
 
 [[Tests/BrowseTests/LinkNavigationTests.swift#nativeOptionClickLinks]] sends native Option-click events to same-frame, new-window, and iframe links, verifying correct URLs and frame provenance without downloading or navigating the source.
 
-The fixture requires document and iframe readiness, waits for a rendered snapshot, and converts measured DOM link bounds into native window coordinates before clicking. Failures report DOM mouse events and WebKit navigation-action metadata to distinguish event-delivery problems from routing regressions.
+Trusted native clicks must use the isolated document bridge before navigation policy, while page-generated clicks cannot reach it. The fixture requires document and iframe readiness, waits for a rendered snapshot, and converts measured DOM link bounds into native window coordinates before clicking. Failures report DOM mouse events and WebKit navigation-action metadata to distinguish event-delivery problems from routing regressions.
 
 ## Link context menu destinations
 
@@ -992,3 +992,7 @@ URLs retain query strings and fragments. Each menu keeps its own target after an
 [[Tests/BrowseTests/SidebarScrollStatusTests.swift#sidebarOverflowCounts]] verifies counts of fully hidden tabs above and below the sidebar viewport, excluding partially visible rows even at fractional scroll positions.
 
 Coverage includes exact row boundaries, the favorites inset, resizing, insertion and removal, overscroll, empty lists, and unmeasured viewports. The top fade remains absent at the start and reaches its maximum after scrolling.
+
+## Option-click shared controller isolation
+
+[[Tests/BrowseTests/LinkNavigationTests.swift#optionClickSharedControllerIsolation]] shares one user-content controller between a routed pane and a plain WebView, verifying only the pane enables Option-click interception and other views cannot route links.

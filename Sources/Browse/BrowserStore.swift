@@ -1024,6 +1024,7 @@ final class BrowserStore: ObservableObject {
 // @lat: [[architecture#WebKit integration]]
 @MainActor
 class FocusWebView: WKWebView {
+    var onOptionLink: ((String, Bool) -> Void)?
     private var inspectorSupport: BendInspectorSupport?
     var inspector: BendInspectorSupport {
         if let inspectorSupport { return inspectorSupport }
@@ -1221,6 +1222,10 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     private func observeWebView() {
+        OptionClickObserver.install(in: webView.configuration.userContentController)
+        webView.onOptionLink = { [weak self] address, mainFrame in
+            self?.onOptionLink?(address, mainFrame)
+        }
         media.attach(to: webView)
         InputDiagnostics.transition(.extensionConfiguration, .changed, view: webView)
         webView.navigationDelegate = self; webView.uiDelegate = self
@@ -1251,6 +1256,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
         webView.onFocus = nil
+        webView.onOptionLink = nil
         webView.stopLoading()
         let paneID = webView.diagnosticPaneID
         webView = FocusWebView(frame: webView.frame, configuration: configuration)

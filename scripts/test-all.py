@@ -60,8 +60,6 @@ def main(command):
         if code or matched != len(group):
             failures.append(label)
             print(f"FAILED: exit={code}, expected {len(group)} tests, reported {matched}.", flush=True)
-            if not matched:
-                return 1
     if failures:
         print("\nFailed groups:\n" + "\n".join(failures))
         return 1
