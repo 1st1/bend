@@ -15,12 +15,14 @@ enum Chrome {
     static let paneHeaderHeight = 2 * (headerCenterY - paneInset)
     static let sidebarControlSpacing: CGFloat = 2
     static let sidebarHorizontalInset: CGFloat = 10
+    static let sidebarScrollFadeHeight: CGFloat = 24
     static let accent = Color(red: 0.66, green: 0.81, blue: 0.73)
     static let muted = Color.white.opacity(0.42)
 }
 
 struct BrowserView: View {
     @ObservedObject var store: BrowserStore
+    @ViewState<CGFloat> private var sidebarTopFadeHeight = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -94,7 +96,7 @@ struct BrowserView: View {
             if !store.favorites.isEmpty {
                 SidebarFavorites(store: store)
                     .padding(.leading, Chrome.sidebarHorizontalInset).padding(.trailing, trailingInset)
-                    .padding(.top, 6).padding(.bottom, 10)
+                    .padding(.top, 6)
             }
 
             ScrollView {
@@ -103,9 +105,25 @@ struct BrowserView: View {
                         SidebarTabRow(store: store, tab: tab)
                     }
 
-                }.padding(.leading, Chrome.sidebarHorizontalInset).padding(.trailing, trailingInset).padding(.top, 6)
+                }.padding(.leading, Chrome.sidebarHorizontalInset).padding(.trailing, trailingInset)
+                    .padding(.top, store.favorites.isEmpty ? 6 : 16)
+                    .padding(.bottom, Chrome.sidebarScrollFadeHeight)
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                min(Chrome.sidebarScrollFadeHeight, max(0, geometry.contentOffset.y + geometry.contentInsets.top))
+            } action: { _, height in
+                sidebarTopFadeHeight = height
             }
             .clipped()
+            .mask {
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                        .frame(height: sidebarTopFadeHeight)
+                    Color.black
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: Chrome.sidebarScrollFadeHeight)
+                }
+            }
             .contentShape(Rectangle())
             SidebarMediaPlayer(coordinator: store.mediaCoordinator, store: store)
             if let error = store.persistenceError {
