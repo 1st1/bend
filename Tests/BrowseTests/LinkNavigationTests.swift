@@ -418,6 +418,16 @@ private final class LinkAction: WKNavigationAction {
     let snapshot = WKSnapshotConfiguration()
     snapshot.afterScreenUpdates = true
     _ = try await web.takeSnapshot(configuration: snapshot)
+    #expect(try await web.evaluateJavaScript("typeof window.webkit.messageHandlers.bendOptionClick") as? String == "undefined")
+    // An untrusted page-generated event must not open a tab. Cancel its default
+    // only at window bubbling, after the document-level isolated-world observer.
+    _ = try await web.evaluateJavaScript("""
+        window.addEventListener('click', event => { if (!event.isTrusted) event.preventDefault(); });
+        document.querySelector('a').dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, altKey:true}));
+        """)
+    #expect(try await web.callAsyncJavaScript("return await window.webkit.messageHandlers.bendOptionClick.postMessage(null)",
+        arguments: [:], in: nil, contentWorld: OptionClickObserver.world) as? Bool == true)
+    #expect(links.isEmpty)
     for index in 0..<3 {
         let target = try #require(try await web.callAsyncJavaScript("""
             const frame = document.querySelector('iframe');
@@ -449,4 +459,37 @@ private final class LinkAction: WKNavigationAction {
     #expect(links.map(\.1) == [true, true, false])
     #expect(web.url?.absoluteString == "http://127.0.0.1:9/source")
     #expect(controller.downloads.items.isEmpty)
+    for name in ["self", "blank", "iframe"] {
+        #expect(!probe.actions.contains { $0.contains("url=http://127.0.0.1:9/\(name) ") },
+                "The document bridge handles Option-click before WebKit navigation or download policy")
+    }
+}
+
+// @lat: [[tests#Option-click shared controller isolation]]
+@Test @MainActor func optionClickSharedControllerIsolation() async throws {
+    _ = NSApplication.shared
+    let shared = WKUserContentController()
+    let pane = PageController(address: "browse://start", configure: {
+        $0.websiteDataStore = .nonPersistent()
+        $0.userContentController = shared
+    })
+    var opened: [String] = []
+    pane.onOptionLink = { address, _ in opened.append(address) }
+    let configuration = WKWebViewConfiguration()
+    configuration.websiteDataStore = .nonPersistent()
+    configuration.userContentController = shared
+    let other = WKWebView(frame: .zero, configuration: configuration)
+    defer { pane.media.detach(); pane.webView.stopLoading(); other.stopLoading() }
+    for web in [pane.webView, other] {
+        web.loadHTMLString("<title>Option routing</title>", baseURL: nil)
+        for _ in 0..<100 where web.title != "Option routing" { try await Task.sleep(for: .milliseconds(20)) }
+        try #require(web.title == "Option routing")
+        let enabled = try await web.callAsyncJavaScript("return await window.webkit.messageHandlers.bendOptionClick.postMessage(null)",
+            arguments: [:], in: nil, contentWorld: OptionClickObserver.world) as? Bool
+        #expect(enabled == (web === pane.webView))
+    }
+    let ignored = try await other.callAsyncJavaScript("return await window.webkit.messageHandlers.bendOptionClick.postMessage('https://example.com/ignored')",
+        arguments: [:], in: nil, contentWorld: OptionClickObserver.world) as? Bool
+    #expect(ignored == false)
+    #expect(opened.isEmpty)
 }

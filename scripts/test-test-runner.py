@@ -34,10 +34,19 @@ class TestRunnerTests(unittest.TestCase):
         for call in executions.call_args_list:
             self.assertIn("--skip-build", call.args[0])
 
-    def test_unmatched_filter_fails(self):
-        code, executions = self.execute([(0, "warning: No matching test cases were run\n")])
-        self.assertEqual(code, 1)
-        self.assertEqual(executions.call_count, 1)
+    def test_failed_groups_do_not_hide_later_results(self):
+        passed = (0, "Test run with 1 test in 0 suites passed.\n")
+        for failure in [
+            (0, "warning: No matching test cases were run\n"),
+            (1, "Process exited with unexpected signal code 11\n"),
+            (1, "Test process exceeded 180 seconds.\n"),
+            (1, "Test run with 1 test failed.\n"),
+        ]:
+            with self.subTest(failure=failure):
+                code, executions = self.execute([passed, failure, passed])
+                self.assertEqual(code, 1)
+                self.assertEqual(executions.call_count, 3)
+                self.assertIn("optional", executions.call_args_list[-1].args[0][-1])
 
     def test_failed_test_process_fails_run(self):
         code, _ = self.execute([(1, "Test run with 1 test failed.\n")], "BrowseTests.window()\n")
