@@ -1389,14 +1389,25 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         InputDiagnostics.transition(.webLoad, .finished, view: webView)
         refresh()
         recordCompletedVisit()
+        refreshFavicon()
+    }
+
+    private func refreshFavicon() {
         guard !isStartPage, let url = webView.url else { return }
+        let webView = webView
         faviconTask?.cancel()
         faviconTask = Task { [weak self] in
             let candidates = await FaviconLoader.candidates(in: webView, pageURL: url)
             guard !Task.isCancelled else { return }
             let image = await FaviconLoader.load(candidates, in: webView)
-            guard !Task.isCancelled, let self, self.webView === webView,
-                  !self.isStartPage, webView.url == url, let image else { return }
+            guard !Task.isCancelled, let self, self.webView === webView, !self.isStartPage else { return }
+            guard webView.url == url else {
+                // History API navigation doesn't call didFinish. An icon load
+                // abandoned because its URL changed needs a fresh attempt.
+                if FaviconLoader.sameOrigin(url, webView.url) { self.refreshFavicon() }
+                return
+            }
+            guard let image else { return }
             self.faviconPageURL = url
             self.favicon = image
         }

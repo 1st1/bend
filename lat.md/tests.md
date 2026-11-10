@@ -271,6 +271,10 @@ Local HTTP fixtures record requests so the test distinguishes blocked network ac
 
 [javaScriptNativeSheets](../Tests/BrowseTests/JavaScriptDialogTests.swift) verifies a real AppKit prompt attaches to its browser window, returns entered text, and leaves the application outside an application-modal event loop.
 
+## Favicon history navigation
+
+[[Tests/BrowseTests/FaviconTests.swift#faviconHistoryNavigation]] changes a playing page's URL through the History API while its first icon request is pending, verifying favicon loading recovers without a full document navigation.
+
 ## Favicon navigation reset
 
 [FaviconTests.swift](../Tests/BrowseTests/FaviconTests.swift) verifies same-origin links, reloads, and address entry preserve the icon without a placeholder, while redirects to another origin and internal pages clear it.
