@@ -4,7 +4,7 @@ Bend keeps its app version in [[VERSION]] and user-facing release notes in [[CHA
 
 ## Change entries
 
-Each user-facing feature, fix, or behavior change adds a fragment under [[.changes/unreleased]]. Internal-only changes do not need public release notes.
+Each user-facing feature, fix, or behavior change adds a fragment to the unreleased subdirectory of [[.changes]]. Internal-only changes do not need public release notes.
 
 Run `./scripts/changie.sh new` and choose Added, Changed, Fixed, Removed, or Security. Describe the effect on the user in a short sentence. Commit the generated YAML with the implementation. [[scripts/changie.sh]] downloads Changie 1.26.0 into the ignored build cache and verifies the pinned platform-specific SHA-256 before execution; no global installation is required.
 

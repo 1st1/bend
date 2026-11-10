@@ -1,3 +1,0 @@
-kind: Added
-body: Private windows with Command-Shift-N, temporary history, isolated cookies and website storage for each pane, and per-extension private browsing permissions. Extension pages and popups are unavailable in private windows to keep website cookies isolated.
-time: 2026-11-10T09:43:09.766134-08:00

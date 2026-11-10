@@ -1,3 +1,0 @@
-kind: Fixed
-body: Preserve native window focus when clicking pane titles without interrupting pane dragging.
-time: 2026-11-10T05:10:00Z
