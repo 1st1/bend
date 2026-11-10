@@ -400,7 +400,8 @@ import Network
         if (try? await document.web.evaluateJavaScript("document.body?.textContent")) as? String == "Compatibility test" { break }
         try await Task.sleep(for: .milliseconds(30))
     }
-    _ = try await document.web.evaluateJavaScript("sessionStorage.setItem('setupAnswered', 'yes')")
+    let extensionView = document.web
+    _ = try await extensionView.evaluateJavaScript("sessionStorage.setItem('setupAnswered', 'yes'); window.authOriginalDocument = true")
     let tabID = try #require(try await asyncValue("(await browser.tabs.getCurrent()).id", in: document.web) as? Int)
     let pageCount = store.session.workspaces.flatMap(\.tabs).flatMap(\.pages).count
     let server = try await ExtensionHTTPFixture.start()
@@ -425,10 +426,18 @@ import Network
     try await Task.sleep(for: .milliseconds(150))
     #expect(document.web.url?.host == "127.0.0.1")
     _ = try await asyncValue("browser.tabs.update(\(tabID), {url: \(extensionLiteral)})", in: control)
+    // Returning reuses the extension view and starts a new navigation. Its old
+    // document already has the session marker, so that alone is not readiness.
+    var returnedDocumentReady = false
     for _ in 0..<100 {
-        if (try? await document.web.evaluateJavaScript("sessionStorage.getItem('setupAnswered')")) as? String == "yes" { break }
+        if document.web === extensionView, !extensionView.isLoading,
+           (try? await extensionView.evaluateJavaScript("document.readyState === 'complete' && typeof window.authOriginalDocument === 'undefined' && sessionStorage.getItem('setupAnswered') === 'yes'")) as? Bool == true {
+            returnedDocumentReady = true
+            break
+        }
         try await Task.sleep(for: .milliseconds(30))
     }
+    try #require(returnedDocumentReady, "The return navigation must replace the document while preserving its view and session storage")
     #expect(try await document.web.evaluateJavaScript("sessionStorage.getItem('setupAnswered')") as? String == "yes")
     #expect(try await asyncValue("(await browser.tabs.getCurrent()).id", in: document.web) as? Int == tabID)
     try await manager.enable(false, id: id) { _, _ in true }
