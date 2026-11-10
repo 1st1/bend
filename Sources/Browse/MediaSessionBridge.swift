@@ -14,6 +14,24 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
         let declaredPlaybackState = 'none';
         let positionState = null;
         const buffering = new WeakSet();
+        const minimumDuration = 7;
+        const playbackClocks = new WeakMap();
+        const newClock = () => ({elapsed: 0, since: null, qualified: false});
+        let sessionClock = newClock(), nextQualification = Infinity;
+        const qualifies = (duration, clock, running) => {
+            const now = performance.now();
+            if (clock.since !== null) clock.elapsed += Math.max(0, now - clock.since) / 1000;
+            clock.since = running ? now : null;
+            if (Number.isFinite(duration) && duration >= 0) {
+                clock.qualified = duration > minimumDuration;
+            } else if (clock.elapsed > minimumDuration) {
+                clock.qualified = true;
+            }
+            if (!clock.qualified && running && !Number.isFinite(duration)) {
+                nextQualification = Math.min(nextQualification, Math.max(0, minimumDuration - clock.elapsed) + 0.01);
+            }
+            return clock.qualified;
+        };
         const sessionPosition = () => positionState ? Math.max(0, Math.min(positionState.duration,
             positionState.position + (declaredPlaybackState === 'playing' ?
                 (performance.now() - positionState.updatedAt) / 1000 * positionState.playbackRate : 0))) : 0;
@@ -26,10 +44,12 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
         const remember = media => {
             if (!(media instanceof HTMLMediaElement) || players.has(media)) return;
             players.add(media); ids.set(media, String(++nextID));
+            playbackClocks.set(media, newClock());
             if (!media.isConnected) detached.add(media);
             for (const name of ['play','playing','pause','ended','emptied','error','loadedmetadata','volumechange',
-                'durationchange','ratechange','seeking','seeked','waiting']) {
+                'durationchange','ratechange','seeking','seeked','waiting','loadstart']) {
                 media.addEventListener(name, () => {
+                    if (['loadstart','emptied','ended','error'].includes(name)) playbackClocks.set(media, newClock());
                     if (name === 'waiting') buffering.add(media);
                     if (name === 'playing' || name === 'seeked' || name === 'emptied') buffering.delete(media);
                     if (!media.paused && !media.ended && !media.muted && media.volume > 0) { played.add(media); current = media; }
@@ -56,19 +76,27 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
             scan(root);
         };
         const snapshot = () => {
+            nextQualification = Infinity;
             for (const media of players) {
                 if (media.isConnected) detached.delete(media);
                 else if (!detached.has(media) || media.ended || media.error
                     || (played.has(media) && media.networkState === HTMLMediaElement.NETWORK_EMPTY)) players.delete(media);
             }
             const audible = media => !media.muted && media.volume > 0;
-            const playing = [...players].filter(media => !media.paused && !media.ended && audible(media));
+            const available = [...players].filter(media => qualifies(media.duration, playbackClocks.get(media),
+                !media.paused && !media.ended && audible(media) && !media.seeking && !buffering.has(media) && media.readyState >= 3));
+            const playing = available.filter(media => !media.paused && !media.ended && audible(media));
             if (!playing.includes(current) && playing.length) current = playing[playing.length - 1];
-            if (!players.has(current) || current?.ended) current = [...players].find(media => played.has(media) && !media.ended) || null;
+            if (!available.includes(current) || current?.ended) current = available.find(media => played.has(media) && !media.ended) || null;
             const declared = declaredPlaybackState;
             if (declared === 'playing') sessionPlayed = true;
             const metadata = session?.metadata;
-            const hasSession = sessionPlayed && (declared !== 'none' || current != null);
+            const hasMedia = [...players].some(media => played.has(media) && !media.ended);
+            // An unqualified HTML notification must not sneak back in through
+            // the site's Media Session declaration or replace a longer player.
+            const sessionQualifies = qualifies(positionState?.duration, sessionClock, declared === 'playing' && !hasMedia);
+            const hasSession = sessionPlayed && (declared !== 'none' || current != null)
+                && (!!current || (!hasMedia && sessionQualifies));
             const active = hasSession || !!(current && played.has(current) && !current.ended);
             const actions = [...handlers.keys()];
             if (current) {
@@ -85,11 +113,13 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
                     rate: declared === 'playing' ? positionState.playbackRate : 0};
             }
             const playerID = hasSession ? 'session' : (ids.get(current) || '');
-            const isPlaying = playing.length > 0 || (declared === 'playing' && !current);
+            const isPlaying = playing.length > 0 || (hasSession && declared === 'playing' && !current);
             if (isPlaying && (!wasPlaying || lastPlayerID !== playerID)) playbackRevision++;
             wasPlaying = isPlaying; lastPlayerID = playerID;
             return {
                 active, playerID, playbackRevision, playing: isPlaying,
+                durationFiltered: !active && (hasMedia || (sessionPlayed && declared !== 'none')),
+                qualificationDelay: Number.isFinite(nextQualification) ? nextQualification : null,
                 title: text(metadata?.title) || text(current?.getAttribute('aria-label')) || text(current?.title) || text(document.title),
                 artist: text(metadata?.artist), actions, timeline
             };
@@ -137,6 +167,7 @@ final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
                             if (name === 'playbackState') {
                                 if (positionState) { positionState.position = position; positionState.updatedAt = performance.now(); }
                                 declaredPlaybackState = String(value);
+                                if (declaredPlaybackState === 'none') sessionClock = newClock();
                             }
                             schedule();
                         }

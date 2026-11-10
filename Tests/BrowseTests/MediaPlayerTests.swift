@@ -16,6 +16,7 @@ import SwiftUI
 private let mediaSessionFixture = #"""
     <title>Page fallback</title><body>Media fixture<script>
     window.nextCount = 0;
+    navigator.mediaSession.setPositionState({duration:60});
     navigator.mediaSession.metadata = new MediaMetadata({title:'First track', artist:'An artist'});
     navigator.mediaSession.setActionHandler('play', () => navigator.mediaSession.playbackState = 'playing');
     navigator.mediaSession.setActionHandler('pause', () => navigator.mediaSession.playbackState = 'paused');
@@ -78,7 +79,7 @@ private let mediaSessionFixture = #"""
     defer { page.media.detach(); page.webView.stopLoading() }
     page.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://progress.example"))
     try await mediaWait { !page.media.sessions.isEmpty }
-    #expect(page.media.sessions.first?.timeline == nil)
+    #expect(page.media.sessions.first?.timeline?.duration == 60)
     _ = try await page.webView.evaluateJavaScript("""
         navigator.mediaSession.setPositionState({duration:240, position:30, playbackRate:2});
         navigator.mediaSession.setActionHandler('seekto', details => {

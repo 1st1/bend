@@ -99,6 +99,22 @@ Sources are ordered most-recent-first after playback starts and explicit selecti
 
 Stopping the new owner must leave older players paused. The HTML fallback fixture separately checks the underlying audio element is paused when another pane starts.
 
+## Short media filtering
+
+[[Tests/BrowseTests/MediaDurationTests.swift#shortMediaFiltering]] plays real audio/video notifications at one and seven seconds, verifying no transient card, no interruption of another pane, and immediate controls above the cutoff.
+
+A short sound in the same frame must preserve the longer player's identity and duration. Looping does not turn a short clip into eligible long media.
+
+## Unknown media duration qualification
+
+[[Tests/BrowseTests/MediaDurationTests.swift#unknownMediaDurationQualification]] verifies unknown and infinite-duration sessions stay hidden until seven seconds of playback, exclude paused time, and become visible through a native deadline without idle polling.
+
+A later known short duration removes an already qualified source, while a duration just above seven seconds restores controls immediately.
+
+## Media qualification lifecycle
+
+[[Tests/BrowseTests/MediaDurationTests.swift#mediaQualificationLifecycle]] uses a controlled HTML playback clock to exclude paused and buffering time, reset eligibility on resource replacement, and preserve qualified controls when timing disappears.
+
 ## Sidebar favicons
 
 [FaviconTests.swift](../Tests/BrowseTests/FaviconTests.swift) loads an icon through a local HTTP fixture and checks the mounted sidebar image updates to that exact favicon, resets for a native page, and leaves unvisited tabs uninstantiated.
