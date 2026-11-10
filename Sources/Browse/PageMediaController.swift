@@ -43,6 +43,7 @@ final class PageMediaController: ObservableObject {
     private var mainDocument: String?
     private var refreshTask: Task<Void, Never>?
     private var inactiveTasks: [String: Task<Void, Never>] = [:]
+    private var qualificationTasks: [String: Task<Void, Never>] = [:]
     private var generation = 0
     private static let actions: Set<String> = ["play", "pause", "previoustrack", "nexttrack", "seekto"]
 
@@ -57,6 +58,7 @@ final class PageMediaController: ObservableObject {
         generation += 1
         refreshTask?.cancel(); refreshTask = nil
         inactiveTasks.values.forEach { $0.cancel() }; inactiveTasks.removeAll()
+        qualificationTasks.values.forEach { $0.cancel() }; qualificationTasks.removeAll()
         frames.removeAll(); mainDocument = nil
         if !sessions.isEmpty { sessions = [] }
     }
@@ -69,6 +71,7 @@ final class PageMediaController: ObservableObject {
 
     private func remove(_ id: String) {
         inactiveTasks.removeValue(forKey: id)?.cancel()
+        qualificationTasks.removeValue(forKey: id)?.cancel()
         frames.removeValue(forKey: id)
         if sessions.contains(where: { $0.id == id }) { sessions.removeAll { $0.id == id } }
         if sessions.isEmpty { refreshTask?.cancel(); refreshTask = nil }
@@ -104,7 +107,16 @@ final class PageMediaController: ObservableObject {
         if kind == "gone" { remove(id); return }
         guard kind == "state", let active = body["active"] as? Bool else { return }
         if message.frameInfo.isMainFrame, let mainDocument, mainDocument != id { return }
-        if !active { markInactive(id); return }
+        qualificationTasks.removeValue(forKey: id)?.cancel()
+        if !active {
+            if body["durationFiltered"] as? Bool == true { remove(id) }
+            else { markInactive(id) }
+            if let delay = body["qualificationDelay"] as? Double, delay.isFinite, delay > 0, delay <= 7.1,
+               qualificationTasks.count < 32 {
+                scheduleQualification(id, frame: message.frameInfo, delay: delay)
+            }
+            return
+        }
         guard frames[id] != nil || frames.count < 32,
               let playerID = body["playerID"] as? String, !playerID.isEmpty, playerID.count < 64,
               let playing = body["playing"] as? Bool, let playbackRevision = body["playbackRevision"] as? Int,
@@ -127,6 +139,19 @@ final class PageMediaController: ObservableObject {
             playbackFocus?.claim(self)
         }
         startRefreshing()
+    }
+
+    private func scheduleQualification(_ id: String, frame: WKFrameInfo, delay: Double) {
+        let epoch = generation
+        // WebKit throttles page timers in background tabs. Use one native
+        // deadline, cancelled by pause, stop, navigation, or replacement.
+        qualificationTasks[id] = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            guard let self, self.generation == epoch, let web = self.webView else { return }
+            self.qualificationTasks.removeValue(forKey: id)
+            _ = await self.evaluate("return window.__bendMedia?.refresh(documentID) ?? false",
+                arguments: ["documentID": id], frame: frame, web: web, timeout: .seconds(2))
+        }
     }
 
     func pauseForFocusLoss(_ states: [MediaSessionState], stillCurrent: () -> Bool) async {
