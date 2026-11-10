@@ -529,6 +529,12 @@ struct ExtensionManagementView: View {
     var body: some View {
         let context = manager.contexts[record.id]
         VStack(alignment: .leading, spacing: 10) {
+            Toggle("Enable in private mode", isOn: Binding(
+                get: { manager.records.first(where: { $0.id == record.id })?.enabledInPrivateMode ?? false },
+                set: { manager.setPrivateAccess($0, id: record.id) }))
+                .toggleStyle(.checkbox).disabled(manager.busy)
+            Text("Allow this extension to access private tabs and website data. Reload open pages after changing this setting.")
+                .font(.caption).foregroundStyle(.secondary)
             if let failure = manager.failures[record.id] { Text(failure).font(.callout).foregroundStyle(.red) }
             if !manager.ownsPackage(record) {
                 Text("Import pending").font(.caption).foregroundStyle(.secondary)
@@ -569,7 +575,7 @@ struct PaneExtensionsMenu: View {
     let showSettings: () -> Void
     var body: some View {
         Menu {
-            ForEach(manager.records.filter { manager.isEnabled($0.id) }) { record in
+            ForEach(manager.records.filter { manager.isAvailable($0.id, pageID: pageID) }) { record in
                 Button(record.name) { manager.performAction(record.id, pageID: pageID) }
             }
             Divider()

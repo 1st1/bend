@@ -8,14 +8,25 @@ final class WebsiteSettingsStore: ObservableObject {
     @Published private(set) var values = WebsiteSettings()
     @Published private(set) var errorMessage: String?
     private var database: WebsiteSettingsDatabase?
-    private let file: URL
+    private let file: URL?
 
     init(file: URL) {
         self.file = file
         reload()
     }
 
+    init(temporary values: WebsiteSettings) {
+        file = nil
+        self.values = values
+    }
+
+    func resetTemporary() {
+        guard file == nil else { return }
+        values = WebsiteSettings()
+    }
+
     func reload() {
+        guard let file else { return }
         do {
             let database = try WebsiteSettingsDatabase(file: file)
             self.database = database
@@ -47,10 +58,11 @@ final class WebsiteSettingsStore: ObservableObject {
     func removeAllOverrides() { update { $0.zoomByHost.removeAll() } }
 
     private func update(_ change: (inout WebsiteSettings) -> Void) {
-        guard let database else { return }
         var next = values
         change(&next)
         guard next.isValid else { return }
+        if file == nil { values = next; return }
+        guard let database else { return }
         do {
             try database.save(next)
             values = next

@@ -62,7 +62,8 @@ enum WindowDragTarget {
 
     static func mount(_ surface: NSView, from source: NSWindow, store: BrowserStore, at point: NSPoint) -> NSPoint? {
         guard let target = resolve(from: source, at: point), let content = target.contentView,
-              target === source || target.browserStore?.preferencesStore === store.preferencesStore else { return nil }
+              target === source || (!store.isPrivate && target.browserStore?.isPrivate == false
+                  && target.browserStore?.preferencesStore === store.preferencesStore) else { return nil }
         if surface.superview !== content {
             surface.removeFromSuperview()
             surface.frame = content.bounds

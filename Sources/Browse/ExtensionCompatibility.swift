@@ -53,6 +53,9 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
               let body = message.body as? [String: Any], let operation = body["operation"] as? String else {
             replyHandler(nil, "Only enabled extension pages can use this API."); return
         }
+        guard message.webView?.configuration.websiteDataStore.isPersistent != false || context.hasAccessToPrivateData else {
+            replyHandler(nil, "This extension is not enabled in private mode."); return
+        }
         if let web = message.webView {
             if pages[id] == nil { pages[id] = NSHashTable.weakObjects() }
             pages[id]?.add(web)

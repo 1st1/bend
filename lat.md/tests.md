@@ -673,7 +673,7 @@ Invalid drops leave both windows open. The surviving window retains unsaved form
 
 ## Window control alignment
 
-[BrowserWindowTests.swift](../Tests/BrowseTests/BrowserWindowTests.swift) compares actual native traffic-light frames with pane-title centers, verifying alignment and unchanged button geometry across repeated sidebar toggles and window resizing.
+[[Tests/BrowseTests/BrowserWindowTests.swift#windowControlAlignment]] verifies native traffic lights align with pane titles in new regular and private windows, before and after resizing and sidebar toggles, while another window changes fullscreen toolbar visibility.
 
 ## Default browser selection
 
@@ -936,3 +936,21 @@ Coverage includes exact-commit tags, complete asset upload before publication, d
 [[Tests/BrowseTests/LinkHoverPreviewTests.swift#titleURLPreview]] sends native hover events to a pane title handle and verifies the page URL appears in the existing bottom preview even when the pointer is above page content.
 
 Delayed DOM link events cannot erase or replace the title URL while the pointer is in the header. Entering page content gives the hovered link priority even when the native title-exit event arrives late. Exit restores ordinary link previews; title presses, hiding, removal, and navigation clearing remove the title preview. Both sources preserve encoded URLs and strip invisible control and directional characters.
+
+## Private window lifetime
+
+[[Tests/BrowseTests/BrowserWindowTests.swift#privateWindowLifetime]] verifies isolated in-memory history, cookies, favorites exclusion, temporary site settings, transfer rejection, persistence exclusion, closure cleanup, and preservation of regular history.
+
+## Private pane storage isolation
+
+[[Tests/BrowseTests/BrowserWindowTests.swift#privatePaneStorageIsolation]] verifies same-origin cookies and web storage are isolated across private panes, tabs, and windows, survive moves and reloads, and reset after closing and reopening a pane.
+
+Window closure clears every remaining pane's store. Regular browsing cannot see private cookie or storage values.
+
+## Private window keyboard command
+
+[[Tests/BrowseTests/BrowserWindowTests.swift#privateWindowKeyboardCommand]] verifies Command-Shift-N creates a labeled private window with its location popup focused, and closing its final pane closes the sole window.
+
+## Private extension access
+
+[[Tests/BrowseTests/ExtensionTests.swift#privateExtensionAccess]] verifies persisted opt-ins, private-tab queries, script injection, request blocking, revocation, and return from extension pages to temporary website storage.

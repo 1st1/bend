@@ -10,6 +10,7 @@ struct ExtensionRecord: Codable, Identifiable {
     var isBundle: Bool
     var name: String
     var enabled = false
+    var enabledInPrivateMode: Bool?
     var permissions: [String] = []
     var websites: [String] = []
     var importedFrom: URL?
@@ -168,9 +169,7 @@ final class ExtensionManager: NSObject, ObservableObject {
             webExtension = try await WKWebExtension(appExtensionBundle: bundle)
         } else { webExtension = try await WKWebExtension(resourceBaseURL: record.source) }
         let context = WKWebExtensionContext(for: webExtension)
-        // Explicitly supplied ephemeral test stores are private to this manager.
-        // Production uses the default persistent store and keeps this disabled.
-        context.hasAccessToPrivateData = controller.configuration.defaultWebsiteDataStore?.isPersistent == false
+        context.hasAccessToPrivateData = record.enabledInPrivateMode ?? false
         context.uniqueIdentifier = record.id.uuidString
         let identity = packageIdentifier(record, extension: webExtension)
         let scheme = Self.usesSafariOrigin(identity) ? "safari-web-extension" : "webkit-extension"
@@ -468,6 +467,40 @@ final class ExtensionManager: NSObject, ObservableObject {
 
     func isEnabled(_ id: UUID) -> Bool { contexts[id]?.isLoaded == true }
 
+    func isAvailable(_ id: UUID, pageID: UUID) -> Bool {
+        guard let context = contexts[id], context.isLoaded, let owner = store(for: pageID) else { return false }
+        return !owner.isPrivate || context.hasAccessToPrivateData
+    }
+
+    func setPrivateAccess(_ enabled: Bool, id: UUID) {
+        guard !busy, let index = records.firstIndex(where: { $0.id == id }) else { return }
+        var next = records
+        next[index].enabledInPrivateMode = enabled
+        do {
+            try persist(next)
+            guard let context = contexts[id] else { return }
+            context.hasAccessToPrivateData = enabled
+            if enabled, context.isLoaded {
+                // Windows omitted during initial loading must be registered with
+                // this context only after the user explicitly permits access.
+                for window in browserWindows where window.owningStore?.isPrivate == true {
+                    if !context.openWindows.contains(where: { $0 === window }) { context.didOpenWindow(window) }
+                    for tab in window.tabs(for: context) where !context.openTabs.contains(where: { ($0.base as? ExtensionTab) === tab }) {
+                        context.didOpenTab(tab)
+                    }
+                }
+            }
+            if !enabled {
+                popup?.close()
+                for owner in browserStores where owner.isPrivate {
+                    for page in owner.session.workspaces.flatMap(\.tabs).flatMap(\.pages) {
+                        owner.existingController(for: page.id)?.unloadExtension(at: context.baseURL)
+                    }
+                }
+            }
+        } catch { self.error = error.localizedDescription }
+    }
+
     func compatibilityNotice(_ id: UUID) -> String? {
         guard let record = records.first(where: { $0.id == id }) else { return nil }
         if record.packageIdentifier == "gecko:{d634138d-c276-4fc8-924b-40a0ea21d284}" {
@@ -620,7 +653,7 @@ final class ExtensionManager: NSObject, ObservableObject {
     }
 
     func performAction(_ id: UUID, pageID: UUID) {
-        guard let context = contexts[id], context.isLoaded, let tab = tabs[pageID] else { return }
+        guard isAvailable(id, pageID: pageID), let context = contexts[id], let tab = tabs[pageID] else { return }
         store(for: pageID)?.revealPage(pageID)
         context.userGesturePerformed(in: tab)
         context.performAction(for: tab)

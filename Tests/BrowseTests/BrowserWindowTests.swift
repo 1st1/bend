@@ -372,22 +372,29 @@ import BrowseCore
 }
 
 // @lat: [[tests#Window control alignment]]
-@Test @MainActor func windowControlAlignment() async throws {
+@Test(.serialized, arguments: [false, true]) @MainActor func windowControlAlignment(isPrivate: Bool) async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendChromeAlignment-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     let owner = BrowserWindows(root: root, persistentExtensions: false)
     owner.restore(show: false)
-    let context = try #require(owner.active)
-    defer { owner.prepareToQuit(); context.window.close() }
+    let original = try #require(owner.active)
+    original.windowWillEnterFullScreen(Notification(name: NSWindow.willEnterFullScreenNotification, object: original.window))
+    let context = isPrivate ? owner.newPrivateWindow(show: false) : owner.newWindow(show: false)
+    #expect(context.window.toolbar?.isVisible == true)
+    #expect(original.window.toolbar?.isVisible == false)
+    original.windowDidExitFullScreen(Notification(name: NSWindow.didExitFullScreenNotification, object: original.window))
+    original.windowWillEnterFullScreen(Notification(name: NSWindow.willEnterFullScreenNotification, object: original.window))
+    #expect(context.window.toolbar?.isVisible == true)
+    defer { owner.prepareToQuit(); for context in owner.windows { context.window.close() } }
     context.window.makeKeyAndOrderFront(nil)
     context.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
     func descendants<T: NSView>(_ type: T.Type, _ view: NSView) -> [T] {
         (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(type, $0) }
     }
     var originalButtons: [NSRect]?
-    for width: CGFloat in [1400, 900] {
-        context.window.setContentSize(NSSize(width: width, height: 850))
+    for width: CGFloat? in [nil, 1400, 900] {
+        if let width { context.window.setContentSize(NSSize(width: width, height: 850)) }
         for sidebar in [true, false, true] {
             context.store.sidebarVisible = sidebar
             for _ in 0..<6 {
@@ -405,7 +412,7 @@ import BrowseCore
             let headers = descendants(PaneDragSourceView.self, context.window.contentView!).filter {
                 $0.onHover != nil && !$0.isHiddenOrHasHiddenAncestor
             }
-            #expect(headers.count == 2)
+            #expect(headers.count == context.store.selectedTab.pages.count)
             for header in headers {
                 let frame = header.convert(header.bounds, to: nil)
                 let centerFromTop = context.window.frame.height - frame.midY
@@ -507,4 +514,185 @@ import BrowseCore
     #expect(abs(try titleFrame().minX - originalTitle.minX) <= 0.5)
     #expect(context.store.existingController(for: page.id)?.webView === web)
     #expect(try await web.evaluateJavaScript("document.querySelector('input').value") as? String == "draft")
+}
+
+// @lat: [[tests#Private window lifetime]]
+@Test @MainActor func privateWindowLifetime() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePrivate-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    defer { for window in owner.windows { window.window.close() } }
+    let regular = try #require(owner.active)
+    regular.store.recordVisit(url: "https://regular.example/", title: "Regular")
+    regular.store.editTab { $0.pages[0].address = "https://regular.example/" }
+    let favorite = try #require(regular.store.addFavorite(regular.store.selectedTab.id))
+    let first = owner.newPrivateWindow(show: false)
+    let second = owner.newPrivateWindow(show: false)
+    let store = first.store
+    #expect(store.isPrivate)
+    #expect(store.history.visits.isEmpty)
+    #expect(store.favorites.isEmpty)
+    #expect(store.downloads !== regular.store.downloads)
+    #expect(store.websiteSettings !== regular.store.websiteSettings)
+    store.recordVisit(url: "https://private.example/secret", title: "Private")
+    store.recordHistoryChoice(url: "https://private.example/secret", query: "secret")
+    #expect(store.history.visits.count == 1)
+    #expect(second.store.history.visits.isEmpty)
+    #expect(regular.store.history.visits.count == 1)
+    store.editTab { $0.pages[0].address = "https://private.example/secret" }
+    #expect(!store.canFavorite(store.selectedTab))
+    #expect(store.addFavorite(store.selectedTab.id) == nil)
+    store.removeFavorite(favorite)
+    #expect(regular.store.favorites.count == 1)
+    store.websiteSettings.setZoom(1.5, forHost: "private.example")
+    #expect(regular.store.websiteSettings.values.zoomByHost["private.example"] == nil)
+    #expect(!store.transfer(tab: store.selectedTab.id, to: regular.store, at: .workspace(regular.store.session.workspaces[0].id)))
+    #expect(!regular.store.transfer(tab: regular.store.selectedTab.id, to: store, at: .workspace(store.session.workspaces[0].id)))
+    let configuration = WKWebViewConfiguration()
+    let paneID = store.selectedTab.pages[0].id
+    let paneData = store.websiteDataStore(for: paneID)
+    store.configureWebView(configuration, for: paneID)
+    #expect(!configuration.websiteDataStore.isPersistent)
+    #expect(configuration.websiteDataStore === paneData)
+    let cookie = try #require(HTTPCookie(properties: [.domain: "private.example", .path: "/", .name: "secret", .value: "1"]))
+    await paneData.httpCookieStore.setCookie(cookie)
+    #expect(await paneData.httpCookieStore.allCookies().contains { $0.name == "secret" })
+    #expect(await second.store.websiteDataStore(for: second.store.selectedTab.pages[0].id).httpCookieStore.allCookies().isEmpty)
+    store.showHistory()
+    #expect(store.selectedTab.pages[0].address == "browse://history")
+    store.closeTab(store.selectedTab.id)
+    #expect(store.canReopenClosed)
+    owner.save()
+    #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Windows/\(first.id).json").path))
+    let manifest = try JSONDecoder().decode([String].self, from: Data(contentsOf: root.appendingPathComponent("windows.json")))
+    #expect(manifest == [regular.id])
+    let oldWebsiteData = paneData
+    first.window.close()
+    #expect(store.history.visits.isEmpty)
+    #expect(store.history.suggestions(for: "secret").isEmpty)
+    #expect(!store.canReopenClosed)
+    #expect(store.websiteDataStore(for: paneID) !== oldWebsiteData)
+    for _ in 0..<50 {
+        if await oldWebsiteData.httpCookieStore.allCookies().isEmpty { break }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(await oldWebsiteData.httpCookieStore.allCookies().isEmpty)
+    #expect(store.websiteSettings.values.zoomByHost.isEmpty)
+    store.recordVisit(url: "https://private.example/late", title: "Late callback")
+    #expect(store.history.visits.isEmpty)
+    #expect(second.store.history.visits.isEmpty)
+    let restored = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    #expect(restored.history.visits.count == 1)
+    #expect(restored.history.visits[0].title == "Regular")
+    regular.window.close()
+    owner.prepareToQuit()
+    #expect(try JSONDecoder().decode([String].self, from: Data(contentsOf: root.appendingPathComponent("windows.json"))) == [regular.id])
+}
+
+// @lat: [[tests#Private pane storage isolation]]
+@Test @MainActor func privatePaneStorageIsolation() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePrivatePanes-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    defer { for window in owner.windows { window.window.close() } }
+    let regular = try #require(owner.active)
+    let window = owner.newPrivateWindow(show: false)
+    let otherWindow = owner.newPrivateWindow(show: false)
+    let store = window.store
+    let firstTab = store.selectedTab.id
+    let first = store.selectedTab.pages[0]
+    store.openPane(address: "browse://start", toRightOf: first.id)
+    let split = try #require(store.selectedTab.pages.first { $0.id != first.id })
+    store.newTab()
+    let secondTab = store.selectedTab.id
+    let second = store.selectedTab.pages[0]
+    let firstController = store.controller(for: first)
+    let firstWeb = firstController.webView
+    let firstData = firstWeb.configuration.websiteDataStore
+    let peers = [store.controller(for: split).webView, store.controller(for: second).webView,
+        otherWindow.store.controller(for: otherWindow.store.selectedTab.pages[0]).webView,
+        regular.store.controller(for: regular.store.selectedTab.pages[0]).webView]
+    let server = try await ExtensionHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let url = URL(string: "http://127.0.0.1:\(server.port)/")!
+    let navigation = ExtensionTestNavigation()
+    let key = "private_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+    let read = "[document.cookie.includes('\(key)=secret'), localStorage.getItem('\(key)') === 'secret', sessionStorage.getItem('\(key)') === 'secret']"
+    firstWeb.navigationDelegate = navigation
+    try await navigation.load(firstWeb, url: url)
+    _ = try await firstWeb.evaluateJavaScript("document.cookie='\(key)=secret; path=/'; localStorage.setItem('\(key)', 'secret'); sessionStorage.setItem('\(key)', 'secret')")
+    #expect(try await firstWeb.evaluateJavaScript(read) as? [Bool] == [true, true, true])
+    for peer in peers {
+        #expect(peer.configuration.websiteDataStore !== firstData)
+        peer.navigationDelegate = navigation
+        try await navigation.load(peer, url: url)
+        #expect(try await peer.evaluateJavaScript(read) as? [Bool] == [false, false, false])
+        #expect(await peer.configuration.websiteDataStore.httpCookieStore.allCookies().allSatisfy { $0.name != key })
+    }
+    #expect(!firstData.isPersistent)
+    #expect(!peers[0].configuration.websiteDataStore.isPersistent)
+    #expect(!peers[1].configuration.websiteDataStore.isPersistent)
+    #expect(peers[0].configuration.websiteDataStore !== peers[1].configuration.websiteDataStore)
+    // A move keeps the same page session; a reload keeps its login.
+    #expect(store.movePaneToTab(first.id, from: firstTab, into: secondTab))
+    #expect(store.controller(for: first).webView === firstWeb)
+    try await navigation.load(firstWeb, url: url)
+    #expect(try await firstWeb.evaluateJavaScript(read) as? [Bool] == [true, true, true])
+    store.select(secondTab)
+    store.closePane(first.id)
+    store.reopenClosed()
+    let reopened = store.controller(for: first).webView
+    #expect(reopened.configuration.websiteDataStore !== firstData)
+    reopened.navigationDelegate = navigation
+    try await navigation.load(reopened, url: url)
+    #expect(try await reopened.evaluateJavaScript(read) as? [Bool] == [false, false, false])
+    for _ in 0..<50 {
+        if await firstData.httpCookieStore.allCookies().isEmpty { break }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(await firstData.httpCookieStore.allCookies().isEmpty)
+    // Closing the window clears each surviving pane's store.
+    let cookie = try #require(HTTPCookie(properties: [.domain: "127.0.0.1", .path: "/", .name: key, .value: "secret"]))
+    let remainingData = [peers[0].configuration.websiteDataStore, peers[1].configuration.websiteDataStore,
+        reopened.configuration.websiteDataStore]
+    for data in remainingData { await data.httpCookieStore.setCookie(cookie) }
+    window.window.close()
+    for data in remainingData {
+        for _ in 0..<50 {
+            if await data.httpCookieStore.allCookies().isEmpty { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(await data.httpCookieStore.allCookies().isEmpty)
+    }
+}
+
+// @lat: [[tests#Private window keyboard command]]
+@Test @MainActor func privateWindowKeyboardCommand() throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePrivateCommand-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    let delegate = AppDelegate(browserWindows: owner)
+    let oldMenu = NSApp.mainMenu
+    delegate.installMenus()
+    defer {
+        NSApp.mainMenu = oldMenu
+        for window in owner.windows { window.window.close() }
+    }
+    let menu = try #require(NSApp.mainMenu)
+    let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift],
+        timestamp: 0, windowNumber: 0, context: nil, characters: "N", charactersIgnoringModifiers: "N", isARepeat: false, keyCode: 45))
+    #expect(menu.performKeyEquivalent(with: event))
+    let window = try #require(owner.active)
+    window.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+    #expect(window.store.isPrivate)
+    #expect(window.window.childWindows?.contains { $0.title == "Open Location" && $0.isVisible } == true)
+    window.addressPanel.dismiss(restoreFocus: false)
+    delegate.closeFocusedWindow(window.window)
+    #expect(owner.windows.isEmpty)
+    #expect(window.store.history.visits.isEmpty)
 }
