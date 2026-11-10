@@ -81,6 +81,27 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     #expect(await task.value == nil)
 }
 
+// @lat: [[tests#Favicon history navigation]]
+@Test @MainActor func faviconHistoryNavigation() async throws {
+    _ = NSApplication.shared
+    let server = try await FaviconHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let configuration = WKWebViewConfiguration(); configuration.websiteDataStore = .nonPersistent()
+    let web = FocusWebView(frame: .zero, configuration: configuration)
+    let page = PageController(address: server.url("/spa-media-page").absoluteString, webView: web)
+    defer { page.media.detach(); web.stopLoading() }
+    for _ in 0..<200 where !server.paths.contains("/slow") { try await Task.sleep(for: .milliseconds(10)) }
+    try #require(server.paths.contains("/slow"))
+    try #require(page.media.sessions.first?.playing == true)
+    // A video site's client-side navigation changes the URL while its first
+    // favicon is loading, without triggering another didFinish callback.
+    _ = try await web.evaluateJavaScript("history.replaceState({}, '', '/watch?v=next'); void 0")
+    for _ in 0..<200 where page.favicon == nil { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(page.favicon?.isValid == true)
+    #expect(page.media.sessions.first?.playing == true)
+    #expect(web.url?.path == "/watch")
+}
+
 // @lat: [[tests#Favicon navigation reset]]
 @Test @MainActor func faviconNavigationReset() async throws {
     _ = NSApplication.shared
@@ -277,6 +298,15 @@ private final class FaviconHTTPFixture: @unchecked Sendable {
                 if path == "/slow-icon-page" {
                     headers = "Content-Type: text/html\r\n"
                     body = Data("<link rel='icon' href='/slow'><body>Slow icon</body>".utf8)
+                }
+                if path == "/spa-media-page" {
+                    headers = "Content-Type: text/html\r\n"
+                    body = Data("""
+                        <link rel='icon' href='/slow'><script>
+                        navigator.mediaSession.setPositionState({duration:60});
+                        navigator.mediaSession.playbackState = 'playing';
+                        </script><body>Media page</body>
+                        """.utf8)
                 }
                 if path == "/broken" { body = Data("not an image".utf8) }
                 if path == "/cors.png" { headers += "Access-Control-Allow-Origin: *\r\n" }
