@@ -11,6 +11,8 @@ class BrowseWindow: NSWindow {
         case awaitingRelease
     }
     private var paneGesture: PaneGesture = .idle
+    fileprivate var pendingPaneSource: PaneDragSourceView?
+    private let paneMouseTarget = PaneMouseTargetView()
     var activePaneDrag: PaneDragSourceView? {
         if case .tracking(let source) = paneGesture { return source }
         return nil
@@ -32,36 +34,22 @@ class BrowseWindow: NSWindow {
                 return
             }
             if let source = paneHandle(at: event.locationInWindow) {
-                InputDiagnostics.transition(.paneOwnership, .started, event: event, view: source)
-                // This gesture bypasses NSWindow's normal mouse dispatch.
-                // Making a window key alone does not activate an inactive app.
-                if !isKeyWindow { makeKeyAndOrderFront(nil) }
-                if !NSApp.isActive { NSApp.activate(ignoringOtherApps: true) }
-                source.mouseDown(with: event)
-                if source.mouseDownPoint != nil && source.window === self {
-                    paneGesture = .tracking(source)
-                    source.trackingWindow = self
-                } else {
-                    source.cancelDrag()
-                    paneGesture = .awaitingRelease
-                }
-                InputDiagnostics.record(.paneConsumed, event: event, view: source)
+                // Let AppKit perform native activation and window ordering.
+                // Its mouse-down view must outlive any SwiftUI title handle.
+                installPaneMouseTarget()
+                pendingPaneSource = source
+                defer { pendingPaneSource = nil }
+                forwardToAppKit(event)
                 return
             }
         case .leftMouseDragged:
             if capturesPaneGesture {
-                InputDiagnostics.record(.paneConsumed, event: event, view: activePaneDrag)
-                activePaneDrag?.mouseDragged(with: event)
+                forwardToAppKit(event)
                 return
             }
         case .leftMouseUp:
             if capturesPaneGesture {
-                InputDiagnostics.record(.paneConsumed, event: event, view: activePaneDrag)
-                // Release ownership before the drop can rebuild either tab.
-                let source = activePaneDrag
-                paneGesture = .idle
-                InputDiagnostics.transition(.paneOwnership, .finished, event: event, view: source, window: self)
-                source?.mouseUp(with: event)
+                forwardToAppKit(event)
                 return
             }
         case .keyDown where event.keyCode == 53 && capturesPaneGesture:
@@ -72,9 +60,8 @@ class BrowseWindow: NSWindow {
         forwardToAppKit(event)
     }
 
-    // Pane presses, motion, and releases are all consumed by this window.
-    // AppKit never starts native view tracking for a pane gesture, so hiding or
-    // replacing its source cannot leave an obsolete native mouse target behind.
+    // Native tracking uses a stable, window-owned target instead of a title
+    // handle that SwiftUI may hide, remove, or replace during the gesture.
     func forwardToAppKit(_ event: NSEvent) {
         InputDiagnostics.record(.appKit, event: event)
         let previous = dispatchingNativeMouseDown
@@ -84,6 +71,44 @@ class BrowseWindow: NSWindow {
             InputDiagnostics.record(.appKitReturned, event: event)
         }
         super.sendEvent(event)
+    }
+
+    private func installPaneMouseTarget() {
+        guard let frameView = contentView?.superview else { return }
+        if paneMouseTarget.superview !== frameView {
+            paneMouseTarget.removeFromSuperview()
+            paneMouseTarget.frame = frameView.bounds
+            paneMouseTarget.autoresizingMask = [.width, .height]
+            frameView.addSubview(paneMouseTarget)
+        }
+    }
+
+    fileprivate func beginPaneGesture(with event: NSEvent) {
+        guard let source = pendingPaneSource else { return }
+        InputDiagnostics.transition(.paneOwnership, .started, event: event, view: source)
+        source.mouseDown(with: event)
+        if source.mouseDownPoint != nil && source.window === self {
+            paneGesture = .tracking(source)
+            source.trackingWindow = self
+        } else {
+            source.cancelDrag()
+            paneGesture = .awaitingRelease
+        }
+        InputDiagnostics.record(.paneConsumed, event: event, view: source)
+    }
+
+    fileprivate func continuePaneGesture(with event: NSEvent) {
+        InputDiagnostics.record(.paneConsumed, event: event, view: activePaneDrag)
+        activePaneDrag?.mouseDragged(with: event)
+    }
+
+    fileprivate func endPaneGesture(with event: NSEvent) {
+        InputDiagnostics.record(.paneConsumed, event: event, view: activePaneDrag)
+        // Release ownership before the drop can rebuild or close either window.
+        let source = activePaneDrag
+        paneGesture = .idle
+        InputDiagnostics.transition(.paneOwnership, .finished, event: event, view: source, window: self)
+        source?.mouseUp(with: event)
     }
 
     func releasePaneDrag(_ source: PaneDragSourceView) {
@@ -136,5 +161,30 @@ class BrowseWindow: NSWindow {
             return nil
         }
         return find(in: contentView)
+    }
+}
+
+// This view stays in the native window frame across tab/pane replacements. It
+// only participates in hit testing for a validated pane press, so ordinary
+// content, toolbar, hover, and scrolling events retain their normal targets.
+@MainActor
+final class PaneMouseTargetView: NSView {
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let window = window as? BrowseWindow,
+              window.dispatchingNativeMouseDown, window.pendingPaneSource != nil else { return nil }
+        return super.hitTest(point)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        (window as? BrowseWindow)?.beginPaneGesture(with: event)
+    }
+    override func mouseDragged(with event: NSEvent) {
+        (window as? BrowseWindow)?.continuePaneGesture(with: event)
+    }
+    override func mouseUp(with event: NSEvent) {
+        (window as? BrowseWindow)?.endPaneGesture(with: event)
     }
 }

@@ -414,8 +414,11 @@ import BrowseCore
         let frameView = try #require(window.contentView?.superview)
         #expect(frameView.hitTest(frameView.convert(down, from: nil)) === source)
         let forwarded = window.forwardedMouseEvents
+        let previousTarget = frameView.subviews.compactMap { $0 as? PaneMouseTargetView }.first
         try sendTransferMouse(.leftMouseDown, at: down, to: window)
         #expect(window.activePaneDrag === source)
+        let nativeTarget = try #require(frameView.subviews.compactMap { $0 as? PaneMouseTargetView }.first)
+        if let previousTarget { #expect(nativeTarget === previousTarget) }
         #expect(source.mouseDownPoint != nil, "Round trip gesture \(index + 1): press reaches handle")
         let row = try #require(descendants(PaneSidebarTargetView.self, content).first { $0.destination == .tab(destination) })
         try sendTransferMouse(.leftMouseDragged, at: center(row), to: window)
@@ -442,7 +445,8 @@ import BrowseCore
         #expect(store.selectedTab.pages.contains { $0.id == moving.id })
         #expect(window.activePaneDrag == nil)
         #expect(!window.capturesPaneGesture)
-        #expect(window.forwardedMouseEvents == forwarded, "The complete pane gesture bypasses AppKit view tracking")
+        #expect(window.forwardedMouseEvents == forwarded + (index < 20 ? 4 : 3),
+                "AppKit receives the complete gesture through the stable window target")
         #expect(store.session.workspaces[0].tabs.count == 2)
         #expect(store.session.workspaces.flatMap(\.tabs).flatMap(\.pages).filter { $0.id == moving.id }.count == 1)
         #expect(store.existingController(for: moving.id) === controller)

@@ -315,7 +315,7 @@ The native preview layer is observed during continuous movement and edge changes
 
 [PaneDropTests.swift](../Tests/BrowseTests/PaneDropTests.swift) sends window mouse events through the actual browser shell, unified titlebar, and glass container in an ordered offscreen window.
 
-Header hit testing reaches the compact title handles, which drive hover feedback and pane dragging. Mouse-down focuses the pane; small motion does not move the window or begin a drag, and mouse-up clears tracking. Empty header and sidebar backgrounds request native window dragging. Tab rows, toolbar controls, sidebar resize handles, and traffic lights are excluded; native clicks still activate the sidebar toggle without creating a tab.
+Ordinary header hit testing reaches the compact title handles, which drive hover feedback and pane dragging. During a title press, native dispatch instead uses the window-owned mouse target, which accepts first mouse and remains mounted through release. All three mouse event types must pass through AppKit. Mouse-down focuses the pane; small motion does not move the window or begin a drag, and mouse-up clears tracking. Empty header and sidebar backgrounds request native window dragging. Tab rows, toolbar controls, sidebar resize handles, and traffic lights are excluded; native clicks still activate the sidebar toggle without creating a tab.
 
 Every background window-drag request must originate inside AppKit's normal event dispatch, so activating clicks cannot skip native window appearance bookkeeping. Outside mouse-down dispatch the background targets do not claim hit testing, preserving underlying scroll and hover behavior.
 
@@ -473,7 +473,7 @@ Disabling animations applies the final layout immediately without intermediate f
 
 [PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) moves the same live pane between two surviving tabs 24 times per layout, using normal and scrolling layouts to check the third drag and later round trips.
 
-The first twenty transfers in each layout hover to select the destination before dropping onto a pane; the remainder drop directly onto the tab row. Each press must reach exactly one visible handle with current tab ownership. The window must consume every mouse event in that gesture and return to idle after release. Synthetic window events verify retained page controllers, document tokens, unsaved form contents, and unique model ownership while both tab trees remain mounted. Document tokens are injected after navigation and must survive every move; wall-clock-derived performance timestamps are not identity checks.
+The first twenty transfers in each layout hover to select the destination before dropping onto a pane; the remainder drop directly onto the tab row. Each press must reach exactly one visible handle with current tab ownership. AppKit must receive every mouse event through the same window-owned target across transfers, and the window must return to idle after release. Synthetic window events verify retained page controllers, document tokens, unsaved form contents, and unique model ownership while both tab trees remain mounted. Document tokens are injected after navigation and must survive every move; wall-clock-derived performance timestamps are not identity checks.
 
 ## Native extension messaging
 

@@ -8,7 +8,9 @@ import BrowseCore
     var windowDragRequests = 0
     var forwardingToAppKit = false
     var nativeDragRequests = 0
+    var nativeMouseEvents = 0
     override func forwardToAppKit(_ event: NSEvent) {
+        if [.leftMouseDown, .leftMouseDragged, .leftMouseUp].contains(event.type) { nativeMouseEvents += 1 }
         forwardingToAppKit = true
         defer { forwardingToAppKit = false }
         super.forwardToAppKit(event)
@@ -56,7 +58,12 @@ import BrowseCore
         let down = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: point,
             modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
             context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        let nativeEventsBefore = window.nativeMouseEvents
         window.sendEvent(down)
+        #expect(window.nativeMouseEvents == nativeEventsBefore + 1)
+        let target = try #require(frameView.subviews.compactMap { $0 as? PaneMouseTargetView }.first)
+        #expect(target.acceptsFirstMouse(for: down))
+        #expect(frameView.hitTest(frameView.convert(point, from: nil)) === source)
         #expect(source.mouseDownPoint == point)
         #expect(store.selectedTab.focusedPane == source.pageID)
         let motion = try #require(NSEvent.mouseEvent(with: .leftMouseDragged,
@@ -72,6 +79,8 @@ import BrowseCore
             context: nil, eventNumber: 2, clickCount: 1, pressure: 0))
         window.sendEvent(up)
         #expect(source.mouseDownPoint == nil)
+        #expect(window.nativeMouseEvents == nativeEventsBefore + 3)
+        #expect(target.superview === frameView)
     }
     #expect(window.windowDragRequests == 0)
     func dragAreas(in view: NSView) -> [WindowDragAreaView] {
