@@ -205,11 +205,20 @@ final class BrowserStore: ObservableObject {
         }
     }
 
-    var commandShiftClickDestination: CommandShiftClickDestination {
+    var commandShiftClickDestination: LinkOpenDestination {
         get { sharedStore?.commandShiftClickDestination ?? session.commandShiftClickDestination ?? .newTab }
         set {
             if let sharedStore { sharedStore.commandShiftClickDestination = newValue; return }
             session.commandShiftClickDestination = newValue
+            saveSoon()
+        }
+    }
+
+    var optionClickDestination: LinkOpenDestination {
+        get { sharedStore?.optionClickDestination ?? session.optionClickDestination ?? .newTab }
+        set {
+            if let sharedStore { sharedStore.optionClickDestination = newValue; return }
+            session.optionClickDestination = newValue
             saveSoon()
         }
     }
@@ -790,14 +799,14 @@ final class BrowserStore: ObservableObject {
         }
         controller.onCommandShiftLink = { [weak self] address, mainFrame in
             guard let self else { return }
-            switch self.commandShiftClickDestination {
-            case .newTab:
-                self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, closeIfDownload: true, afterCurrent: true)
-            case .newPane:
-                self.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame)
-            case .newWindow:
-                self.onNewLinkWindow?(address)
-            }
+            self.openLink(address, from: page.id, mainFrame: mainFrame, destination: self.commandShiftClickDestination)
+        }
+        controller.onOptionLink = { [weak self] address, mainFrame in
+            guard let self else { return }
+            self.openLink(address, from: page.id, mainFrame: mainFrame, destination: self.optionClickDestination)
+        }
+        controller.onOpenLink = { [weak self] address, mainFrame, destination in
+            self?.openLink(address, from: page.id, mainFrame: mainFrame, destination: destination)
         }
         controller.onFocus = { [weak self] in self?.focus(page.id) }
         controller.onVisit = { [weak self] url, title in self?.recordVisit(url: url, title: title) }
@@ -806,6 +815,17 @@ final class BrowserStore: ObservableObject {
             let owner = self.historyOwner
             owner.history.updateTitle(title, for: url)
             owner.saveHistorySoon()
+        }
+    }
+
+    private func openLink(_ address: String, from pageID: UUID, mainFrame: Bool, destination: LinkOpenDestination) {
+        switch destination {
+        case .newTab:
+            newTab(address: address, linkOpener: mainFrame ? pageID : nil, closeIfDownload: true, afterCurrent: true)
+        case .newPane:
+            openPane(address: address, toRightOf: pageID, fromMainFrame: mainFrame)
+        case .newWindow:
+            onNewLinkWindow?(address)
         }
     }
 
@@ -1111,7 +1131,7 @@ class FocusWebView: WKWebView {
 }
 
 @MainActor
-final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
+final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigationDelegate, WKUIDelegate {
     static let privateExtensionPageError = "Extension pages are unavailable in private windows because their website storage cannot be isolated."
     let isPrivate: Bool
     let downloads: BrowserDownloads
@@ -1137,6 +1157,8 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     var onNewPane: ((String) -> Void)?
     var onNewLink: ((String, Bool, Bool) -> Void)?
     var onCommandShiftLink: ((String, Bool) -> Void)?
+    var onOptionLink: ((String, Bool) -> Void)?
+    var onOpenLink: ((String, Bool, LinkOpenDestination) -> Void)?
     var onInitialDownload: (() -> Void)?
     var onFocus: (() -> Void)?
     private var observations: [NSKeyValueObservation] = []
@@ -1408,6 +1430,16 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
         InputDiagnostics.transition(.webProcessExit, .finished, view: webView)
         error = "This page stopped responding. Reload to continue."
     }
+    private func openOptionClickedLink(_ action: WKNavigationAction) -> Bool {
+        guard action.navigationType == .linkActivated, action.buttonNumber == 1,
+              action.modifierFlags.contains(.option),
+              action.modifierFlags.intersection([.command, .control]).isEmpty,
+              let url = action.request.url, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              let onOptionLink else { return false }
+        onOptionLink(url.absoluteString, action.sourceFrame.isMainFrame)
+        return true
+    }
+
     private func openCommandClickedLink(_ action: WKNavigationAction) -> Bool {
         // WebKit reports left-click as 1 (a button mask), unlike NSEvent's zero-based buttonNumber.
         guard action.navigationType == .linkActivated, action.modifierFlags.contains(.command),
@@ -1449,6 +1481,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
             originalHandler(policy)
         }
         guard let url = action.request.url else { decisionHandler(.cancel); return }
+        if openOptionClickedLink(action) { decisionHandler(.cancel); return }
         if action.shouldPerformDownload, BrowserDownloads.supports(url) {
             decisionHandler(.download)
             return
@@ -1503,6 +1536,7 @@ final class PageController: NSObject, ObservableObject, WKNavigationDelegate, WK
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         InputDiagnostics.transition(.newWindowLink, .requested, view: webView)
+        if openOptionClickedLink(action) { return nil }
         if action.shouldPerformDownload, BrowserDownloads.supports(action.request.url) {
             downloads.start(action.request, in: webView)
             return nil

@@ -968,3 +968,19 @@ A loopback HTTP iframe first demonstrates both cookie access and writes in an is
 ## Native test runner coverage
 
 [[scripts/test-test-runner.py#TestRunnerTests]] verifies complete inventory execution, declared-skip accounting, rejection of unmatched filters and ambiguous names, failed-process propagation, and bounded timeout termination.
+
+## Option-click destinations
+
+[[Tests/BrowseTests/LinkNavigationTests.swift#optionClickDestinations]] verifies that Option-click defaults to a new tab and independently supports new panes and windows, including WebKit actions marked as downloads.
+
+Both navigation callbacks cancel source navigation. Pane placement, sidebar insertion, iframe opener handling, shared-window preference updates, and persistence match the explicit destination. Command-click and Command-Shift-click keep their separate settings.
+
+## Native Option-click links
+
+[[Tests/BrowseTests/LinkNavigationTests.swift#nativeOptionClickLinks]] sends native Option-click events to same-frame, new-window, and iframe links, verifying correct URLs and frame provenance without downloading or navigating the source.
+
+## Link context menu destinations
+
+[[Tests/BrowseTests/LinkContextMenuTests.swift#linkContextMenuDestinations]] invokes WebKit's real context-menu hit testing for main-frame and iframe links and dispatches the resulting pane, tab, and window menu actions.
+
+URLs retain query strings and fragments. Each menu keeps its own target after another menu opens. Copy Link survives and the native window action is replaced. Explicit choices ignore click preferences, preserve the source, place panes adjacent without dedicated-pane reuse, and omit opener metadata for iframe links.

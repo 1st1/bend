@@ -23,6 +23,8 @@ private final class LinkAction: WKNavigationAction {
     // WKNavigationAction uses a button mask: left = 1, right = 2, middle = 4.
     var button = 1
     var kind: WKNavigationType = .linkActivated
+    var download = false
+    override var shouldPerformDownload: Bool { download }
     var destination = URL(string: "https://example.com/target?q=one#section")!
     override var modifierFlags: NSEvent.ModifierFlags { modifiers }
     override var buttonNumber: Int { button }
@@ -252,6 +254,20 @@ private final class LinkAction: WKNavigationAction {
 
 // @lat: [[tests#Command-Shift-click destinations]]
 @Test @MainActor func commandShiftClickDestinations() async throws {
+    try await modifiedClickDestinations(option: false)
+}
+
+// @lat: [[tests#Option-click destinations]]
+@Test @MainActor func optionClickDestinations() async throws {
+    try await modifiedClickDestinations(option: true)
+}
+
+@MainActor private func modifiedClickDestinations(option: Bool) async throws {
+    let preference: ReferenceWritableKeyPath<BrowserStore, LinkOpenDestination> = option
+        ? \.optionClickDestination : \.commandShiftClickDestination
+    let sessionPreference: KeyPath<BrowserSession, LinkOpenDestination?> = option
+        ? \.optionClickDestination : \.commandShiftClickDestination
+    let modifiers: NSEvent.ModifierFlags = option ? .option : [.command, .shift]
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendShiftLink-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -262,7 +278,10 @@ private final class LinkAction: WKNavigationAction {
     let store = origin.store
     let original = store.selectedTab, page = original.pages[0]
     let controller = store.controller(for: page)
-    #expect(store.commandShiftClickDestination == .newTab)
+    #expect(store[keyPath: preference] == .newTab)
+    let otherPreference: ReferenceWritableKeyPath<BrowserStore, LinkOpenDestination> = option
+        ? \.commandShiftClickDestination : \.optionClickDestination
+    store[keyPath: otherPreference] = .newPane
     store.commandClickDestination = .dedicatedPane
     store.newTab(address: "browse://guide")
     let trailing = store.selectedTab.id
@@ -277,7 +296,8 @@ private final class LinkAction: WKNavigationAction {
     for _ in 0..<100 where probe.main == nil || probe.child == nil { try await Task.sleep(for: .milliseconds(20)) }
     defer { probeWeb.stopLoading() }
     action.source = try #require(probe.main)
-    action.modifiers = [.command, .shift]
+    action.modifiers = modifiers
+    action.download = option
     action.destination = URL(string: "http://127.0.0.1:9/shift-click")!
     func click(popup: Bool) {
         if popup {
@@ -297,7 +317,7 @@ private final class LinkAction: WKNavigationAction {
     #expect(controller.address == page.address)
     #expect(store.session.workspaces[0].tabs[0].commandClickPaneID == nil)
 
-    store.commandShiftClickDestination = .newPane
+    store[keyPath: preference] = .newPane
     action.source = try #require(probe.child)
     click(popup: true)
     #expect(store.selectedTab.id == original.id)
@@ -307,15 +327,17 @@ private final class LinkAction: WKNavigationAction {
     #expect(store.linkOpeners[store.selectedTab.focusedPane] == nil)
     #expect(controller.address == page.address)
 
-    // Shift is independent of the existing dedicated-pane Command-click choice.
+    // Each modifier preference is independent of the dedicated-pane Command-click choice.
     action.modifiers = .command
+    action.download = false
     action.source = try #require(probe.main)
     click(popup: false)
     #expect(store.selectedTab.commandClickPaneID == store.selectedTab.focusedPane)
     let sourceIDs = store.selectedTab.pages.map(\.id)
     let sourceTabIDs = store.session.workspaces[0].tabs.map(\.id)
-    action.modifiers = [.command, .shift]
-    store.commandShiftClickDestination = .newWindow
+    action.modifiers = modifiers
+    action.download = option
+    store[keyPath: preference] = .newWindow
     for popup in [false, true] {
         let count = owner.windows.count
         click(popup: popup)
@@ -324,7 +346,7 @@ private final class LinkAction: WKNavigationAction {
         #expect(destination !== origin && destination.window.isVisible)
         #expect(destination.store.session.workspaces.flatMap(\.tabs).count == 1)
         #expect(destination.store.selectedTab.pages.map(\.address) == [action.destination.absoluteString])
-        #expect(destination.store.commandShiftClickDestination == .newWindow)
+        #expect(destination.store[keyPath: preference] == .newWindow)
         #expect(store.selectedTab.pages.map(\.id) == sourceIDs)
         #expect(store.session.workspaces[0].tabs.map(\.id) == sourceTabIDs)
         let saved = try JSONDecoder().decode(BrowserSession.self,
@@ -333,17 +355,58 @@ private final class LinkAction: WKNavigationAction {
     }
     // Preference changes from a secondary window reach the existing source controller.
     let secondary = try #require(owner.windows.last).store
-    secondary.commandShiftClickDestination = .newTab
-    #expect(store.commandShiftClickDestination == .newTab)
+    secondary[keyPath: preference] = .newTab
+    #expect(store[keyPath: preference] == .newTab)
     click(popup: true)
     #expect(store.selectedTab.pages.count == 1)
     #expect(store.selectedTab.pages[0].address == action.destination.absoluteString)
     #expect(owner.windows.count == 3)
-    for choice in [CommandShiftClickDestination.newTab, .newPane, .newWindow] {
-        secondary.commandShiftClickDestination = choice
+    for choice in [LinkOpenDestination.newTab, .newPane, .newWindow] {
+        secondary[keyPath: preference] = choice
         owner.save()
         let saved = try JSONDecoder().decode(BrowserSession.self, from: Data(contentsOf: root.appendingPathComponent("session.json")))
-        #expect(saved.commandShiftClickDestination == choice)
+        #expect(saved[keyPath: sessionPreference] == choice)
         #expect(saved.commandClickDestination == .dedicatedPane)
+        #expect(store[keyPath: otherPreference] == .newPane)
     }
+}
+
+// @lat: [[tests#Native Option-click links]]
+@Test @MainActor func nativeOptionClickLinks() async throws {
+    _ = NSApplication.shared
+    let controller = PageController(address: "browse://start", configure: { $0.websiteDataStore = .nonPersistent() })
+    let web = controller.webView
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 600, height: 400),
+                          styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = web
+    window.orderFront(nil)
+    defer { controller.media.detach(); web.stopLoading(); window.close() }
+    var links: [(String, Bool)] = []
+    controller.onOptionLink = { links.append(($0, $1)) }
+    web.loadHTMLString("""
+        <style>body { margin:0 } a { display:block; height:60px } iframe { border:0; width:500px; height:120px }</style>
+        <a href="http://127.0.0.1:9/self">Same frame</a>
+        <a target="_blank" href="http://127.0.0.1:9/blank">New window</a>
+        <iframe srcdoc="<style>body{margin:0}a{display:block;height:80px}</style><a href='http://127.0.0.1:9/iframe'>Frame link</a>"></iframe>
+        """, baseURL: URL(string: "http://127.0.0.1:9/source"))
+    for _ in 0..<100 {
+        if (try? await web.evaluateJavaScript("document.querySelector('iframe')?.contentDocument?.querySelector('a') != null")) as? Bool == true { break }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    for (index, y) in [370.0, 310.0, 250.0].enumerated() {
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try #require(NSEvent.mouseEvent(with: type, location: NSPoint(x: 30, y: y),
+                modifierFlags: .option, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, eventNumber: index + 1, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0))
+            if type == .leftMouseDown { web.mouseDown(with: event) }
+            else { web.mouseUp(with: event) }
+        }
+        for _ in 0..<100 where links.count <= index { try await Task.sleep(for: .milliseconds(20)) }
+        try #require(links.count == index + 1)
+    }
+    #expect(links.map(\.0) == ["self", "blank", "iframe"].map { "http://127.0.0.1:9/\($0)" })
+    #expect(links.map(\.1) == [true, true, false])
+    #expect(web.url?.absoluteString == "http://127.0.0.1:9/source")
+    #expect(controller.downloads.items.isEmpty)
 }
