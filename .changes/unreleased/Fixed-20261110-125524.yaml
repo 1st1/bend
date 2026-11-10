@@ -1,3 +1,0 @@
-kind: Fixed
-body: Honor the configured Option-click link destination on macOS 26 instead of WebKit’s default download action.
-time: 2026-11-10T12:55:24.423474-08:00

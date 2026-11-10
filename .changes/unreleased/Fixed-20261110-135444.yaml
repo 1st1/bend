@@ -1,3 +1,0 @@
-kind: Fixed
-body: Retry favicon loading when in-page navigation changes the URL during an icon request.
-time: 2026-11-10T13:54:44.74434-08:00
