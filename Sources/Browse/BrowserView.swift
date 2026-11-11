@@ -144,8 +144,9 @@ struct BrowserView: View {
                 }
             }
             .contentShape(Rectangle())
-            AppUpdateButton()
             SidebarMediaPlayer(coordinator: store.mediaCoordinator, store: store)
+            AppUpdateButton()
+                .padding(.leading, leadingInset).padding(.trailing, trailingInset)
             if let error = store.persistenceError {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.system(size: 10)).foregroundStyle(.orange).padding(20)
