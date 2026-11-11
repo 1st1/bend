@@ -111,6 +111,13 @@ grep -q -- '-c release --disable-sandbox -Xswiftc -DBEND_PRODUCTION' "$root/swif
 [[ -f "$root/release/Bend.app/Contents/Frameworks/Sparkle.framework/Sparkle" ]]
 if /usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$root/dist/Bend Debug.app/Contents/Info.plist" >/dev/null 2>&1; then exit 1; fi
 printf 'Debug/production build isolation tests passed\n'
+bash "$root/scripts/build-app.sh" --preview-updates
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :BendPreviewUpdates' "$root/dist/Bend Debug.app/Contents/Info.plist")" == true ]]
+if bash "$root/scripts/build-app.sh" --production --preview-updates; then
+  printf 'Expected production preview rejection\n' >&2; exit 1
+fi
+bash "$root/scripts/build-app.sh"
+if /usr/libexec/PlistBuddy -c 'Print :BendPreviewUpdates' "$root/dist/Bend Debug.app/Contents/Info.plist" >/dev/null 2>&1; then exit 1; fi
 production_inode="$(stat -f %i "$root/release/Bend.app/Contents/MacOS/Bend")"
 for invalid in 1.2 01.2.3 1.2.3-beta '<invalid>'; do
   printf '%s\n' "$invalid" > "$root/VERSION"

@@ -7,6 +7,7 @@ profile=debug
 app_name='Bend Debug'
 bundle_id=dev.yury.browse.debug
 open_app=false
+preview_updates=false
 output=''
 compiler_flags=(-Xswiftc -DBEND_DEBUG)
 while [[ $# -gt 0 ]]; do
@@ -15,13 +16,18 @@ while [[ $# -gt 0 ]]; do
       configuration=release; profile=production; app_name=Bend; bundle_id=dev.yury.browse.prototype
       compiler_flags=(-Xswiftc -DBEND_PRODUCTION); shift ;;
     --open) open_app=true; shift ;;
+    --preview-updates) preview_updates=true; shift ;;
     --output)
       [[ $# -ge 2 && -n "$2" ]] || { printf 'Missing --output path\n' >&2; exit 2; }
       output="$2"; shift 2 ;;
-    *) printf 'Usage: %s [--production] [--output PATH] [--open]\n' "$0" >&2; exit 2 ;;
+    *) printf 'Usage: %s [--production] [--preview-updates] [--output PATH] [--open]\n' "$0" >&2; exit 2 ;;
   esac
 done
 update_plist=''
+if [[ "$preview_updates" == true ]]; then
+  [[ "$profile" == debug ]] || { printf 'Update previews require a debug build.\n' >&2; exit 2; }
+  update_plist='<key>BendPreviewUpdates</key><true/>'
+fi
 if [[ "$profile" == production ]]; then
   [[ -f Assets/SparklePublicKey.txt ]] || { printf "Configure the Sparkle public key before building production; see docs/github-build-setup.md.\n" >&2; exit 1; }
   public_key="$(python3 - <<'PYKEY'
