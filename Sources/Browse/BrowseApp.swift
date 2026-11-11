@@ -317,7 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func back() { focused.webView.goBack() }
     @objc private func forward() { focused.webView.goForward() }
     @objc private func about() {
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: AppProfile.current.name, .applicationVersion: "0.1 Prototype",
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: AppProfile.current.name,
             .credits: NSAttributedString(string: "A native, tiled WebKit browser. Inspired by Rex.")])
     }
 }

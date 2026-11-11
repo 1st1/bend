@@ -125,11 +125,15 @@ Regular windows share the cache while separate profiles do not. Private panes ca
 
 [[Tests/BrowseTests/FaviconTests.swift#faviconCacheBoundsAndRecovery]] checks cached pixel colors, origin normalization without URL secrets, scheme/host/port isolation, oldest-entry eviction, corrupt snapshots and image rejection, and usable in-memory icons after write failures.
 
+## Stacked favicon transitions
+
+[[Tests/BrowseTests/FaviconTests.swift#stackedFaviconTransitions]] verifies insertion and focus swaps fade changed icons, while initial mounting, unchanged updates, Reduce Motion, and returning to one pane leave no unwanted animations.
+
 ## Sidebar favicons
 
 [FaviconTests.swift](../Tests/BrowseTests/FaviconTests.swift) loads an icon through a local HTTP fixture and checks the mounted sidebar image updates to that exact favicon, resets for a native page, and leaves unvisited tabs uninstantiated.
 
-Mounted front images remain 16×16 points and rear images 12×12 points in a fixed 24×28-point slot across sidebar widths. A three-pane tab renders exactly two horizontally centered icons, updates the front icon on focus changes, and keeps number labels out of the icon stack. Rendered pixels must darken toward the front icon’s overlap, verifying the contact shadow is visible. Closing panes updates the rear icon and pane count, then hides the rear icon for a single pane. Opaque oversized rasters exercise clipping; `BEND_SIDEBAR_SNAPSHOT` optionally captures the stack for visual inspection.
+Mounted front images remain 16×16 points and rear images 12×12 points in a fixed 24×28-point slot across sidebar widths. A three-pane tab renders exactly two horizontally centered icons with their combined bounds vertically centered in the slot, updates the front icon on focus changes, and keeps number labels out of the icon stack. Rendered pixels must darken toward the front icon’s overlap, verifying the contact shadow is visible. Closing panes updates the rear icon and pane count, then hides the rear icon for a single pane. Opaque oversized rasters exercise clipping; `BEND_SIDEBAR_SNAPSHOT` optionally captures the stack for visual inspection.
 
 ## Live media session smoke test
 

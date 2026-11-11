@@ -4,6 +4,7 @@ import BrowseCore
 
 struct SidebarTabIcon: NSViewRepresentable {
     @ObservedObject var store: BrowserStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let tab: BrowserTab
 
     func makeNSView(context: Context) -> SidebarTabIconView { SidebarTabIconView() }
@@ -13,13 +14,14 @@ struct SidebarTabIcon: NSViewRepresentable {
     }
 
     func updateNSView(_ view: SidebarTabIconView, context: Context) {
-        view.tabID = tab.id
         let active = tab.pages.first { $0.id == tab.focusedPane } ?? tab.pages.first
         let other = tab.layout.paneIDs.first { $0 != active?.id }
             .flatMap { id in tab.pages.first { $0.id == id } }
         update(view.frontIcon, page: active)
         update(view.backIcon, page: other)
-        view.paneCount = tab.pages.count
+        view.updateStack(front: active?.id, back: other?.id, count: tab.pages.count,
+                         animate: view.tabID == tab.id && !reduceMotion)
+        view.tabID = tab.id
     }
 
     private func update(_ view: NSImageView, page: Page?) {
@@ -43,6 +45,8 @@ final class SidebarTabIconView: NSView {
     let frontIcon = NSImageView()
     let backIcon = NSImageView()
     private let frontShadow = SidebarIconContactShadow()
+    private var frontPageID: UUID?
+    private var backPageID: UUID?
     var paneCount = 1 {
         didSet {
             let stacked = paneCount > 1
@@ -50,6 +54,26 @@ final class SidebarTabIconView: NSView {
             frontShadow.isHidden = !stacked
             frontIcon.layer?.backgroundColor = stacked ? NSColor(white: 0.16, alpha: 1).cgColor : nil
             needsLayout = true
+        }
+    }
+
+    func updateStack(front: UUID?, back: UUID?, count: Int, animate: Bool) {
+        let changedFront = frontPageID != front
+        let changedBack = backPageID != back
+        let shouldFade = animate && window != nil && frontPageID != nil && count > 1
+        frontPageID = front
+        backPageID = back
+        paneCount = count
+        for (view, changed) in [(frontIcon as NSView, changedFront), (backIcon, changedBack),
+                                (frontShadow, changedBack)] {
+            if !animate || count <= 1 { view.layer?.removeAnimation(forKey: "stackFade") }
+            guard changed, shouldFade else { continue }
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = view.alphaValue
+            fade.duration = 0.12
+            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            view.layer?.add(fade, forKey: "stackFade")
         }
     }
 
@@ -70,6 +94,7 @@ final class SidebarTabIconView: NSView {
             icon.setAccessibilityElement(false)
             addSubview(icon)
         }
+        frontShadow.wantsLayer = true
         frontShadow.setAccessibilityElement(false)
         addSubview(frontShadow, positioned: .below, relativeTo: frontIcon)
         frontShadow.isHidden = true
@@ -82,11 +107,10 @@ final class SidebarTabIconView: NSView {
     override func layout() {
         super.layout()
         let stacked = paneCount > 1
-        frontIcon.frame = NSRect(x: 4, y: stacked ? 5 : 6, width: 16, height: 16)
-        backIcon.frame = NSRect(x: 6, y: 1, width: 12, height: 12)
+        frontIcon.frame = NSRect(x: 4, y: stacked ? 8 : 6, width: 16, height: 16)
+        backIcon.frame = NSRect(x: 6, y: 4, width: 12, height: 12)
         frontShadow.frame = backIcon.frame
         frontShadow.overlapY = frontIcon.frame.minY - backIcon.frame.minY
-
     }
 }
 

@@ -289,6 +289,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
         #expect(icon.backIcon.frame.size == NSSize(width: 12, height: 12))
         #expect(!icon.backIcon.isHidden)
         #expect(abs(icon.backIcon.frame.midX - icon.frontIcon.frame.midX) < 0.01)
+        #expect(abs(icon.frontIcon.frame.union(icon.backIcon.frame).midY - icon.bounds.midY) < 0.01)
     }
     #expect(lazy.pages.allSatisfy { store.existingController(for: $0.id) == nil })
     let renderedStack = try #require(icon.bitmapImageRepForCachingDisplay(in: icon.bounds))
@@ -300,7 +301,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
         return color.redComponent + color.greenComponent + color.blueComponent
     }
     // The exposed back icon darkens toward the front icon's overlapping edge.
-    #expect(try brightness(at: 4) < brightness(at: 2) * 0.95)
+    #expect(try brightness(at: icon.backIcon.frame.minY + 3) < brightness(at: icon.backIcon.frame.minY + 1) * 0.95)
     if let path = ProcessInfo.processInfo.environment["BEND_SIDEBAR_SNAPSHOT"] {
         let content = try #require(context.window.contentView)
         let rect = NSRect(x: 0, y: 0, width: store.sidebarWidth, height: content.bounds.height)
@@ -316,6 +317,37 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     controller.navigate("browse://start")
     try await settle { find(context.window.contentView!)?.frontIcon.image !== rendered }
     #expect(find(context.window.contentView!)?.frontIcon.image != nil)
+}
+
+// @lat: [[tests#Stacked favicon transitions]]
+@Test @MainActor func stackedFaviconTransitions() throws {
+    _ = NSApplication.shared
+    let icon = SidebarTabIconView(frame: NSRect(origin: .zero, size: SidebarTabIconView.slotSize))
+    let window = NSWindow(contentRect: icon.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = icon
+    defer { window.contentView = nil }
+    let first = UUID(), second = UUID(), third = UUID()
+    icon.updateStack(front: first, back: nil, count: 1, animate: true)
+    #expect(icon.frontIcon.layer?.animation(forKey: "stackFade") == nil)
+    icon.updateStack(front: second, back: first, count: 2, animate: true)
+    #expect(icon.frontIcon.layer?.animation(forKey: "stackFade") != nil)
+    #expect(icon.backIcon.layer?.animation(forKey: "stackFade") != nil)
+    icon.frontIcon.layer?.removeAllAnimations()
+    icon.backIcon.layer?.removeAllAnimations()
+    icon.updateStack(front: second, back: first, count: 2, animate: true)
+    #expect(icon.frontIcon.layer?.animation(forKey: "stackFade") == nil)
+    #expect(icon.backIcon.layer?.animation(forKey: "stackFade") == nil)
+    icon.updateStack(front: first, back: second, count: 2, animate: true)
+    #expect(icon.frontIcon.layer?.animation(forKey: "stackFade") != nil)
+    icon.updateStack(front: third, back: first, count: 3, animate: false)
+    #expect(icon.frontIcon.layer?.animation(forKey: "stackFade") == nil)
+    #expect(icon.backIcon.layer?.animation(forKey: "stackFade") == nil)
+    #expect(icon.frontIcon.alphaValue == 1)
+    #expect(icon.backIcon.alphaValue == 0.65)
+    icon.updateStack(front: first, back: third, count: 2, animate: true)
+    icon.updateStack(front: first, back: nil, count: 1, animate: true)
+    #expect(icon.frontIcon.layer?.animation(forKey: "stackFade") == nil)
+    #expect(icon.backIcon.isHidden)
 }
 
 // @lat: [[tests#Persistent favicon restoration]]
