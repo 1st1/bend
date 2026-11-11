@@ -722,6 +722,24 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     await saved.restorationTask?.value
     let restoredContext = try #require(saved.contexts[id])
     #expect(restoredContext.hasAccessToPrivateData)
+    // controller.load() returns before WebKit finishes loading its rule stores.
+    // Exercise the restored host before unloading it: immediate teardown races
+    // a WebKit DNR database callback on macOS 26 and can crash the test process.
+    let restoredOptions = WKWebView(frame: .zero, configuration: try #require(restoredContext.webViewConfiguration))
+    let restoredNavigation = ExtensionTestNavigation()
+    restoredOptions.navigationDelegate = restoredNavigation
+    try await restoredNavigation.load(restoredOptions, url: try #require(restoredContext.optionsPageURL))
+    _ = try await restoredOptions.callAsyncJavaScript("""
+        await browser.declarativeNetRequest.updateEnabledRulesets({disableRulesetIds: ['rules']});
+        await browser.declarativeNetRequest.updateEnabledRulesets({enableRulesetIds: ['rules']});
+        """, arguments: [:], in: nil, contentWorld: .page)
+    let restoredConfiguration = WKWebViewConfiguration()
+    saved.configure(restoredConfiguration)
+    let restoredWeb = WKWebView(frame: .zero, configuration: restoredConfiguration)
+    restoredWeb.navigationDelegate = restoredNavigation
+    try await restoredNavigation.load(restoredWeb, url: url)
+    #expect(try await restoredWeb.evaluateJavaScript("document.body.dataset.browseExtension") as? String == "active")
+    #expect(try await restoredWeb.evaluateJavaScript("window.blockedScriptRan === true") as? Bool == false)
     if restoredContext.isLoaded { try saved.controller.unload(restoredContext) }
     #expect(privateWindow.store.extensionConfiguration(for: context) == nil)
     manager.setPrivateAccess(false, id: id)
