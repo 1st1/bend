@@ -1,0 +1,3 @@
+kind: Fixed
+body: Keep website favicons across browser restarts without loading background tabs. Private browsing icons remain in memory only.
+time: 2026-11-10T17:03:25-08:00

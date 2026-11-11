@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Testing
 import WebKit
 import Network
@@ -208,7 +209,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     defer { try? FileManager.default.removeItem(at: root) }
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
     let tab = BrowserTab(pages: [Page(address: server.url("/page").absoluteString)])
-    let lazy = BrowserTab(pages: [Page(address: server.url("/page").absoluteString)])
+    let lazy = BrowserTab(pages: (0..<3).map { _ in Page(address: server.url("/page").absoluteString) })
     store.session.workspaces = [Workspace(name: "Test", tabs: [tab, lazy])]
     store.session.selectedTab = tab.id
     let context = BrowserWindowSession(id: UUID().uuidString, store: store)
@@ -229,16 +230,16 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     try await settle { store.existingController(for: tab.pages[0].id)?.favicon != nil }
     let controller = try #require(store.existingController(for: tab.pages[0].id))
     let image = try #require(controller.favicon)
-    try await settle { find(context.window.contentView!)?.image === image }
+    try await settle { find(context.window.contentView!)?.frontIcon.image === image }
     let icon = try #require(find(context.window.contentView!))
-    #expect(icon.frame.width == 16)
-    #expect(icon.frame.height == 16)
-    #expect(store.existingController(for: lazy.pages[0].id) == nil)
+    #expect(icon.frontIcon.frame.width == 16)
+    #expect(icon.frontIcon.frame.height == 16)
+    #expect(lazy.pages.allSatisfy { store.existingController(for: $0.id) == nil })
     // A visible 64-point raster catches intrinsic sizing and overflow that a
     // transparent network fixture cannot reveal in a rendered sidebar.
     controller.favicon = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
         NSColor.systemRed.setFill()
-        NSBezierPath(roundedRect: rect, xRadius: 12, yRadius: 12).fill()
+        NSBezierPath(rect: rect).fill()
         NSColor.white.setFill()
         let triangle = NSBezierPath()
         triangle.move(to: NSPoint(x: 24, y: 16))
@@ -247,13 +248,59 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
         triangle.close(); triangle.fill()
         return true
     }
-    try await settle { icon.image === controller.favicon }
+    try await settle { icon.frontIcon.image === controller.favicon }
     for width in [200.0, 400.0, 250.0] {
         store.resizeSidebar(to: width)
         context.window.contentView?.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(80))
-        #expect(icon.frame.size == NSSize(width: 16, height: 16))
+        #expect(icon.frontIcon.frame.size == NSSize(width: 16, height: 16))
     }
+    // Three panes still render exactly two icons, with focus deciding the front.
+    store.onAddressRequested = nil
+    store.split(.horizontal)
+    let secondPage = store.selectedTab.pages.last!
+    let second = store.controller(for: secondPage)
+    second.isStartPage = false
+    let blue = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
+        NSColor.systemBlue.setFill(); NSBezierPath(rect: rect).fill(); return true
+    }
+    second.favicon = blue
+    try await settle { icon.frontIcon.image === blue && icon.backIcon.image === controller.favicon && icon.paneCount == 2 }
+    store.split(.horizontal)
+    let thirdPage = store.selectedTab.pages.last!
+    let third = store.controller(for: thirdPage)
+    third.isStartPage = false
+    let green = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
+        NSColor.systemGreen.setFill(); NSBezierPath(roundedRect: rect, xRadius: 12, yRadius: 12).fill(); return true
+    }
+    third.favicon = green
+    try await settle { icon.frontIcon.image === green && icon.paneCount == 3 }
+    #expect(icon.backIcon.image === controller.favicon)
+    #expect(icon.subviews.compactMap { $0 as? NSImageView }.count == 2)
+    #expect(!icon.subviews.contains { $0 is NSTextField })
+    store.focus(tab.pages[0].id)
+    try await settle { icon.frontIcon.image === controller.favicon && icon.backIcon.image === blue }
+    for width in [200.0, 400.0, 250.0] {
+        store.resizeSidebar(to: width)
+        context.window.contentView?.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(icon.frame.size == SidebarTabIconView.slotSize)
+        #expect(icon.frontIcon.frame.size == NSSize(width: 16, height: 16))
+        #expect(icon.backIcon.frame.size == NSSize(width: 12, height: 12))
+        #expect(!icon.backIcon.isHidden)
+        #expect(abs(icon.backIcon.frame.midX - icon.frontIcon.frame.midX) < 0.01)
+    }
+    #expect(lazy.pages.allSatisfy { store.existingController(for: $0.id) == nil })
+    let renderedStack = try #require(icon.bitmapImageRepForCachingDisplay(in: icon.bounds))
+    icon.cacheDisplay(in: icon.bounds, to: renderedStack)
+    let scale = CGFloat(renderedStack.pixelsWide) / icon.bounds.width
+    func brightness(at y: CGFloat) throws -> CGFloat {
+        let color = try #require(renderedStack.colorAt(x: Int(icon.backIcon.frame.midX * scale),
+            y: Int(y * scale))?.usingColorSpace(.sRGB))
+        return color.redComponent + color.greenComponent + color.blueComponent
+    }
+    // The exposed back icon darkens toward the front icon's overlapping edge.
+    #expect(try brightness(at: 4) < brightness(at: 2) * 0.95)
     if let path = ProcessInfo.processInfo.environment["BEND_SIDEBAR_SNAPSHOT"] {
         let content = try #require(context.window.contentView)
         let rect = NSRect(x: 0, y: 0, width: store.sidebarWidth, height: content.bounds.height)
@@ -261,10 +308,144 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
         content.cacheDisplay(in: rect, to: bitmap)
         try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
     }
-    let rendered = icon.image
+    store.closePane(secondPage.id)
+    try await settle { icon.paneCount == 2 && icon.backIcon.image === green }
+    store.closePane(thirdPage.id)
+    try await settle { icon.paneCount == 1 && icon.backIcon.isHidden }
+    let rendered = icon.frontIcon.image
     controller.navigate("browse://start")
-    try await settle { find(context.window.contentView!)?.image !== rendered }
-    #expect(find(context.window.contentView!)?.image != nil)
+    try await settle { find(context.window.contentView!)?.frontIcon.image !== rendered }
+    #expect(find(context.window.contentView!)?.frontIcon.image != nil)
+}
+
+// @lat: [[tests#Persistent favicon restoration]]
+@Test @MainActor func persistentFaviconRestoration() async throws {
+    _ = NSApplication.shared
+    let server = try await FaviconHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFaviconCache-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("session.json")
+    let store = BrowserStore(sessionFile: file, persistentExtensions: false)
+    let page = Page(address: server.url("/page").absoluteString)
+    let lazy = BrowserTab(pages: [page, Page(address: server.url("/next").absoluteString)])
+    store.session.workspaces = [Workspace(name: "Tabs", tabs: [lazy])]
+    store.session.selectedTab = lazy.id
+    func waitUntil(_ ready: () -> Bool) async throws {
+        for _ in 0..<200 where !ready() { try await Task.sleep(for: .milliseconds(20)) }
+        try #require(ready())
+    }
+    let controller = store.controller(for: page)
+    try await waitUntil { controller.favicon != nil }
+    store.save()
+    let cacheFile = root.appendingPathComponent("Favicons.json")
+    #expect(FileManager.default.fileExists(atPath: cacheFile.path))
+    store.stopWindow()
+
+    let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
+    defer { restored.stopWindow() }
+    #expect(restored.favicon(for: page) != nil)
+    #expect(lazy.pages.allSatisfy { restored.existingController(for: $0.id) == nil })
+    let host = NSHostingView(rootView: SidebarTabIcon(store: restored, tab: lazy)
+        .frame(width: 24, height: 28))
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 24, height: 28),
+        styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host; window.orderFront(nil)
+    defer { window.orderOut(nil); window.contentView = nil }
+    func icon(_ view: NSView) -> SidebarTabIconView? {
+        (view as? SidebarTabIconView) ?? view.subviews.lazy.compactMap(icon).first
+    }
+    try await waitUntil { host.layoutSubtreeIfNeeded(); return icon(host)?.paneCount == 2 }
+    let mounted = try #require(icon(host))
+    #expect(mounted.frontIcon.image === restored.favicon(for: page))
+    #expect(mounted.backIcon.image === restored.favicon(for: lazy.pages[1]))
+    #expect(lazy.pages.allSatisfy { restored.existingController(for: $0.id) == nil })
+    let other = BrowserStore(sessionFile: root.appendingPathComponent("window/session.json"), persistentExtensions: false, sharedStore: restored)
+    defer { other.stopWindow() }
+    #expect(other.faviconCache === restored.faviconCache)
+    #expect(other.favicon(for: page) != nil)
+    let separate = BrowserStore(sessionFile: root.appendingPathComponent("separate/session.json"), persistentExtensions: false)
+    defer { separate.stopWindow() }
+    #expect(separate.favicon(for: page) == nil)
+
+    // A live controller starts with the cache, then refreshes through WebKit.
+    let live = restored.controller(for: page)
+    let seeded = try #require(live.favicon)
+    try await waitUntil { live.favicon != nil && live.favicon !== seeded }
+    live.navigate("browse://start")
+    #expect(live.favicon == nil)
+    restored.save()
+    let beforePrivate = try Data(contentsOf: cacheFile)
+    let privateFile = root.appendingPathComponent("private/session.json")
+    let privateStore = BrowserStore(sessionFile: privateFile, persistentExtensions: false, sharedStore: restored, isPrivate: true)
+    #expect(privateStore.faviconCache == nil)
+    #expect(privateStore.favicon(for: page) == nil)
+    let privatePage = privateStore.controller(for: page)
+    #expect(privatePage.favicon == nil)
+    try await waitUntil { privatePage.favicon != nil }
+    privateStore.save(); privateStore.clearHistory(); privateStore.stopWindow()
+    #expect(try Data(contentsOf: cacheFile) == beforePrivate)
+    #expect(!FileManager.default.fileExists(atPath: privateFile.deletingLastPathComponent().path))
+    #expect(privateStore.favicon(for: page) == nil)
+
+    restored.clearHistory()
+    #expect(restored.faviconCache?.image(for: server.url("/page")) == nil)
+    #expect(FaviconCache(file: cacheFile).image(for: server.url("/page")) == nil)
+}
+
+// @lat: [[tests#Favicon cache bounds and recovery]]
+@Test @MainActor func faviconCacheBoundsAndRecovery() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFaviconBounds-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("Favicons.json")
+    let cache = FaviconCache(file: file, limit: 2)
+    let image = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
+        NSColor.red.setFill(); NSBezierPath(rect: rect).fill(); return true
+    }
+    let url = URL(string: "https://user:password@Example.com/path?secret=value#fragment")!
+    cache.record(image, for: url); cache.flush()
+    let data = try Data(contentsOf: file)
+    let json = String(decoding: data, as: UTF8.self)
+    #expect(!json.contains("password") && !json.contains("secret") && !json.contains("fragment"))
+    let loaded = FaviconCache(file: file)
+    let restoredImage = try #require(loaded.image(for: URL(string: "https://example.com:443/elsewhere")))
+    let tiff = try #require(restoredImage.tiffRepresentation)
+    let pixels = try #require(NSBitmapImageRep(data: tiff))
+    let color = try #require(pixels.colorAt(x: 32, y: 32)?.usingColorSpace(.sRGB))
+    let originalTIFF = try #require(image.tiffRepresentation)
+    let originalPixels = try #require(NSBitmapImageRep(data: originalTIFF))
+    let expected = try #require(originalPixels.colorAt(x: 32, y: 32)?.usingColorSpace(.sRGB))
+    #expect(abs(color.redComponent - expected.redComponent) < 0.02)
+    #expect(abs(color.greenComponent - expected.greenComponent) < 0.02)
+    #expect(abs(color.blueComponent - expected.blueComponent) < 0.02)
+    #expect(color.alphaComponent > 0.99)
+    for different in ["http://example.com/", "https://example.com:444/", "https://other.example.com/", "browse://start"] {
+        #expect(loaded.image(for: URL(string: different)) == nil)
+    }
+    cache.record(image, for: URL(string: "https://b.example/")!)
+    cache.record(image, for: URL(string: "https://c.example/")!)
+    cache.flush()
+    let bounded = FaviconCache(file: file)
+    #expect(bounded.image(for: url) == nil)
+    #expect(bounded.image(for: URL(string: "https://b.example/")) != nil)
+    #expect(bounded.image(for: URL(string: "https://c.example/")) != nil)
+    try Data("corrupt cache".utf8).write(to: file)
+    let recovered = FaviconCache(file: file)
+    #expect(recovered.image(for: url) == nil)
+    recovered.record(image, for: url); recovered.flush()
+    #expect(FaviconCache(file: file).image(for: url) != nil)
+    var invalid = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+    var entries = try #require(invalid["entries"] as? [String: [String: Any]])
+    let key = try #require(entries.keys.first)
+    entries[key]?["png"] = Data("invalid image".utf8).base64EncodedString()
+    invalid["entries"] = entries
+    try JSONSerialization.data(withJSONObject: invalid).write(to: file)
+    #expect(FaviconCache(file: file).image(for: url) == nil)
+    let blocked = root.appendingPathComponent("not-a-directory")
+    try Data().write(to: blocked)
+    let memory = FaviconCache(file: blocked.appendingPathComponent("Favicons.json"))
+    memory.record(image, for: url); memory.flush()
+    #expect(memory.image(for: url) != nil)
 }
 
 private final class FaviconHTTPFixture: @unchecked Sendable {

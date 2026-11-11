@@ -7,6 +7,7 @@ import BrowseCore
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
 enum Chrome {
+    static let faviconCornerRadius: CGFloat = 2
     static let sidebarTabHeight: CGFloat = 34
     static let sidebarTabSpacing: CGFloat = 7
     static let sidebarItemCornerRadius = sidebarTabHeight / 2
@@ -175,13 +176,17 @@ private struct SidebarTabRow: View {
                 else { store.select(tab.id) }
             } label: {
                 HStack(spacing: 9) {
-                    SidebarTabIcon(store: store, tab: tab).frame(width: 16, height: 16)
+                    SidebarTabIcon(store: store, tab: tab)
+                        .frame(width: SidebarTabIconView.slotSize.width, height: SidebarTabIconView.slotSize.height)
                         .accessibilityHidden(true)
                     FadingTabTitle(title: tab.title)
                         .font(.system(size: 12, weight: selected ? .medium : .regular))
-                    if tab.pages.count > 1 && store.sidebarWidth >= 160 { Text("\(tab.pages.count)").font(.system(size: 9, design: .monospaced)).foregroundStyle(Chrome.muted) }
+                    if tab.pages.count > 1 && store.sidebarWidth >= 160 {
+                        Text("\(tab.pages.count)").font(.system(size: 9, design: .monospaced)).foregroundStyle(Chrome.muted)
+                    }
                 }.frame(maxHeight: .infinity).contentShape(Rectangle())
             }.buttonStyle(.plain)
+            .accessibilityValue(tab.pages.count > 1 ? "\(tab.pages.count) panes" : "")
             .overlay {
                 TabDragHandle(store: store, tabID: tab.id, title: tab.title, reduceMotion: reduceMotion)
                     .accessibilityHidden(true)
@@ -582,6 +587,8 @@ private struct BrowserPane: View {
                 .font(.system(size: 11)).foregroundStyle(Chrome.muted)
         } else if let favicon = controller.favicon {
             Image(nsImage: favicon).resizable().scaledToFit()
+                .frame(width: 14, height: 14)
+                .clipShape(RoundedRectangle(cornerRadius: Chrome.faviconCornerRadius))
         } else {
             Text(String((URL(string: controller.address)?.host ?? controller.title).prefix(1)).uppercased())
                 .font(.system(size: 9, weight: .semibold)).foregroundStyle(Chrome.muted)

@@ -115,11 +115,21 @@ A later known short duration removes an already qualified source, while a durati
 
 [[Tests/BrowseTests/MediaDurationTests.swift#mediaQualificationLifecycle]] uses a controlled HTML playback clock to exclude paused and buffering time, reset eligibility on resource replacement, and preserve qualified controls when timing disappears.
 
+## Persistent favicon restoration
+
+[[Tests/BrowseTests/FaviconTests.swift#persistentFaviconRestoration]] loads a real favicon, restores a saved profile, and renders both stacked icons without creating pane controllers; a live pane starts with its cached icon and refreshes it through WebKit.
+
+Regular windows share the cache while separate profiles do not. Private panes cannot read regular icons, and successful private icon loads, history clearing, and teardown leave the regular cache unchanged and create no private files. Clearing regular history removes persisted icons.
+
+## Favicon cache bounds and recovery
+
+[[Tests/BrowseTests/FaviconTests.swift#faviconCacheBoundsAndRecovery]] checks cached pixel colors, origin normalization without URL secrets, scheme/host/port isolation, oldest-entry eviction, corrupt snapshots and image rejection, and usable in-memory icons after write failures.
+
 ## Sidebar favicons
 
 [FaviconTests.swift](../Tests/BrowseTests/FaviconTests.swift) loads an icon through a local HTTP fixture and checks the mounted sidebar image updates to that exact favicon, resets for a native page, and leaves unvisited tabs uninstantiated.
 
-The mounted icon must stay 16×16 points after loading and across narrow, default, and wide sidebar sizes. An opaque 64-point raster exercises intrinsic-size overflow; `BEND_SIDEBAR_SNAPSHOT` optionally captures the rendered sidebar for visual inspection.
+Mounted front images remain 16×16 points and rear images 12×12 points in a fixed 24×28-point slot across sidebar widths. A three-pane tab renders exactly two horizontally centered icons, updates the front icon on focus changes, and keeps number labels out of the icon stack. Rendered pixels must darken toward the front icon’s overlap, verifying the contact shadow is visible. Closing panes updates the rear icon and pane count, then hides the rear icon for a single pane. Opaque oversized rasters exercise clipping; `BEND_SIDEBAR_SNAPSHOT` optionally captures the stack for visual inspection.
 
 ## Live media session smoke test
 

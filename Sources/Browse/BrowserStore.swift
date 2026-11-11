@@ -55,6 +55,8 @@ final class BrowserStore: ObservableObject {
     var historyOwner: BrowserStore { isPrivate ? self : (sharedStore?.historyOwner ?? self) }
     let sharedStore: BrowserStore?
     let websiteSettings: WebsiteSettingsStore
+    let faviconCache: FaviconCache?
+    private var faviconObservation: AnyCancellable?
     private var sharedObservation: AnyCancellable?
     var preferencesStore: BrowserStore { sharedStore?.preferencesStore ?? self }
     var historyPublisher: AnyPublisher<BrowsingHistory, Never> {
@@ -98,6 +100,8 @@ final class BrowserStore: ObservableObject {
         self.persistentExtensions = sharedStore?.persistentExtensions ?? persistentExtensions
         let root = AppProfile.current.supportDirectory
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
+        faviconCache = isPrivate ? nil : (sharedStore?.faviconCache ?? FaviconCache(
+            file: self.sessionFile.deletingLastPathComponent().appendingPathComponent("Favicons.json")))
         if isPrivate {
             downloads = BrowserDownloads(directory: sharedStore?.downloadDirectory ?? BrowserDownloads.defaultDirectory)
             websiteSettings = WebsiteSettingsStore(temporary: sharedStore?.websiteSettings.values ?? WebsiteSettings())
@@ -152,6 +156,7 @@ final class BrowserStore: ObservableObject {
         if sharedStore == nil { downloads.directory = downloadDirectory }
         tracePaneMembership()
         extensionStorage = extensionManager
+        faviconObservation = faviconCache?.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
         if let sharedStore {
             sharedObservation = sharedStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
             if #available(macOS 15.4, *) { extensionStorage = sharedStore.extensions }
@@ -580,6 +585,7 @@ final class BrowserStore: ObservableObject {
 
     func clearHistory() {
         if historyOwner !== self { historyOwner.clearHistory(); return }
+        faviconCache?.clear()
         history.clear()
         if !historyWritable {
             do {
@@ -747,7 +753,7 @@ final class BrowserStore: ObservableObject {
         let extensionURL = URL(string: page.address).flatMap {
             ["webkit-extension", "safari-web-extension"].contains($0.scheme ?? "") ? $0 : nil
         }
-        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, downloads: downloads, configure: { [weak self] configuration in
+        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, downloads: downloads, configure: { [weak self] configuration in
             self?.configureWebView(configuration, for: page.id)
         })
         bindController(controller, to: page)
@@ -772,6 +778,12 @@ final class BrowserStore: ObservableObject {
             }
         }
         return controller
+    }
+
+    func favicon(for page: Page) -> NSImage? {
+        let controller = existingController(for: page.id)
+        guard controller?.isStartPage != true else { return nil }
+        return controller?.favicon ?? faviconCache?.image(for: URL(string: controller?.address ?? page.address))
     }
 
     private func bindController(_ controller: PageController, to page: Page) {
@@ -1024,6 +1036,7 @@ final class BrowserStore: ObservableObject {
 
     func save() {
         guard !isPrivate else { return }
+        faviconCache?.flush()
         do {
             try FileManager.default.createDirectory(at: sessionFile.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(session).write(to: sessionFile, options: .atomic)
@@ -1158,6 +1171,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     var onFaviconChanged: (() -> Void)?
     private var faviconTask: Task<Void, Never>?
     private var faviconPageURL: URL?
+    private let faviconCache: FaviconCache?
     @Published var isLoading = false
     @Published var progress = 0.0
     @Published var canGoBack = false
@@ -1196,7 +1210,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         return "Version/\(version) Safari/605.1.15 Bend/0.1"
     }()
 
-    init(address: String, paneID: UUID? = nil, isPrivate: Bool = false, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil,
+    init(address: String, paneID: UUID? = nil, isPrivate: Bool = false, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil, faviconCache: FaviconCache? = nil,
          externalApplications: ExternalApplicationLinks = .shared, javaScriptDialogs: JavaScriptDialogs = .shared,
          downloads: BrowserDownloads = BrowserDownloads(), configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
@@ -1205,6 +1219,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         self.externalApplications = externalApplications
         self.javaScriptDialogs = javaScriptDialogs
         self.websiteSettings = websiteSettings
+        self.faviconCache = isPrivate ? nil : faviconCache
         self.configure = configure
         let configuration = WKWebViewConfiguration()
         configuration.applicationNameForUserAgent = Self.websiteApplicationName
@@ -1420,6 +1435,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
                 return
             }
             guard let image else { return }
+            self.faviconCache?.record(image, for: url)
             self.faviconPageURL = url
             self.favicon = image
         }
@@ -1436,7 +1452,10 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         // refreshes, but never let another origin inherit its visual identity.
         guard !FaviconLoader.sameOrigin(faviconPageURL, destination) else { return }
         faviconPageURL = nil
-        if favicon != nil { favicon = nil }
+        if let destination, let cached = faviconCache?.image(for: destination) {
+            faviconPageURL = destination
+            favicon = cached
+        } else if favicon != nil { favicon = nil }
     }
 
     deinit { faviconTask?.cancel() }
