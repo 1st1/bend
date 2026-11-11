@@ -1017,6 +1017,8 @@ Window closure clears every remaining pane's store. Regular browsing cannot see 
 
 [[Tests/BrowseTests/ExtensionTests.swift#privateExtensionAccess]] verifies persisted opt-ins, private-tab queries, script injection, request blocking, revocation, and refusal to supply shared extension configurations to private panes.
 
+The restored host completes an awaited ruleset disable/enable cycle and demonstrates content injection and request blocking before unload. This synchronizes teardown with WebKit’s asynchronous rule loading instead of racing its database callbacks or relying on a fixed delay.
+
 ## Private extension iframe isolation
 
 [[Tests/BrowseTests/ExtensionTests.swift#privateExtensionIframeIsolation]] verifies private panes reject extension documents that would let HTTP iframes read or write regular-profile cookies, including after opt-in.
