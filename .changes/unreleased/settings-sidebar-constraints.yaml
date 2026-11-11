@@ -1,3 +1,0 @@
-kind: Fixed
-body: Keep the Settings sidebar fixed in width when SwiftUI resets its native layout constraints.
-time: 2026-11-11T09:30:00-08:00

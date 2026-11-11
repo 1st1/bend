@@ -5,6 +5,19 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.3.0
+### Added
+- Choose whether the sidebar docks on the left or right in UI settings.
+- Check for new Bend releases and offer an update button, with verified downloads, installation, and relaunch through Sparkle.
+### Changed
+- Keep untouched panes evenly sized when opening or moving panes, while preserving manually resized layouts.
+- Show centered stacked favicons for multi-pane tabs, with the active pane in front. Round favicon corners in tabs and pane titles.
+- Center stacked favicons vertically and quickly fade them when switching panes or adding a pane.
+### Fixed
+- Keep website favicons across browser restarts without loading background tabs. Private browsing icons remain in memory only.
+- Show the packaged app version in About Bend instead of the old prototype label.
+- Keep the Settings sidebar fixed in width when SwiftUI resets its native layout constraints.
+
 ## v0.2.0
 ### Added
 - Show the page URL when hovering its pane title.
