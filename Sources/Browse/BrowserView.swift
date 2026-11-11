@@ -290,7 +290,7 @@ private struct PaneCanvas: View {
                         }
                     }
                     ForEach(geometry.dividers) { divider in
-                        PaneDivider(placement: divider, paneIDs: tab.pages.map(\.id), tabID: tab.id) { store.resize(divider.id, fraction: $0) }
+                        PaneDivider(placement: divider, paneIDs: tab.pages.map(\.id), tabID: tab.id) { store.resize(divider.id, fraction: $0, geometry: geometry) }
                             .frame(width: divider.frame.width, height: divider.frame.height)
                             .position(x: divider.frame.midX, y: divider.frame.midY)
                     }

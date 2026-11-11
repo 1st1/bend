@@ -37,7 +37,7 @@ public struct PaneGeometry {
     private static func minimumSize(_ layout: PaneLayout) -> CGSize {
         switch layout {
         case .pane: return CGSize(width: 340, height: 240)
-        case .split(_, let axis, _, let a, let b):
+        case .split(_, let axis, _, let a, let b, _):
             let first = minimumSize(a), second = minimumSize(b)
             return axis == .horizontal
                 ? CGSize(width: first.width + second.width + gap, height: max(first.height, second.height))
@@ -49,13 +49,19 @@ public struct PaneGeometry {
         switch layout {
         case .pane(let id):
             panes.append(PanePlacement(id: id, frame: rect, insertionAxis: insertionAxis))
-        case .split(let id, let axis, let fraction, let first, let second):
+        case .split(let id, let axis, let fraction, let first, let second, _):
             let horizontal = axis == .horizontal
             let a = Self.minimumSize(first), b = Self.minimumSize(second)
             let available = max(1, (horizontal ? rect.width : rect.height) - Self.gap)
             let minimum = horizontal ? a.width : a.height
             let maximum = max(minimum, available - (horizontal ? b.width : b.height))
-            let length = min(max(minimum, available * fraction), maximum)
+            let firstUnits = CGFloat(first.automaticUnits(along: axis))
+            let secondUnits = CGFloat(second.automaticUnits(along: axis))
+            // Internal gaps belong to their subtree, not to a pane's equal share.
+            let paneSpace = available - Self.gap * (firstUnits + secondUnits - 2)
+            let automaticLength = paneSpace * firstUnits / (firstUnits + secondUnits) + Self.gap * (firstUnits - 1)
+            let desired = layout.usesAutomaticSizing ? automaticLength : available * fraction
+            let length = min(max(minimum, desired), maximum)
             var firstRect = rect, secondRect = rect, dividerRect = rect
             if horizontal {
                 firstRect.size.width = length

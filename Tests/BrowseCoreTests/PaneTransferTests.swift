@@ -65,7 +65,7 @@ import Testing
         #expect(session.isValid)
         #expect(session.selectedTab == destination.id)
         let tab = try #require(session.workspaces.flatMap(\.tabs).first { $0.id == destination.id })
-        guard case .split(_, .horizontal, 0.5, let left, let right) = tab.layout else {
+        guard case .split(_, .horizontal, 0.5, let left, let right, _) = tab.layout else {
             Issue.record("Joined tabs must form two side-by-side groups"); return
         }
         #expect(left == destination.layout)
@@ -96,7 +96,7 @@ import Testing
         var source = BrowserTab(pages: [Page(), Page()])
         source.split(axis: .vertical, after: source.pages[0].id)
         var destination = BrowserTab(title: "Destination", pages: [Page(), Page()])
-        guard case .split(let splitID, let axis, _, let untouched, _) = destination.layout else {
+        guard case .split(let splitID, let axis, _, let untouched, _, _) = destination.layout else {
             Issue.record("Expected a split destination"); return
         }
         destination.layout = destination.layout.resizing(splitID, to: 0.3)
@@ -115,8 +115,8 @@ import Testing
         #expect(joined)
         #expect(session.isValid)
         let tab = try #require(session.workspaces[0].tabs.first)
-        guard case .split(let retainedID, let retainedAxis, let fraction, let first, let second) = tab.layout,
-              case .split(_, let newAxis, let newFraction, let left, let right) = second else {
+        guard case .split(let retainedID, let retainedAxis, let fraction, let first, let second, _) = tab.layout,
+              case .split(_, let newAxis, let newFraction, let left, let right, _) = second else {
             Issue.record("Merge must replace only the targeted leaf"); return
         }
         #expect(retainedID == splitID && retainedAxis == axis && fraction == 0.3)

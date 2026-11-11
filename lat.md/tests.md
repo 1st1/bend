@@ -399,6 +399,22 @@ Closing a pane and then its tab reopens them in reverse order without duplicate 
 
 [ReopenTests.swift](../Tests/BrowseTests/ReopenTests.swift) checks background extension closures, final-pane tab closure, invalid pane IDs, preservation of navigated replacement tabs, and the fifty-entry history limit.
 
+## Equal automatic pane sizes
+
+[[Tests/BrowseCoreTests/AutomaticPaneSizingTests.swift#equalAutomaticPaneSizes]] verifies equal widths and heights after repeated splits, closing, reopening, and persistence, with divider gaps excluded and perpendicular subdivisions kept within their column.
+
+## Equal pane sizes after transfers
+
+[[Tests/BrowseCoreTests/AutomaticPaneSizingTests.swift#equalPaneSizesAfterTransfers]] checks equal geometry after cross-tab drops at every edge, same-tab reordering, and joining a whole tab through the sidebar.
+
+## Manual pane sizing intent
+
+[[Tests/BrowseCoreTests/AutomaticPaneSizingTests.swift#manualPaneSizingIntent]] verifies that resizing an automatic three-pane row leaves unrelated boundaries in place, later insertions preserve chosen sizes, and returning to half remains manual after restart.
+
+## Legacy pane sizing migration
+
+[[Tests/BrowseCoreTests/AutomaticPaneSizingTests.swift#legacyPaneSizingMigration]] decodes layouts without sizing metadata and checks that half splits become automatic while unequal legacy fractions remain fixed on insertion.
+
 ## Pane geometry and insertion
 
 [PaneGeometryTests.swift](../Tests/BrowseCoreTests/PaneGeometryTests.swift) verifies stable pane identities and exact frames through horizontal and nested vertical splits. Unaffected branches keep their frames, and closing restores the previous geometry.
@@ -410,6 +426,8 @@ Closing a pane and then its tab reopens them in reverse order without duplicate 
 ## Divider pointer tracking
 
 [PaneResizingTests.swift](../Tests/BrowseTests/PaneResizingTests.swift) sends real window mouse events through horizontal and vertical dividers in an offscreen browser layout.
+
+Clicking and releasing a divider without moving must leave automatic-sizing intent unchanged.
 
 Native hit testing must reach each divider, whose cursor-update tracking selects the appropriate horizontal or vertical resize cursor. Repeated pointer coordinates, forward movement, reversals, and release preserve the expected pane size without feedback from the divider’s changing position. Axis cases run sequentially because they share native mouse-gesture state.
 

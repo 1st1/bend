@@ -46,6 +46,12 @@ func dividerPointerTracking(axis: SplitAxis) async throws {
     dividerView.cursorUpdate(with: cursorEvent)
     #expect(NSCursor.current == (axis == .horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown))
     defer { NSCursor.arrow.set() }
+    let untouched = store.selectedTab.layout
+    try sendPaneMouse(.leftMouseDown, at: down, to: window)
+    try sendPaneMouse(.leftMouseUp, at: down, to: window)
+    try await settle()
+    #expect(store.selectedTab.layout == untouched)
+    #expect(store.selectedTab.layout.usesAutomaticSizing)
     try sendPaneMouse(.leftMouseDown, at: down, to: window)
     // Repeating the same pointer coordinate after layout catches feedback from
     // the divider's own movement. Reversals must track without bouncing too.

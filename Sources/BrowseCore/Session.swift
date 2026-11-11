@@ -7,12 +7,12 @@ public enum LinkOpenDestination: String, Codable, Sendable { case newTab, newPan
 // @lat: [[architecture#Tiling model]]
 public indirect enum PaneLayout: Codable, Equatable, Sendable {
     case pane(UUID)
-    case split(id: UUID, axis: SplitAxis, fraction: Double, first: PaneLayout, second: PaneLayout)
+    case split(id: UUID, axis: SplitAxis, fraction: Double, first: PaneLayout, second: PaneLayout, isAutomatic: Bool? = nil)
 
     public var paneIDs: [UUID] {
         switch self {
         case .pane(let id): [id]
-        case .split(_, _, _, let first, let second): first.paneIDs + second.paneIDs
+        case .split(_, _, _, let first, let second, _): first.paneIDs + second.paneIDs
         }
     }
 
@@ -20,19 +20,19 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
         switch self {
         case .pane(let id):
             return id == target ? .split(id: UUID(), axis: axis, fraction: 0.5, first: self, second: .pane(newID)) : self
-        case .split(let id, let direction, let fraction, let first, let second):
+        case .split(let id, let direction, let fraction, let first, let second, let automatic):
             return .split(id: id, axis: direction, fraction: fraction,
                           first: first.splitting(target, with: newID, axis: axis),
-                          second: second.splitting(target, with: newID, axis: axis))
+                          second: second.splitting(target, with: newID, axis: axis), isAutomatic: automatic)
         }
     }
 
     public func removing(_ target: UUID) -> Self? {
         switch self {
         case .pane(let id): return id == target ? nil : self
-        case .split(let id, let axis, let fraction, let first, let second):
+        case .split(let id, let axis, let fraction, let first, let second, let automatic):
             let a = first.removing(target), b = second.removing(target)
-            if let a, let b { return .split(id: id, axis: axis, fraction: fraction, first: a, second: b) }
+            if let a, let b { return .split(id: id, axis: axis, fraction: fraction, first: a, second: b, isAutomatic: automatic) }
             return a ?? b
         }
     }
@@ -62,12 +62,37 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
         }
     }
 
-    public func resizing(_ target: UUID, to value: Double) -> Self {
+    // @lat: [[architecture#Automatic pane sizing]]
+    public var usesAutomaticSizing: Bool {
+        guard case .split(_, _, let fraction, _, _, let automatic) = self else { return false }
+        // Older sessions did not record resize intent. Preserve unequal ratios.
+        return automatic ?? (fraction == 0.5)
+    }
+
+    public func automaticUnits(along axis: SplitAxis) -> Int {
+        guard case .split(_, let direction, _, let first, let second, _) = self,
+              direction == axis, usesAutomaticSizing else { return 1 }
+        return first.automaticUnits(along: axis) + second.automaticUnits(along: axis)
+    }
+
+    public func resizing(_ target: UUID, to value: Double, geometry: PaneGeometry? = nil) -> Self {
+        guard value.isFinite, nodeIDs.contains(target), !paneIDs.contains(target) else { return self }
+        let fractions = Dictionary(uniqueKeysWithValues: (geometry?.dividers ?? []).map {
+            ($0.id, Double($0.firstLength / $0.available))
+        })
+        return fixingSizes(target, to: value, fractions: fractions)
+    }
+
+    private func fixingSizes(_ target: UUID, to value: Double, fractions: [UUID: Double]) -> Self {
         switch self {
         case .pane: return self
-        case .split(let id, let axis, let fraction, let first, let second):
-            return .split(id: id, axis: axis, fraction: id == target ? min(0.85, max(0.15, value)) : fraction,
-                          first: first.resizing(target, to: value), second: second.resizing(target, to: value))
+        case .split(let id, let axis, let fraction, let first, let second, _):
+            let units = first.automaticUnits(along: axis)
+            let automaticFraction = Double(units) / Double(units + second.automaticUnits(along: axis))
+            let retained = usesAutomaticSizing ? (fractions[id] ?? automaticFraction) : fraction
+            return .split(id: id, axis: axis, fraction: id == target ? min(0.85, max(0.15, value)) : retained,
+                          first: first.fixingSizes(target, to: value, fractions: fractions),
+                          second: second.fixingSizes(target, to: value, fractions: fractions), isAutomatic: false)
         }
     }
 
@@ -76,7 +101,7 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
     public func restoring(_ target: UUID, from previous: Self) -> Self? {
         guard !paneIDs.contains(target) else { return nil }
         if previous.removing(target) == self { return previous }
-        guard case .split(_, let axis, let fraction, let first, let second) = previous else { return nil }
+        guard case .split(_, let axis, let fraction, let first, let second, let automatic) = previous else { return nil }
         let wasFirst = first.paneIDs.contains(target)
         guard wasFirst || second.paneIDs.contains(target) else { return nil }
         if let nested = restoring(target, from: wasFirst ? first : second) { return nested }
@@ -85,7 +110,7 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
             if let restored = replacingNode(anchor, transform: { current in
                 .split(id: UUID(), axis: axis, fraction: fraction,
                     first: wasFirst ? .pane(target) : current,
-                    second: wasFirst ? current : .pane(target))
+                    second: wasFirst ? current : .pane(target), isAutomatic: automatic)
             }) { return restored }
         }
         return nil
@@ -94,20 +119,20 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
     private var nodeIDs: [UUID] {
         switch self {
         case .pane(let id): [id]
-        case .split(let id, _, _, let first, let second): [id] + first.nodeIDs + second.nodeIDs
+        case .split(let id, _, _, let first, let second, _): [id] + first.nodeIDs + second.nodeIDs
         }
     }
 
     private func replacingNode(_ target: UUID, transform: (Self) -> Self) -> Self? {
         switch self {
         case .pane(let id): return id == target ? transform(self) : nil
-        case .split(let id, let axis, let fraction, let first, let second):
+        case .split(let id, let axis, let fraction, let first, let second, let automatic):
             if id == target { return transform(self) }
             if let next = first.replacingNode(target, transform: transform) {
-                return .split(id: id, axis: axis, fraction: fraction, first: next, second: second)
+                return .split(id: id, axis: axis, fraction: fraction, first: next, second: second, isAutomatic: automatic)
             }
             if let next = second.replacingNode(target, transform: transform) {
-                return .split(id: id, axis: axis, fraction: fraction, first: first, second: next)
+                return .split(id: id, axis: axis, fraction: fraction, first: first, second: next, isAutomatic: automatic)
             }
             return nil
         }

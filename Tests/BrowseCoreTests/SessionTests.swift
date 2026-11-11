@@ -34,8 +34,8 @@ import Testing
     #expect(tab.layout.paneIDs == [source, opened, bottom])
     #expect(tab.pages.first { $0.id == opened }?.address == destination)
     #expect(tab.pages.first { $0.id == source }?.address == "browse://start")
-    guard case .split(_, .vertical, _, let top, let lower) = tab.layout,
-          case .split(_, .horizontal, _, let left, let right) = top else {
+    guard case .split(_, .vertical, _, let top, let lower, _) = tab.layout,
+          case .split(_, .horizontal, _, let left, let right, _) = top else {
         Issue.record("Link must split its source pane to the right, preserving the other branch")
         return
     }
@@ -73,9 +73,9 @@ import Testing
 @Test func dividerBounds() {
     let id = UUID(), a = UUID(), b = UUID()
     let layout = PaneLayout.split(id: id, axis: .horizontal, fraction: 0.5, first: .pane(a), second: .pane(b))
-    guard case .split(_, _, let fraction, _, _) = layout.resizing(id, to: 4) else { Issue.record("Missing split"); return }
+    guard case .split(_, _, let fraction, _, _, _) = layout.resizing(id, to: 4) else { Issue.record("Missing split"); return }
     #expect(fraction == 0.85)
-    guard case .split(_, _, let fraction, _, _) = layout.resizing(id, to: -1) else { Issue.record("Missing split"); return }
+    guard case .split(_, _, let fraction, _, _, _) = layout.resizing(id, to: -1) else { Issue.record("Missing split"); return }
     #expect(fraction == 0.15)
     #expect(layout.resizing(UUID(), to: 0.2) == layout)
 }

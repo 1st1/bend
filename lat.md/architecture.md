@@ -236,7 +236,7 @@ The web view has an additional native clip around its composited content: all co
 
 [Session.swift](../Sources/BrowseCore/Session.swift) represents pane layouts as binary split trees. Splitting replaces the focused leaf; closing a leaf collapses its parent into the surviving sibling and repairs focus when necessary.
 
-Splits carry an axis and fraction. [BrowserView.swift](../Sources/Browse/BrowserView.swift) draws draggable dividers, constrains pane minimum sizes, and scrolls oversized layouts. Zoom temporarily displays a single pane without modifying the saved split tree.
+Splits carry an axis, fraction, and optional automatic-sizing intent. [[architecture#Automatic pane sizing]] describes equal sizing and manual proportions. [BrowserView.swift](../Sources/Browse/BrowserView.swift) draws draggable dividers, constrains pane minimum sizes, and scrolls oversized layouts. Zoom temporarily displays a single pane without modifying the saved split tree.
 
 ## Pinned panes and tabs
 
@@ -257,6 +257,16 @@ Pin state follows the page through reordering, splitting, detaching, joins, and 
 [BrowseApp.swift](../Sources/Browse/BrowseApp.swift) exposes Reopen Closed Pane or Tab in the File menu, disabled when the stack is empty. Closing the final pane records one whole-tab closure; extension-requested pane closures use the same history. Reopening clears zoom and the location popup. Closed views are released: restoration uses saved URLs and identities, without recovering page forms, scroll positions, or back-forward lists. Closed-item history is discarded on restart; reopened layouts are saved normally.
 
 [Session.swift](../Sources/BrowseCore/Session.swift) restores the original split tree when the remaining layout is unchanged. Otherwise it inserts the closed pane beside the nearest surviving sibling, retaining subsequent splits, divider changes, and surviving page URLs. If no sibling remains, the pane opens beside the focused pane. Whole tabs return at their saved index. An unused blank tab created automatically after closing a workspace's last tab is removed on reopen; a replacement that has been navigated, split, or pinned is retained.
+
+## Automatic pane sizing
+
+Untouched rows and columns divide space equally when panes are opened, moved, joined, or removed. Manually resized layouts retain their proportions; new subdivisions can still distribute their own space automatically.
+
+[[Sources/BrowseCore/Session.swift#PaneLayout#automaticUnits]] counts adjacent automatic splits along the same axis, treating perpendicular or manually sized subtrees as one unit. [[Sources/BrowseCore/PaneGeometry.swift#PaneGeometry#place]] allocates equal pane space after accounting for every divider gap, while preserving minimum sizes and scrollable overflow. The binary tree, pane order, identities, and insertion directions remain intact.
+
+[[Sources/Browse/BrowserStore.swift#BrowserStore#resize]] passes current geometry to [[Sources/BrowseCore/Session.swift#PaneLayout#resizing]]. A manual resize freezes the layout's existing automatic dividers at their rendered fractions before changing the targeted divider, preventing other boundaries from jumping. Manual intent persists even when a divider returns to an equal fraction, and survives removal, transfers, and reopening. [[Sources/Browse/PaneResizing.swift#PaneDividerView#mouseDragged]] ignores clicks and constrained drags that do not change size.
+
+[[Sources/BrowseCore/Session.swift#PaneLayout#usesAutomaticSizing]] treats older splits without sizing metadata as automatic only when their fraction is one-half; unequal legacy proportions remain fixed. Older data cannot distinguish an untouched half split from one manually returned to half. Newly resized splits save explicit manual intent.
 
 ## Pane layout animation
 

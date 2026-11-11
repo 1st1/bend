@@ -61,7 +61,10 @@ final class PaneDividerView: NSView {
         // Window coordinates remain stable as this divider moves with the split.
         let delta = placement.axis == .horizontal
             ? event.locationInWindow.x - startPoint.x : startPoint.y - event.locationInWindow.y
-        onResize?(placement.fraction(forLength: startLength + delta))
+        let fraction = placement.fraction(forLength: startLength + delta)
+        // A click or a drag against the size limit does not change sizing intent.
+        guard abs(fraction * placement.available - placement.firstLength) > 0.001 else { return }
+        onResize?(fraction)
     }
     override func mouseUp(with event: NSEvent) {
         mouseDragged(with: event)

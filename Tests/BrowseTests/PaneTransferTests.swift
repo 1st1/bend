@@ -208,7 +208,7 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     try sendTransferMouse(.leftMouseUp, at: center(joinRow), to: window)
     try await settle()
     #expect(store.selectedTab.id == joinDestination.id)
-    guard case .split(_, .horizontal, _, let left, let right) = store.selectedTab.layout else {
+    guard case .split(_, .horizontal, _, let left, let right, _) = store.selectedTab.layout else {
         Issue.record("Expected joined tab groups"); return
     }
     #expect(left == joinDestination.layout)
@@ -560,8 +560,8 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     #expect(store.session.workspaces[0].tabs.count == 1)
     #expect(store.selectedTab.id == second.id && store.selectedTab.title == second.title)
     #expect(store.selectedTab.pages.count == first.pages.count + second.pages.count)
-    guard case .split(_, _, _, let untouched, let merged) = store.selectedTab.layout,
-          case .split(_, let axis, _, let before, let after) = merged else {
+    guard case .split(_, _, _, let untouched, let merged, _) = store.selectedTab.layout,
+          case .split(_, let axis, _, let before, let after, _) = merged else {
         Issue.record("Expected nested merge at the second target pane"); return
     }
     #expect(untouched == .pane(second.pages[0].id))

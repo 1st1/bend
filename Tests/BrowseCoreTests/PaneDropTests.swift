@@ -29,7 +29,7 @@ import Testing
         }
     }
     let moved = try #require(layout.moving(a, beside: b, edge: .right))
-    guard case .split(_, .horizontal, let fraction, _, let sibling) = moved else {
+    guard case .split(_, .horizontal, let fraction, _, let sibling, _) = moved else {
         Issue.record("An unrelated split must survive the move"); return
     }
     #expect(fraction == 0.4)

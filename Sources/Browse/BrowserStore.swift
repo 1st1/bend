@@ -383,7 +383,9 @@ final class BrowserStore: ObservableObject {
         if let controller = existingController(for: targetID) { controller.navigate(address) }
         else { _ = controller(for: destination) }
     }
-    func resize(_ id: UUID, fraction: Double) { editTab { $0.layout = $0.layout.resizing(id, to: fraction) } }
+    func resize(_ id: UUID, fraction: Double, geometry: PaneGeometry) {
+        editTab { $0.layout = $0.layout.resizing(id, to: fraction, geometry: geometry) }
+    }
     @discardableResult
     func movePane(_ source: UUID, beside target: UUID, edge: PaneDropEdge, in tabID: UUID, from sourceTabID: UUID? = nil) -> Bool {
         InputDiagnostics.transition(.paneMove, .requested, paneID: source, tabID: tabID, relatedPaneID: target)
