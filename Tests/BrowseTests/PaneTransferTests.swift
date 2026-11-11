@@ -6,7 +6,8 @@ import BrowseCore
 @testable import Browse
 
 // @lat: [[tests#Cross-tab native pane dragging]]
-@Test @MainActor func crossTabPaneDragging() async throws {
+@Test(.serialized, arguments: SidebarSide.allCases) @MainActor
+func crossTabPaneDragging(side: SidebarSide) async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseTransfer-\(UUID())")
@@ -18,6 +19,7 @@ import BrowseCore
         websiteDataStore: .nonPersistent(), notifications: TestNotifications())
     manager.presentsWindows = false
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
+    store.sidebarSide = side
     let first = BrowserTab(pages: [Page(address: address)]), second = BrowserTab(pages: [Page(address: address)])
     let workspace = Workspace(name: "Test", tabs: [first, second])
     store.session.workspaces = [workspace]
@@ -155,7 +157,7 @@ import BrowseCore
     try await settle()
     let moved = try handle(pageID)
     try sendTransferMouse(.leftMouseDown, at: center(moved), to: window)
-    let sidebarPoint = NSPoint(x: 100, y: 100)
+    let sidebarPoint = NSPoint(x: side == .left ? 100 : content.bounds.width - 100, y: 100)
     try sendTransferMouse(.leftMouseDragged, at: sidebarPoint, to: window)
     #expect(moved.dragSurface?.sidebarTarget?.destination == .workspace(workspace.id))
     try sendTransferMouse(.leftMouseUp, at: sidebarPoint, to: window)

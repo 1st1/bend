@@ -4,7 +4,8 @@ import BrowseCore
 @testable import Browse
 
 // @lat: [[tests#Floating sidebar interaction]]
-@Test @MainActor func floatingSidebarInteraction() async throws {
+@Test(.serialized, arguments: SidebarSide.allCases) @MainActor
+func floatingSidebarInteraction(side: SidebarSide) async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFloatingSidebar-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -12,6 +13,7 @@ import BrowseCore
     owner.restore(show: false)
     let context = try #require(owner.active)
     let store = context.store
+    store.sidebarSide = side
     store.onAddressRequested = nil
     let window = context.window
     defer { owner.prepareToQuit(); window.close() }
@@ -53,7 +55,7 @@ import BrowseCore
     _ = try await originalWeb.evaluateJavaScript("window.sidebarResizes = 0; addEventListener('resize', () => sidebarResizes++)")
     func move(_ point: NSPoint) throws {
         let event = try #require(NSEvent.mouseEvent(with: .mouseMoved,
-            location: tracker.convert(point, to: nil), modifierFlags: [], timestamp: 0,
+            location: tracker.convert(NSPoint(x: side == .left ? point.x : tracker.bounds.width - point.x, y: point.y), to: nil), modifierFlags: [], timestamp: 0,
             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
         tracker.mouseMoved(with: event)
     }
@@ -107,9 +109,10 @@ import BrowseCore
     // A pane header under the panel cannot capture presses through it.
     let lower = try #require(descendants(PaneDragSourceView.self, content).first {
         $0.onHover != nil && !$0.isHiddenOrHasHiddenAncestor &&
-        tracker.convert($0.convert(NSPoint(x: 10, y: $0.bounds.midY), to: nil), from: nil).y > 200
+        tracker.convert($0.convert(NSPoint(x: side == .left ? 10 : $0.bounds.width - 10, y: $0.bounds.midY), to: nil), from: nil).y > 200
     })
-    let covered = lower.convert(NSPoint(x: 10, y: lower.bounds.midY), to: nil)
+    let headerY = tracker.convert(lower.convert(NSPoint(x: 0, y: lower.bounds.midY), to: nil), from: nil).y
+    let covered = tracker.convert(NSPoint(x: tracker.panelRect.midX, y: headerY), to: nil)
     #expect(FloatingSidebarTrackingView.covers(covered, in: window))
     try sendPaneMouse(.leftMouseDown, at: covered, to: window)
     #expect(!window.capturesPaneGesture)

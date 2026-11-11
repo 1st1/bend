@@ -65,12 +65,13 @@ func dividerPointerTracking(axis: SplitAxis) async throws {
 }
 
 // @lat: [[tests#Sidebar visibility animation]]
-@Test(.serialized, arguments: [false, true]) @MainActor
-func sidebarVisibilityAnimation(animationsDisabled: Bool) async throws {
+@Test(.serialized, arguments: [false, true], SidebarSide.allCases) @MainActor
+func sidebarVisibilityAnimation(animationsDisabled: Bool, side: SidebarSide) async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSidebarAnimation-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    store.sidebarSide = side
     let page = store.selectedTab.pages[0]
     let controller = store.controller(for: page)
     controller.isStartPage = false
@@ -96,14 +97,15 @@ func sidebarVisibilityAnimation(animationsDisabled: Bool) async throws {
         for _ in 0..<30 {
             host.layoutSubtreeIfNeeded()
             let frame = canvas.convert(canvas.bounds, to: nil)
-            positions.append(frame.minX)
-            #expect(abs(frame.maxX - expanded.maxX) < 0.5)
+            positions.append(side == .left ? frame.minX : -frame.maxX)
+            #expect(abs(side == .left ? frame.maxX - expanded.maxX : frame.minX - expanded.minX) < 0.5)
             try await Task.sleep(for: .milliseconds(10))
         }
-        let collapsedX = expanded.minX - store.sidebarWidth
-        let expected = visible ? expanded.minX : collapsedX
+        let expandedX = side == .left ? expanded.minX : -expanded.maxX
+        let collapsedX = expandedX - store.sidebarWidth
+        let expected = visible ? expandedX : collapsedX
         #expect(abs(positions.last! - expected) < 0.5)
-        let intermediate = positions.contains { position in position > collapsedX + 1 && position < expanded.minX - 1 }
+        let intermediate = positions.contains { position in position > collapsedX + 1 && position < expandedX - 1 }
         let shouldAnimate = !animationsDisabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         #expect(intermediate == shouldAnimate)
         #expect(mounted(in: host) === canvas)
@@ -116,10 +118,19 @@ func sidebarVisibilityAnimation(animationsDisabled: Bool) async throws {
     store.sidebarVisible = true
     for _ in 0..<10 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(30)) }
     #expect(abs(canvas.convert(canvas.bounds, to: nil).minX - expanded.minX) < 0.5)
+    // Changing sides keeps the live native canvas and its document mounted.
+    store.sidebarSide = side == .left ? .right : .left
+    for _ in 0..<10 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(30)) }
+    #expect(mounted(in: host) === canvas)
+    #expect(originalWebView.superview === originalParent)
+    #expect(try await originalWebView.evaluateJavaScript("document.querySelector('input').value") as? String == "unsaved")
+    let moved = canvas.convert(canvas.bounds, to: nil)
+    #expect(abs(moved.minX - (side == .left ? Chrome.paneInset : store.sidebarWidth + Chrome.paneInset)) < 0.5)
 }
 
 // @lat: [[tests#Sidebar resize tracking and restoration]]
-@Test @MainActor func sidebarResizeTracking() async throws {
+@Test(.serialized, arguments: SidebarSide.allCases) @MainActor
+func sidebarResizeTracking(side: SidebarSide) async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseSidebarResize-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -129,6 +140,8 @@ func sidebarVisibilityAnimation(animationsDisabled: Bool) async throws {
     try JSONEncoder().encode(BrowserSession()).write(to: file)
     let store = BrowserStore(sessionFile: file, persistentExtensions: false)
     #expect(store.sidebarWidth == 250)
+    #expect(store.sidebarSide == .left)
+    store.sidebarSide = side
     let host = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
     let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1100, height: 800),
         styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
@@ -156,12 +169,12 @@ func sidebarVisibilityAnimation(animationsDisabled: Bool) async throws {
         #expect(host.hitTest(host.convert(down, from: nil)) === handle)
         try sendPaneMouse(.leftMouseDown, at: down, to: window)
         for delta in deltas {
-            let point = NSPoint(x: down.x + delta, y: down.y)
+            let point = NSPoint(x: down.x + (side == .left ? delta : -delta), y: down.y)
             try sendPaneMouse(.leftMouseDragged, at: point, to: window)
             try await settle()
             #expect(abs(store.sidebarWidth - min(400, max(200, startWidth + delta))) < 0.5)
         }
-        let up = NSPoint(x: down.x + (deltas.last ?? 0), y: down.y)
+        let up = NSPoint(x: down.x + (side == .left ? 1 : -1) * (deltas.last ?? 0), y: down.y)
         try sendPaneMouse(.leftMouseUp, at: up, to: window)
         try await settle()
     }
@@ -183,6 +196,16 @@ func sidebarVisibilityAnimation(animationsDisabled: Bool) async throws {
     let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
     #expect(restored.sidebarWidth == 250)
     #expect(restored.session.isValid)
+    #expect(restored.sidebarSide == side)
+    let secondary = BrowserStore(sessionFile: root.appendingPathComponent("secondary.json"), persistentExtensions: false, sharedStore: restored)
+    let privateStore = BrowserStore(sessionFile: root.appendingPathComponent("private.json"), persistentExtensions: false, sharedStore: restored, isPrivate: true)
+    #expect(secondary.sidebarSide == side)
+    #expect(privateStore.sidebarSide == side)
+    secondary.sidebarSide = side == .left ? .right : .left
+    #expect(restored.sidebarSide == secondary.sidebarSide)
+    #expect(privateStore.sidebarSide == secondary.sidebarSide)
+    secondary.downloads.shutdown()
+    privateStore.downloads.shutdown()
     restored.session.sidebarWidth = 900
     #expect(restored.sidebarWidth == 400)
     restored.session.sidebarWidth = -5

@@ -73,7 +73,7 @@ struct SidebarMediaPlayer: View {
             .onDisappear { hovered = false }
             .background(WindowDragArea(excluded: true))
             // The pane canvas supplies the six-point gap on the right.
-            .padding(.leading, PaneGeometry.gap)
+            .padding(store.sidebarSide == .left ? .leading : .trailing, PaneGeometry.gap)
             .padding(.vertical, PaneGeometry.gap)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Now playing")

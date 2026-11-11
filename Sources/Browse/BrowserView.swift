@@ -28,15 +28,7 @@ struct BrowserView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if store.sidebarVisible {
-                sidebar(floating: false).frame(width: store.sidebarWidth)
-                    .overlay(alignment: .trailing) {
-                        SidebarResizeHandle(store: store).frame(width: 8)
-                            .background(WindowDragArea(excluded: true)).offset(x: 4)
-                    }
-                    .transition(reduceMotion ? .identity : .move(edge: .leading).combined(with: .opacity))
-                    .zIndex(1)
-            }
+            if store.sidebarVisible && store.sidebarSide == .left { dockedSidebar }
             MountedTabContent(store: store)
             .padding(Chrome.paneInset)
             .background {
@@ -44,9 +36,11 @@ struct BrowserView: View {
                     WindowMaterial(material: .underWindowBackground).allowsHitTesting(false)
                 }
             }
+            if store.sidebarVisible && store.sidebarSide == .right { dockedSidebar }
         }
+        .onChange(of: store.sidebarSide) { _, _ in store.sidebarFloating = false }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.sidebarVisible)
-        .overlay(alignment: .topLeading) {
+        .overlay(alignment: store.sidebarSide == .left ? .topLeading : .topTrailing) {
             if !store.sidebarVisible && store.sidebarFloating {
                 sidebar(floating: true)
                     .frame(width: store.sidebarWidth)
@@ -54,10 +48,10 @@ struct BrowserView: View {
                     .background(PaneChromeBackground(cornerRadius: 14, appearance: store.windowGlass))
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                     .shadow(color: .black.opacity(0.35), radius: 14, x: 4, y: 4)
-                    .padding(.leading, FloatingSidebarTrackingView.inset)
+                    .padding(store.sidebarSide == .left ? .leading : .trailing, FloatingSidebarTrackingView.inset)
                     .padding(.top, FloatingSidebarTrackingView.inset)
                     .padding(.bottom, FloatingSidebarTrackingView.inset)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    .transition(.move(edge: store.sidebarSide == .left ? .leading : .trailing).combined(with: .opacity))
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: store.sidebarFloating)
@@ -74,17 +68,29 @@ struct BrowserView: View {
         }
     }
 
+    private var dockedSidebar: some View {
+        sidebar(floating: false).frame(width: store.sidebarWidth)
+            .overlay(alignment: store.sidebarSide == .left ? .trailing : .leading) {
+                SidebarResizeHandle(store: store).frame(width: 8)
+                    .background(WindowDragArea(excluded: true))
+                    .offset(x: store.sidebarSide == .left ? 4 : -4)
+            }
+            .transition(reduceMotion ? .identity : .move(edge: store.sidebarSide == .left ? .leading : .trailing).combined(with: .opacity))
+            .zIndex(1)
+    }
+
     private func sidebar(floating: Bool) -> some View {
         // The docked canvas contributes its own gap after the sidebar.
-        let trailingInset = Chrome.sidebarHorizontalInset - (floating ? 0 : Chrome.paneInset)
+        let leadingInset = Chrome.sidebarHorizontalInset - (!floating && store.sidebarSide == .right ? Chrome.paneInset : 0)
+        let trailingInset = Chrome.sidebarHorizontalInset - (!floating && store.sidebarSide == .left ? Chrome.paneInset : 0)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Chrome.sidebarControlSpacing) {
-                if floating && !store.isFullScreen { Color.clear.frame(width: 66) }
+                if floating && store.sidebarSide == .left && !store.isFullScreen { Color.clear.frame(width: 66) }
                 Spacer(minLength: 0)
                 DownloadsButton(downloads: store.downloads)
-                iconButton("sidebar.left", floating ? "Keep sidebar open · ⌘⇧S" : "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
+                iconButton(store.sidebarSide == .left ? "sidebar.left" : "sidebar.right", floating ? "Keep sidebar open · ⌘⇧S" : "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
                     .background(WindowDragArea(excluded: true))
-            }.padding(.leading, Chrome.sidebarHorizontalInset).padding(.trailing, trailingInset)
+            }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
                 .frame(height: 2 * (Chrome.headerCenterY - (floating ? FloatingSidebarTrackingView.inset : 0)))
                 .padding(.top, !floating && store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
                 .zIndex(1)
@@ -96,7 +102,7 @@ struct BrowserView: View {
             }
             if !store.favorites.isEmpty {
                 SidebarFavorites(store: store)
-                    .padding(.leading, Chrome.sidebarHorizontalInset).padding(.trailing, trailingInset)
+                    .padding(.leading, leadingInset).padding(.trailing, trailingInset)
                     .padding(.top, 6)
             }
 
@@ -106,7 +112,7 @@ struct BrowserView: View {
                         SidebarTabRow(store: store, tab: tab)
                     }
 
-                }.padding(.leading, Chrome.sidebarHorizontalInset).padding(.trailing, trailingInset)
+                }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
                     .padding(.top, store.favorites.isEmpty ? 6 : 16)
                     .padding(.bottom, Chrome.sidebarScrollFadeHeight)
             }
@@ -425,7 +431,7 @@ private struct BrowserPane: View {
     }
     private var hostsWindowControls: Bool {
         let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
-        return !store.sidebarVisible && pageID == (zoomed ?? tab.layout.paneIDs.first)
+        return (!store.sidebarVisible || store.sidebarSide == .right) && pageID == (zoomed ?? tab.layout.paneIDs.first)
     }
 
     var body: some View {
@@ -474,10 +480,12 @@ private struct BrowserPane: View {
         HStack(spacing: Self.controlGroupSpacing) {
             if hostsWindowControls {
                 if !store.isFullScreen { Color.clear.frame(width: 66) }
-                HStack(spacing: Chrome.sidebarControlSpacing) {
-                    if tab.id == store.session.selectedTab { DownloadsButton(downloads: store.downloads) }
-                    iconButton("sidebar.left", "Show sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible = true }
-                        .background(WindowDragArea(excluded: true))
+                if !store.sidebarVisible {
+                    HStack(spacing: Chrome.sidebarControlSpacing) {
+                        if tab.id == store.session.selectedTab { DownloadsButton(downloads: store.downloads) }
+                        iconButton(store.sidebarSide == .left ? "sidebar.left" : "sidebar.right", "Show sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible = true }
+                            .background(WindowDragArea(excluded: true))
+                    }
                 }
             }
             HStack(spacing: 0) {

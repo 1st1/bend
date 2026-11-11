@@ -131,6 +131,8 @@ This opt-in check uses no saved sign-in and depends on the site's availability, 
 
 [FloatingSidebarTests.swift](../Tests/BrowseTests/FloatingSidebarTests.swift) exercises edge reveal, hover retention, delayed dismissal, tab selection through native hit testing, pinning, fullscreen edge geometry, and deactivation.
 
+The same native interaction checks run on both window edges, including overlay hit routing and traffic-light access.
+
 The mounted-window test verifies the canvas frame and retained WebView identities remain unchanged while the panel opens, switches tabs, and closes. The panel reaches the top inset behind the traffic lights, which remain native hit targets. The top-row pin button receives clicks above the pane header; covered pane headers cannot begin a pane drag. Exit and reentry are delivered in one main-actor turn before awaiting the dismissal interval, so cancellation does not depend on the runner resuming a short sleep before the deadline.
 
 ## Build bundle publication
@@ -317,6 +319,8 @@ Moving a designated Command-click pane clears the source tab’s designation and
 
 [PaneTransferTests.swift](../Tests/BrowseTests/PaneTransferTests.swift) drives a single-pane tab through sidebar hover into an unvisited tab, drops on its WebKit content, then detaches into sidebar space.
 
+Both sidebar positions exercise native sidebar drop targets, including returning a pane to unused sidebar space.
+
 The test uses the unified titlebar and glass window hierarchy. It verifies delayed-hover cancellation, destination selection, source-tab removal, edge placement, direct row drops before the hover delay, zoomed-pane detaching and row drops, self-row rejection, and saved layouts. Consecutive same-tab drops alternate between panes during hover animation and after focus/layout updates in a key window, and every release must reach the window drag controller. The same live web view, document timestamp, unsaved input, and extension tab adapter survive transfers without creating closed-item history. A missing mouse-up is followed by a press on another pane, which must cancel stale tracking and complete a fresh drag. A whole-tab row-center drop preserves the source split tree, live document timestamp, unsaved input, controller, and extension adapter inside the joined destination. All data and HTTP pages are disposable.
 
 ## Pane drop targeting
@@ -479,13 +483,13 @@ Regression coverage includes bare-host completion of www. URLs, typed-case prese
 
 [PaneResizingTests.swift](../Tests/BrowseTests/PaneResizingTests.swift) drives the sidebar edge in a native window, checking repeated pointer positions, reversals, bounds, repeated drags, pane resizing, live controllers, hide/show, and saved-width restoration.
 
-The allowed range is 200–400 points with a 250-point default. Existing in-range widths remain unchanged; out-of-range widths clamp and nonfinite stored values use the default.
+Both sidebar positions exercise mirrored native dragging. Missing position defaults to left; saved position restores and is shared with secondary and private stores. The allowed range is 200–400 points with a 250-point default. Existing in-range widths remain unchanged; out-of-range widths clamp and nonfinite stored values use the default.
 
 ## Sidebar visibility animation
 
 [PaneResizingTests.swift](../Tests/BrowseTests/PaneResizingTests.swift) samples native canvas geometry during sidebar collapse and restoration, checking intermediate positions, final bounds, reversal, and unchanged live WebView/controller identity.
 
-Disabling animations applies the final layout immediately without intermediate frames.
+Both sidebar positions are covered. Disabling animations applies the final layout immediately without intermediate frames. Changing sides retains the mounted canvas, native WebView parent, and unsaved form state while moving the canvas to the opposite edge.
 
 ## Native sidebar tab dragging
 
@@ -698,6 +702,8 @@ Invalid drops leave both windows open. The surviving window retains unsaved form
 ## Window control alignment
 
 [[Tests/BrowseTests/BrowserWindowTests.swift#windowControlAlignment]] verifies native traffic lights align with pane titles in new regular and private windows, before and after resizing and sidebar toggles, while another window changes fullscreen toolbar visibility.
+
+Both sidebar positions preserve upper-left traffic-light geometry and keep pane title hit regions clear of the controls in regular and private windows.
 
 ## Default browser selection
 

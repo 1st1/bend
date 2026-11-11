@@ -181,11 +181,16 @@ public struct Workspace: Codable, Identifiable, Sendable {
     }
 }
 
+public enum SidebarSide: String, Codable, CaseIterable, Sendable {
+    case left, right
+}
+
 // @lat: [[architecture#Session restoration]]
 public struct BrowserSession: Codable, Sendable {
     public var workspaces: [Workspace]
     public var selectedTab: UUID
     public var sidebarWidth: Double?
+    public var sidebarSide: SidebarSide?
     public var commandClickOpensNewTab: Bool?
     public var commandClickDestination: CommandClickDestination?
     public var commandShiftClickDestination: LinkOpenDestination?

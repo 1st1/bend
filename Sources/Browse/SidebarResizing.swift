@@ -13,6 +13,7 @@ final class SidebarResizeView: NSView {
     weak var store: BrowserStore?
     private var startX: CGFloat?
     private var startWidth: CGFloat = 0
+    private var dragDirection: CGFloat = 1
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -27,6 +28,7 @@ final class SidebarResizeView: NSView {
     override func mouseDown(with event: NSEvent) {
         InputDiagnostics.record(.sidebarResize, event: event, view: self)
         InputDiagnostics.transition(.sidebarResizeLifetime, .started, view: self)
+        dragDirection = store?.sidebarSide == .right ? -1 : 1
         startX = event.locationInWindow.x
         startWidth = store?.sidebarWidth ?? BrowserStore.defaultSidebarWidth
     }
@@ -35,7 +37,7 @@ final class SidebarResizeView: NSView {
         InputDiagnostics.record(.sidebarResize, event: event, view: self)
         guard let startX else { return }
         // Window coordinates stay fixed while this handle moves with the edge.
-        store?.resizeSidebar(to: startWidth + event.locationInWindow.x - startX)
+        store?.resizeSidebar(to: startWidth + dragDirection * (event.locationInWindow.x - startX))
     }
 
     override func mouseUp(with event: NSEvent) {

@@ -381,7 +381,7 @@ import BrowseCore
 }
 
 // @lat: [[tests#Window control alignment]]
-@Test(.serialized, arguments: [false, true]) @MainActor func windowControlAlignment(isPrivate: Bool) async throws {
+@Test(.serialized, arguments: [false, true], SidebarSide.allCases) @MainActor func windowControlAlignment(isPrivate: Bool, side: SidebarSide) async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendChromeAlignment-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -390,6 +390,7 @@ import BrowseCore
     let original = try #require(owner.active)
     original.windowWillEnterFullScreen(Notification(name: NSWindow.willEnterFullScreenNotification, object: original.window))
     let context = isPrivate ? owner.newPrivateWindow(show: false) : owner.newWindow(show: false)
+    context.store.sidebarSide = side
     #expect(context.window.toolbar?.isVisible == true)
     #expect(original.window.toolbar?.isVisible == false)
     original.windowDidExitFullScreen(Notification(name: NSWindow.didExitFullScreenNotification, object: original.window))
@@ -426,6 +427,7 @@ import BrowseCore
                 let frame = header.convert(header.bounds, to: nil)
                 let centerFromTop = context.window.frame.height - frame.midY
                 #expect(abs(centerFromTop - buttons[0].midY) <= 0.5)
+                #expect(frame.minX > buttons[2].maxX)
             }
 
         }

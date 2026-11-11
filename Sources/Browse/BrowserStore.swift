@@ -239,6 +239,16 @@ final class BrowserStore: ObservableObject {
         }
     }
 
+    // @lat: [[architecture#Sidebar placement]]
+    var sidebarSide: SidebarSide {
+        get { sharedStore?.sidebarSide ?? session.sidebarSide ?? .left }
+        set {
+            if let sharedStore { sharedStore.sidebarSide = newValue; return }
+            session.sidebarSide = newValue
+            saveSoon()
+        }
+    }
+
     static let defaultSidebarWidth: CGFloat = 250
     static let sidebarWidthRange: ClosedRange<CGFloat> = 200...400
 

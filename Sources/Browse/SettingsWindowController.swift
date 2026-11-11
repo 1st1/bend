@@ -267,6 +267,12 @@ private struct UISettingsView: View {
     var body: some View {
         Form {
             DefaultBrowserSettingsSection()
+            Section("Sidebar") {
+                Picker("Position", selection: $store.sidebarSide) {
+                    Text("Left").tag(SidebarSide.left)
+                    Text("Right").tag(SidebarSide.right)
+                }
+            }
             Section {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
