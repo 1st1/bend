@@ -7,6 +7,8 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import base64
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -42,7 +44,7 @@ def validated_assets(directory):
     if (ROOT / "VERSION").read_text().strip() != version:
         raise ValueError("Release version does not match the checkout")
     paths = [directory / f"Bend-{version}-arm64.dmg", directory / "SHA256SUMS",
-             directory / "RELEASE_NOTES.md", directory / "build.json"]
+             directory / "RELEASE_NOTES.md", directory / "build.json", directory / "appcast.xml"]
     if any(not path.is_file() or path.is_symlink() or path.stat().st_size == 0 for path in paths):
         raise ValueError("Release assets are missing or invalid")
     metadata = json.loads(paths[3].read_text())
@@ -52,6 +54,21 @@ def validated_assets(directory):
         raise ValueError("DMG checksum does not match")
     if paths[2].read_bytes() != (ROOT / f".changes/v{version}.md").read_bytes():
         raise ValueError("Release notes do not match the checkout")
+    namespace = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
+    feed = ET.fromstring(paths[4].read_bytes())
+    items = feed.findall("./channel/item")
+    if len(items) != 1:
+        raise ValueError("Update feed must contain this release only")
+    item = items[0]
+    archive = item.find("enclosure")
+    expected_url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/v{version}/{paths[0].name}"
+    if (item.findtext(namespace + "version") != metadata.get("BEND_BUILD_NUMBER") or
+        item.findtext(namespace + "shortVersionString") != version or
+        item.findtext(namespace + "minimumSystemVersion") != "26.0" or
+        item.findtext(namespace + "hardwareRequirements") != "arm64" or archive is None or
+        archive.get("url") != expected_url or archive.get("length") != str(paths[0].stat().st_size) or
+        len(base64.b64decode(archive.get(namespace + "edSignature", ""), validate=True)) != 64):
+        raise ValueError("Update feed does not match the published artifact")
     return version, sha, paths
 
 
@@ -109,7 +126,7 @@ def main():
         if os.environ.get("GITHUB_STEP_SUMMARY"):
             with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
                 stream.write(f"[Download the published release]({url})\n")
-    except (ValueError, KeyError, OSError, RuntimeError, subprocess.CalledProcessError) as error:
+    except (ValueError, KeyError, OSError, RuntimeError, subprocess.CalledProcessError, ET.ParseError) as error:
         print(f"Release publication failed: {error}", file=sys.stderr)
         return 1
     return 0
