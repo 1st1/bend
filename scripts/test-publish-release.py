@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise publication, partial failures, and retries without a GitHub release."""
 import copy
+import base64
 import importlib.util
 import json
 import os
@@ -13,6 +14,9 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location("publisher", Path(__file__).with_name("publish-release.py"))
 publisher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(publisher)
+feed_spec = importlib.util.spec_from_file_location("update_feed", Path(__file__).with_name("update-feed.py"))
+update_feed = importlib.util.module_from_spec(feed_spec)
+feed_spec.loader.exec_module(update_feed)
 
 
 # @lat: [[tests#GitHub release publication]]
@@ -33,10 +37,11 @@ class PublicationTests(unittest.TestCase):
         (self.directory / "SHA256SUMS").write_text(f"{publisher.digest(dmg)}  {dmg.name}\n")
         self.environment = {"GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "push",
                             "GITHUB_REF": "refs/heads/main", "RELEASE_VERSION": "0.1.1",
-                            "GITHUB_SHA": "a" * 40, "GITHUB_RUN_ID": "123", "GITHUB_REPOSITORY": "example/bend"}
+                            "BEND_BUILD_NUMBER": "123001", "GITHUB_SHA": "a" * 40, "GITHUB_RUN_ID": "123", "GITHUB_REPOSITORY": "example/bend"}
         (self.directory / "build.json").write_text(json.dumps(self.environment))
         self.addCleanup(patch.stopall)
         patch.dict(os.environ, self.environment).start()
+        update_feed.make_feed(self.directory, base64.b64encode(bytes(64)).decode())
         patch.object(publisher, "ROOT", self.root).start()
         self.reference = None
         self.release = None
@@ -83,11 +88,18 @@ class PublicationTests(unittest.TestCase):
         self.assertFalse(self.release["draft"])
         self.assertFalse(self.release["prerelease"])
         self.assertEqual(self.release["body"], (self.directory / "RELEASE_NOTES.md").read_text())
-        self.assertEqual(len(self.release["assets"]), 4)
+        self.assertEqual(len(self.release["assets"]), 5)
         self.operations.clear()
         publisher.publish(self.directory)
         self.assertEqual(self.upload.call_count, 1)
         self.assertTrue(all(method == "GET" for method, _, _ in self.operations))
+
+    def test_mismatched_update_feed_blocks_publication(self):
+        feed = self.directory / "appcast.xml"
+        feed.write_text(feed.read_text().replace("123001", "123002"))
+        with self.assertRaisesRegex(ValueError, "Update feed"):
+            publisher.publish(self.directory)
+        self.assertEqual(self.operations, [])
 
     def test_failed_upload_leaves_draft_and_retry_completes(self):
         self.fail_upload = True

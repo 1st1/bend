@@ -6,9 +6,18 @@ trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/scripts" "$root/bin" "$root/dist/Bend Debug.app/Contents/MacOS"
 cp "$(dirname "$0")/build-app.sh" "$root/scripts/build-app.sh"
 cp "$(dirname "$0")/version.sh" "$root/scripts/version.sh"
+cp "$(dirname "$0")/embed-sparkle.sh" "$root/scripts/embed-sparkle.sh"
+framework="$root/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+mkdir -p "$framework/Versions/B/XPCServices/Downloader.xpc" "$framework/Versions/B/XPCServices/Installer.xpc" "$framework/Versions/B/Updater.app"
+printf 'Sparkle license fixture\n' > "$root/.build/artifacts/sparkle/Sparkle/LICENSE"
+printf 'framework binary' > "$framework/Versions/B/Sparkle"
+printf 'installer binary' > "$framework/Versions/B/Autoupdate"
+ln -s B "$framework/Versions/Current"
+ln -s Versions/Current/Sparkle "$framework/Sparkle"
 printf '2.3.4\n' > "$root/VERSION"
 export BEND_BUILD_NUMBER=42
 mkdir -p "$root/Assets"
+printf "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n" > "$root/Assets/SparklePublicKey.txt"
 cp "$(dirname "$0")/../Assets/AppIcon.icns" "$root/Assets/AppIcon.icns"
 export BROWSE_BUILD_TEST_ROOT="$root"
 export PATH="$root/bin:$PATH"
@@ -25,7 +34,16 @@ if [[ "$1" == "--force" ]]; then
   printf '%s\n' "$@" > "$BROWSE_BUILD_TEST_ROOT/signing-arguments"
 fi
 SH
-chmod +x "$root/bin/swift" "$root/bin/codesign"
+cat > "$root/bin/otool" <<'SH'
+#!/bin/bash
+printf '          cmd LC_RPATH\n         path %s/.build/frameworks (offset 12)\n' "$BROWSE_BUILD_TEST_ROOT"
+SH
+cat > "$root/bin/install_name_tool" <<'SH'
+#!/bin/bash
+[[ "$1" == -delete_rpath && "$2" == "$BROWSE_BUILD_TEST_ROOT/.build/frameworks" ]]
+printf 'removed build search path\n' >> "$BROWSE_BUILD_TEST_ROOT/rpath-removal"
+SH
+chmod +x "$root/bin/swift" "$root/bin/codesign" "$root/bin/otool" "$root/bin/install_name_tool"
 printf 'previous executable\n' > "$root/dist/Bend Debug.app/Contents/MacOS/Bend"
 printf 'new executable\n' > "$root/bin/Bend"
 original_inode="$(stat -f %i "$root/dist/Bend Debug.app/Contents/MacOS/Bend")"
@@ -85,6 +103,13 @@ plist="$root/release/Bend.app/Contents/Info.plist"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == dev.yury.browse.prototype ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :BendBuildProfile' "$plist")" == production ]]
 grep -q -- '-c release --disable-sandbox -Xswiftc -DBEND_PRODUCTION' "$root/swift-arguments"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$plist")" == https://github.com/1st1/bend/releases/latest/download/appcast.xml ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SURequireSignedFeed' "$plist")" == true ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUVerifyUpdateBeforeExtraction' "$plist")" == true ]]
+[[ -f "$root/release/Bend.app/Contents/Resources/Sparkle-LICENSE" ]]
+[[ -L "$root/release/Bend.app/Contents/Frameworks/Sparkle.framework/Versions/Current" ]]
+[[ -f "$root/release/Bend.app/Contents/Frameworks/Sparkle.framework/Sparkle" ]]
+if /usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$root/dist/Bend Debug.app/Contents/Info.plist" >/dev/null 2>&1; then exit 1; fi
 printf 'Debug/production build isolation tests passed\n'
 production_inode="$(stat -f %i "$root/release/Bend.app/Contents/MacOS/Bend")"
 for invalid in 1.2 01.2.3 1.2.3-beta '<invalid>'; do

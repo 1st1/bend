@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         browserWindows.onSettings = { [weak self] section in self?.presentSettings(section: section) }
         restoreBrowserWindows()
         installMenus()
+        AppUpdater.shared.start()
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { event in
             InputDiagnostics.record(.application, event: event)
             defer { InputDiagnostics.record(.applicationReturned, event: event) }
@@ -133,6 +134,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let main = NSMenu()
         let appMenu = NSMenu(title: AppProfile.current.name)
         appMenu.addItem(withTitle: "About \(AppProfile.current.name)", action: #selector(about), keyEquivalent: "").target = self
+        if AppUpdater.shared.isEnabled {
+            let update = appMenu.addItem(withTitle: "Check for Updates…",
+                action: #selector(AppUpdater.checkForUpdates(_:)), keyEquivalent: "")
+            update.target = AppUpdater.shared
+        }
         appMenu.addItem(.separator())
         add("Settings…", #selector(showSettings), ",", to: appMenu)
         appMenu.addItem(.separator())

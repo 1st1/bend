@@ -181,9 +181,9 @@ private struct FixedSettingsSidebar: NSViewRepresentable {
         if let split = view as? NSSplitView,
            let controller = split.delegate as? NSSplitViewController,
            let sidebar = controller.splitViewItems.first {
-            sidebar.minimumThickness = 200
-            sidebar.maximumThickness = 200
-            sidebar.canCollapse = false
+            if sidebar.minimumThickness != 200 { sidebar.minimumThickness = 200 }
+            if sidebar.maximumThickness != 200 { sidebar.maximumThickness = 200 }
+            if sidebar.canCollapse { sidebar.canCollapse = false }
             return
         }
         for child in view.subviews { lockWidth(in: child) }
@@ -196,6 +196,9 @@ private struct FixedSettingsSidebar: NSViewRepresentable {
     }
 
     final class SidebarConstraintView: NSView {
+        private weak var sidebar: NSSplitViewItem?
+        private var observations: [NSKeyValueObservation] = []
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             DispatchQueue.main.async { [weak self] in self?.lockWidth() }
@@ -206,6 +209,23 @@ private struct FixedSettingsSidebar: NSViewRepresentable {
             while let view = ancestor {
                 if let split = view as? NSSplitView,
                    split.delegate is NSSplitViewController {
+                    if let item = (split.delegate as? NSSplitViewController)?.splitViewItems.first,
+                       sidebar !== item {
+                        sidebar = item
+                        // SwiftUI can reset these properties after its initial layout.
+                        // Keep the native constraint in sync for the split item's lifetime.
+                        observations = [
+                            item.observe(\.minimumThickness, options: [.new]) { [weak self] _, _ in
+                                MainActor.assumeIsolated { self?.lockWidth() }
+                            },
+                            item.observe(\.maximumThickness, options: [.new]) { [weak self] _, _ in
+                                MainActor.assumeIsolated { self?.lockWidth() }
+                            },
+                            item.observe(\.canCollapse, options: [.new]) { [weak self] _, _ in
+                                MainActor.assumeIsolated { self?.lockWidth() }
+                            },
+                        ]
+                    }
                     FixedSettingsSidebar.lockWidth(in: split)
                     return
                 }

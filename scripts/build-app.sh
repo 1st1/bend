@@ -21,6 +21,28 @@ while [[ $# -gt 0 ]]; do
     *) printf 'Usage: %s [--production] [--output PATH] [--open]\n' "$0" >&2; exit 2 ;;
   esac
 done
+update_plist=''
+if [[ "$profile" == production ]]; then
+  [[ -f Assets/SparklePublicKey.txt ]] || { printf "Configure the Sparkle public key before building production; see docs/github-build-setup.md.\n" >&2; exit 1; }
+  public_key="$(python3 - <<'PYKEY'
+import base64
+from pathlib import Path
+key = Path("Assets/SparklePublicKey.txt").read_text().strip()
+if len(base64.b64decode(key, validate=True)) != 32:
+    raise ValueError("Invalid Sparkle public signing key")
+print(key)
+PYKEY
+)"
+  update_plist="<key>SUFeedURL</key><string>https://github.com/1st1/bend/releases/latest/download/appcast.xml</string>
+  <key>SUPublicEDKey</key><string>$public_key</string>
+  <key>SUEnableAutomaticChecks</key><true/>
+  <key>SUScheduledCheckInterval</key><integer>86400</integer>
+  <key>SUAutomaticallyUpdate</key><false/>
+  <key>SUAllowsAutomaticUpdates</key><false/>
+  <key>SUVerifyUpdateBeforeExtraction</key><true/>
+  <key>SURequireSignedFeed</key><true/>
+  <key>SUSendProfileInfo</key><false/>"
+fi
 app="${output:-$PWD/dist/$app_name.app}"
 # Normalize the publication path before creating its sibling staging directory.
 mkdir -p "$(dirname "$app")"
@@ -75,6 +97,7 @@ cat > "$candidate/Contents/Info.plist" <<PLIST
     <key>CFBundleTypeRole</key><string>Viewer</string>
     <key>CFBundleURLSchemes</key><array><string>http</string><string>https</string></array>
   </dict></array>
+  $update_plist
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$build_number</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
@@ -83,6 +106,7 @@ cat > "$candidate/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 # @lat: [[architecture#Development signing]]
+./scripts/embed-sparkle.sh "$candidate" "${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}"
 codesign --force --options runtime --sign "${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}" "$candidate"
 codesign --verify --strict "$candidate"
 # Never overwrite or re-sign files mapped by a running Bend process.

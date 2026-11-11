@@ -45,7 +45,27 @@ List secret names without revealing values:
 gh secret list --repo 1st1/bend --env release-signing
 ```
 
-The list must contain all five names: BEND_CERTIFICATE_P12_BASE64, BEND_CERTIFICATE_PASSWORD, BEND_NOTARY_KEY_P8, BEND_NOTARY_KEY_ID, and BEND_NOTARY_ISSUER_ID. The environment variable BEND_SIGNING_IDENTITY is already configured with the full Developer ID certificate name.
+The list must contain all six names: BEND_CERTIFICATE_P12_BASE64, BEND_CERTIFICATE_PASSWORD, BEND_NOTARY_KEY_P8, BEND_NOTARY_KEY_ID, BEND_NOTARY_ISSUER_ID, and BEND_UPDATE_PRIVATE_KEY. The environment variable BEND_SIGNING_IDENTITY is already configured with the full Developer ID certificate name.
+
+## Update signing key
+
+Sparkle update archives and feeds use a separate Ed25519 key. Bend’s key is configured in the local login Keychain under `bend-release-updates` and in the GitHub `release-signing` environment as `BEND_UPDATE_PRIVATE_KEY`; only its public half is tracked in `Assets/SparklePublicKey.txt`.
+
+For a fresh setup, generate the key once after resolving packages:
+
+```sh
+swift package resolve
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account bend-release-updates
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account bend-release-updates -p > Assets/SparklePublicKey.txt
+```
+
+Commit only Assets/SparklePublicKey.txt. The private seed stays in the login Keychain. Export it with Sparkle’s `generate_keys --account bend-release-updates -x PATH` to a protected temporary file, upload that file via stdin to `gh secret set BEND_UPDATE_PRIVATE_KEY --repo 1st1/bend --env release-signing`, then delete the temporary export. Keep a secure backup. Do not print the seed or put it in command arguments.
+
+To verify the existing local key, run `python3 scripts/verify-update-key.py` from any shell. It prints each step and a final PASS or FAIL, exports the key once into a protected temporary directory, checks the public-key match, and signs and verifies a test file. Later steps read the export through stdin instead of requesting Keychain access again. The export is removed on completion, failure, or Ctrl-C; no key is generated or uploaded.
+
+Production packaging requires the public key. CI checks that its private seed matches that public key, signs the exact notarized DMG and appcast.xml, and verifies both signatures. The app requires signed feeds and archive validation before extraction. Sparkle is pinned in Package.swift/Package.resolved and its installer helpers are signed inside-out during packaging.
+
+The feed is hosted at `https://github.com/1st1/bend/releases/latest/download/appcast.xml`. No separate server or GitHub Pages deployment is needed. Each new release publishes its own signed feed alongside its DMG. Version 0.2.0 and earlier need one manual upgrade to obtain the updater. Debug builds never check or install production updates.
 
 ## First production candidate
 
@@ -71,6 +91,7 @@ Merge the version-bump PR into main. Once metadata, native tests, and the fresh 
 - `SHA256SUMS`
 - `RELEASE_NOTES.md`
 - `build.json`
+- `appcast.xml` (signed Sparkle update feed)
 
 The release description comes from `.changes/vVERSION.md`. The `.dmg` asset is the installer itself, without a ZIP wrapper. Release visibility follows the repository's visibility; a private repository still requires access. GitHub's generated source archives may also appear alongside these assets.
 

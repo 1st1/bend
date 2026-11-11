@@ -1054,3 +1054,13 @@ Coverage includes exact row boundaries, the favorites inset, resizing, insertion
 ## Option-click shared controller isolation
 
 [[Tests/BrowseTests/LinkNavigationTests.swift#optionClickSharedControllerIsolation]] shares one user-content controller between a routed pane and a plain WebView, verifying only the pane enables Option-click interception and other views cannot route links.
+
+## Application updater isolation
+
+[[Tests/BrowseTests/AppUpdaterTests.swift#applicationUpdaterIsolation]] verifies only packaged production apps are eligible for updates, debug checks are no-ops, and Sparkle’s optional reminder callbacks are registered with their exact selectors.
+
+## Application update feed
+
+[[scripts/test-update-feed.py#UpdateFeedTests]] verifies exact archive/build metadata, escaped release notes, rejection of invalid metadata, and signatures using a public RFC test key on macOS. Tampered archives/feeds and mismatched signing keys are rejected.
+
+The manual verification helper is exercised with a mocked Keychain export and real signing tools, checking one export per run, progress and success output, restrictive permissions, and cleanup after success or key mismatch.
