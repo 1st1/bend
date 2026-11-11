@@ -14,6 +14,8 @@ Run `./scripts/changie.sh new` and choose Added, Changed, Fixed, Removed, or Sec
 
 [[scripts/version.sh]] reads the checked-in [[VERSION]] for both debug and production app versions. [[scripts/build-app.sh]] writes it into the app plist, and [[scripts/build-prod.sh]] derives the DMG filename from that plist.
 
+[[Sources/Browse/BrowseApp.swift#AppDelegate#about]] uses the standard About panel’s bundle version metadata, so its displayed version follows the packaged release instead of a separate hardcoded label.
+
 Versions have exactly three numeric components with no leading zeroes, prefix, or prerelease suffix. Feature releases increment the minor version while Bend is pre-1.0; fixes increment the patch version. The initial 0.1.0 entry normalizes the earlier 0.1 prototype baseline without inventing historical release notes.
 
 `BEND_BUILD_NUMBER` supplies a positive integer for the separate bundle build number and defaults to 1 for local builds. The GitHub workflow uses its run number times 1000 plus the attempt number for candidate build identity; fresh runs and retries within a run increase it. Rerunning an older workflow retains its older run-number range. Local builds default to 1. Invalid version or build-number values fail before compilation or bundle replacement. Both profiles require macOS 26 or later; architecture remains the build host architecture.
