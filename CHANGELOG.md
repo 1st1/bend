@@ -9,7 +9,7 @@ Earlier prototype builds used the version `0.1` without a versioned changelog; `
 ### Added
 - Use Command-Shift-P to search tab and pane actions, and duplicate complete tabs from the command popup or tab context menu.
 - Use the native macOS Dock animation and progress reporting for downloads.
-- Add website security controls for fraudulent-site warnings, JavaScript, HTTP warnings, and cookie blocking, plus website data management.
+- Add website security controls for fraudulent-site warnings, JavaScript, HTTP warnings, and cookie blocking, plus website data management. JavaScript changes take effect on the next navigation.
 - Add Privacy settings for tracking prevention, Apple Pay disclosure, and ad measurement. Ad measurement is off by default; additional WebKit privacy protections are enabled.
 - Install Mouse Gestures for Safari in Bend, with an App Store handoff when needed, and use its default new-tab gesture.
 ### Changed

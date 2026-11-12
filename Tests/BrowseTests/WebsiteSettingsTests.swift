@@ -18,14 +18,15 @@ import WebKit
     let page = PageController(address: "http://127.0.0.1:\(server.port)/script", websiteSettings: settings,
                               configure: { $0.websiteDataStore = dataStore })
     defer { page.webView.stopLoading() }
-    func wait(_ path: String) async throws {
+    func wait(_ path: String, title: String) async throws {
         for _ in 0..<200 {
-            if page.webView.url?.path == path, !page.webView.isLoading, page.webView.title != nil { return }
+            // WebKit can publish the URL and loading state before its title update.
+            if page.webView.url?.path == path, !page.webView.isLoading, page.webView.title == title { return }
             try await Task.sleep(for: .milliseconds(25))
         }
-        Issue.record("Website did not finish loading")
+        Issue.record("Website did not finish loading with expected title: \(title); got \(page.webView.title ?? "nil")")
     }
-    try await wait("/script")
+    try await wait("/script", title: "Zoom fixture")
     #expect(page.webView.title == "Zoom fixture")
     #expect(!page.webView.configuration.preferences.isFraudulentWebsiteWarningEnabled)
     #expect(await dataStore.httpCookieStore.cookiePolicy == .disallow)
@@ -33,7 +34,7 @@ import WebKit
     settings.setPreference(\.warnFraudulentSites, true)
     settings.setPreference(\.blockAllCookies, false)
     page.navigate("http://127.0.0.1:\(server.port)/script-enabled")
-    try await wait("/script-enabled")
+    try await wait("/script-enabled", title: "Script ran")
     #expect(page.webView.title == "Script ran")
     #expect(page.webView.configuration.preferences.isFraudulentWebsiteWarningEnabled)
     #expect(await dataStore.httpCookieStore.cookiePolicy == .allow)

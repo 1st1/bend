@@ -717,6 +717,8 @@ The native-view regression covers separate left/right targets, result growth and
 
 [[Tests/BrowseTests/WebsiteSettingsTests.swift#websiteSecurityPreferences]] verifies real website JavaScript is disabled and re-enabled on navigation, fraud warnings and cookie policy update live, and HTTP warnings select WebKit’s user-mediated fallback.
 
+Each navigation waits for its expected title as well as its URL and loading state, so asynchronous title delivery cannot be mistaken for disabled page JavaScript.
+
 ## Website zoom navigation and sharing
 
 [WebsiteSettingsTests.swift](../Tests/BrowseTests/WebsiteSettingsTests.swift) verifies persisted zoom across panes, windows, and store recreation, using local HTTP pages with redirects, iframe loads, and back/forward navigation.
