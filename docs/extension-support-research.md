@@ -2,6 +2,21 @@
 
 Bend can own extension installation, permissions, updates, and storage while retaining WebKit. Package management and runtime API compatibility are separate responsibilities. This document records research and proposed next steps, not a claim that 1Password works.
 
+## Gesturefy and right-button gesture investigation
+
+Gesturefy **3.2.19** was reproduced in disposable extension storage on macOS 27.2 (26B123). The installed package and user preferences were not changed. This investigation did not produce a working Gesturefy implementation.
+
+Its content-script `ConfigManager` fetches `resources/json/defaults.json` with `mode: 'same-origin'`. In WebKit this rejects with `TypeError: Load failed`, preventing configuration initialization. Fetching the same resource from an extension page succeeds with HTTP-style status 200 and `application/json`; `.mjs` modules also have the expected JavaScript MIME type. In a disposable package copy, adding the JSON to `web_accessible_resources` made an ordinary content-script fetch succeed, but initialization still failed until its same-origin fetch mode was changed to CORS. Those package changes were experimental and are not applied by Bend's importer.
+
+Gesturefy also requests Firefox's `browserSettings.contextMenuShowEvent` mouse-up behavior. Bend currently reports this setting as not controllable. Two native-menu experiments distinguished possible host workarounds:
+
+- Holding WebKit's asynchronous proposed-menu completion blocks subsequent pointer movement and release. The probe received only trusted pointer-down and context-menu events, so delaying that completion is insufficient.
+- Completing immediately with an empty menu allows trusted pointer-down, movement, and release events to reach the page. This is a potential basis for a host-side gesture mode, but menu suppression alone is not a complete fix: plain clicks must retain native menus and their actions, cancelled gestures and focus changes need cleanup, and DOM context-menu timing remains mouse-down.
+
+The resource-adapted package plus immediate menu suppression still did not execute the probe's downward gesture mapped to New Tab. Further gesture recognition/command investigation is required; native event delivery alone does not establish compatibility. Temporary failing probes were removed from the test suite, and no input workaround was shipped.
+
+Upstream [Gesturefy source](https://github.com/Robbendebiene/Gesturefy) documents its browser-settings dependency. WebKit's [menu proxy](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/WebContextMenuProxy.cpp) clears the waiting-for-menu state after the menu presentation call returns; the [macOS implementation](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/mac/WebContextMenuProxyMac.mm) owns native menu targets and presentation. A production workaround must preserve that lifecycle rather than merely retain an `NSMenu` object.
+
 ## Other browsers
 
 [Orion](https://help.kagi.com/orion/browser-extensions/macos-extensions.html) installs Chrome and Firefox extensions and maintains its own WebExtensions API compatibility implementation. Its documentation describes substantial API-by-API engineering and incomplete coverage. Its implementation is [not currently open source](https://orionbrowser.com/help), so it is a behavioral reference rather than a reusable implementation.

@@ -287,6 +287,187 @@ import Network
     try await manager.enable(false, id: id) { _, _ in true }
 }
 
+// @lat: [[tests#Extension browser information and menu settings]]
+@Test @MainActor func extensionBrowserSettings() async throws {
+    guard #available(macOS 15.4, *) else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendBrowserSettings-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = try compatibilityFixture(root)
+    let manifestURL = source.appendingPathComponent("manifest.json")
+    var manifest = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any])
+    manifest["permissions"] = ["browserSettings", "storage"]
+    try JSONSerialization.data(withJSONObject: manifest).write(to: manifestURL)
+    let manager = ExtensionManager(root: root.appendingPathComponent("installed"), persistent: false, websiteDataStore: .nonPersistent())
+    manager.presentsWindows = false
+    try await manager.importExtension(from: source)
+    let id = try #require(manager.records.first?.id)
+    manager.setPrivateAccess(true, id: id)
+    var approved: [String] = []
+    try await manager.enable(true, id: id) { _, permissions in approved = permissions; return true }
+    #expect(approved.contains("browserSettings"))
+    #expect(manager.records.first?.permissions.contains("browserSettings") == true)
+    let context = try #require(manager.contexts[id])
+    defer { try? manager.controller.unload(context) }
+    let web = WKWebView(frame: .zero, configuration: try #require(context.webViewConfiguration))
+    let navigation = CompatibilityNavigation(); web.navigationDelegate = navigation
+    try await navigation.load(web, try #require(context.optionsPageURL))
+    let result = try await web.callAsyncJavaScript(#"""
+        const info = await browser.runtime.getBrowserInfo();
+        const callbackInfo = await new Promise(resolve => chrome.runtime.getBrowserInfo(resolve));
+        const granted = await browser.permissions.contains({permissions:['browserSettings','storage']});
+        const unavailable = await browser.permissions.contains({permissions:['bookmarks']});
+        const unavailableCallback = await new Promise(resolve => chrome.permissions.contains({permissions:['bookmarks']}, resolve));
+        let malformed = false;
+        try { await browser.permissions.contains({permissions:[17]}); } catch { malformed = true; }
+        const setting = browser.browserSettings.contextMenuShowEvent;
+        let changes = 0;
+        const listener = () => changes++;
+        setting.onChange.addListener(listener);
+        const registered = setting.onChange.hasListener(listener);
+        const before = await setting.get({});
+        const changed = await setting.set({value:'mouseup'});
+        const same = await chrome.browserSettings.contextMenuShowEvent.set({value:'mousedown'});
+        const cleared = await setting.clear({});
+        let invalid = false;
+        try { await setting.set({value:'click'}); } catch { invalid = true; }
+        let privateScope = false;
+        try { await setting.get({incognito:true}); } catch { privateScope = true; }
+        setting.onChange.removeListener(listener);
+        await browser.storage.local.set({nativeStillWorks: true});
+        return {info, callbackInfo, granted, unavailable, unavailableCallback, malformed, before, after:await setting.get({}), changed, same, cleared, changes,
+            registered, removed:!setting.onChange.hasListeners(), invalid, privateScope,
+            nativeStillWorks:(await browser.storage.local.get('nativeStillWorks')).nativeStillWorks};
+        """#, arguments: [:], in: nil, contentWorld: .page) as? [String: Any]
+    #expect(result?["info"] as? [String: String] == ExtensionCompatibility.browserInfo)
+    #expect(result?["callbackInfo"] as? [String: String] == ExtensionCompatibility.browserInfo)
+    let expected = ["value":"mousedown", "levelOfControl":"not_controllable"]
+    #expect(result?["before"] as? [String: String] == expected)
+    #expect(result?["after"] as? [String: String] == expected)
+    for key in ["changed", "same", "cleared", "unavailable", "unavailableCallback"] { #expect(result?[key] as? Bool == false) }
+    for key in ["registered", "removed", "invalid", "privateScope", "nativeStillWorks", "malformed", "granted"] { #expect(result?[key] as? Bool == true) }
+    #expect(result?["changes"] as? Int == 0)
+    context.setPermissionStatus(.deniedExplicitly, for: .init(rawValue: "browserSettings"))
+    #expect(try await web.callAsyncJavaScript("return await browser.permissions.contains({permissions:['browserSettings']})", arguments: [:], in: nil, contentWorld: .page) as? Bool == false)
+    #expect(try await web.callAsyncJavaScript(#"""
+        try { await browser.browserSettings.contextMenuShowEvent.get({}); return false; } catch { return true; }
+        """#, arguments: [:], in: nil, contentWorld: .page) as? Bool == true)
+    let error = try await web.callAsyncJavaScript(#"""
+        return await new Promise(resolve => chrome.browserSettings.contextMenuShowEvent.set({value:'mouseup'}, () => resolve(chrome.runtime.lastError?.message)));
+        """#, arguments: [:], in: nil, contentWorld: .page) as? String
+    #expect(error?.contains("permission") == true)
+    #expect(try await web.evaluateJavaScript("chrome.runtime.lastError == null") as? Bool == true)
+    #expect(try await web.callAsyncJavaScript("return (await browser.runtime.getBrowserInfo()).name", arguments: [:], in: nil, contentWorld: .page) as? String == AppProfile.current.name)
+}
+
+// @lat: [[tests#Foxy Gestures options smoke test]]
+@Test @MainActor func foxyGesturesOptionsSmoke() async throws {
+    guard #available(macOS 15.4, *), let path = ProcessInfo.processInfo.environment["BEND_TEST_FOXY_PACKAGE"] else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFoxy-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let manager = ExtensionManager(root: root, persistent: false, websiteDataStore: .nonPersistent())
+    manager.presentsWindows = false
+    try await manager.importExtension(from: URL(fileURLWithPath: path))
+    let id = try #require(manager.records.first?.id)
+    #expect(manager.records.first?.name == "Foxy Gestures")
+    manager.setPrivateAccess(true, id: id)
+    try await manager.enable(true, id: id) { _, _ in true }
+    let context = try #require(manager.contexts[id])
+    defer { try? manager.controller.unload(context) }
+    try await context.loadBackgroundContent()
+    let document = try manager.openDocument(url: try #require(context.optionsPageURL), context: context, active: false)
+    var visible = false
+    for _ in 0..<100 {
+        visible = (try? await document.web.evaluateJavaScript("document.querySelector('form')?.getBoundingClientRect().height > 100")) as? Bool == true
+        if visible { break }
+        try await Task.sleep(for: .milliseconds(100))
+    }
+    #expect(visible)
+    #expect(try await document.web.evaluateJavaScript("document.body.innerText.includes('General')") as? Bool == true)
+    #expect(context.errors.isEmpty, "\(context.errors.map(\.localizedDescription))")
+    let saved = try await document.web.callAsyncJavaScript(#"""
+        const settings = angular.element(document.body).injector().get('settings');
+        await settings.load();
+        settings.gestureButton = 1;
+        settings.mouseMappings = [{gesture:'D', command:'newTab'}];
+        settings.newTabUrl = null;
+        await settings.save();
+        return (await browser.storage.local.get('gestureButton')).gestureButton;
+        """#, arguments: [:], in: nil, contentWorld: .page)
+    #expect(saved as? Int == 1)
+    let server = try await ExtensionHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
+    let page = store.selectedTab.pages[0]
+    let controller = store.controller(for: page)
+    let web = controller.webView
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 800, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = web; window.orderFront(nil)
+    defer { web.stopLoading(); window.close() }
+    controller.navigate("http://127.0.0.1:\(server.port)/")
+    for _ in 0..<100 {
+        if (try? await web.evaluateJavaScript("document.body?.innerText.includes('Fixture')")) as? Bool == true { break }
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    // Wait for real content-script startup, without accessing its isolated world.
+    let ready = try await document.web.callAsyncJavaScript(#"""
+        for (let i=0; i<50; i++) {
+            const tab = (await browser.tabs.query({})).find(tab => tab.url?.startsWith(address));
+            if (tab) {
+                try {
+                    const reply = await browser.tabs.sendMessage(tab.id, {topic:'mg-toggleEventListeners'});
+                    if (typeof reply?.enabled === 'boolean') {
+                        if (!reply.enabled) await browser.tabs.sendMessage(tab.id, {topic:'mg-toggleEventListeners'});
+                        return true;
+                    }
+                } catch {}
+            }
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        return false;
+        """#, arguments: ["address":"http://127.0.0.1:\(server.port)/"], in: nil, contentWorld: .page)
+    try #require(ready as? Bool == true)
+    func mouse(_ type: NSEvent.EventType, y: CGFloat) throws {
+        let template = try #require(NSEvent.mouseEvent(with: type, location: NSPoint(x: 300, y: y), modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 1, clickCount: 1, pressure: type == .otherMouseUp ? 0 : 1))
+        let cg = try #require(template.cgEvent)
+        cg.setIntegerValueField(.mouseEventButtonNumber, value: 2)
+        if type == .otherMouseDragged { cg.setIntegerValueField(.mouseEventDeltaY, value: 10) }
+        let event = try #require(NSEvent(cgEvent: cg))
+        #expect(event.buttonNumber == 2)
+        // WebKit reads this process's NSEvent button mask when constructing
+        // its native event. Scope the test override to the synchronous send;
+        // never post global input or depend on the user's physical mouse.
+        let method = try #require(class_getClassMethod(NSEvent.self, #selector(getter: NSEvent.pressedMouseButtons)))
+        let buttons: @convention(block) () -> UInt = { type == .otherMouseUp ? 0 : 4 }
+        let replacement = imp_implementationWithBlock(buttons)
+        let original = method_setImplementation(method, replacement)
+        defer { method_setImplementation(method, original); imp_removeBlock(replacement) }
+        switch type {
+        case .otherMouseDown: web.otherMouseDown(with: event)
+        case .otherMouseUp: web.otherMouseUp(with: event)
+        default: web.otherMouseDragged(with: event)
+        }
+    }
+    let tabCount = store.session.workspaces.flatMap(\.tabs).count
+    try mouse(.otherMouseDown, y: 400)
+    for y in stride(from: 390, through: 250, by: -10) {
+        try mouse(.otherMouseDragged, y: CGFloat(y))
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    try mouse(.otherMouseUp, y: 250)
+    for _ in 0..<50 {
+        if store.session.workspaces.flatMap(\.tabs).count > tabCount { break }
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(store.session.workspaces.flatMap(\.tabs).count == tabCount + 1)
+    #expect(context.errors.isEmpty, "\(context.errors.map(\.localizedDescription))")
+    try await manager.enable(false, id: id) { _, _ in true }
+}
+
 // @lat: [[tests#Extension privacy settings and restored startup]]
 @Test @MainActor func extensionPrivacyRestoration() async throws {
     guard #available(macOS 15.4, *) else { return }

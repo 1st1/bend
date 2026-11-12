@@ -15,6 +15,8 @@ struct CatalogExtension: Identifiable, Sendable {
     let website: URL
     let download: CatalogDownload
     let updateSource: ExtensionUpdateSource
+    // Some curated packages have settings without declaring an options page.
+    var settingsPage: String? = nil
 
     func matches(_ query: String) -> Bool {
         query.split(whereSeparator: \.isWhitespace).allSatisfy { word in
@@ -40,7 +42,8 @@ struct CatalogExtension: Identifiable, Sendable {
             download: .init(version: "8.12.41.1",
                 url: URL(string: "https://addons.mozilla.org/firefox/downloads/file/5097307/1password_x_password_manager-8.12.41.1.xpi")!,
                 sha256: "6b00acff73253865303af49e99329245a940348484cbd931ea39f9fa215134f5"),
-            updateSource: .mozilla(slug: "1password-x-password-manager")),
+            updateSource: .mozilla(slug: "1password-x-password-manager"),
+            settingsPage: "app/app.html#/page/settings"),
         .init(id: "dark-reader", name: "Dark Reader", publisher: "Dark Reader Ltd", category: "Appearance",
             summary: "Dark mode for every website. Take care of your eyes, use dark theme for night and daily browsing.",
             experimental: true, symbol: "moon.fill",
@@ -49,7 +52,8 @@ struct CatalogExtension: Identifiable, Sendable {
             download: .init(version: "4.9.134",
                 url: URL(string: "https://addons.mozilla.org/firefox/downloads/file/5175215/darkreader-4.9.134.xpi")!,
                 sha256: "700633395aa2f639a1bed4253e27309eb676f346d599b0ae2b7a0453232e0aec"),
-            updateSource: .mozilla(slug: "darkreader"))
+            updateSource: .mozilla(slug: "darkreader"),
+            settingsPage: "ui/options/index.html")
     ]
 }
 

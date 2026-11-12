@@ -503,6 +503,9 @@ final class ExtensionManager: NSObject, ObservableObject {
 
     func compatibilityNotice(_ id: UUID) -> String? {
         guard let record = records.first(where: { $0.id == id }) else { return nil }
+        if record.packageIdentifier == "gecko:{e839c3f9-298e-4cd0-99e0-464431cb7c34}" {
+            return "Foxy’s default right-button gestures require context menus on mouse release, which Bend’s WebKit engine does not support. Choose a different gesture button in Foxy’s settings. Some Firefox-specific commands are unavailable."
+        }
         if record.packageIdentifier == "gecko:{d634138d-c276-4fc8-924b-40a0ea21d284}" {
             let signing = OnePasswordSigningStatus.current
             if signing.certificateStatus != errSecSuccess {
@@ -612,17 +615,32 @@ final class ExtensionManager: NSObject, ObservableObject {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
+    func settingsPageURL(_ id: UUID) -> URL? {
+        guard let context = contexts[id] else { return nil }
+        if let url = context.optionsPageURL { return url }
+        guard let record = records.first(where: { $0.id == id }),
+              let page = CatalogExtension.curated.first(where: { $0.packageIdentifier == record.packageIdentifier })?.settingsPage else {
+            return nil
+        }
+        return URL(string: page, relativeTo: context.baseURL)?.absoluteURL
+    }
+
     func showOptions(_ id: UUID) {
         guard let context = contexts[id] else { return }
         do { try showOptions(context) } catch { self.error = error.localizedDescription }
     }
 
     func showOptions(_ context: WKWebExtensionContext) throws {
-        guard let url = context.optionsPageURL else {
+        guard context.isLoaded else {
             throw failure("Enable the extension before opening its settings.")
         }
+        guard let id = contexts.first(where: { $0.value === context })?.key,
+              let url = settingsPageURL(id) else {
+            throw failure("This extension does not provide a settings page.")
+        }
         if let existing = documents.values.first(where: { $0.context === context && $0.web.url == url }) {
-            existing.nativeWindow.makeKeyAndOrderFront(nil); return
+            if presentsWindows { existing.nativeWindow.makeKeyAndOrderFront(nil) }
+            return
         }
         _ = try openDocument(url: url, context: context)
     }

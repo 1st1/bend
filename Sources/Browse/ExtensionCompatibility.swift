@@ -33,8 +33,8 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
 
     static func requiredPermissions(for ext: WKWebExtension) -> Set<WKWebExtension.Permission> {
         var result = ext.requestedPermissions
-        if (ext.manifest["permissions"] as? [String])?.contains("privacy") == true {
-            result.insert(.init(rawValue: "privacy"))
+        for permission in ["privacy", "browserSettings"] where (ext.manifest["permissions"] as? [String])?.contains(permission) == true {
+            result.insert(.init(rawValue: permission))
         }
         return result
     }
@@ -42,7 +42,7 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
     static func hasPermission(_ permission: WKWebExtension.Permission, in context: WKWebExtensionContext) -> Bool {
         // WebKit filters unsupported permissions out of hasPermission(), but
         // retains explicit grants (including expiry/revocation) in this map.
-        if permission.rawValue == "privacy" { return context.grantedPermissions[permission] != nil }
+        if ["privacy", "browserSettings"].contains(permission.rawValue) { return context.grantedPermissions[permission] != nil }
         return context.hasPermission(permission)
     }
 
@@ -92,6 +92,24 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
             }
             replyHandler(true, nil); return
         }
+        if operation == "browserInfo" {
+            replyHandler(Self.browserInfo, nil); return
+        }
+        if operation == "containsCompatibilityPermissions" {
+            guard let permissions = body["permissions"] as? [String], permissions.count <= 2,
+                  permissions.allSatisfy({ ["privacy", "browserSettings"].contains($0) }) else {
+                replyHandler(nil, "Invalid compatibility permissions."); return
+            }
+            replyHandler(permissions.allSatisfy { Self.hasPermission(.init(rawValue: $0), in: context) }, nil); return
+        }
+        if operation == "browserSetting" {
+            guard Self.hasPermission(.init(rawValue: "browserSettings"), in: context) else {
+                replyHandler(nil, "The extension does not have browserSettings permission."); return
+            }
+            do { replyHandler(try browserSetting(body), nil) }
+            catch { replyHandler(nil, error.localizedDescription) }
+            return
+        }
         if operation == "privacySetting" {
             guard Self.hasPermission(.init(rawValue: "privacy"), in: context) else {
                 replyHandler(nil, "The extension does not have privacy permission."); return
@@ -129,6 +147,35 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
             fields[key] = value
         }
         return fields
+    }
+
+    static var browserInfo: [String: String] {
+        ["name": AppProfile.current.name, "vendor": "Yury Selivanov",
+         "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0",
+         "buildID": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "development"]
+    }
+
+    func browserSetting(_ body: [String: Any]) throws -> Any {
+        func failure(_ text: String) -> NSError { NSError(domain: "Browse.Extensions", code: 1, userInfo: [NSLocalizedDescriptionKey: text]) }
+        guard body["setting"] as? String == "contextMenuShowEvent",
+              let action = body["action"] as? String, let details = body["details"] as? [String: Any] else {
+            throw failure("Unsupported browser setting.")
+        }
+        if details["incognito"] as? Bool == true || (details["scope"] as? String).map({ !["regular", "regular_only"].contains($0) }) == true {
+            throw failure("Private browsing settings are not supported.")
+        }
+        // macOS WebKit fixes contextmenu dispatch to mouse-down. Report that
+        // constraint rather than pretending to change native event ordering.
+        switch action {
+        case "get": return ["value": "mousedown", "levelOfControl": "not_controllable"]
+        case "clear": return false
+        case "set":
+            guard let value = details["value"] as? String, ["mousedown", "mouseup"].contains(value) else {
+                throw failure("The context-menu event must be mousedown or mouseup.")
+            }
+            return false
+        default: throw failure("Unsupported browser setting operation.")
+        }
     }
 
     func privacySetting(_ body: [String: Any]) throws -> Any? {
@@ -289,6 +336,44 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
         }
         let lastError;
         const requested = native.runtime.getManifest().permissions || [];
+        const supplementalPermissions = new Set();
+        // Firefox extensions probe optional capabilities even on browsers that
+        // cannot grant them. Keep native checks for implemented capabilities.
+        const contains = native.permissions?.contains?.bind(native.permissions);
+        const unavailable = new Map([
+            ['bookmarks', 'bookmarks'], ['history', 'history'], ['find', 'find'],
+            ['search', 'search'], ['contextualIdentities', 'contextualIdentities'],
+            ['downloads', 'downloads'], ['downloads.open', 'downloads'],
+            ['clipboardRead', null] // WebKit supports clipboardWrite, but not this permission.
+        ]);
+        if (contains) native.permissions.contains = (details, callback) => {
+            if (details && Object.keys(details).every(key => ['permissions', 'origins'].includes(key)) &&
+                Array.isArray(details.permissions) && details.permissions.every(value => typeof value === 'string') &&
+                (!('origins' in details) || Array.isArray(details.origins) && details.origins.every(value => typeof value === 'string')) &&
+                details.permissions.some(value => supplementalPermissions.has(value) || unavailable.has(value) && !native[unavailable.get(value)])) {
+                const missing = details.permissions.some(value => unavailable.has(value) && !native[unavailable.get(value)]);
+                const extra = [...new Set(details.permissions.filter(value => supplementalPermissions.has(value)))];
+                const remaining = details.permissions.filter(value => !supplementalPermissions.has(value) && (!unavailable.has(value) || native[unavailable.get(value)]));
+                return callbackResult(contains({...details, permissions:remaining}).then(async granted =>
+                    granted && !missing && (!extra.length || await call('containsCompatibilityPermissions', {permissions:extra}))), callback);
+            }
+            return callbackResult(contains(details), callback);
+        };
+        if (!native.runtime.getBrowserInfo) {
+            native.runtime.getBrowserInfo = callback => callbackResult(call('browserInfo'), callback);
+        }
+        let browserSettings = native.browserSettings;
+        if (!browserSettings && requested.includes('browserSettings')) {
+            const setting = 'contextMenuShowEvent';
+            browserSettings = {[setting]: {
+                get(details, callback) { return callbackResult(call('browserSetting', {setting, action:'get', details}), callback); },
+                set(details, callback) { return callbackResult(call('browserSetting', {setting, action:'set', details}), callback); },
+                clear(details, callback) { return callbackResult(call('browserSetting', {setting, action:'clear', details}), callback); },
+                onChange: event('browserSettings.' + setting + '.onChange')
+            }};
+            native.browserSettings = browserSettings;
+            supplementalPermissions.add('browserSettings');
+        }
         let privacy = native.privacy;
         if (!privacy && requested.includes('privacy')) {
             const setting = name => ({
@@ -302,6 +387,7 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
             });
             privacy = {services: Object.fromEntries(['passwordSavingEnabled', 'autofillEnabled', 'autofillAddressEnabled', 'autofillCreditCardEnabled'].map(name => [name, setting(name)]))};
             native.privacy = privacy;
+            supplementalPermissions.add('privacy');
         }
         let notifications = native.notifications;
         if (!notifications && requested.includes('notifications')) {
@@ -360,6 +446,7 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
         // namespace supplies the additional APIs used by Firefox 1Password.
         globalThis.chrome = new Proxy(native, {get(target, property) {
             if (property === 'privacy') return privacy;
+            if (property === 'browserSettings') return browserSettings;
             if (property === 'notifications') return notifications;
             if (property === 'webNavigation') return navigation;
             if (property === 'runtime') return runtime;

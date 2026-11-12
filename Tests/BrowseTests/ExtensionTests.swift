@@ -26,6 +26,104 @@ func extensionFixture(at root: URL) throws -> URL {
     return source
 }
 
+// @lat: [[tests#Curated extension settings pages]]
+@Test @MainActor func curatedExtensionSettingsPages() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendExtensionSettings-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    // The upstream packages omit options_ui; a matching display name alone must
+    // never opt an unrelated package into their private settings routes.
+    let cases: [(String, String?, String?, String?)] = [
+        ("{d634138d-c276-4fc8-924b-40a0ea21d284}", nil, "/app/app.html", "/page/settings"),
+        ("addon@darkreader.org", nil, "/ui/options/index.html", nil),
+        ("addon@darkreader.org", "declared.html", "/declared.html", nil),
+        ("unrelated@example.test", nil, nil, nil),
+        ("ordinary@example.test", "declared.html", "/declared.html", nil)
+    ]
+    for (identifier, declaredPage, expectedPath, expectedFragment) in cases {
+        let directory = root.appendingPathComponent(UUID().uuidString)
+        let source = directory.appendingPathComponent("fixture")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        var manifest: [String: Any] = ["manifest_version": 3, "name": "1Password", "version": "1.0",
+            "permissions": ["storage"], "browser_specific_settings": ["gecko": ["id": identifier]]]
+        if let declaredPage { manifest["options_ui"] = ["page": declaredPage] }
+        try JSONSerialization.data(withJSONObject: manifest).write(to: source.appendingPathComponent("manifest.json"))
+        if let expectedPath {
+            let page = source.appendingPathComponent(String(expectedPath.dropFirst()))
+            try FileManager.default.createDirectory(at: page.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("<body>Extension settings fixture</body>".utf8).write(to: page)
+        }
+        let manager = ExtensionManager(root: directory.appendingPathComponent("installed"), persistent: false, websiteDataStore: .nonPersistent())
+        manager.presentsWindows = false
+        try await manager.importExtension(from: source)
+        let id = try #require(manager.records.first?.id)
+        let context = try #require(manager.contexts[id])
+        #expect(manager.settingsPageURL(id)?.path == expectedPath)
+        manager.showOptions(id)
+        #expect(manager.documents.isEmpty)
+        #expect(manager.error?.contains("Enable") == true)
+        try await manager.enable(true, id: id) { _, _ in true }
+        if let expectedPath {
+            let url = try #require(manager.settingsPageURL(id))
+            #expect(url.path == expectedPath)
+            #expect(url.fragment == expectedFragment)
+            #expect(url.host == context.baseURL.host)
+            manager.showOptions(id)
+            let document = try #require(manager.documents.values.first)
+            for _ in 0..<50 {
+                if (try? await document.web.evaluateJavaScript("document.body?.innerText")) as? String == "Extension settings fixture" { break }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            #expect(try await document.web.evaluateJavaScript("document.body.innerText") as? String == "Extension settings fixture")
+            #expect(try await document.web.callAsyncJavaScript("await browser.storage.local.set({settingsWork: true}); return (await browser.storage.local.get('settingsWork')).settingsWork", arguments: [:], in: nil, contentWorld: .page) as? Bool == true)
+            manager.showOptions(id)
+            #expect(manager.documents.count == 1)
+        } else {
+            manager.showOptions(id)
+            #expect(manager.documents.isEmpty)
+            #expect(manager.error?.contains("does not provide") == true)
+        }
+        try await manager.enable(false, id: id) { _, _ in true }
+        #expect(manager.documents.isEmpty)
+    }
+}
+
+// @lat: [[tests#Curated extension settings smoke test]]
+@Test @MainActor func curatedExtensionSettingsSmoke() async throws {
+    let packages = ["BROWSE_TEST_FIREFOX_PACKAGE", "BROWSE_TEST_DARK_READER_PACKAGE"]
+        .compactMap { ProcessInfo.processInfo.environment[$0] }
+    for path in packages {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSettingsSmoke-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manager = ExtensionManager(root: root, persistent: false, websiteDataStore: .nonPersistent(), notifications: TestNotifications())
+        manager.presentsWindows = false
+        let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
+        defer { withExtendedLifetime(store) {} }
+        try await manager.importExtension(from: URL(fileURLWithPath: path))
+        let id = try #require(manager.records.first?.id)
+        try await manager.enable(true, id: id) { _, _ in true }
+        let context = try #require(manager.contexts[id])
+        defer { manager.closeDocuments(for: context); try? manager.controller.unload(context) }
+        try await context.loadBackgroundContent()
+        let url = try #require(manager.settingsPageURL(id))
+        manager.showOptions(id)
+        let document = try #require(manager.documents.values.first(where: { $0.context === context && $0.web.url == url }))
+        var rendered = false
+        for _ in 0..<100 {
+            rendered = (try? await document.web.evaluateJavaScript("document.body?.innerText.includes('General') && document.querySelectorAll('button, input, select, [role=switch]').length > 0")) as? Bool == true
+            if rendered { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        if !rendered {
+            print("SETTINGS_SMOKE_BODY", try await document.web.evaluateJavaScript("document.body?.innerText") ?? "nil")
+            print("SETTINGS_SMOKE_ERRORS", context.errors.map(\.localizedDescription))
+        }
+        #expect(rendered, "Settings did not render for \(context.webExtension.displayName ?? "extension")")
+        #expect(document.web.url == url)
+    }
+}
+
 // @lat: [[tests#Extension lifecycle and permissions]]
 @Test @MainActor func extensionLifecycle() async throws {
     guard #available(macOS 15.4, *) else { return }

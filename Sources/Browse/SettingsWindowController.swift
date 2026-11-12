@@ -558,7 +558,6 @@ struct ExtensionManagementView: View {
     let record: ExtensionRecord
 
     var body: some View {
-        let context = manager.contexts[record.id]
         VStack(alignment: .leading, spacing: 10) {
             Toggle("Enable in private mode", isOn: Binding(
                 get: { manager.records.first(where: { $0.id == record.id })?.enabledInPrivateMode ?? false },
@@ -584,7 +583,7 @@ struct ExtensionManagementView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
             }.font(.callout)
             HStack {
-                if context?.webExtension.hasOptionsPage == true {
+                if manager.settingsPageURL(record.id) != nil {
                     Button("Extension Settings…") { manager.showOptions(record.id) }.disabled(!manager.isEnabled(record.id))
                 }
                 Button("Copy Diagnostics") {
