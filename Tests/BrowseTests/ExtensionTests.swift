@@ -320,6 +320,18 @@ func extensionFixture(at root: URL) throws -> URL {
     try await manager.uninstall(other.id)
 }
 
+@MainActor
+private func awaitFixtureRequestRules(_ context: WKWebExtensionContext) async throws {
+    let options = WKWebView(frame: .zero, configuration: try #require(context.webViewConfiguration))
+    let navigation = ExtensionTestNavigation()
+    options.navigationDelegate = navigation
+    try await navigation.load(options, url: try #require(context.optionsPageURL))
+    _ = try await options.callAsyncJavaScript("""
+        await browser.declarativeNetRequest.updateEnabledRulesets({disableRulesetIds: ['rules']});
+        await browser.declarativeNetRequest.updateEnabledRulesets({enableRulesetIds: ['rules']});
+        """, arguments: [:], in: nil, contentWorld: .page)
+}
+
 // @lat: [[tests#Extension startup content injection]]
 @Test @MainActor func extensionStartupContentInjection() async throws {
     guard #available(macOS 15.4, *) else { return }
@@ -332,7 +344,9 @@ func extensionFixture(at root: URL) throws -> URL {
     try await setup.importExtension(from: source)
     let id = try #require(setup.records.first?.id)
     try await setup.enable(true, id: id) { _, _ in true }
-    try setup.controller.unload(try #require(setup.contexts[id]))
+    let setupContext = try #require(setup.contexts[id])
+    try await awaitFixtureRequestRules(setupContext)
+    try setup.controller.unload(setupContext)
     let server = try await ExtensionHTTPFixture.start()
     defer { server.listener.cancel() }
     for _ in 0..<4 {
@@ -347,8 +361,17 @@ func extensionFixture(at root: URL) throws -> URL {
         await manager.restorationTask?.value
         #expect(manager.isEnabled(id))
         #expect(try await page.webView.evaluateJavaScript("document.body.dataset.browseExtension") as? String == "active")
+        // Content injection does not signal completion of WebKit's asynchronous
+        // DNR compilation. Await a fixture ruleset update before testing blocking
+        // on a fresh navigation, and before unloading its rule stores.
+        let context = try #require(manager.contexts[id])
+        try await awaitFixtureRequestRules(context)
+        let navigation = ExtensionTestNavigation()
+        page.webView.navigationDelegate = navigation
+        try await navigation.load(page.webView, url: URL(string: "http://127.0.0.1:\(server.port)/")!)
+        #expect(try await page.webView.evaluateJavaScript("document.body.dataset.browseExtension") as? String == "active")
         #expect(try await page.webView.evaluateJavaScript("window.blockedScriptRan === true") as? Bool == false)
-        try manager.controller.unload(try #require(manager.contexts[id]))
+        try manager.controller.unload(context)
     }
 }
 

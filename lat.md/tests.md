@@ -45,7 +45,9 @@ The fixture unloads runtime contexts without disabling the saved preference. Fou
 
 ## Extension startup content injection
 
-[ExtensionTests.swift](../Tests/BrowseTests/ExtensionTests.swift) starts page navigation during extension restoration and verifies content-script injection and request blocking on a local fixture across four host recreations.
+[[Tests/BrowseTests/ExtensionTests.swift#extensionStartupContentInjection]] starts navigation during extension restoration and verifies content-script injection across four host recreations.
+
+WebKit compiles request rules asynchronously after context loading. The test awaits an explicit fixture ruleset update before checking blocking on a fresh navigation and before unloading the context. It does not claim first-navigation request blocking.
 
 ## Firefox extension restoration smoke test
 
