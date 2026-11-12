@@ -360,6 +360,14 @@ The shared manager polls active progress at four updates per second and stops po
 
 The same shared list is available in every window, including when the sidebar is hidden. Clear removes inactive entries from memory and the database, with a smaller eraser icon centered on the label’s cap height and the shared capsule hover treatment. An empty list hides the button and dismisses its popover unless transfers are still running or a persistence error needs attention. [[tests#Website downloads]], [[tests#Download cancellation and retry]], and [[tests#Download filenames]] cover transfers and file handling with local fixtures.
 
+## Dock download progress
+
+[[Sources/Browse/BrowserDownloads.swift#DownloadDockProgress]] publishes native file progress so macOS can animate a download into its destination folder in the Dock and display completion feedback.
+
+The public Foundation animation keys provide the file icon and source pane’s center in screen coordinates. Reduce Motion and windowless downloads omit the animation keys. The Dock controls presentation, which requires the destination folder to be in the Dock.
+
+Progress points to the destination folder rather than hidden staging. Completion is reported only after the atomic rename succeeds, using the final collision-resolved URL. Failure, cancellation, and shutdown cancel and unpublish progress; retries create a fresh publication. [[tests#Dock download progress]] covers completion and failure semantics.
+
 ## Download database
 
 [DownloadDatabase.swift](../Sources/Browse/DownloadDatabase.swift) stores the newest 256 download records in SQLite at Downloads.db beside the root session file, shared by all windows.

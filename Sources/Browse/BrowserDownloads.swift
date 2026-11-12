@@ -26,6 +26,8 @@ final class BrowserDownload: ObservableObject, Identifiable {
     fileprivate var stagingDirectory: URL?
     fileprivate var stagingFile: URL?
     fileprivate var readyToPublish = false
+    fileprivate var dockProgress: DownloadDockProgress?
+    fileprivate var animationRect: NSRect?
     fileprivate weak var webView: WKWebView?
     fileprivate var retryWebView: WKWebView?
     fileprivate let dataStore: WKWebsiteDataStore
@@ -36,6 +38,11 @@ final class BrowserDownload: ObservableObject, Identifiable {
         self.request = request
         self.directory = directory
         self.webView = webView
+        if let window = webView.window, window.isVisible {
+            let bounds = webView.bounds
+            let rect = NSRect(x: bounds.midX - 16, y: bounds.midY - 16, width: 32, height: 32)
+            animationRect = window.convertToScreen(webView.convert(rect, to: nil))
+        }
         dataStore = webView.configuration.websiteDataStore
     }
 
@@ -67,6 +74,50 @@ final class BrowserDownload: ObservableObject, Identifiable {
         return DownloadRecord(id: id, name: name, state: state, received: received, total: total,
                               error: error, fileURL: fileURL, sourceURL: source,
                               method: request?.httpMethod ?? "GET", directory: directory)
+    }
+}
+
+// @lat: [[architecture#Dock download progress]]
+@MainActor
+final class DownloadDockProgress {
+    let progress = Progress(totalUnitCount: -1)
+    private(set) var isPublished = true
+
+    init(url: URL, animationRect: NSRect?) {
+        progress.kind = .file
+        progress.fileOperationKind = .downloading
+        progress.fileURL = url
+        progress.isCancellable = false
+        progress.isPausable = false
+        if let animationRect, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            progress.setUserInfoObject(NSWorkspace.shared.icon(forFile: url.path), forKey: .fileAnimationImageKey)
+            progress.setUserInfoObject(NSValue(rect: animationRect), forKey: .fileAnimationImageOriginalRectKey)
+        }
+        progress.publish()
+    }
+
+    func update(received: Int64, total: Int64) {
+        guard isPublished else { return }
+        progress.totalUnitCount = total > 0 ? total : -1
+        // Completion means the file has been atomically moved out of staging.
+        progress.completedUnitCount = total > 0 ? min(max(0, received), total - 1) : max(0, received)
+    }
+
+    func finish(url: URL?) {
+        guard isPublished else { return }
+        if let url {
+            progress.fileURL = url
+            progress.totalUnitCount = max(1, progress.totalUnitCount)
+            progress.completedUnitCount = progress.totalUnitCount
+        } else {
+            progress.cancel()
+        }
+        progress.unpublish()
+        isPublished = false
+    }
+
+    deinit {
+        if isPublished { progress.unpublish() }
     }
 }
 
@@ -123,6 +174,7 @@ final class BrowserDownloads: NSObject, ObservableObject, WKDownloadDelegate {
         item.request = download.originalRequest ?? item.request
         running[ObjectIdentifier(download)] = item
         download.delegate = self
+        if item.stagingFile != nil { startDockProgress(item) }
         updateActivity()
         persist()
     }
@@ -145,7 +197,7 @@ final class BrowserDownloads: NSObject, ObservableObject, WKDownloadDelegate {
     func retry(_ item: BrowserDownload) {
         guard item.canRetry, !stopped else { return }
         item.error = nil
-        if item.readyToPublish { publish(item); return }
+        if item.readyToPublish { startDockProgress(item); publish(item); return }
         item.state = .downloading
         let web: WKWebView
         if let original = item.webView { web = original }
@@ -189,6 +241,8 @@ final class BrowserDownloads: NSObject, ObservableObject, WKDownloadDelegate {
         stopped = true
         polling?.cancel(); polling = nil
         for item in retainedItems {
+            item.dockProgress?.finish(url: nil)
+            item.dockProgress = nil
             item.download?.delegate = nil
             item.download?.cancel(nil)
             item.download = nil
@@ -228,6 +282,7 @@ final class BrowserDownloads: NSObject, ObservableObject, WKDownloadDelegate {
                                                     attributes: [.posixPermissions: 0o700])
             item.stagingDirectory = staging
             item.stagingFile = staging.appendingPathComponent(item.name)
+            startDockProgress(item)
             persist()
             completionHandler(item.stagingFile)
         } catch {
@@ -312,7 +367,15 @@ final class BrowserDownloads: NSObject, ObservableObject, WKDownloadDelegate {
         item.stagingDirectory = nil; item.stagingFile = nil
     }
 
+    private func startDockProgress(_ item: BrowserDownload) {
+        guard item.dockProgress == nil else { return }
+        item.dockProgress = DownloadDockProgress(url: item.directory.appendingPathComponent(item.name),
+                                                 animationRect: item.animationRect)
+    }
+
     private func finish(_ item: BrowserDownload, state: BrowserDownload.State) {
+        item.dockProgress?.finish(url: state == .completed ? item.fileURL : nil)
+        item.dockProgress = nil
         pendingRetries[item.id] = nil
         if let download = item.download {
             running.removeValue(forKey: ObjectIdentifier(download))
@@ -386,6 +449,7 @@ final class BrowserDownloads: NSObject, ObservableObject, WKDownloadDelegate {
                     guard let progress = item.download?.progress else { continue }
                     if item.received != progress.completedUnitCount { item.received = progress.completedUnitCount }
                     if item.total != progress.totalUnitCount { item.total = progress.totalUnitCount }
+                    item.dockProgress?.update(received: item.received, total: item.total)
                 }
                 self.refreshProgress()
                 do { try await Task.sleep(for: .milliseconds(250)) } catch { break }

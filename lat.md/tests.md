@@ -783,6 +783,12 @@ Run with `BEND_FULLSCREEN_TEST=1` because the test activates a temporary app win
 
 [ElementFullscreenTests.swift](../Tests/BrowseTests/ElementFullscreenTests.swift) loads a browser page and verifies the document reports fullscreen enabled and exposes the video request API without entering fullscreen automatically.
 
+## Dock download progress
+
+[[Tests/BrowseTests/DownloadTests.swift#dockDownloadProgress]] verifies native file progress stays unfinished until publication succeeds, uses the collision-resolved URL, and cancels failed operations without reporting completion.
+
+Windowless progress omits animation metadata, and finishing twice has no effect. Visual animation remains controlled by the macOS Dock.
+
 ## Website downloads
 
 [DownloadTests.swift](../Tests/BrowseTests/DownloadTests.swift) uses real WebKit navigation to download attachments, explicit links, unsupported MIME types, redirects with cookies, POST responses, and blob/data files while preserving the source document.

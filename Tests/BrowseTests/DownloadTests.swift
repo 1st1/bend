@@ -13,6 +13,32 @@ import WebKit
     try #require(predicate())
 }
 
+// @lat: [[tests#Dock download progress]]
+@Test @MainActor func dockDownloadProgress() {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let requested = folder.appendingPathComponent("report.txt")
+    let actual = folder.appendingPathComponent("report (1).txt")
+    let operation = DownloadDockProgress(url: requested, animationRect: nil)
+    #expect(operation.progress.fileURL == requested)
+    #expect(operation.progress.fileOperationKind == .downloading)
+    #expect(operation.progress.isIndeterminate)
+    #expect(operation.progress.userInfo[.fileAnimationImageKey] == nil)
+    operation.update(received: 100, total: 100)
+    #expect(!operation.progress.isFinished)
+    operation.finish(url: actual)
+    #expect(operation.progress.fileURL == actual)
+    #expect(operation.progress.isFinished)
+    #expect(!operation.isPublished)
+    operation.finish(url: nil)
+    #expect(!operation.progress.isCancelled)
+    let failed = DownloadDockProgress(url: requested, animationRect: nil)
+    failed.update(received: 50, total: 100)
+    failed.finish(url: nil)
+    #expect(failed.progress.isCancelled)
+    #expect(!failed.progress.isFinished)
+    #expect(!failed.isPublished)
+}
+
 // @lat: [[tests#Website downloads]]
 @Test @MainActor func websiteDownloads() async throws {
     _ = NSApplication.shared
