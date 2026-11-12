@@ -9,10 +9,69 @@ struct ExtensionCatalogView: View {
             VStack(alignment: .leading, spacing: 20) {
                 ExtensionUpdateControls(updater: manager.updates)
                 ForEach(CatalogExtension.curated) { entry in card(entry) }
+                mouseGesturesCard
                 Text("Installations start disabled. Review permissions when you enable an extension. Bend checks for updates at startup and every four hours. Reload open pages after changing extensions.")
                     .font(.caption).foregroundStyle(.secondary)
             }.padding(24)
         }
+    }
+
+    private var mouseGesturesCard: some View {
+        let record = manager.records.first { $0.packageIdentifier == ExtensionManager.mouseGesturesIdentifier }
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                Group {
+                    if let record, let icon = manager.contexts[record.id]?.webExtension.icon(for: NSSize(width: 48, height: 48)) {
+                        Image(nsImage: icon).resizable().scaledToFit()
+                    } else {
+                        Image(systemName: "computermouse").font(.system(size: 25, weight: .medium))
+                            .foregroundStyle(Color.blue)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }.frame(width: 48, height: 48)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Mouse Gestures for Safari").font(.system(size: 17, weight: .semibold))
+                    Text("Petr Mareš · Productivity").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                ExtensionCardBadges(updater: manager.updates, packageLabel: "Safari package", id: nil,
+                    version: record.flatMap { manager.contexts[$0.id]?.webExtension.displayVersion })
+            }
+            Text("Use mouse gestures to open and close tabs, navigate, and scroll.")
+                .font(.callout).fixedSize(horizontal: false, vertical: true)
+            Text("If needed, installation opens the App Store. Get the app there, then return to Bend to finish. You don’t need to enable it in Safari.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Link("View in App Store ↗", destination: URL(string: "https://apps.apple.com/app/id1618804075")!)
+                Spacer()
+                if manager.waitingForMouseGesturesApp {
+                    Text("Waiting for App Store installation…").font(.callout).foregroundStyle(.secondary)
+                    Button("Cancel", action: manager.cancelMouseGesturesInstall)
+                } else if let record {
+                    Toggle("Enable Mouse Gestures", isOn: Binding(
+                        get: { manager.isEnabled(record.id) },
+                        set: { manager.setEnabled($0, id: record.id) }))
+                        .toggleStyle(.switch).disabled(manager.busy)
+                } else {
+                    Button("Install in Bend") { manager.installMouseGestures() }
+                        .buttonStyle(.borderedProminent).disabled(manager.busy)
+                }
+            }
+            if let record {
+                Divider()
+                HStack {
+                    Text("After updating the App Store app, update Bend’s copy here.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Update from App") { manager.installMouseGestures() }
+                        .disabled(manager.busy)
+                }
+                ExtensionManagementView(manager: manager, record: record)
+            }
+        }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(.primary.opacity(0.06), lineWidth: 1))
     }
 
     private func card(_ entry: CatalogExtension) -> some View {
@@ -36,7 +95,8 @@ struct ExtensionCatalogView: View {
                     Text("\(entry.publisher) · \(entry.category)").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                ExtensionCardBadges(updater: manager.updates, entry: entry, id: record?.id,
+                ExtensionCardBadges(updater: manager.updates,
+                    packageLabel: entry.id == "ublock-lite" ? "Safari package" : "Firefox package", id: record?.id,
                     version: record.flatMap { manager.contexts[$0.id]?.webExtension.displayVersion })
             }
             Text(description).font(.callout).fixedSize(horizontal: false, vertical: true)
@@ -76,14 +136,14 @@ struct ExtensionCatalogView: View {
 @available(macOS 15.4, *)
 private struct ExtensionCardBadges: View {
     @ObservedObject var updater: ExtensionUpdater
-    let entry: CatalogExtension
+    let packageLabel: String
     let id: UUID?
     let version: String?
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
             HStack(spacing: 6) {
-                pill(entry.id == "ublock-lite" ? "Safari package" : "Firefox package")
+                pill(packageLabel)
                 if let version {
                     pill(version).help("Installed version \(version)")
                         .accessibilityLabel("Installed version \(version)")

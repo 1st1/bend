@@ -1142,3 +1142,14 @@ The copied destination has a fresh pane identity. After restoring, the next Comm
 [[Tests/BrowseTests/WebsiteSettingsTests.swift#nativePrivacyPreferences]] verifies live native tracking, payment disclosure, and measurement values, advanced navigation protection, unsupported-selector handling, and independent data stores.
 
 These checks verify native configuration, not remote rule availability, relay service access, fingerprint uniqueness, or ad-report delivery. The existing settings toolbar test visits Privacy, and transaction tests include privacy flags in rollback coverage.
+
+
+## Safari mouse gestures
+
+[[Tests/BrowseTests/ExtensionCompatibilityTests.swift#mouseGesturesSafariSmoke]] optionally imports the app specified by BEND_TEST_MOUSE_GESTURES_APP into isolated storage, verifies settings, and opens a tab with native right-button input.
+
+An injected app lookup and store opener verify the App Store handoff, cancellation, launch failure, and resumption without duplicate imports. The installed package's default leftward gesture uses Safari's favorites URL, which must open Bend's start page. The test never changes the user's installed app or extension preferences.
+
+## Extension permission presentation
+
+[[Tests/BrowseTests/ExtensionPermissionTests.swift#extensionPermissionPresentation]] verifies readable permission summaries, exact website restrictions, unknown-permission visibility, deduplication, and denial when the native dialog is closed.

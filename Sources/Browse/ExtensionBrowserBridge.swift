@@ -106,7 +106,11 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
         guard !store.isPrivate || context.hasAccessToPrivateData else {
             completionHandler(nil, failure("This extension is not enabled in private mode.")); return
         }
-        let url = configuration.url ?? URL(string: "browse://start")!
+        // Safari extensions use this URL for their default new-tab gesture.
+        let requestedURL = configuration.url
+        let url = requestedURL?.absoluteString == "favorites://"
+            ? URL(string: "browse://start")!
+            : requestedURL ?? URL(string: "browse://start")!
         if url.scheme == context.baseURL.scheme, url.host == context.baseURL.host {
             guard !store.isPrivate else {
                 completionHandler(nil, failure(PageController.privateExtensionPageError)); return
@@ -159,7 +163,7 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
     func webExtensionController(_ controller: WKWebExtensionController, promptForPermissions permissions: Set<WKWebExtension.Permission>,
         in tab: (any WKWebExtensionTab)?, for context: WKWebExtensionContext,
         completionHandler: @escaping (Set<WKWebExtension.Permission>, Date?) -> Void) {
-        let allowed = approve(context.webExtension.displayName ?? "Extension", details: permissions.map(\.rawValue).sorted())
+        let allowed = approve(context.webExtension.displayName ?? "Extension", details: permissions.map(\.rawValue).sorted(), context: context, sessionOnly: true)
         // Optional runtime grants last for this app session. Restart requires a new approval.
         completionHandler(allowed ? permissions : [], nil)
     }
@@ -167,14 +171,14 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
     func webExtensionController(_ controller: WKWebExtensionController, promptForPermissionMatchPatterns patterns: Set<WKWebExtension.MatchPattern>,
         in tab: (any WKWebExtensionTab)?, for context: WKWebExtensionContext,
         completionHandler: @escaping (Set<WKWebExtension.MatchPattern>, Date?) -> Void) {
-        let allowed = approve(context.webExtension.displayName ?? "Extension", details: patterns.map(\.string).sorted())
+        let allowed = approve(context.webExtension.displayName ?? "Extension", details: patterns.map(\.string).sorted(), context: context, sessionOnly: true)
         completionHandler(allowed ? patterns : [], nil)
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, promptForPermissionToAccess urls: Set<URL>,
         in tab: (any WKWebExtensionTab)?, for context: WKWebExtensionContext,
         completionHandler: @escaping (Set<URL>, Date?) -> Void) {
-        let allowed = approve(context.webExtension.displayName ?? "Extension", details: urls.map { $0.host ?? $0.absoluteString }.sorted())
+        let allowed = approve(context.webExtension.displayName ?? "Extension", details: urls.map(\.absoluteString).sorted(), context: context, sessionOnly: true)
         completionHandler(allowed ? urls : [], nil)
     }
 }

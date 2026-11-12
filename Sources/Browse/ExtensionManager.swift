@@ -27,6 +27,14 @@ final class ExtensionManager: NSObject, ObservableObject {
     @Published private(set) var busy = false
     @Published private(set) var catalogInstallingID: String?
     private var catalogTask: Task<Void, Never>?
+    @Published private(set) var waitingForMouseGesturesApp = false
+    private var mouseGesturesAppObservation: AnyCancellable?
+    var mouseGesturesAppURL: () -> URL? = {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: "tw.mares.gestures-by-petr")
+    }
+    var openMouseGesturesStore: () -> Bool = {
+        NSWorkspace.shared.open(URL(string: "macappstore://apps.apple.com/app/id1618804075")!)
+    }
     lazy var updates = ExtensionUpdater(manager: self)
     @Published var error: String?
     @Published private(set) var failures: [UUID: String] = [:]
@@ -237,6 +245,58 @@ final class ExtensionManager: NSObject, ObservableObject {
                 for url in sources { try await importExtension(from: url) }
             } catch { self.error = error.localizedDescription }
         }
+    }
+
+    static let mouseGesturesIdentifier = "safari:tw.mares.gestures-by-petr.Extension"
+
+    func installMouseGestures() {
+        guard !busy else { return }
+        guard let app = mouseGesturesAppURL() else {
+            error = nil
+            waitingForMouseGesturesApp = true
+            // Retry on return and while Bend is active, since App Store
+            // downloads may finish after the user switches back to Bend.
+            mouseGesturesAppObservation = Publishers.Merge(
+                NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification).map { _ in () },
+                Timer.publish(every: 2, on: .main, in: .common).autoconnect().map { _ in () }
+            ).sink { [weak self] _ in
+                guard NSApp.isActive else { return }
+                self?.resumeMouseGesturesInstall()
+            }
+            if !openMouseGesturesStore() {
+                cancelMouseGesturesInstall()
+                error = "Could not open the App Store. Install Mouse Gestures for Safari from the App Store, then try again."
+            }
+            return
+        }
+        cancelMouseGesturesInstall()
+        guard let source = Self.webExtensionBundles(in: app).first(where: {
+                  Bundle(url: $0)?.bundleIdentifier.map { "safari:" + $0 } == Self.mouseGesturesIdentifier
+              }) else {
+            error = "The installed Mouse Gestures app does not contain the expected extension. Try reinstalling it from the App Store."
+            return
+        }
+        busy = true; error = nil
+        Task {
+            defer { busy = false }
+            do {
+                if let record = records.first(where: { $0.packageIdentifier == Self.mouseGesturesIdentifier }) {
+                    try await replacePackage(record.id, from: source)
+                } else {
+                    try await importExtension(from: source, expectedIdentifier: Self.mouseGesturesIdentifier)
+                }
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+
+    func resumeMouseGesturesInstall() {
+        guard waitingForMouseGesturesApp, !busy, mouseGesturesAppURL() != nil else { return }
+        installMouseGestures()
+    }
+
+    func cancelMouseGesturesInstall() {
+        waitingForMouseGesturesApp = false
+        mouseGesturesAppObservation = nil
     }
 
     func catalogRecord(_ entry: CatalogExtension) -> ExtensionRecord? {
@@ -539,7 +599,7 @@ final class ExtensionManager: NSObject, ObservableObject {
         busy = true
         Task {
             defer { busy = false }
-            do { try await enable(enabled, id: id) { [weak self] name, permissions in self?.approve(name, details: permissions) == true } }
+            do { try await enable(enabled, id: id) { [weak self] name, permissions in self?.approve(name, details: permissions, context: self?.contexts[id]) == true } }
             catch { self.error = error.localizedDescription }
         }
     }
@@ -605,14 +665,11 @@ final class ExtensionManager: NSObject, ObservableObject {
         try? FileManager.default.removeItem(at: root.appendingPathComponent(id.uuidString))
     }
 
-    func approve(_ name: String, details: [String]) -> Bool {
+    func approve(_ name: String, details: [String], context: WKWebExtensionContext? = nil, sessionOnly: Bool = false) -> Bool {
         InputDiagnostics.transition(.extensionPermission, .shown, window: browserWindow, paneID: activeID)
         defer { InputDiagnostics.transition(.extensionPermission, .hidden, window: browserWindow, paneID: activeID) }
-        let alert = NSAlert()
-        alert.messageText = "Allow \(name) access in Bend?"
-        alert.informativeText = details.joined(separator: "\n")
-        alert.addButton(withTitle: "Allow"); alert.addButton(withTitle: "Don’t Allow")
-        return alert.runModal() == .alertFirstButtonReturn
+        return ExtensionPermissionDialog().run(name: name, details: details,
+            icon: context?.webExtension.icon(for: NSSize(width: 64, height: 64)), sessionOnly: sessionOnly)
     }
 
     func settingsPageURL(_ id: UUID) -> URL? {

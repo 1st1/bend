@@ -1042,3 +1042,124 @@ private struct WasmRestartProfile: Codable {
         try JSONEncoder().encode(WasmRestartProfile(extensionStore: extensionStore, websiteStore: websiteStore, origin: context.baseURL)).write(to: metadata)
     }
 }
+
+// @lat: [[tests#Safari mouse gestures]]
+@Test @MainActor func mouseGesturesSafariSmoke() async throws {
+    guard #available(macOS 15.4, *), let path = ProcessInfo.processInfo.environment["BEND_TEST_MOUSE_GESTURES_APP"] else { return }
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendMouseGestures-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let manager = ExtensionManager(root: root, persistent: false, websiteDataStore: .nonPersistent())
+    manager.presentsWindows = false
+    let source = try #require(ExtensionManager.webExtensionBundles(in: URL(fileURLWithPath: path)).first)
+    var installedApp: URL?
+    var storeOpened = 0
+    manager.mouseGesturesAppURL = { installedApp }
+    manager.openMouseGesturesStore = { storeOpened += 1; return true }
+    manager.installMouseGestures()
+    #expect(manager.waitingForMouseGesturesApp)
+    #expect(storeOpened == 1)
+    #expect(!manager.busy)
+    manager.resumeMouseGesturesInstall()
+    #expect(manager.records.isEmpty)
+    manager.cancelMouseGesturesInstall()
+    installedApp = URL(fileURLWithPath: path)
+    manager.resumeMouseGesturesInstall()
+    #expect(manager.records.isEmpty)
+    installedApp = nil
+    manager.openMouseGesturesStore = { false }
+    manager.installMouseGestures()
+    #expect(!manager.waitingForMouseGesturesApp)
+    #expect(manager.error != nil)
+    manager.openMouseGesturesStore = { storeOpened += 1; return true }
+    manager.installMouseGestures()
+    installedApp = URL(fileURLWithPath: path)
+    manager.resumeMouseGesturesInstall()
+    manager.resumeMouseGesturesInstall()
+    for _ in 0..<100 {
+        if !manager.busy { break }
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(!manager.waitingForMouseGesturesApp)
+    #expect(manager.error == nil)
+    #expect(manager.records.count == 1)
+    #expect(manager.records.first?.enabled == false)
+    #expect(FileManager.default.fileExists(atPath: source.path))
+    let id = try #require(manager.records.first?.id)
+    #expect(manager.records.first?.name == "Mouse Gestures for Safari")
+    manager.setPrivateAccess(true, id: id)
+    try await manager.enable(true, id: id) { _, _ in true }
+    let context = try #require(manager.contexts[id])
+    defer { try? manager.controller.unload(context) }
+    try await context.loadBackgroundContent()
+    let document = try manager.openDocument(url: try #require(context.optionsPageURL), context: context, active: false)
+    for _ in 0..<100 {
+        if (try? await document.web.evaluateJavaScript("document.querySelector('input') != null")) as? Bool == true { break }
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    let config = try await document.web.callAsyncJavaScript(
+        "return await browser.runtime.sendMessage({type:'getConfig'});",
+        arguments: [:], in: nil, contentWorld: .page)
+    let values = try #require(config as? [String: Any])
+    #expect(values["url"] as? String == "favorites://")
+    #expect(values["new-tab"] as? String == "L")
+    let server = try await ExtensionHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
+    let page = store.selectedTab.pages[0]
+    let controller = store.controller(for: page)
+    let web = controller.webView
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 800, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = web; window.orderFront(nil)
+    defer { web.stopLoading(); window.close() }
+    controller.navigate("http://127.0.0.1:\(server.port)/")
+    for _ in 0..<100 {
+        if (try? await web.evaluateJavaScript("document.body?.innerText.includes('Fixture')")) as? Bool == true { break }
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    try await Task.sleep(for: .seconds(1))
+    func mouse(_ type: NSEvent.EventType, x: CGFloat) throws {
+        let template = try #require(NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: 300), modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 1, clickCount: 1, pressure: type == .rightMouseUp ? 0 : 1))
+        let cg = try #require(template.cgEvent)
+        cg.setIntegerValueField(.mouseEventButtonNumber, value: 1)
+        if type == .rightMouseDragged { cg.setIntegerValueField(.mouseEventDeltaX, value: -20) }
+        let event = try #require(NSEvent(cgEvent: cg))
+        #expect(event.buttonNumber == 1)
+        // WebKit reads this process's NSEvent button mask when constructing
+        // its native event. Scope the test override to the synchronous send;
+        // never post global input or depend on the user's physical mouse.
+        let method = try #require(class_getClassMethod(NSEvent.self, #selector(getter: NSEvent.pressedMouseButtons)))
+        let buttons: @convention(block) () -> UInt = { type == .rightMouseUp ? 0 : 2 }
+        let replacement = imp_implementationWithBlock(buttons)
+        let original = method_setImplementation(method, replacement)
+        defer { method_setImplementation(method, original); imp_removeBlock(replacement) }
+        switch type {
+        case .rightMouseDown: web.rightMouseDown(with: event)
+        case .rightMouseUp: web.rightMouseUp(with: event)
+        default: web.rightMouseDragged(with: event)
+        }
+    }
+    let tabCount = store.session.workspaces.flatMap(\.tabs).count
+    try mouse(.rightMouseDown, x: 400)
+    for _ in 0..<50 {
+        if (try? await web.evaluateJavaScript("!!document.querySelector('canvas')")) as? Bool == true { break }
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(try await web.evaluateJavaScript("!!document.querySelector('canvas')") as? Bool == true)
+    for x in stride(from: 380, through: 200, by: -20) {
+        try mouse(.rightMouseDragged, x: CGFloat(x))
+        try await Task.sleep(for: .milliseconds(120))
+    }
+    try mouse(.rightMouseUp, x: 200)
+    for _ in 0..<50 {
+        if store.session.workspaces.flatMap(\.tabs).count > tabCount { break }
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(store.session.workspaces.flatMap(\.tabs).count == tabCount + 1)
+    #expect(store.selectedTab.pages[0].address == "browse://start")
+    #expect(context.errors.isEmpty, "\(context.errors.map(\.localizedDescription))")
+    try await manager.enable(false, id: id) { _, _ in true }
+}
