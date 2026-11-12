@@ -1093,6 +1093,12 @@ Coverage includes exact row boundaries, the favorites inset, resizing, insertion
 
 The manual verification helper is exercised with a mocked Keychain export and real signing tools, checking one export per run, progress and success output, restrictive permissions, and cleanup after success or key mismatch.
 
+## Application update launch scheduling
+
+[[Tests/BrowseTests/AppUpdaterTests.swift#applicationUpdateLaunchScheduling]] verifies that launch checks respect the ten-minute boundary and recover from missing or future-dated check times.
+
+Recent checks suppress the additional launch request; older checks permit it. [[scripts/test-build-app.sh]] checks that the packaged production app schedules hourly background checks.
+
 ## Application update preview
 
 [[Tests/BrowseTests/AppUpdaterTests.swift#applicationUpdatePreview]] exercises debug-only preview eligibility, the pinned Sparkle fixture, real update windows, download cancellation, replay, and the simulated Install and Relaunch action.

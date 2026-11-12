@@ -35,6 +35,18 @@ import Sparkle
     }
 }
 
+// @lat: [[tests#Application update launch scheduling]]
+@Test @MainActor func applicationUpdateLaunchScheduling() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    #expect(AppUpdater.needsLaunchCheck(lastCheck: nil, now: now))
+    #expect(!AppUpdater.needsLaunchCheck(lastCheck: now, now: now))
+    #expect(!AppUpdater.needsLaunchCheck(lastCheck: now.addingTimeInterval(-599), now: now))
+    #expect(AppUpdater.needsLaunchCheck(lastCheck: now.addingTimeInterval(-600), now: now))
+    #expect(AppUpdater.needsLaunchCheck(lastCheck: now.addingTimeInterval(-3600), now: now))
+    // A clock correction must not suppress checks until a future timestamp.
+    #expect(AppUpdater.needsLaunchCheck(lastCheck: now.addingTimeInterval(60), now: now))
+}
+
 #if !BEND_PRODUCTION
 // @lat: [[tests#Application update preview]]
 @Test @MainActor func applicationUpdatePreview() async throws {

@@ -42,7 +42,7 @@ PYKEY
   update_plist="<key>SUFeedURL</key><string>https://github.com/1st1/bend/releases/latest/download/appcast.xml</string>
   <key>SUPublicEDKey</key><string>$public_key</string>
   <key>SUEnableAutomaticChecks</key><true/>
-  <key>SUScheduledCheckInterval</key><integer>86400</integer>
+  <key>SUScheduledCheckInterval</key><integer>3600</integer>
   <key>SUAutomaticallyUpdate</key><false/>
   <key>SUAllowsAutomaticUpdates</key><false/>
   <key>SUVerifyUpdateBeforeExtraction</key><true/>

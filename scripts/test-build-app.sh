@@ -105,6 +105,7 @@ plist="$root/release/Bend.app/Contents/Info.plist"
 grep -q -- '-c release --disable-sandbox -Xswiftc -DBEND_PRODUCTION' "$root/swift-arguments"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$plist")" == https://github.com/1st1/bend/releases/latest/download/appcast.xml ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :SURequireSignedFeed' "$plist")" == true ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUScheduledCheckInterval' "$plist")" == 3600 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUVerifyUpdateBeforeExtraction' "$plist")" == true ]]
 [[ -f "$root/release/Bend.app/Contents/Resources/Sparkle-LICENSE" ]]
 [[ -L "$root/release/Bend.app/Contents/Frameworks/Sparkle.framework/Versions/Current" ]]

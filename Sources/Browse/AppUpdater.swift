@@ -30,6 +30,19 @@ final class AppUpdater: NSObject, ObservableObject, @preconcurrency SPUStandardU
             self?.canCheckForUpdates = value
         }
         controller.startUpdater()
+        let updater = controller.updater
+        // Sparkle permits an extra launch check before its next runloop cycle.
+        // Its own scheduler handles subsequent hourly checks and persistence.
+        if updater.canCheckForUpdates, updater.automaticallyChecksForUpdates,
+           Self.needsLaunchCheck(lastCheck: updater.lastUpdateCheckDate) {
+            updater.checkForUpdatesInBackground()
+        }
+    }
+
+    static func needsLaunchCheck(lastCheck: Date?, now: Date = .now) -> Bool {
+        guard let lastCheck else { return true }
+        let elapsed = now.timeIntervalSince(lastCheck)
+        return elapsed < 0 || elapsed >= 10 * 60
     }
 
     @objc func checkForUpdates(_ sender: Any? = nil) {
