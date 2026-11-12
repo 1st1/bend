@@ -629,9 +629,25 @@ HTTP and HTTPS pages share settings across paths and ports on a lowercase hostna
 
 Settings opens on UI and includes a Websites section. [WebsiteSettingsView.swift](../Sources/Browse/WebsiteSettingsView.swift) offers a default zoom, a filterable hostname list with zoom pickers and individual resets, and a reset of all overrides. Filtering starts as a Filter by name button. Clicking it focuses a compact, softly filled field; clicking outside, Return, or Escape ends editing. An empty unfocused field returns to the button, while a nonempty query remains visible and active. Choosing the current default removes that website's override; changing the default leaves existing explicit overrides intact. Clearing browsing history does not clear these settings. Read/save errors appear in this section with Retry; failed writes preserve the prior saved preferences, while a keyboard zoom change can remain temporary in the current pane. [[tests#Website settings failure recovery]] covers safe recovery.
 
+## Website security preferences
+
+[[Sources/Browse/WebsiteSettingsView.swift#WebsiteSettingsView]] exposes public WebKit security and privacy controls in Settings → Websites, backed by [[Sources/BrowseCore/WebsiteSettings.swift#WebsiteSettings]].
+
+Fraudulent-site warnings and JavaScript default on; HTTP warnings and blocking all cookies default off. [[Sources/Browse/BrowserStore.swift#PageController#applyWebsiteSecurity]] updates native fraud warnings and cookie policy on existing website views. Cookie blocking retains existing stored data. Navigation preferences apply JavaScript and HTTPS policy on subsequent loads without automatically reloading open pages. HTTP warnings use WebKit’s HTTPS upgrade with user-mediated HTTP fallback; system exceptions remain WebKit-controlled. Extension documents retain their own scripting preferences.
+
+Regular windows share persistent preferences. Private windows inherit a temporary copy, consistent with website zoom settings. [[architecture#Privacy preferences]] owns cookie controls and native tracking, payment disclosure, and ad measurement settings. IP-hiding, Reader, and private-tab-lock switches are not exposed. [[tests#Website security preferences]] covers native preference updates and real page script execution.
+
+## Website data management
+
+[[Sources/Browse/WebsiteDataView.swift#WebsiteDataView]] lists and filters WebKit website-data records for the Settings window’s data store, with confirmed removal of individual sites or all listed records.
+
+Removal covers cookies, caches, and other WebKit storage without changing Bend history, downloads, or website preferences. Private windows manage only their own ephemeral store; regular windows manage the shared profile store. Removal and refresh disable conflicting operations while work is in progress.
+
 ## Website settings database
 
 [WebsiteSettingsDatabase.swift](../Sources/BrowseCore/WebsiteSettingsDatabase.swift) stores website preferences in a separate WebsiteSettings.db beside the root session and History.db, using the system SQLite library.
+
+Schema version 3 adds tracking, payment disclosure, and ad measurement preferences; tracking prevention and payment disclosure default on, while ad measurement defaults off. Earlier security and zoom choices survive migration. [[tests#Privacy settings migration]] covers version 2 upgrades. [[tests#Website security migration]] covers migration and persistence; security changes participate in the same atomic transactions as zoom changes.
 
 One shared store owns the connection and cached settings. A singleton defaults row and hostname-keyed website rows store page zoom, bounded from 25% to 500%. Schema versioning rejects newer or unrelated databases; corrupt storage is preserved instead of overwritten. Saves update changed rows in a transaction with WAL and full synchronous commits. The cache advances only after commit, so failures roll back and can be retried. Website settings are browser preferences, separate from WebKit cookies, localStorage, and IndexedDB. [[tests#Website settings transactions]] and [[tests#Website settings storage protection]] cover persistence and failure boundaries.
 
@@ -798,3 +814,13 @@ The default [[scripts/build-app.sh]] produces `dist/Bend Debug.app`, with bundle
 [[Sources/Browse/BrowserWindows.swift#BrowserWindows#init]] and [[Sources/Browse/BrowserStore.swift#BrowserStore#init]] select the profile root for windows, sessions, history, website settings, download history, and owned extension packages and configuration. [[Sources/Browse/InputDiagnostics.swift#InputDiagnostics#start]] places diagnostic files under that root. UserDefaults domains and window autosave names are distinct, while the application menus, About panel, and browser windows use the selected app name. Settings’ SwiftUI preferences and native diagnostic preference reads use the same profile domain. Packaged apps use standard UserDefaults, isolated by bundle identity; named suites are used only when the host identifier differs, as in SwiftPM tools and tests. Foundation rejects a named suite equal to the running app’s own bundle ID.
 
 Debug uses stable, dedicated website-data and extension-controller identifiers. Production keeps WebKit’s existing default stores. [[Sources/Browse/ExtensionManager.swift#ExtensionManager#init]] uses the profile stores unless callers supply isolated test stores. Website navigation, extension authentication, and download retries use the same selected website store. Cookies, local storage, cache, service workers, extension settings, and filtering databases are separate. User-selected files and the system Downloads folder remain ordinary shared filesystem locations; each profile separately saves its download destination and history. No production profile is copied into Debug. [[tests#Build profile isolation]] verifies identity and persistence boundaries, including actual cookie isolation.
+
+## Privacy preferences
+
+[[Sources/Browse/PrivacySettingsView.swift#PrivacySettingsView]] provides Settings → Privacy with native tracking, payment disclosure, ad measurement, cookie controls, and website-data management.
+
+[[Sources/Browse/WebKitPrivacy.swift#WebKitPrivacy]] isolates capability-checked private WebKit selectors. Cross-site tracking prevention and Apple Pay capability disclosure default on; Private Click Measurement defaults off. Choices persist in the website-settings database, and existing saved choices are preserved. Missing selectors disable their UI controls and are never invoked. Settings affect Bend objects, never Safari preferences. Regular windows share preferences; private windows inherit temporary copies and independent website data stores.
+
+The additional native protection bundle is enabled for all website views before creation and on navigation, including private windows. It requests fingerprinting protections, link filtering, and enhanced network privacy without provisioning a proxy service. Open documents need reloading for navigation protections. Turning ITP off leaves this bundle enabled. Extension documents retain their own policies. Native updates and independent-store behavior are covered by [[tests#Native privacy preferences]].
+
+The green-check list describes origin isolation, temporary private storage, and available additional protections; filtering depends on macOS rules. Bend does not claim anonymity, IP hiding, or full Safari parity. Cookie controls and Manage Website Data live here rather than in Websites.

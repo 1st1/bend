@@ -67,6 +67,7 @@ final class SettingsWindowController {
 enum SettingsSection: String, CaseIterable, Identifiable {
     case ui = "UI"
     case websites = "Websites"
+    case privacy = "Privacy"
     case extensions = "Extensions"
     case development = "Development"
 
@@ -75,6 +76,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .ui: "slider.horizontal.3"
         case .websites: "globe"
+        case .privacy: "hand.raised.fill"
         case .extensions: "puzzlepiece.extension.fill"
         case .development: "hammer.fill"
         }
@@ -83,6 +85,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .ui: .blue
         case .websites: .teal
+        case .privacy: .green
         case .extensions: .purple
         case .development: .gray
         }
@@ -127,6 +130,8 @@ struct BrowserSettingsView: View {
                     UISettingsView(store: store)
                 case .websites:
                     WebsiteSettingsView(settings: store.websiteSettings)
+                case .privacy:
+                    PrivacySettingsView(settings: store.websiteSettings, dataStore: store.websiteDataStore)
                 case .extensions:
                     if #available(macOS 15.4, *) {
                         ExtensionSettingsView(manager: store.extensions)

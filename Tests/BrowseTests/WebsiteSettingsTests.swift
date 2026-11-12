@@ -5,6 +5,45 @@ import Testing
 import WebKit
 @testable import Browse
 
+// @lat: [[tests#Website security preferences]]
+@Test @MainActor func websiteSecurityPreferences() async throws {
+    _ = NSApplication.shared
+    let server = try await WebsiteZoomHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let settings = WebsiteSettingsStore(temporary: WebsiteSettings())
+    settings.setPreference(\.javaScriptEnabled, false)
+    settings.setPreference(\.warnFraudulentSites, false)
+    settings.setPreference(\.blockAllCookies, true)
+    let dataStore = WKWebsiteDataStore.nonPersistent()
+    let page = PageController(address: "http://127.0.0.1:\(server.port)/script", websiteSettings: settings,
+                              configure: { $0.websiteDataStore = dataStore })
+    defer { page.webView.stopLoading() }
+    func wait(_ path: String) async throws {
+        for _ in 0..<200 {
+            if page.webView.url?.path == path, !page.webView.isLoading, page.webView.title != nil { return }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        Issue.record("Website did not finish loading")
+    }
+    try await wait("/script")
+    #expect(page.webView.title == "Zoom fixture")
+    #expect(!page.webView.configuration.preferences.isFraudulentWebsiteWarningEnabled)
+    #expect(await dataStore.httpCookieStore.cookiePolicy == .disallow)
+    settings.setPreference(\.javaScriptEnabled, true)
+    settings.setPreference(\.warnFraudulentSites, true)
+    settings.setPreference(\.blockAllCookies, false)
+    page.navigate("http://127.0.0.1:\(server.port)/script-enabled")
+    try await wait("/script-enabled")
+    #expect(page.webView.title == "Script ran")
+    #expect(page.webView.configuration.preferences.isFraudulentWebsiteWarningEnabled)
+    #expect(await dataStore.httpCookieStore.cookiePolicy == .allow)
+    settings.setPreference(\.warnHTTP, true)
+    let preferences = WKWebpagePreferences()
+    page.webView(page.webView, decidePolicyFor: WKNavigationAction(), preferences: preferences) { _, resolved in
+        #expect(resolved.preferredHTTPSNavigationPolicy == .userMediatedFallbackToHTTP)
+    }
+}
+
 // @lat: [[tests#Website zoom navigation and sharing]]
 @Test @MainActor func websiteZoomNavigationAndSharing() async throws {
     _ = NSApplication.shared
@@ -183,7 +222,8 @@ private final class WebsiteZoomHTTPFixture: @unchecked Sendable {
                     response = "HTTP/1.1 302 Found\r\nLocation: http://localhost:\(server.port)/redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                 } else {
                     let frame = request.hasPrefix("GET /with-frame ") ? "<iframe src='http://localhost:\(server.port)/frame'></iframe>" : ""
-                    let body = "<html><head><title>Zoom fixture</title></head><body><input value='keep me'>\(frame)</body></html>"
+                    let script = request.hasPrefix("GET /script") ? "<script>document.title='Script ran';</script>" : ""
+                    let body = "<html><head><title>Zoom fixture</title>\(script)</head><body><input value='keep me'>\(frame)</body></html>"
                     response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nCache-Control: no-store\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
                 }
                 if request.hasPrefix("GET /slow ") {
@@ -207,4 +247,42 @@ private final class WebsiteZoomHTTPFixture: @unchecked Sendable {
         }
         return server
     }
+}
+
+// @lat: [[tests#Native privacy preferences]]
+@Test @MainActor func nativePrivacyPreferences() async throws {
+    _ = NSApplication.shared
+    let settings = WebsiteSettingsStore(temporary: WebsiteSettings())
+    let dataStore = WKWebsiteDataStore.nonPersistent()
+    let page = PageController(address: "about:blank", websiteSettings: settings,
+                              configure: { $0.websiteDataStore = dataStore })
+    defer { page.webView.stopLoading() }
+    func flag(_ object: NSObject, _ key: String) throws -> Bool {
+        try #require(object.value(forKey: key) as? Bool)
+    }
+    #expect(try !flag(page.webView.configuration.preferences, "_privateClickMeasurementEnabled"))
+    for enabled in [true, false, true] {
+        settings.setPreference(\.preventCrossSiteTracking, enabled)
+        settings.setPreference(\.applePayDisclosureAllowed, enabled)
+        settings.setPreference(\.privateClickMeasurementEnabled, enabled)
+        #expect(try flag(dataStore, "_resourceLoadStatisticsEnabled") == enabled)
+        #expect(try flag(page.webView.configuration.preferences, "_applePayCapabilityDisclosureAllowed") == enabled)
+        #expect(try flag(page.webView.configuration.preferences, "_privateClickMeasurementEnabled") == enabled)
+        let preferences = WKWebpagePreferences()
+        page.webView(page.webView, decidePolicyFor: WKNavigationAction(), preferences: preferences) { _, resolved in
+            #expect((resolved.value(forKey: "_networkConnectionIntegrityEnabled") as? Bool) == true)
+        }
+    }
+    // Unsupported objects are safely ignored rather than invoking undefined KVC.
+    let unsupported = NSObject()
+    #expect(!WebKitPrivacy.supports(.tracking, on: unsupported))
+    WebKitPrivacy.set(.tracking, on: unsupported, enabled: true)
+    // The regular session and each private window have independent data stores.
+    let otherStore = WKWebsiteDataStore.nonPersistent()
+    let otherSettings = WebsiteSettingsStore(temporary: settings.values)
+    let other = PageController(address: "about:blank", websiteSettings: otherSettings,
+                               configure: { $0.websiteDataStore = otherStore })
+    defer { other.webView.stopLoading() }
+    settings.setPreference(\.preventCrossSiteTracking, false)
+    #expect(try flag(otherStore, "_resourceLoadStatisticsEnabled"))
 }

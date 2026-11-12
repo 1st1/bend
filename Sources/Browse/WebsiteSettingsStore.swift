@@ -42,6 +42,10 @@ final class WebsiteSettingsStore: ObservableObject {
         update { $0.defaultZoom = zoom }
     }
 
+    func setPreference(_ key: WritableKeyPath<WebsiteSettings, Bool>, _ enabled: Bool) {
+        update { $0[keyPath: key] = enabled }
+    }
+
     func setZoom(_ zoom: Double, for url: URL) {
         guard let host = WebsiteSettings.hostname(for: url) else { return }
         setZoom(zoom, forHost: host)

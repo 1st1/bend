@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import BrowseCore
+import WebKit
 
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
@@ -24,6 +25,21 @@ struct WebsiteSettingsView: View {
                     Text(error).foregroundStyle(.red).textSelection(.enabled)
                     Button("Retry") { settings.reload() }
                 }
+            }
+            Section("Security") {
+                Toggle("Warn when visiting a fraudulent website", isOn: preference(\.warnFraudulentSites))
+                Text("Uses macOS WebKit’s built-in fraudulent website warnings.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Warn before connecting to a website over HTTP", isOn: preference(\.warnHTTP))
+                Text("Tries HTTPS first and shows a warning if a secure connection cannot be established.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
+                Toggle("Enable JavaScript", isOn: preference(\.javaScriptEnabled))
+            } header: {
+                Text("Web content")
+            } footer: {
+                Text("Changes apply when you reload a page or navigate. Extension pages keep JavaScript enabled.")
             }
             Section {
                 zoomPicker("When visiting other websites", selection: Binding(
@@ -73,6 +89,10 @@ struct WebsiteSettingsView: View {
         .onChange(of: settings.values.zoomByHost.isEmpty) { _, empty in
             if empty { query = ""; showsFilter = false; filterFocused = false }
         }
+    }
+
+    private func preference(_ key: WritableKeyPath<WebsiteSettings, Bool>) -> Binding<Bool> {
+        Binding(get: { settings.values[keyPath: key] }, set: { settings.setPreference(key, $0) })
     }
 
     private var filterControl: some View {

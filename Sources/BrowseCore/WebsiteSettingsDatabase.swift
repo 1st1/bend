@@ -22,7 +22,7 @@ public final class WebsiteSettingsDatabase {
         do {
             sqlite3_busy_timeout(connection, 1_000)
             let version = try rows("PRAGMA user_version").first?.first
-            guard version == "0" || version == "1" else {
+            guard version == "0" || version == "1" || version == "2" || version == "3" else {
                 throw DatabaseError(message: "Website settings database version is not supported.")
             }
             if version == "0" {
@@ -55,6 +55,37 @@ public final class WebsiteSettingsDatabase {
                 saved.zoomByHost[row[0]] = zoom
             }
             guard saved.isValid else { throw CocoaError(.fileReadCorruptFile) }
+            if version == "0" || version == "1" {
+                try transaction {
+                    try execute("""
+                        ALTER TABLE defaults ADD COLUMN warn_fraud INTEGER NOT NULL DEFAULT 1 CHECK(warn_fraud IN (0,1));
+                        ALTER TABLE defaults ADD COLUMN javascript INTEGER NOT NULL DEFAULT 1 CHECK(javascript IN (0,1));
+                        ALTER TABLE defaults ADD COLUMN warn_http INTEGER NOT NULL DEFAULT 0 CHECK(warn_http IN (0,1));
+                        ALTER TABLE defaults ADD COLUMN block_cookies INTEGER NOT NULL DEFAULT 0 CHECK(block_cookies IN (0,1));
+                        PRAGMA user_version = 2;
+                        """)
+                }
+            }
+            if version != "3" {
+                try transaction {
+                    try execute("""
+                        ALTER TABLE defaults ADD COLUMN prevent_tracking INTEGER NOT NULL DEFAULT 1 CHECK(prevent_tracking IN (0,1));
+                        ALTER TABLE defaults ADD COLUMN apple_pay_disclosure INTEGER NOT NULL DEFAULT 1 CHECK(apple_pay_disclosure IN (0,1));
+                        ALTER TABLE defaults ADD COLUMN private_click_measurement INTEGER NOT NULL DEFAULT 0 CHECK(private_click_measurement IN (0,1));
+                        PRAGMA user_version = 3;
+                        """)
+                }
+            }
+            let security = try rows("SELECT warn_fraud, javascript, warn_http, block_cookies, prevent_tracking, apple_pay_disclosure, private_click_measurement FROM defaults WHERE id = 1")
+            guard let flags = security.first, flags.count == 7,
+                  flags.allSatisfy({ $0 == "0" || $0 == "1" }) else { throw CocoaError(.fileReadCorruptFile) }
+            saved.warnFraudulentSites = flags[0] == "1"
+            saved.javaScriptEnabled = flags[1] == "1"
+            saved.warnHTTP = flags[2] == "1"
+            saved.blockAllCookies = flags[3] == "1"
+            saved.preventCrossSiteTracking = flags[4] == "1"
+            saved.applePayDisclosureAllowed = flags[5] == "1"
+            saved.privateClickMeasurementEnabled = flags[6] == "1"
             try execute("PRAGMA journal_mode = WAL")
             try execute("PRAGMA synchronous = FULL")
             try execute("PRAGMA secure_delete = ON")
@@ -73,6 +104,10 @@ public final class WebsiteSettingsDatabase {
         guard settings.isValid else { throw DatabaseError(message: "Invalid website zoom settings.") }
         guard settings != saved else { return }
         try transaction {
+            try run("UPDATE defaults SET warn_fraud = ?, javascript = ?, warn_http = ?, block_cookies = ?, prevent_tracking = ?, apple_pay_disclosure = ?, private_click_measurement = ? WHERE id = 1",
+                    [settings.warnFraudulentSites, settings.javaScriptEnabled, settings.warnHTTP, settings.blockAllCookies,
+                     settings.preventCrossSiteTracking, settings.applePayDisclosureAllowed, settings.privateClickMeasurementEnabled]
+                        .map { .number($0 ? 1 : 0) })
             if settings.defaultZoom != saved.defaultZoom {
                 try run("UPDATE defaults SET page_zoom = ? WHERE id = 1", [.number(settings.defaultZoom)])
             }

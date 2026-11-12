@@ -34,7 +34,7 @@ import BrowseCore
     }
     let content = try #require(settings.window.contentView)
     let sidebar = try #require(table(in: content))
-    for (index, title) in ["UI", "Websites", "Extensions", "Development"].enumerated() {
+    for (index, title) in ["UI", "Websites", "Privacy", "Extensions", "Development"].enumerated() {
         sidebar.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
         try await Task.sleep(for: .milliseconds(200))
         #expect(settings.window.title == title)
@@ -88,23 +88,23 @@ import BrowseCore
     settings.show(section: .extensions)
     try await Task.sleep(for: .milliseconds(200))
     #expect(settings.window.title == "Extensions")
-    #expect(sidebar.selectedRow == 2)
+    #expect(sidebar.selectedRow == 3)
     settings.show()
     try await Task.sleep(for: .milliseconds(100))
-    #expect(sidebar.selectedRow == 2)
+    #expect(sidebar.selectedRow == 3)
     sidebar.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
     try await Task.sleep(for: .milliseconds(100))
     settings.window.close()
     settings.show(section: .extensions)
     try await Task.sleep(for: .milliseconds(200))
     #expect(settings.window.title == "Extensions")
-    #expect(sidebar.selectedRow == 2)
+    #expect(sidebar.selectedRow == 3)
     let fresh = SettingsWindowController(store: store)
     defer { fresh.window.close() }
     fresh.show(section: .extensions)
     try await Task.sleep(for: .milliseconds(200))
     #expect(fresh.window.title == "Extensions")
-    #expect(table(in: try #require(fresh.window.contentView))?.selectedRow == 2)
+    #expect(table(in: try #require(fresh.window.contentView))?.selectedRow == 3)
 }
 
 // @lat: [[tests#Settings close shortcut]]

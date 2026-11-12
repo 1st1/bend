@@ -12,6 +12,13 @@ public enum PageZoom {
 public struct WebsiteSettings: Equatable, Sendable {
     public var defaultZoom: Double = 1
     public var zoomByHost: [String: Double] = [:]
+    public var warnFraudulentSites = true
+    public var javaScriptEnabled = true
+    public var warnHTTP = false
+    public var blockAllCookies = false
+    public var preventCrossSiteTracking = true
+    public var applePayDisclosureAllowed = true
+    public var privateClickMeasurementEnabled = false
 
     public init() {}
 

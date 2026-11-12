@@ -44,6 +44,7 @@ private func websiteSQL(_ file: URL, _ sql: String) throws {
     defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("WebsiteSettings.db")
     let database = try WebsiteSettingsDatabase(file: file)
+    #expect(!database.load().privateClickMeasurementEnabled)
     var settings = WebsiteSettings()
     settings.defaultZoom = 1.1
     settings.zoomByHost = ["example.com": 1.5, "other.test": 0.9]
@@ -53,6 +54,13 @@ private func websiteSQL(_ file: URL, _ sql: String) throws {
     try websiteSQL(file, "CREATE TRIGGER reject_insert BEFORE INSERT ON website_settings BEGIN SELECT RAISE(ABORT, 'injected failure'); END")
     var changed = settings
     changed.defaultZoom = 1.25
+    changed.warnFraudulentSites = false
+    changed.javaScriptEnabled = false
+    changed.warnHTTP = true
+    changed.blockAllCookies = true
+    changed.preventCrossSiteTracking = false
+    changed.applePayDisclosureAllowed = false
+    changed.privateClickMeasurementEnabled = true
     changed.zoomByHost.removeValue(forKey: "example.com")
     changed.zoomByHost["new.test"] = 2
     #expect(throws: (any Error).self) { try database.save(changed) }
@@ -68,6 +76,33 @@ private func websiteSQL(_ file: URL, _ sql: String) throws {
     invalid.defaultZoom = .nan
     #expect(throws: (any Error).self) { try database.save(invalid) }
     #expect(database.load() == changed)
+}
+
+// @lat: [[tests#Website security migration]]
+@Test func websiteSecurityMigration() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSecurityMigration-\(UUID())")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("settings.db")
+    try websiteSQL(file, """
+        CREATE TABLE defaults(id INTEGER PRIMARY KEY, page_zoom REAL);
+        INSERT INTO defaults VALUES(1, 1.25);
+        CREATE TABLE website_settings(hostname TEXT PRIMARY KEY, page_zoom REAL);
+        INSERT INTO website_settings VALUES('example.com', 1.5);
+        PRAGMA user_version = 1;
+        """)
+    let db = try WebsiteSettingsDatabase(file: file)
+    var settings = db.load()
+    #expect(settings.defaultZoom == 1.25)
+    #expect(settings.zoomByHost["example.com"] == 1.5)
+    #expect(settings.warnFraudulentSites && settings.javaScriptEnabled)
+    #expect(!settings.warnHTTP && !settings.blockAllCookies)
+    settings.warnFraudulentSites = false
+    settings.javaScriptEnabled = false
+    settings.warnHTTP = true
+    settings.blockAllCookies = true
+    try db.save(settings)
+    #expect(try WebsiteSettingsDatabase(file: file).load() == settings)
 }
 
 // @lat: [[tests#Website settings storage protection]]
@@ -86,4 +121,28 @@ private func websiteSQL(_ file: URL, _ sql: String) throws {
     let future = root.appendingPathComponent("future.db")
     try websiteSQL(future, "PRAGMA user_version = 99")
     #expect(throws: (any Error).self) { try WebsiteSettingsDatabase(file: future) }
+}
+
+// @lat: [[tests#Privacy settings migration]]
+@Test func privacySettingsMigration() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPrivacyMigration-\(UUID())")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("settings.db")
+    try websiteSQL(file, """
+        CREATE TABLE defaults(id INTEGER PRIMARY KEY, page_zoom REAL, warn_fraud INTEGER, javascript INTEGER, warn_http INTEGER, block_cookies INTEGER);
+        INSERT INTO defaults VALUES(1, 1.5, 0, 0, 1, 1);
+        CREATE TABLE website_settings(hostname TEXT PRIMARY KEY, page_zoom REAL);
+        PRAGMA user_version = 2;
+        """)
+    let db = try WebsiteSettingsDatabase(file: file)
+    var settings = db.load()
+    #expect(settings.defaultZoom == 1.5 && settings.blockAllCookies && settings.warnHTTP)
+    #expect(!settings.javaScriptEnabled && !settings.warnFraudulentSites)
+    #expect(settings.preventCrossSiteTracking && settings.applePayDisclosureAllowed && !settings.privateClickMeasurementEnabled)
+    settings.preventCrossSiteTracking = false
+    settings.applePayDisclosureAllowed = false
+    settings.privateClickMeasurementEnabled = true
+    try db.save(settings)
+    #expect(try WebsiteSettingsDatabase(file: file).load() == settings)
 }

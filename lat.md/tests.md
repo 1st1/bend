@@ -709,6 +709,14 @@ The native-view regression covers separate left/right targets, result growth and
 
 [WebsiteSettingsTests.swift](../Tests/BrowseCoreTests/WebsiteSettingsTests.swift) verifies corrupt files are preserved and unrelated or newer databases are rejected without adopting their contents.
 
+## Website security migration
+
+[[Tests/BrowseCoreTests/WebsiteSettingsTests.swift#websiteSecurityMigration]] verifies legacy zoom settings survive migration, new security preferences start with compatible defaults, and all four Boolean choices persist after reopening.
+
+## Website security preferences
+
+[[Tests/BrowseTests/WebsiteSettingsTests.swift#websiteSecurityPreferences]] verifies real website JavaScript is disabled and re-enabled on navigation, fraud warnings and cookie policy update live, and HTTP warnings select WebKit’s user-mediated fallback.
+
 ## Website zoom navigation and sharing
 
 [WebsiteSettingsTests.swift](../Tests/BrowseTests/WebsiteSettingsTests.swift) verifies persisted zoom across panes, windows, and store recreation, using local HTTP pages with redirects, iframe loads, and back/forward navigation.
@@ -1124,3 +1132,13 @@ The preview uses no updater or installation helper. The test supplies an isolate
 [[Tests/BrowseTests/LinkNavigationTests.swift#dedicatedPaneWindowRestoration]] verifies duplicated tabs retain their reusable Command-click destination through full window shutdown and restoration in both main and secondary windows.
 
 The copied destination has a fresh pane identity. After restoring, the next Command-click reuses that pane without increasing the pane count, and the shared dedicated-pane preference remains active.
+
+## Privacy settings migration
+
+[[Tests/BrowseCoreTests/WebsiteSettingsTests.swift#privacySettingsMigration]] verifies version 2 databases retain security and zoom choices with tracking prevention and payment disclosure on and ad measurement off by default. Changed choices persist after reopening.
+
+## Native privacy preferences
+
+[[Tests/BrowseTests/WebsiteSettingsTests.swift#nativePrivacyPreferences]] verifies live native tracking, payment disclosure, and measurement values, advanced navigation protection, unsupported-selector handling, and independent data stores.
+
+These checks verify native configuration, not remote rule availability, relay service access, fingerprint uniqueness, or ad-report delivery. The existing settings toolbar test visits Privacy, and transaction tests include privacy flags in rollback coverage.

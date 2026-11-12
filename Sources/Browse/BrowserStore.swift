@@ -1251,6 +1251,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         configuration.applicationNameForUserAgent = Self.websiteApplicationName
         configuration.websiteDataStore = AppProfile.current.websiteDataStore
         configure(configuration)
+        WebKitPrivacy.apply(websiteSettings?.values ?? WebsiteSettings(), to: configuration)
         webView = suppliedWebView ?? FocusWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.diagnosticPaneID = paneID
@@ -1258,9 +1259,18 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         observeWebView()
         navigate(address)
         websiteSettingsObservation = websiteSettings?.$values.sink { [weak self] values in
-            guard let self, let url = self.zoomURL, WebsiteSettings.hostname(for: url) != nil else { return }
+            guard let self else { return }
+            self.applyWebsiteSecurity(values)
+            guard let url = self.zoomURL, WebsiteSettings.hostname(for: url) != nil else { return }
             self.webView.pageZoom = CGFloat(values.zoom(for: url))
         }
+    }
+
+    private func applyWebsiteSecurity(_ values: WebsiteSettings) {
+        guard extensionOrigin == nil else { return }
+        WebKitPrivacy.apply(values, to: webView.configuration)
+        webView.configuration.preferences.isFraudulentWebsiteWarningEnabled = values.warnFraudulentSites
+        webView.configuration.websiteDataStore.httpCookieStore.setCookiePolicy(values.blockAllCookies ? .disallow : .allow)
     }
 
     func setPageZoom(_ zoom: CGFloat) {
@@ -1275,6 +1285,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     private func observeWebView() {
+        applyWebsiteSecurity(websiteSettings?.values ?? WebsiteSettings())
         OptionClickObserver.install(in: webView.configuration.userContentController)
         webView.onOptionLink = { [weak self] address, mainFrame in
             self?.onOptionLink?(address, mainFrame)
@@ -1346,6 +1357,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
             configuration.applicationNameForUserAgent = Self.websiteApplicationName
             configuration.websiteDataStore = AppProfile.current.websiteDataStore
             configure(configuration)
+            WebKitPrivacy.apply(websiteSettings?.values ?? WebsiteSettings(), to: configuration)
             replaceWebView(configuration: configuration)
         }
         load(url)
@@ -1539,6 +1551,20 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
             externalApplications.request(url, source: action.sourceFrame.request.url ?? webView.url, in: window)
         }
         return true
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 preferences: WKWebpagePreferences,
+                 decisionHandler: @escaping @MainActor (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+        let values = websiteSettings?.values ?? WebsiteSettings()
+        // Extension documents keep their own scripting requirements. Website
+        // policy is resolved for every navigation, including reused views.
+        if extensionOrigin == nil {
+            WebKitPrivacy.enableAdvancedProtection(preferences)
+            preferences.allowsContentJavaScript = values.javaScriptEnabled
+            preferences.preferredHTTPSNavigationPolicy = values.warnHTTP ? .userMediatedFallbackToHTTP : .keepAsRequested
+        }
+        self.webView(webView, decidePolicyFor: action) { policy in decisionHandler(policy, preferences) }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
