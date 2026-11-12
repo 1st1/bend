@@ -1,2 +1,0 @@
-kind: Fixed
-body: Use paired macOS selection colors for address autocomplete and selected suggestions, retaining full text contrast on selected rows.

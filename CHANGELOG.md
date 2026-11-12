@@ -5,6 +5,18 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.4.0
+### Added
+- Open 1Password and Dark Reader settings directly from their cards in Extensions settings.
+- Print the focused web page with Command-P or File → Print, using the native macOS print dialog and PDF options.
+### Changed
+- Refine the address popup with native Liquid Glass, a compact search field, lighter result typography, and subtler shortcut hints.
+- Show Open Link in New Tab first in the right-click link menu.
+### Fixed
+- Use paired macOS selection colors for address autocomplete and selected suggestions, retaining full text contrast on selected rows.
+- Open Foxy Gestures settings by supplying browser information and handling unavailable Firefox settings and permission checks. Explain the remaining limitation on default right-button gestures.
+- Share cookies and website data across tabs and panes within each private window, keeping separate private windows isolated and clearing their data on closure.
+
 ## v0.3.0
 ### Added
 - Choose whether the sidebar docks on the left or right in UI settings.
