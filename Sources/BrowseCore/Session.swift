@@ -216,6 +216,8 @@ public struct BrowserSession: Codable, Sendable {
     public var selectedTab: UUID
     public var sidebarWidth: Double?
     public var sidebarSide: SidebarSide?
+    public var searchEngine: SearchEngine?
+    public var customSearchEngine: CustomSearchEngine?
     public var commandClickOpensNewTab: Bool?
     public var commandClickDestination: CommandClickDestination?
     public var commandShiftClickDestination: LinkOpenDestination?
@@ -326,7 +328,7 @@ public struct BrowserSession: Codable, Sendable {
 
 // @lat: [[architecture#Address handling]]
 public enum AddressResolver {
-    public static func resolve(_ input: String) -> URL? {
+    public static func resolve(_ input: String, searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil) -> URL? {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         if ["browse://start", "browse://guide", "browse://history"].contains(text) { return URL(string: text) }
@@ -339,8 +341,6 @@ public enum AddressResolver {
         if !text.contains(where: \.isWhitespace) && (host.contains(".") || host == "localhost" || host.hasPrefix("localhost:")) {
             return URL(string: (host.hasPrefix("localhost") || host.hasPrefix("127.0.0.1") ? "http://" : "https://") + text)
         }
-        var url = URLComponents(string: "https://www.google.com/search")!
-        url.queryItems = [URLQueryItem(name: "q", value: text)]
-        return url.url
+        return searchEngine.searchURL(for: text, custom: customSearchEngine)
     }
 }

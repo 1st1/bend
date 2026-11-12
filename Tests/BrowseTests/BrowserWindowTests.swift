@@ -11,6 +11,8 @@ import BrowseCore
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSettingsToolbar-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    store.customSearchEngine = CustomSearchEngine(name: "Example", template: "https://example.com/search?q=%s")
+    store.searchEngine = .custom
     let settings = SettingsWindowController(store: store)
     settings.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
     let initialScreen = try #require(NSScreen.main)
@@ -34,7 +36,7 @@ import BrowseCore
     }
     let content = try #require(settings.window.contentView)
     let sidebar = try #require(table(in: content))
-    for (index, title) in ["UI", "Websites", "Privacy", "Extensions", "Development"].enumerated() {
+    for (index, title) in ["UI", "Search", "Websites", "Privacy", "Extensions", "Development"].enumerated() {
         sidebar.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
         try await Task.sleep(for: .milliseconds(200))
         #expect(settings.window.title == title)
@@ -88,23 +90,23 @@ import BrowseCore
     settings.show(section: .extensions)
     try await Task.sleep(for: .milliseconds(200))
     #expect(settings.window.title == "Extensions")
-    #expect(sidebar.selectedRow == 3)
+    #expect(sidebar.selectedRow == 4)
     settings.show()
     try await Task.sleep(for: .milliseconds(100))
-    #expect(sidebar.selectedRow == 3)
+    #expect(sidebar.selectedRow == 4)
     sidebar.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
     try await Task.sleep(for: .milliseconds(100))
     settings.window.close()
     settings.show(section: .extensions)
     try await Task.sleep(for: .milliseconds(200))
     #expect(settings.window.title == "Extensions")
-    #expect(sidebar.selectedRow == 3)
+    #expect(sidebar.selectedRow == 4)
     let fresh = SettingsWindowController(store: store)
     defer { fresh.window.close() }
     fresh.show(section: .extensions)
     try await Task.sleep(for: .milliseconds(200))
     #expect(fresh.window.title == "Extensions")
-    #expect(table(in: try #require(fresh.window.contentView))?.selectedRow == 3)
+    #expect(table(in: try #require(fresh.window.contentView))?.selectedRow == 4)
 }
 
 // @lat: [[tests#Settings close shortcut]]

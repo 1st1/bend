@@ -94,7 +94,7 @@ extension BrowserStore {
     @discardableResult
     func openLocation(_ input: String, for pageID: UUID) -> Bool {
         guard let page = selectedTab.pages.first(where: { $0.id == pageID }),
-              let destination = AddressResolver.resolve(input) else { return false }
+              let destination = AddressResolver.resolve(input, searchEngine: searchEngine, customSearchEngine: customSearchEngine) else { return false }
         if let favorite = favorites.first(where: { $0.id == page.favoriteID }),
            !FaviconLoader.sameOrigin(URL(string: favorite.address), destination) {
             newTab(address: destination.absoluteString, afterCurrent: true)

@@ -475,7 +475,7 @@ Divider updates clamp fractions to safe bounds and leave unrelated split nodes u
 
 ## Address resolution
 
-Hostnames, explicit HTTPS, localhost, internal start pages, and search queries resolve correctly. Empty input and explicit non-web URL schemes are rejected, and query punctuation survives URL encoding.
+Hostnames, HTTPS, localhost, internal pages, and searches resolve correctly. Empty input and explicit non-web schemes are rejected. Google, DuckDuckGo, and Kagi preserve query punctuation, literal plus signs, and Unicode.
 
 ## Location popup requests
 
@@ -1155,3 +1155,11 @@ An injected app lookup and store opener verify the App Store handoff, cancellati
 ## Extension permission presentation
 
 [[Tests/BrowseTests/ExtensionPermissionTests.swift#extensionPermissionPresentation]] verifies readable permission summaries, exact website restrictions, unknown-permission visibility, deduplication, and denial when the native dialog is closed.
+
+## Search engine preference
+
+[[Tests/BrowseTests/AddressRequestTests.swift#searchEnginePreference]] verifies the Google default, shared choices across regular/private windows, immediate search routing in an existing page controller, and persistence after restoring the session, including a named custom engine.
+
+## Custom search templates
+
+[[Tests/BrowseCoreTests/SessionTests.swift#customSearchTemplates]] verifies template validation, path/query substitution, preserved fixed parameters, Unicode and punctuation encoding, and rejection of invalid configurations without sending searches to another engine.

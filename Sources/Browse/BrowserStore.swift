@@ -197,6 +197,28 @@ final class BrowserStore: ObservableObject {
         }
     }
 
+    var customSearchEngine: CustomSearchEngine? {
+        get { sharedStore?.customSearchEngine ?? session.customSearchEngine }
+        set {
+            if let sharedStore { sharedStore.customSearchEngine = newValue; return }
+            session.customSearchEngine = newValue
+            saveSoon()
+        }
+    }
+
+    var searchEngineName: String {
+        searchEngine == .custom ? (customSearchEngine?.name ?? "Custom") : searchEngine.name
+    }
+
+    var searchEngine: SearchEngine {
+        get { sharedStore?.searchEngine ?? session.searchEngine ?? .google }
+        set {
+            if let sharedStore { sharedStore.searchEngine = newValue; return }
+            session.searchEngine = newValue
+            saveSoon()
+        }
+    }
+
     var commandClickDestination: CommandClickDestination {
         get {
             sharedStore?.commandClickDestination ?? session.commandClickDestination
@@ -782,7 +804,7 @@ final class BrowserStore: ObservableObject {
         let extensionURL = URL(string: page.address).flatMap {
             ["webkit-extension", "safari-web-extension"].contains($0.scheme ?? "") ? $0 : nil
         }
-        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, downloads: downloads, configure: { [weak self] configuration in
+        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, downloads: downloads, searchEngine: searchEngine, customSearchEngine: customSearchEngine, configure: { [weak self] configuration in
             self?.configureWebView(configuration)
         })
         bindController(controller, to: page)
@@ -816,6 +838,8 @@ final class BrowserStore: ObservableObject {
     }
 
     private func bindController(_ controller: PageController, to page: Page) {
+        controller.searchEngine = { [weak self] in self?.searchEngine ?? .google }
+        controller.customSearchEngine = { [weak self] in self?.customSearchEngine }
         controller.onFaviconChanged = { [weak self] in
             self?.objectWillChange.send()
             self?.refreshFavoriteIcon(for: page.id)
@@ -1220,6 +1244,8 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     private var completedAddress: String?
     private var lastReportedAddress = ""
     private var lastReportedTitle = ""
+    var customSearchEngine: () -> CustomSearchEngine?
+    var searchEngine: () -> SearchEngine
     private let websiteSettings: WebsiteSettingsStore?
     private var websiteSettingsObservation: AnyCancellable?
     private var zoomURL: URL?
@@ -1238,13 +1264,15 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
 
     init(address: String, paneID: UUID? = nil, isPrivate: Bool = false, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil, faviconCache: FaviconCache? = nil,
          externalApplications: ExternalApplicationLinks = .shared, javaScriptDialogs: JavaScriptDialogs = .shared,
-         downloads: BrowserDownloads = BrowserDownloads(), configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
+         downloads: BrowserDownloads = BrowserDownloads(), searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
         self.isPrivate = isPrivate
         self.downloads = downloads
         self.externalApplications = externalApplications
         self.javaScriptDialogs = javaScriptDialogs
         self.websiteSettings = websiteSettings
+        self.searchEngine = { searchEngine }
+        self.customSearchEngine = { customSearchEngine }
         self.faviconCache = isPrivate ? nil : faviconCache
         self.configure = configure
         let configuration = WKWebViewConfiguration()
@@ -1350,7 +1378,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     func navigate(_ input: String) {
         onInitialDownload = nil
         let localURL = URL(string: input).flatMap { LocalWebDocument.accepts($0) ? $0 : nil }
-        guard let url = localURL ?? AddressResolver.resolve(input) else { error = "Enter a web address or search phrase."; return }
+        guard let url = localURL ?? AddressResolver.resolve(input, searchEngine: searchEngine(), customSearchEngine: customSearchEngine()) else { error = "Enter a web address or search phrase."; return }
         if extensionOrigin != nil {
             extensionOrigin = nil
             let configuration = WKWebViewConfiguration()

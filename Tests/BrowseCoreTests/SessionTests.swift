@@ -90,6 +90,43 @@ import Testing
     #expect(AddressResolver.resolve("file:///etc/passwd") == nil)
     #expect(AddressResolver.resolve("javascript://alert(1)") == nil)
     #expect(AddressResolver.resolve("   ") == nil)
+    for (engine, host, path) in [(SearchEngine.google, "www.google.com", "/search"),
+                                 (.duckDuckGo, "duckduckgo.com", "/"), (.kagi, "kagi.com", "/search")] {
+        let text = "C++ & café #swift? 100%"
+        let url = AddressResolver.resolve(text, searchEngine: engine)!
+        #expect(url.host == host)
+        #expect(url.path == path)
+        #expect(url.scheme == "https")
+        #expect(!url.absoluteString.contains("+"))
+        #expect(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems == [URLQueryItem(name: "q", value: text)])
+        #expect(AddressResolver.resolve("example.com/path", searchEngine: engine)?.absoluteString == "https://example.com/path")
+        #expect(AddressResolver.resolve("browse://start", searchEngine: engine)?.absoluteString == "browse://start")
+    }
     let query = AddressResolver.resolve("swift ui & webkit")!
     #expect(URLComponents(url: query, resolvingAgainstBaseURL: false)?.queryItems?.first?.value == "swift ui & webkit")
+}
+
+// @lat: [[tests#Custom search templates]]
+@Test func customSearchTemplates() throws {
+    let query = "C++ & café /?=#100%"
+    let engine = CustomSearchEngine(name: " My search ", template: " https://example.com/search?q=%s&language=en&fixed=a%2Bb ")
+    #expect(engine.name == "My search")
+    #expect(engine.validationError == nil)
+    let url = try #require(engine.searchURL(for: query))
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    #expect(components.queryItems == [URLQueryItem(name: "q", value: query), URLQueryItem(name: "language", value: "en"), URLQueryItem(name: "fixed", value: "a+b")])
+    #expect(!url.absoluteString.contains("+"))
+    let path = CustomSearchEngine(name: "Path", template: "https://example.com/search/%s?lang=en")
+    #expect(path.searchURL(for: "a/b")?.absoluteString == "https://example.com/search/a%2Fb?lang=en")
+    for template in ["https://example.com/", "https://example.com/?q=%s&other=%s", "javascript:alert('%s')",
+                     "file:///tmp/%s", "https://%s.example.com/", "https://user:pass@example.com/?q=%s",
+                     "https://example.com/#%s", "https://example.com/?q=%s&broken=%zz", "https://example.com/a b?q=%s"] {
+        let invalid = CustomSearchEngine(name: "Invalid", template: template)
+        #expect(invalid.validationError != nil)
+        #expect(invalid.searchURL(for: query) == nil)
+    }
+    #expect(CustomSearchEngine(name: " ", template: engine.template).validationError != nil)
+    #expect(AddressResolver.resolve(query, searchEngine: .custom, customSearchEngine: engine) == url)
+    #expect(AddressResolver.resolve(query, searchEngine: .custom) == nil)
+    #expect(AddressResolver.resolve("example.com", searchEngine: .custom)?.host == "example.com")
 }

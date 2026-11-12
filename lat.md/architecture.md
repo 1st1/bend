@@ -729,7 +729,7 @@ The interaction draws on [Firefox's address-bar matching](https://support.mozill
 
 ## Address handling
 
-[Session.swift](../Sources/BrowseCore/Session.swift) resolves web addresses, localhost development URLs, built-in start pages, and search queries. Explicit non-web schemes are rejected; search text is encoded as a Google query parameter.
+[Session.swift](../Sources/BrowseCore/Session.swift) resolves web addresses, localhost development URLs, built-in start pages, and search queries. Explicit non-web schemes are rejected; search text uses the selected [[architecture#Search engine preference|search engine]].
 
 Bare hostnames containing dots use HTTPS, while localhost and loopback IPv4 addresses use HTTP. [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) also limits WebKit navigation to web URLs and internal blank documents.
 
@@ -832,3 +832,13 @@ The green-check list describes origin isolation, temporary private storage, and 
 [[Sources/Browse/ExtensionPermissionDialog.swift#ExtensionPermissionDialog]] presents extension access requests in a bounded native window with readable capability descriptions and a separate website-access section.
 
 [[Sources/Browse/ExtensionPermissionDialog.swift#ExtensionPermissionSummary]] retains exact scheme, wildcard, and path restrictions, labels all-website access explicitly, and shows unfamiliar permissions rather than hiding them. Technical details retain every requested identifier. The extension icon identifies the requester, with a generic extension icon when unavailable. Runtime prompts describe session-only access. Scrolling keeps the decision buttons visible; Escape and window close deny the request. Presentation does not change the requested grants or approval checks in [[Sources/Browse/ExtensionManager.swift#ExtensionManager#enable]].
+
+## Search engine preference
+
+[[Sources/BrowseCore/SearchEngine.swift#SearchEngine]] defines Google, DuckDuckGo, Kagi, and custom search destinations. Google remains the default for existing and new profiles.
+
+Settings → Search offers a search engine picker. [[Sources/Browse/BrowserStore.swift#BrowserStore#searchEngine]] persists the choice in the session and shares it across regular and private windows. Existing pages are not reloaded; subsequent searches use the current choice, including controllers created before it changed. The location popup names the selected provider. Explicit URLs, internal pages, and history selections keep their original destinations.
+
+[[Sources/BrowseCore/SearchEngine.swift#SearchEngine#searchURL]] encodes the query as one parameter, escaping literal plus signs for provider form decoding. Kagi uses its [documented search endpoint](https://help.kagi.com/kagi/getting-started/setting-default.html); authentication is handled by the website. [[tests#Address resolution]] covers URLs and encoding; [[tests#Search engine preference]] covers persistence and navigation across windows.
+
+Settings → Search also offers Custom with a name and URL template. [[Sources/BrowseCore/SearchEngine.swift#CustomSearchEngine]] requires a nonempty name and an HTTP(S) template containing exactly one `%s` in the path or query, without credentials or fragments. Invalid templates cannot be saved or tested. Save applies the configuration; edits leave the active configuration intact until saved. Test Search opens a new Bend tab for “Bend browser” without changing the active engine. Fixed URL parameters survive substitution, while query text is encoded as one component. The saved custom configuration remains available when switching to a built-in engine. [[tests#Custom search templates]] covers validation and substitution.

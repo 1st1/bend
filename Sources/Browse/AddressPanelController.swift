@@ -326,7 +326,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             return
         }
         let address = result?.address ?? input.stringValue
-        guard AddressResolver.resolve(address) != nil else {
+        guard AddressResolver.resolve(address, searchEngine: store.searchEngine, customSearchEngine: store.customSearchEngine) != nil else {
             errorLabel.stringValue = "Enter a web address or search phrase."
             errorLabel.isHidden = false
             layoutPanel()
@@ -385,10 +385,10 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         let query = showingFrequent ? "" : typedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         let suggestions = (history ?? store.history).suggestions(for: query)
         results = suggestions.map { AddressResult(title: $0.title, detail: $0.displayURL, address: $0.url, history: $0) }
-        if let address = AddressResolver.resolve(query) {
-            let isSearch = address.host == "www.google.com" && address.path == "/search" && !query.contains("://")
+        if let address = AddressResolver.resolve(query, searchEngine: store.searchEngine, customSearchEngine: store.customSearchEngine) {
+            let isSearch = address == store.searchEngine.searchURL(for: query, custom: store.customSearchEngine)
             results.insert(AddressResult(title: isSearch ? "Search for “\(query)”" : "Visit \(query)",
-                detail: isSearch ? "Search with Google" : "Open address", address: query, history: nil), at: 0)
+                detail: isSearch ? "Search with \(store.searchEngineName)" : "Open address", address: query, history: nil), at: 0)
             selectedResult = 0
         } else { selectedResult = -1 }
         if allowAutofill, let suggestion = suggestions.first,

@@ -66,6 +66,7 @@ final class SettingsWindowController {
 
 enum SettingsSection: String, CaseIterable, Identifiable {
     case ui = "UI"
+    case search = "Search"
     case websites = "Websites"
     case privacy = "Privacy"
     case extensions = "Extensions"
@@ -75,6 +76,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .ui: "slider.horizontal.3"
+        case .search: "magnifyingglass"
         case .websites: "globe"
         case .privacy: "hand.raised.fill"
         case .extensions: "puzzlepiece.extension.fill"
@@ -84,6 +86,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var color: Color {
         switch self {
         case .ui: .blue
+        case .search: .orange
         case .websites: .teal
         case .privacy: .green
         case .extensions: .purple
@@ -128,6 +131,8 @@ struct BrowserSettingsView: View {
                 switch selection ?? .ui {
                 case .ui:
                     UISettingsView(store: store)
+                case .search:
+                    SearchSettingsView(store: store)
                 case .websites:
                     WebsiteSettingsView(settings: store.websiteSettings)
                 case .privacy:
@@ -620,5 +625,65 @@ struct PaneExtensionsMenu: View {
         }
         .menuStyle(.button).buttonStyle(ChromeButtonStyle()).menuIndicator(.hidden).fixedSize()
         .help("Extensions").accessibilityLabel("Extensions")
+    }
+}
+
+private struct SearchSettingsView: View {
+    @ObservedObject var store: BrowserStore
+    @ViewState private var editingCustom = false
+    @ViewState private var name = ""
+    @ViewState private var template = ""
+    private var draft: CustomSearchEngine { CustomSearchEngine(name: name, template: template) }
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Search engine", selection: Binding(
+                    get: { editingCustom ? .custom : store.searchEngine },
+                    set: { engine in
+                        editingCustom = engine == .custom
+                        if engine != .custom { store.searchEngine = engine }
+                    })) {
+                    ForEach(SearchEngine.allCases, id: \.self) { engine in
+                        Text(engine.name).tag(engine)
+                    }
+                }
+            } footer: {
+                Text("Used when you enter a search in the address bar.")
+            }
+            if editingCustom || store.searchEngine == .custom {
+                Section {
+                    TextField("Name", text: $name, prompt: Text("My search"))
+                    TextField("Search URL", text: $template, prompt: Text("https://example.com/search?q=%s"))
+                    if let error = draft.validationError, !name.isEmpty || !template.isEmpty {
+                        Text(error).font(.callout).foregroundStyle(.red)
+                    }
+                    HStack {
+                        Button("Test Search") {
+                            if let url = draft.searchURL(for: "Bend browser") {
+                                store.newTab(address: url.absoluteString)
+                            }
+                        }
+                        Spacer()
+                        Button("Save") {
+                            store.customSearchEngine = draft
+                            store.searchEngine = .custom
+                            editingCustom = false
+                        }
+                        .disabled(store.searchEngine == .custom && store.customSearchEngine == draft)
+                    }
+                    .disabled(draft.validationError != nil)
+                } header: {
+                    Text("Custom search engine")
+                } footer: {
+                    Text("Use %s for the search text. Extra URL parameters are preserved. Test Search opens a new tab with “Bend browser”. Save applies your changes.")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear {
+            name = store.customSearchEngine?.name ?? ""
+            template = store.customSearchEngine?.template ?? ""
+        }
     }
 }

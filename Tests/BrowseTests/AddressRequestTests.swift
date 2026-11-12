@@ -520,3 +520,42 @@ import BrowseCore
         #expect(abs(a.blueComponent - b.blueComponent) < 0.015)
     }
 }
+
+// @lat: [[tests#Search engine preference]]
+@Test @MainActor func searchEnginePreference() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSearch-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("session.json")
+    let store = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(store.searchEngine == .google)
+    let other = BrowserStore(sessionFile: root.appendingPathComponent("other.json"), sharedStore: store)
+    let privateStore = BrowserStore(sessionFile: root.appendingPathComponent("private.json"), sharedStore: store, isPrivate: true)
+    let page = other.selectedTab.pages[0]
+    let controller = other.controller(for: page)
+    for engine in [SearchEngine.google, .duckDuckGo, .kagi] {
+        store.searchEngine = engine
+        #expect(other.searchEngine == engine)
+        #expect(privateStore.searchEngine == engine)
+        #expect(other.openLocation("C++ & café", for: page.id))
+        #expect(controller.address == engine.searchURL(for: "C++ & café")?.absoluteString)
+        controller.webView.stopLoading()
+    }
+    let custom = CustomSearchEngine(name: "Example", template: "https://example.com/?q=%s&lang=en")
+    store.customSearchEngine = custom
+    store.searchEngine = .custom
+    #expect(other.searchEngineName == "Example")
+    #expect(privateStore.customSearchEngine == custom)
+    #expect(other.openLocation("C++ & café", for: page.id))
+    #expect(controller.address == custom.searchURL(for: "C++ & café")?.absoluteString)
+    controller.webView.stopLoading()
+    store.save()
+    let customRestored = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(customRestored.searchEngine == .custom)
+    #expect(customRestored.customSearchEngine == custom)
+    other.searchEngine = .duckDuckGo
+    #expect(store.searchEngine == .duckDuckGo)
+    store.save()
+    let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(restored.searchEngine == .duckDuckGo)
+    #expect(restored.selectedTab.id == store.selectedTab.id)
+}
