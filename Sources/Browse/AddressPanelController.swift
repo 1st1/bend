@@ -23,8 +23,8 @@ private final class AddressResultCell: NSTableCellView {
     let remove = NSButton()
 
     func setSelected(_ selected: Bool) {
-        title.textColor = selected ? .white : .labelColor
-        let secondary = selected ? NSColor.white.withAlphaComponent(0.75) : .secondaryLabelColor
+        title.textColor = selected ? .alternateSelectedControlTextColor : .labelColor
+        let secondary = selected ? NSColor.alternateSelectedControlTextColor : .secondaryLabelColor
         detail.textColor = secondary
         icon.contentTintColor = secondary
         remove.contentTintColor = secondary
@@ -47,7 +47,7 @@ private final class AddressResultRow: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { isSelected ? .emphasized : .normal }
 
     override func drawSelection(in dirtyRect: NSRect) {
-        NSColor.systemBlue.setFill()
+        NSColor.selectedContentBackgroundColor.setFill()
         NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 2), xRadius: 12, yRadius: 12).fill()
     }
 }
@@ -124,7 +124,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         input.placeholderAttributedString = NSAttributedString(string: "Search or enter address", attributes: [
             .foregroundColor: NSColor.placeholderTextColor, .font: NSFont.systemFont(ofSize: 14)
         ])
-        input.textColor = .labelColor
+        input.textColor = .textColor
         input.isBordered = false
         input.drawsBackground = false
         input.focusRingType = .none
@@ -278,6 +278,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         if panel.parent == nil { parentWindow.addChildWindow(panel, ordered: .above) }
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(input)
+        configureEditorSelection()
         input.selectText(nil)
         // A new tab or split may mount its native pane after the location request.
         DispatchQueue.main.async { [weak self] in
@@ -490,6 +491,18 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         view.textField = title
         view.setSelected(row == selectedResult)
         return view
+    }
+
+    private func configureEditorSelection() {
+        guard let editor = input.currentEditor() as? NSTextView else { return }
+        editor.selectedTextAttributes = [
+            .foregroundColor: NSColor.selectedTextColor,
+            .backgroundColor: NSColor.selectedTextBackgroundColor
+        ]
+    }
+
+    func controlTextDidBeginEditing(_ notification: Notification) {
+        configureEditorSelection()
     }
 
     func controlTextDidChange(_ notification: Notification) {
