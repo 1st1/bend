@@ -519,6 +519,7 @@ final class BrowserStore: ObservableObject {
         var tab = BrowserTab(title: source.title, pages: pages)
         tab.layout = copyLayout(source.layout)
         tab.focusedPane = ids[source.focusedPane]!
+        tab.commandClickPaneID = source.commandClickPaneID.flatMap { ids[$0] }
         session.workspaces[wi].tabs.insert(tab, at: ti + 1)
         pendingAddressEntry = nil
         select(tab.id)

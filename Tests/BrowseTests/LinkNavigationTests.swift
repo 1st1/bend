@@ -493,3 +493,51 @@ private final class LinkAction: WKNavigationAction {
     #expect(ignored == false)
     #expect(opened.isEmpty)
 }
+
+// @lat: [[tests#Dedicated pane window restoration]]
+@Test @MainActor func dedicatedPaneWindowRestoration() throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendDedicatedRestart-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    let first = try #require(owner.active)
+    let second = owner.newWindow(show: false)
+    first.store.commandClickDestination = .dedicatedPane
+    var targets: [String: (tab: UUID, source: UUID, destination: UUID)] = [:]
+    for window in [first, second] {
+        let store = window.store
+        store.newTab(address: "browse://guide")
+        let source = store.selectedTab.pages[0]
+        store.controller(for: source).onNewLink?("browse://history", true, true)
+        let originalDestination = try #require(store.selectedTab.commandClickPaneID)
+        store.duplicateTab(store.selectedTab.id)
+        let copy = store.selectedTab
+        let destination = try #require(copy.commandClickPaneID)
+        #expect(destination != originalDestination)
+        #expect(destination == copy.pages[1].id)
+        targets[window.id] = (copy.id, copy.pages[0].id, destination)
+        #expect(store.selectedTab.pages.count == 2)
+    }
+    owner.prepareToQuit()
+    for window in owner.windows { window.window.close() }
+    let restored = BrowserWindows(root: root, persistentExtensions: false)
+    restored.restore(show: false)
+    defer {
+        restored.prepareToQuit()
+        for window in restored.windows { window.window.close() }
+    }
+    #expect(restored.windows.count == 2)
+    for window in restored.windows {
+        let store = window.store
+        let target = try #require(targets[window.id])
+        #expect(store.commandClickDestination == .dedicatedPane)
+        #expect(store.selectedTab.id == target.tab)
+        #expect(store.selectedTab.commandClickPaneID == target.destination)
+        let source = try #require(store.selectedTab.pages.first { $0.id == target.source })
+        store.controller(for: source).onNewLink?("browse://guide", true, true)
+        #expect(store.selectedTab.pages.count == 2)
+        #expect(store.selectedTab.focusedPane == target.destination)
+        #expect(store.selectedTab.commandClickPaneID == target.destination)
+    }
+}

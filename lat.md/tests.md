@@ -1112,3 +1112,9 @@ The preview uses no updater or installation helper. The test supplies an isolate
 ## Command popup actions
 
 [[Tests/BrowseTests/CommandPopupTests.swift#commandPopupActions]] verifies state-aware actions, favorite and pin changes, split-tab duplication, the native shortcut, filtering, execution, empty results, stale targets, and retention of initial blank tabs.
+
+## Dedicated pane window restoration
+
+[[Tests/BrowseTests/LinkNavigationTests.swift#dedicatedPaneWindowRestoration]] verifies duplicated tabs retain their reusable Command-click destination through full window shutdown and restoration in both main and secondary windows.
+
+The copied destination has a fresh pane identity. After restoring, the next Command-click reuses that pane without increasing the pane count, and the shared dedicated-pane preference remains active.
