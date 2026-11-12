@@ -690,14 +690,33 @@ final class BrowserStore: ObservableObject {
     func setPanePinned(_ id: UUID, pinned: Bool) {
         guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == id } }) else { return }
         editTab(tab.id) { tab in
-            if let index = tab.pages.firstIndex(where: { $0.id == id }) { tab.pages[index].isPinned = pinned }
+            if let index = tab.pages.firstIndex(where: { $0.id == id }) {
+                if pinned && !tab.pages[index].isPinned {
+                    tab.pages[index].pinnedAddress = existingController(for: id)?.address ?? tab.pages[index].address
+                } else if !pinned { tab.pages[index].pinnedAddress = nil }
+                tab.pages[index].isPinned = pinned
+            }
         }
     }
 
     func setTabPinned(_ id: UUID, pinned: Bool) {
-        editTab(id) { tab in
-            for index in tab.pages.indices { tab.pages[index].isPinned = pinned }
-        }
+        guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.id == id }) else { return }
+        for page in tab.pages { setPanePinned(page.id, pinned: pinned) }
+    }
+
+    func pinnedReturnAddress(_ id: UUID) -> String? {
+        guard let page = session.workspaces.flatMap(\.tabs).flatMap(\.pages).first(where: { $0.id == id }),
+              page.isPinned, let address = page.pinnedAddress,
+              (existingController(for: id)?.address ?? page.address) != address else { return nil }
+        return address
+    }
+
+    func returnToPinnedURL(_ id: UUID) {
+        guard let address = pinnedReturnAddress(id),
+              let page = selectedTab.pages.first(where: { $0.id == id }) else { return }
+        focus(id)
+        // Return within this pane, including favorite panes; do not redirect into a new tab.
+        controller(for: page).navigate(address)
     }
 
     func toggleTabPinned(_ id: UUID) {

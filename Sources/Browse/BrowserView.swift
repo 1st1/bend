@@ -544,7 +544,9 @@ private struct BrowserPane: View {
                                 store.focus(pageID); store.onSettingsRequested?(.extensions)
                             }
                         }
-                        iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
+                        if tab.pages.count > 1 {
+                            iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
+                        }
                     }
                 }
                 .opacity(focused || paneHovered ? 1 : 0)
@@ -553,6 +555,13 @@ private struct BrowserPane: View {
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused || paneHovered)
                 .background {
                     if focused || paneHovered { WindowDragArea(excluded: true) }
+                }
+                if let address = store.pinnedReturnAddress(pageID) {
+                    iconButton("arrow.uturn.backward", "Return to Pinned URL") {
+                        store.returnToPinnedURL(pageID)
+                    }
+                    .help("Return to Pinned URL: \(address)")
+                    .background(WindowDragArea(excluded: true))
                 }
                 PinCloseButton(pinned: pinned, setPinned: { store.setPanePinned(pageID, pinned: $0) },
                                close: { store.closePane(pageID) })

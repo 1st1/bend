@@ -905,7 +905,7 @@ Tab pinning sets all pane pins; individual unpinning keeps the tab protected whi
 
 ## Native pin controls
 
-[[Tests/BrowseTests/PinningTests.swift#nativePinControls]] exercises native Option-clicks on pane controls and sidebar rows, checks the live modifier preview, and unpins an inactive pane and an unselected tab through their always-visible pin buttons.
+[[Tests/BrowseTests/PinningTests.swift#nativePinControls]] exercises native Option-clicks on pane controls and sidebar rows, checks the live modifier preview, returns an inactive pane to its pinned URL, and unpins an inactive pane and an unselected tab through their always-visible pin buttons.
 
 ## Detached window ownership
 
@@ -1163,3 +1163,7 @@ An injected app lookup and store opener verify the App Store handoff, cancellati
 ## Custom search templates
 
 [[Tests/BrowseCoreTests/SessionTests.swift#customSearchTemplates]] verifies template validation, path/query substitution, preserved fixed parameters, Unicode and punctuation encoding, and rejection of invalid configurations without sending searches to another engine.
+
+## Pinned URL return
+
+[[Tests/BrowseTests/PinningTests.swift#pinnedURLReturn]] verifies pin-time URL capture, away-state detection, same-controller return, tab pin preservation, repinning, session restoration, and migration of older pins. The command popup test exercises the return action.

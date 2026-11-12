@@ -143,18 +143,21 @@ public struct Page: Codable, Identifiable, Sendable {
     public var id: UUID
     public var address: String
     public var isPinned: Bool
+    public var pinnedAddress: String?
     public var favoriteID: UUID?
     public init(address: String = "browse://start", isPinned: Bool = false) {
         id = UUID(); self.address = address; self.isPinned = isPinned
+        pinnedAddress = isPinned ? address : nil
     }
 
-    private enum CodingKeys: String, CodingKey { case id, address, isPinned, favoriteID }
+    private enum CodingKeys: String, CodingKey { case id, address, isPinned, pinnedAddress, favoriteID }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
         address = try values.decode(String.self, forKey: .address)
         isPinned = try values.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
         favoriteID = try values.decodeIfPresent(UUID.self, forKey: .favoriteID)
+        pinnedAddress = isPinned ? (try values.decodeIfPresent(String.self, forKey: .pinnedAddress) ?? address) : nil
     }
 }
 

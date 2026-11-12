@@ -51,6 +51,8 @@ struct PinCloseButton: View {
             else { close() }
         } label: {
             Image(systemName: pinned ? "pin.fill" : (option.pressed ? "pin" : "xmark"))
+                // The pin's tall, filled shape needs a small optical correction.
+                .font(.system(size: tab ? 9 : ((pinned || option.pressed) ? 11 : 12), weight: .regular))
                 .frame(width: tab ? 16 : nil, height: tab ? 22 : nil)
                 .contentShape(Rectangle())
         }

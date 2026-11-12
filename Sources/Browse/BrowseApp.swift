@@ -256,6 +256,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             PopupCommand(id: "pinTab", title: tab.isPinned ? "Unpin Tab" : "Pin Tab", detail: "Protect all panes from closing", icon: "pin") {
                 store.setTabPinned(tab.id, pinned: !tab.isPinned)
             },
+            PopupCommand(id: "returnPinned", title: "Return to Pinned URL",
+                detail: "Open the address saved when this pane was pinned", icon: "arrow.uturn.backward",
+                isEnabled: store.pinnedReturnAddress(tab.focusedPane) != nil) {
+                    store.returnToPinnedURL(tab.focusedPane)
+                },
             PopupCommand(id: "pinPane", title: store.isPanePinned(tab.focusedPane) ? "Unpin Pane" : "Pin Pane",
                 detail: "Protect the active pane from closing", icon: "pin.fill") {
                     store.setPanePinned(tab.focusedPane, pinned: !store.isPanePinned(tab.focusedPane))

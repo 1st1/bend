@@ -108,6 +108,7 @@ import BrowseCore
     other.save()
     let restored = BrowserStore(sessionFile: root.appendingPathComponent("other.json"), persistentExtensions: false)
     #expect(restored.isPanePinned(moving.id))
+    #expect(restored.selectedTab.pages.first { $0.id == moving.id }?.pinnedAddress == moving.address)
 }
 
 // @lat: [[tests#Pinned close commands]]
@@ -193,6 +194,18 @@ import BrowseCore
     try await settle()
     #expect(store.isPanePinned(second))
     #expect(store.selectedTab.pages.count == 2)
+    let firstController = store.controller(for: tab.pages[0])
+    firstController.navigate("browse://history")
+    try await settle()
+    #expect(store.pinnedReturnAddress(first) == "browse://start")
+    // Return remains clickable even while this pinned pane is inactive.
+    let pinPoint = try paneButton(first)
+    try click(NSPoint(x: pinPoint.x - 24, y: pinPoint.y))
+    try await settle()
+    #expect(firstController.address == "browse://start")
+    #expect(store.isPanePinned(first))
+    store.focus(second)
+    try await settle()
     // The first pane is inactive and unhovered, but its pin remains clickable.
     try click(paneButton(first))
     try await settle()
@@ -215,4 +228,38 @@ import BrowseCore
     try click(target.convert(NSPoint(x: target.bounds.maxX - 19, y: target.bounds.midY), to: nil))
     try await settle()
     #expect(store.session.workspaces[0].tabs.first { $0.id == tab.id }?.isPinned == false)
+}
+
+// @lat: [[tests#Pinned URL return]]
+@Test @MainActor func pinnedURLReturn() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPinURL-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("session.json")
+    let store = BrowserStore(sessionFile: file, persistentExtensions: false)
+    let page = store.selectedTab.pages[0]
+    let controller = store.controller(for: page)
+    controller.navigate("browse://history")
+    store.setPanePinned(page.id, pinned: true)
+    #expect(store.selectedTab.pages[0].pinnedAddress == "browse://history")
+    #expect(store.pinnedReturnAddress(page.id) == nil)
+    controller.navigate("browse://guide")
+    #expect(store.pinnedReturnAddress(page.id) == "browse://history")
+    store.setTabPinned(store.selectedTab.id, pinned: true)
+    #expect(store.selectedTab.pages[0].pinnedAddress == "browse://history")
+    store.save()
+    let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(restored.pinnedReturnAddress(page.id) == "browse://history")
+    restored.returnToPinnedURL(page.id)
+    #expect(restored.existingController(for: page.id)?.address == "browse://history")
+    #expect(restored.pinnedReturnAddress(page.id) == nil)
+    store.returnToPinnedURL(page.id)
+    #expect(store.existingController(for: page.id) === controller)
+    #expect(controller.address == "browse://history")
+    store.setPanePinned(page.id, pinned: false)
+    #expect(store.selectedTab.pages[0].pinnedAddress == nil)
+    controller.navigate("browse://guide")
+    store.setPanePinned(page.id, pinned: true)
+    #expect(store.selectedTab.pages[0].pinnedAddress == "browse://guide")
+    let legacy = Data("{\"id\":\"\(UUID())\",\"address\":\"browse://history\",\"isPinned\":true}".utf8)
+    #expect(try JSONDecoder().decode(Page.self, from: legacy).pinnedAddress == "browse://history")
 }

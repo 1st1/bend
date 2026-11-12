@@ -29,13 +29,20 @@ import Testing
     func command(_ id: String) throws -> PopupCommand {
         try #require(delegate.popupCommands().first { $0.id == id })
     }
-    #expect(delegate.popupCommands().count == 10)
+    #expect(delegate.popupCommands().count == 11)
     try command("favorite").perform()
     #expect(store.favorite(for: store.selectedTab) != nil)
     #expect(try command("favorite").title == "Remove Tab from Favorites")
     try command("pinPane").perform()
     #expect(!((try command("close")).isEnabled))
     #expect(try command("pinTab").title == "Unpin Tab")
+    #expect(try !command("returnPinned").isEnabled)
+    let pinnedController = store.controller(for: store.selectedTab.pages[0])
+    pinnedController.navigate("browse://history")
+    #expect(try command("returnPinned").isEnabled)
+    try command("returnPinned").perform()
+    #expect(pinnedController.address == pages[0].address)
+    pinnedController.webView.stopLoading()
     try command("duplicate").perform()
     let copy = store.selectedTab
     #expect(copy.id != original.id && copy.pages.map(\.address) == pages.map(\.address))
@@ -65,7 +72,7 @@ import Testing
     let content = try #require(panel.contentView)
     let input = try #require(descendants(NSTextField.self, content).first { $0.isEditable })
     let table = try #require(descendants(NSTableView.self, content).first)
-    #expect(table.numberOfRows == 10 && input.stringValue.isEmpty)
+    #expect(table.numberOfRows == 11 && input.stringValue.isEmpty)
     input.stringValue = "sidebar"
     context.addressPanel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: input))
     #expect(table.numberOfRows == 1)
