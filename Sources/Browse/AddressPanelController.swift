@@ -57,6 +57,7 @@ private struct AddressResult {
     let detail: String
     let address: String
     let history: HistorySuggestion?
+    var command: PopupCommand? = nil
 }
 
 // @lat: [[architecture#Location popup]]
@@ -70,6 +71,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     private let input = NSTextField(string: "")
     private let errorLabel = NSTextField(labelWithString: "")
+    private var commandProvider: (() -> [PopupCommand])?
     private var targetPane: UUID?
     private let resultsTable = AddressResultsTable()
     private let resultsScroll = NSScrollView()
@@ -222,7 +224,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             resultsHeight
         ])
         historyObservation = store.historyPublisher.dropFirst().sink { [weak self] history in
-            guard let self, self.targetPane != nil else { return }
+            guard let self, self.targetPane != nil, self.commandProvider == nil else { return }
             self.updateResults(history: history, preserveSelection: true)
         }
         NotificationCenter.default.addObserver(self, selector: #selector(parentGeometryDidChange(_:)),
@@ -261,7 +263,19 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         return hint
     }
 
+    func showCommands(for paneID: UUID, provider: @escaping () -> [PopupCommand]) {
+        dismiss(restoreFocus: false)
+        commandProvider = provider
+        present(for: paneID)
+    }
+
     func show(for paneID: UUID) {
+        if commandProvider != nil { dismiss(restoreFocus: false) }
+        commandProvider = nil
+        present(for: paneID)
+    }
+
+    private func present(for paneID: UUID) {
         guard let parentWindow,
               let page = store.selectedTab.pages.first(where: { $0.id == paneID }) else { return }
         if let targetPane, targetPane != paneID { store.finishInitialAddressEntry(for: targetPane) }
@@ -269,7 +283,15 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         targetPane = paneID
         InputDiagnostics.transition(.addressPanel, .shown, window: panel, paneID: paneID)
         let controller = store.controller(for: page)
-        input.stringValue = controller.isStartPage ? "" : controller.address
+        let commands = commandProvider != nil
+        panel.title = commands ? "Commands" : "Open Location"
+        let placeholder = commands ? "Search actions" : "Search or enter address"
+        input.placeholderAttributedString = NSAttributedString(string: placeholder, attributes: [
+            .foregroundColor: NSColor.placeholderTextColor, .font: NSFont.systemFont(ofSize: 14)
+        ])
+        input.setAccessibilityLabel(placeholder)
+        resultsTable.setAccessibilityLabel(commands ? "Commands" : "History and address suggestions")
+        input.stringValue = commands || controller.isStartPage ? "" : controller.address
         errorLabel.isHidden = true
         typedQuery = input.stringValue
         showingFrequent = true
@@ -295,6 +317,14 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             return
         }
         let result = results.indices.contains(selectedResult) ? results[selectedResult] : nil
+        if let commandProvider {
+            guard let id = result?.command?.id,
+                  let command = commandProvider().first(where: { $0.id == id }), command.isEnabled else { return }
+            store.focus(targetPane)
+            dismiss(restoreFocus: true)
+            command.perform()
+            return
+        }
         let address = result?.address ?? input.stringValue
         guard AddressResolver.resolve(address) != nil else {
             errorLabel.stringValue = "Enter a web address or search phrase."
@@ -316,6 +346,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         InputDiagnostics.transition(.addressPanel, .hidden, window: panel, paneID: targetPane, flags: ["restoreFocus": restoreFocus])
         store.finishInitialAddressEntry(for: targetPane)
         self.targetPane = nil
+        commandProvider = nil
         topInsetFromWindow = nil
         parentWindow?.removeChildWindow(panel)
         panel.orderOut(nil)
@@ -331,12 +362,25 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
 
     @discardableResult
     func cancelInitialEntryIfPresented() -> Bool {
-        guard let targetPane, store.cancelInitialAddressEntry(for: targetPane) else { return false }
+        guard commandProvider == nil, let targetPane, store.cancelInitialAddressEntry(for: targetPane) else { return false }
         dismiss(restoreFocus: true)
         return true
     }
 
     private func updateResults(history: BrowsingHistory? = nil, allowAutofill: Bool = false, preserveSelection: Bool = false) {
+        if let commandProvider {
+            let words = typedQuery.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+            results = commandProvider().filter { command in
+                words.allSatisfy { (command.title + " " + command.detail).localizedCaseInsensitiveContains($0) }
+            }.map { AddressResult(title: $0.title, detail: $0.detail, address: $0.id, history: nil, command: $0) }
+            selectedResult = results.firstIndex(where: { $0.command?.isEnabled == true }) ?? -1
+            errorLabel.stringValue = "No matching actions"
+            errorLabel.isHidden = !results.isEmpty
+            resultsTable.reloadData()
+            updateSelection()
+            layoutPanel()
+            return
+        }
         let selectedAddress = preserveSelection && results.indices.contains(selectedResult) ? results[selectedResult].address : nil
         let query = showingFrequent ? "" : typedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         let suggestions = (history ?? store.history).suggestions(for: query)
@@ -448,7 +492,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         let result = results[row]
         let view = AddressResultCell()
         let icon = view.icon
-        icon.image = NSImage(systemSymbolName: result.history == nil ? "magnifyingglass" : "clock", accessibilityDescription: nil)
+        icon.image = NSImage(systemSymbolName: result.command?.icon ?? (result.history == nil ? "magnifyingglass" : "clock"), accessibilityDescription: nil)
         icon.contentTintColor = .secondaryLabelColor
         let title = view.title
         title.stringValue = result.title
@@ -488,6 +532,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             remove.widthAnchor.constraint(equalToConstant: 24),
             remove.heightAnchor.constraint(equalToConstant: 24)
         ])
+        view.alphaValue = result.command?.isEnabled == false ? 0.4 : 1
         view.textField = title
         view.setSelected(row == selectedResult)
         return view
@@ -522,6 +567,13 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         }
         if commandSelector == #selector(NSResponder.moveDown(_:)) || commandSelector == #selector(NSResponder.moveUp(_:)) {
             let delta = commandSelector == #selector(NSResponder.moveDown(_:)) ? 1 : -1
+            if commandProvider != nil {
+                var next = selectedResult + delta
+                while results.indices.contains(next) && results[next].command?.isEnabled == false { next += delta }
+                if results.indices.contains(next) { selectedResult = next }
+                updateSelection()
+                return true
+            }
             selectedResult = min(results.count - 1, max(-1, selectedResult + delta))
             input.stringValue = results.indices.contains(selectedResult) ? results[selectedResult].address : typedQuery
             textView.string = input.stringValue

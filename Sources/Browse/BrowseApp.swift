@@ -176,6 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         append(edit, to: main)
 
         let view = NSMenu(title: "View")
+        add("Show Commands…", #selector(showCommands), "p", modifiers: [.command, .shift], to: view)
         add("Split Right", #selector(splitRight), "d", to: view)
         add("Split Below", #selector(splitBelow), "d", modifiers: [.command, .shift], to: view)
         add("Zoom Pane", #selector(zoomPane), "\r", modifiers: [.command, .shift], to: view)
@@ -225,10 +226,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if settingsWindow == nil { settingsWindow = SettingsWindowController(store: browserWindows.sharedStore) }
         settingsWindow?.show(section: section, centeredOn: browserWindows.active?.window.screen)
     }
+    // @lat: [[architecture#Command popup]]
+    @objc func showCommands() {
+        guard let context = browserWindows.active else { return }
+        let tabID = context.store.selectedTab.id
+        let paneID = context.store.selectedTab.focusedPane
+        context.addressPanel.showCommands(for: paneID) { [weak self, weak context] in
+            guard let self, let context, self.browserWindows.active === context,
+                  context.store.selectedTab.id == tabID,
+                  context.store.selectedTab.focusedPane == paneID else { return [] }
+            return self.popupCommands()
+        }
+    }
+
+    func popupCommands() -> [PopupCommand] {
+        let store = store
+        let tab = store.selectedTab
+        let favorite = store.favorite(for: tab)
+        return [
+            PopupCommand(id: "favorite", title: favorite == nil ? "Add Tab to Favorites" : "Remove Tab from Favorites",
+                detail: "Save the active pane’s website", icon: "star", isEnabled: favorite != nil || store.canFavorite(tab)) {
+                    if let favorite { store.removeFavorite(favorite.id) } else { store.requestFavorite(tab.id) }
+                },
+            PopupCommand(id: "duplicate", title: "Duplicate Tab", detail: "Copy all panes into a new tab", icon: "plus.square.on.square") {
+                store.duplicateTab(tab.id)
+            },
+            PopupCommand(id: "close", title: "Close Tab", detail: tab.isPinned ? "Unpin the tab to close it" : "Close all panes in this tab",
+                icon: "xmark", isEnabled: !tab.isPinned) { store.closeTab(tab.id) },
+            PopupCommand(id: "pinTab", title: tab.isPinned ? "Unpin Tab" : "Pin Tab", detail: "Protect all panes from closing", icon: "pin") {
+                store.setTabPinned(tab.id, pinned: !tab.isPinned)
+            },
+            PopupCommand(id: "pinPane", title: store.isPanePinned(tab.focusedPane) ? "Unpin Pane" : "Pin Pane",
+                detail: "Protect the active pane from closing", icon: "pin.fill") {
+                    store.setPanePinned(tab.focusedPane, pinned: !store.isPanePinned(tab.focusedPane))
+                },
+            PopupCommand(id: "sidebar", title: store.sidebarVisible ? "Hide Sidebar" : "Show Sidebar",
+                detail: "Toggle sidebar · ⇧⌘S", icon: "sidebar.left") { store.sidebarVisible.toggle() },
+            PopupCommand(id: "settings", title: "Settings…", detail: "Browser preferences · ⌘,", icon: "gearshape") { [weak self] in self?.showSettings() },
+            PopupCommand(id: "print", title: "Print…", detail: "Print the active page · ⌘P", icon: "printer",
+                isEnabled: printablePage != nil) { [weak self] in self?.printPage() },
+            PopupCommand(id: "history", title: "View History", detail: "Browse visited pages · ⌘Y", icon: "clock") { [weak self] in self?.showHistory() },
+            PopupCommand(id: "devTools", title: findSurface?.isDeveloperToolsVisible == true ? "Hide Developer Tools" : "Show Developer Tools",
+                detail: "Toggle dev tools / Web Inspector · ⇧⌘I", icon: "hammer", isEnabled: activeWebPage != nil) { [weak self] in self?.showWebInspector() }
+        ]
+    }
+
     @objc private func openLocation() { store.requestAddress() }
     private var activeWebPage: PageController? {
         guard let context = browserWindows.active,
-              focusedWindow() == nil || focusedWindow() === context.window,
+              focusedWindow() == nil || focusedWindow() === context.window || focusedWindow().map(context.addressPanel.owns) == true,
               let page = context.store.existingController(for: context.store.selectedTab.focusedPane),
               !page.isStartPage, page.error == nil,
               let surface = page.webView.superview as? WebSurfaceHost,

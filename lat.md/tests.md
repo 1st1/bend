@@ -1108,3 +1108,7 @@ The preview uses no updater or installation helper. The test supplies an isolate
 ## Page printing
 
 [[Tests/BrowseTests/PrintingTests.swift#pagePrinting]] dispatches Command-P and File → Print through native menus, verifies the focused pane supplies the job, cancels real print sheets, and checks disabled states without sending anything to a printer.
+
+## Command popup actions
+
+[[Tests/BrowseTests/CommandPopupTests.swift#commandPopupActions]] verifies state-aware actions, favorite and pin changes, split-tab duplication, the native shortcut, filtering, execution, empty results, stale targets, and retention of initial blank tabs.

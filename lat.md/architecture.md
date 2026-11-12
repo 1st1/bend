@@ -705,6 +705,16 @@ The interaction draws on [Firefox's address-bar matching](https://support.mozill
 
 Bare hostnames containing dots use HTTPS, while localhost and loopback IPv4 addresses use HTTP. [BrowserStore.swift](../Sources/Browse/BrowserStore.swift) also limits WebKit navigation to web URLs and internal blank documents.
 
+## Command popup
+
+[[Sources/Browse/BrowseApp.swift#AppDelegate#showCommands]] opens a searchable Command-Shift-P action menu for the active pane and tab, sharing the [[architecture#Location popup]] controller, glass shell, rows, positioning, and keyboard navigation.
+
+[[Sources/Browse/BrowseApp.swift#AppDelegate#popupCommands]] supplies favorite/remove favorite, duplicate tab, close tab, pin/unpin tab and pane, hide/show sidebar, Settings, Print, History, and developer tools. Labels reflect current state; unavailable actions remain visible but dimmed. Favorites retain the existing Google-account customization flow. Pin protection, private-window favorite restrictions, and print/inspector availability follow existing action rules.
+
+Queries match words across action titles and descriptions without address autocompletion. Arrow keys select available actions without replacing the query; Return or a click executes, and Escape dismisses. Empty matches show a message. Execution rechecks availability and the original window, tab, and focused pane, dismissing the popup and restoring browser focus before invoking the action. Switching from initial location entry to commands retains the new blank item.
+
+[[Sources/Browse/BrowserStore.swift#BrowserStore#duplicateTab]] inserts a selected copy immediately after the source in its workspace. The same action is available in sidebar tab context menus and favorite tile context menus when the favorite has an open tab. It copies current addresses, title, split axes, ratios, automatic-sizing flags, and focused-pane position with fresh identities. Copies start unpinned without favorite associations or shared live controllers; page forms and navigation history are not cloned. [[tests#Command popup actions]] covers commands and native popup interactions.
+
 ## Location popup
 
 [AddressPanelController.swift](../Sources/Browse/AddressPanelController.swift) owns a floating command-palette-style location panel. A rounded search field, compact history rows, and a shortcut footer sit within a frosted shell. URL entry remains separate from pane chrome.

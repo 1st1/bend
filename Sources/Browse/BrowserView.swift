@@ -215,6 +215,7 @@ private struct SidebarTabRow: View {
         .background(PaneSidebarTarget(store: store, destination: .tab(tab.id)))
         .contextMenu {
             Button("New tab") { store.newTab() }
+            Button("Duplicate tab") { store.duplicateTab(tab.id) }
             if let favorite = store.favorite(for: tab) {
                 Button("Remove from Favorites") { store.removeFavorite(favorite.id) }
             } else if !store.isPrivate {

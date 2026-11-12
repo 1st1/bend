@@ -33,6 +33,7 @@ struct SidebarFavorites: View {
                     }
                     Button("Remove from Favorites") { store.removeFavorite(favorite.id) }
                     if let target {
+                        Button("Duplicate tab") { store.duplicateTab(target.tab.id) }
                         Button("Close tab") { store.closeTab(target.tab.id) }.disabled(target.tab.isPinned)
                     }
                 }

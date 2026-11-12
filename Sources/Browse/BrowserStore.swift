@@ -502,6 +502,28 @@ final class BrowserStore: ObservableObject {
         }
     }
 
+    func duplicateTab(_ id: UUID) {
+        guard let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == id } }),
+              let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == id }) else { return }
+        let source = session.workspaces[wi].tabs[ti]
+        let pages = source.pages.map { Page(address: existingController(for: $0.id)?.address ?? $0.address) }
+        let ids = Dictionary(uniqueKeysWithValues: zip(source.pages, pages).map { ($0.id, $1.id) })
+        func copyLayout(_ layout: PaneLayout) -> PaneLayout {
+            switch layout {
+            case .pane(let id): return .pane(ids[id]!)
+            case .split(_, let axis, let fraction, let first, let second, let automatic):
+                return .split(id: UUID(), axis: axis, fraction: fraction, first: copyLayout(first),
+                              second: copyLayout(second), isAutomatic: automatic)
+            }
+        }
+        var tab = BrowserTab(title: source.title, pages: pages)
+        tab.layout = copyLayout(source.layout)
+        tab.focusedPane = ids[source.focusedPane]!
+        session.workspaces[wi].tabs.insert(tab, at: ti + 1)
+        pendingAddressEntry = nil
+        select(tab.id)
+    }
+
     private func discardDownloadTab(_ tabID: UUID, paneID: UUID, previousTabID: UUID, previousZoom: UUID?) {
         guard let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == tabID } }),
               let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == tabID }),
