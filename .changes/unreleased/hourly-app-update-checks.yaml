@@ -1,3 +1,0 @@
-kind: Changed
-body: Check for Bend updates hourly and on launch when the last check was at least ten minutes ago.
-time: 2026-11-12T17:29:43Z

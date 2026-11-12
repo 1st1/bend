@@ -1,3 +1,0 @@
-kind: Fixed
-body: Preserve the reusable Command-click destination when duplicating a tab, including after restarting the browser.
-time: 2026-11-12T09:59:07.222794-08:00

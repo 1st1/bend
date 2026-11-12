@@ -5,6 +5,20 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.5.0
+### Added
+- Use Command-Shift-P to search tab and pane actions, and duplicate complete tabs from the command popup or tab context menu.
+- Use the native macOS Dock animation and progress reporting for downloads.
+- Add website security controls for fraudulent-site warnings, JavaScript, HTTP warnings, and cookie blocking, plus website data management.
+- Add Privacy settings for tracking prevention, Apple Pay disclosure, and ad measurement. Ad measurement is off by default; additional WebKit privacy protections are enabled.
+- Install Mouse Gestures for Safari in Bend, with an App Store handoff when needed, and use its default new-tab gesture.
+### Changed
+- Check for Bend updates hourly and on launch when the last check was at least ten minutes ago.
+- Explain extension permissions in a readable dialog with website access, extension icons, and expandable technical details.
+### Fixed
+- Preserve the reusable Command-click destination when duplicating a tab, including after restarting the browser.
+- Remind users how to connect Bend to the 1Password desktop app in extension settings.
+
 ## v0.4.0
 ### Added
 - Open 1Password and Dark Reader settings directly from their cards in Extensions settings.
