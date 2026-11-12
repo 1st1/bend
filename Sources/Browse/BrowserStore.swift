@@ -476,7 +476,7 @@ final class BrowserStore: ObservableObject {
     }
 
     func newTab(in workspace: UUID? = nil, address: String = "browse://start", linkOpener: UUID? = nil,
-                closeIfDownload: Bool = false, afterCurrent: Bool = false) {
+                closeIfDownload: Bool = false, afterCurrent: Bool = false, inBackground: Bool = false) {
         let previousTabID = session.selectedTab, previousZoom = zoomedPane
         let index = session.workspaces.firstIndex { $0.id == workspace }
             ?? session.workspaces.firstIndex { $0.tabs.contains { $0.id == session.selectedTab } } ?? 0
@@ -484,10 +484,16 @@ final class BrowserStore: ObservableObject {
         if let linkOpener { linkOpeners[tab.pages[0].id] = linkOpener }
         let insertion = afterCurrent ? session.workspaces[index].tabs.firstIndex { $0.id == previousTabID }.map { $0 + 1 } : nil
         session.workspaces[index].tabs.insert(tab, at: insertion ?? session.workspaces[index].tabs.count)
-        select(tab.id)
-        pendingAddressEntry = address == "browse://start" ? PendingAddressEntry(tabID: tab.id, paneID: tab.pages[0].id,
-            kind: .tab(previousTabID: previousTabID), previousZoom: previousZoom) : nil
-        if address == "browse://start" { requestAddress() }
+        if inBackground {
+            saveSoon()
+        } else {
+            select(tab.id)
+            pendingAddressEntry = address == "browse://start" ? PendingAddressEntry(tabID: tab.id, paneID: tab.pages[0].id,
+                kind: .tab(previousTabID: previousTabID), previousZoom: previousZoom) : nil
+            if address == "browse://start" { requestAddress() }
+        }
+        // Background tabs have no mounted view yet, but should start loading now.
+        if inBackground { _ = controller(for: tab.pages[0]) }
         if closeIfDownload {
             controller(for: tab.pages[0]).onInitialDownload = { [weak self] in
                 self?.discardDownloadTab(tab.id, paneID: tab.pages[0].id, previousTabID: previousTabID,
@@ -830,7 +836,7 @@ final class BrowserStore: ObservableObject {
             self.openLink(address, from: page.id, mainFrame: mainFrame, destination: self.optionClickDestination)
         }
         controller.onOpenLink = { [weak self] address, mainFrame, destination in
-            self?.openLink(address, from: page.id, mainFrame: mainFrame, destination: destination)
+            self?.openLink(address, from: page.id, mainFrame: mainFrame, destination: destination, inBackground: true)
         }
         controller.onFocus = { [weak self] in self?.focus(page.id) }
         controller.onVisit = { [weak self] url, title in self?.recordVisit(url: url, title: title) }
@@ -842,10 +848,12 @@ final class BrowserStore: ObservableObject {
         }
     }
 
-    private func openLink(_ address: String, from pageID: UUID, mainFrame: Bool, destination: LinkOpenDestination) {
+    private func openLink(_ address: String, from pageID: UUID, mainFrame: Bool, destination: LinkOpenDestination,
+                          inBackground: Bool = false) {
         switch destination {
         case .newTab:
-            newTab(address: address, linkOpener: mainFrame ? pageID : nil, closeIfDownload: true, afterCurrent: true)
+            newTab(address: address, linkOpener: mainFrame ? pageID : nil, closeIfDownload: true, afterCurrent: true,
+                   inBackground: inBackground)
         case .newPane:
             openPane(address: address, toRightOf: pageID, fromMainFrame: mainFrame)
         case .newWindow:

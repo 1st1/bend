@@ -647,7 +647,7 @@ Both split directions restore a non-first source pane, preserve its controller, 
 
 [AddressRequestTests.swift](../Tests/BrowseTests/AddressRequestTests.swift) exercises Escape and Command-W through the native popup and application menu after creating a tab or using Command-D and Shift-Command-D.
 
-Both commands dismiss the popup and remove the initial blank pane or tab even after unsubmitted editing. Existing-pane Escape, outside dismissal, and successful submission retain their content. The placeholder explicitly uses light-gray text.
+Both commands dismiss the popup and remove the initial blank pane or tab even after unsubmitted editing. Existing-pane Escape, outside dismissal, and successful submission retain their content. The placeholder uses the system placeholder text color.
 
 ## Dedicated Command-click pane
 
@@ -810,6 +810,8 @@ An active transfer keeps its original destination after a preference change, whi
 [DownloadTests.swift](../Tests/BrowseTests/DownloadTests.swift) opens real new-window download links, directly and through redirects, verifying their temporary tabs disappear while transfers complete and the source document remains intact.
 
 Cleanup restores the preceding tab only if the temporary tab is still selected, does not add closed-tab history, and retains tabs that committed a document before downloading.
+
+Context-menu background tabs load real pages without activation. Download-only background tabs disappear without changing the source selection or zoom, creating closed-tab history, or disturbing unsaved form input.
 
 ## Download database retention and transactions
 
@@ -1001,7 +1003,7 @@ A unique temporary preference and cookie marker written in Debug must be absent 
 
 [[scripts/test-release.py#ReleaseTests]] runs real Changie in disposable repositories to verify version-driven release preparation and PR checks without changing the working project.
 
-The tests verify fragment consumption, validation when a clean checkout omits the empty fragment directory, malformed-fragment rejection, matching version notes and changelog generation, refusal to reuse or decrease versions, baseline initialization without a release trigger, invalid version rejection, required fragments for user-facing changes, the internal-only escape, stale changelog detection, immutable historical release notes, a merged version bump detected against the push boundary, and a later unchanged-version push that does not release. Run `python3 scripts/test-release.py`; no signing credentials are required.
+The tests verify fragment consumption, validation when a clean checkout omits the empty fragment directory, malformed-fragment rejection, matching version notes and changelog generation, refusal to reuse or decrease versions, baseline initialization without a release trigger, invalid version rejection, required fragments for user-facing changes, the internal-only escape, stale changelog detection, immutable historical release notes, a merged version bump detected against the push boundary, a later unchanged-version push that does not release, and a revised untagged candidate that requests a fresh release without changing VERSION. Tagged candidates and older notes remain immutable; revisions must consume all pending fragments. Run `python3 scripts/test-release.py`; no signing credentials are required.
 
 ## CI signing credential lifecycle
 
@@ -1067,7 +1069,7 @@ Trusted native clicks must use the isolated document bridge before navigation po
 
 [[Tests/BrowseTests/LinkContextMenuTests.swift#linkContextMenuDestinations]] invokes WebKit's real context-menu hit testing for main-frame and iframe links and dispatches the resulting pane, tab, and window menu actions.
 
-Open Link in New Tab is first, followed by New Pane and New Window. URLs retain query strings and fragments. Each menu keeps its own target after another menu opens. Copy Link survives and the native window action is replaced. Explicit choices ignore click preferences, preserve the source, place panes adjacent without dedicated-pane reuse, and omit opener metadata for iframe links.
+Open Link in New Tab is first, followed by New Pane and New Window. URLs retain query strings and fragments. Each menu keeps its own target after another menu opens. Copy Link survives and the native window action is replaced. Explicit choices ignore click preferences, preserve the source, place panes adjacent without dedicated-pane reuse, and omit opener metadata for iframe links. New-tab actions preserve selection, pane focus, and zoom, insert directly below the active row, and create a loading controller without mounting the tab.
 
 ## Sidebar overflow counts
 

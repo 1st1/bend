@@ -34,6 +34,7 @@ class ReleaseTests(unittest.TestCase):
         self.command("git", "config", "user.name", "Release test")
         self.command("git", "add", ".")
         self.command("git", "commit", "-qm", "Baseline fixture")
+        self.command("git", "tag", "v0.1.0")
         self.base = self.command("git", "rev-parse", "HEAD").stdout.strip()
 
     def command(self, *args, success=True):
@@ -57,6 +58,7 @@ class ReleaseTests(unittest.TestCase):
         self.command("git", "add", ".")
         self.command("git", "diff", "--cached", "--check")
         self.assertIn("version_changed=true", self.release("check", "--base-ref", self.base).stdout)
+        self.assertIn("release_required=true", self.release("check", "--base-ref", self.base).stdout)
         # A fresh checkout omits the now-empty, untracked fragment directory.
         (self.root / ".changes/unreleased").rmdir()
         self.assertIn("version_changed=true", self.release("check", "--base-ref", self.base).stdout)
@@ -81,6 +83,46 @@ class ReleaseTests(unittest.TestCase):
         self.command("git", "commit", "--allow-empty", "-qm", "Later main push")
         self.assertIn("version_changed=false", self.release("check", "--base-ref", merged,
                                                           "--allow-no-fragment").stdout)
+        self.assertIn("release_required=false", self.release("check", "--base-ref", merged,
+                                                           "--allow-no-fragment").stdout)
+
+    def test_revise_untagged_candidate(self):
+        (self.root / "VERSION").write_text("0.2.0\n")
+        self.release("prepare")
+        self.command("git", "add", ".")
+        self.command("git", "commit", "-qm", "Unpublished candidate")
+        candidate = self.command("git", "rev-parse", "HEAD").stdout.strip()
+        with (self.root / ".changes/v0.2.0.md").open("a") as stream:
+            stream.write("- Include the new background-tab behavior.\n")
+        (self.root / "Sources").mkdir()
+        (self.root / "Sources/Feature.swift").write_text("// feature\n")
+        self.command("bash", "scripts/changie.sh", "merge")
+        self.command("git", "add", ".")
+        result = self.release("check", "--base-ref", candidate)
+        self.assertIn("version_changed=false", result.stdout)
+        self.assertIn("release_required=true", result.stdout)
+
+        pending = self.root / ".changes/unreleased/extra.yaml"
+        pending.write_text("kind: Added\nbody: Unbatched feature.\ntime: 2026-11-09T12:00:00Z\n")
+        result = self.release("check", "--base-ref", candidate, success=False)
+        self.assertIn("must batch all pending", result.stderr)
+        pending.unlink()
+
+        # Even an untagged older release cannot be rewritten.
+        self.command("git", "tag", "-d", "v0.1.0")
+        older = self.root / ".changes/v0.1.0.md"
+        original = older.read_text()
+        older.write_text(original + "Rewritten history\n")
+        self.command("bash", "scripts/changie.sh", "merge")
+        result = self.release("check", "--base-ref", candidate, success=False)
+        self.assertIn("Do not rewrite released", result.stderr)
+        older.write_text(original)
+        self.command("bash", "scripts/changie.sh", "merge")
+
+        # Once a tag exists, the candidate is immutable too.
+        self.command("git", "tag", "v0.2.0")
+        result = self.release("check", "--base-ref", candidate, success=False)
+        self.assertIn("Do not rewrite released", result.stderr)
 
     def test_invalid_versions(self):
         for value in ("0.2.0", "0.0.9", "01.2.3", "1.2", "1.2.3-beta"):

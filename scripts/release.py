@@ -44,6 +44,7 @@ def check(base_ref=None, allow_no_fragment=False):
     if (ROOT / ".changes/unreleased").exists():
         changie("batch", "patch", "--dry-run")
     changed = False
+    revised = False
     if base_ref:
         run("git", "rev-parse", "--verify", f"{base_ref}^{{commit}}")
         files = run("git", "ls-tree", "--name-only", base_ref, "VERSION").splitlines()
@@ -57,19 +58,27 @@ def check(base_ref=None, allow_no_fragment=False):
                 raise ValueError("Release PRs must batch all pending changelog fragments")
             if run("git", "ls-tree", "--name-only", base_ref, f".changes/v{current}.md"):
                 raise ValueError("A published version cannot be reused")
-        # Released history is immutable; the newly added release may be edited.
+        # Only the latest, still-untagged candidate can be revised after a
+        # failed release. CI fetches full history and tags before this check.
         historical = run("git", "ls-tree", "--name-only", base_ref, ".changes/").splitlines()
         for path in historical:
             if re.fullmatch(r"\.changes/v[0-9]+\.[0-9]+\.[0-9]+\.md", path):
                 if run("git", "diff", base_ref, "--", path):
-                    raise ValueError(f"Do not rewrite released changelog history: {path}")
+                    if (previous == current and path == f".changes/v{current}.md" and
+                        not run("git", "tag", "--list", f"v{current}")):
+                        revised = True
+                    else:
+                        raise ValueError(f"Do not rewrite released changelog history: {path}")
+        if revised and list((ROOT / ".changes/unreleased").glob("*.yaml")):
+            raise ValueError("Release revisions must batch all pending changelog fragments")
         paths = run("git", "diff", "--name-only", base_ref).splitlines()
         user_facing = any(p.startswith(("Sources/", "Assets/")) or p == "Package.swift" for p in paths)
         new_fragments = run("git", "diff", "--name-only", "--diff-filter=A", base_ref,
                             "--", ".changes/unreleased/*.yaml").splitlines()
-        if user_facing and not changed and not new_fragments and not allow_no_fragment:
+        if user_facing and not (changed or revised) and not new_fragments and not allow_no_fragment:
             raise ValueError("Add a Changie fragment, or apply the no-changelog PR label for internal-only work")
-    output = f"version={current}\nversion_changed={'true' if changed else 'false'}\n"
+    output = (f"version={current}\nversion_changed={'true' if changed else 'false'}\n"
+              f"release_required={'true' if changed or revised else 'false'}\n")
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
             stream.write(output)

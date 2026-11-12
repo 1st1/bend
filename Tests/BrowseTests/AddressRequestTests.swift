@@ -320,7 +320,7 @@ import BrowseCore
         let input = try #require(fields(content).first { $0.isEditable })
         let placeholder = try #require(input.placeholderAttributedString)
         let color = try #require(placeholder.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
-        #expect(try #require(color.usingColorSpace(.genericGray)).whiteComponent >= 0.7)
+        #expect(color == NSColor.placeholderTextColor)
         // Editing without submitting still belongs to the provisional tab.
         input.stringValue = "changed my mind"
         if useEscape { try escape(panel) }

@@ -305,6 +305,27 @@ import WebKit
     #expect(store.selectedTab.id == regularTab.id)
     #expect(store.session.workspaces.flatMap(\.tabs).count == 3)
     #expect(regular.error == nil)
+
+    // Context-menu tabs load without being selected, including download handoff.
+    store.select(original.id)
+    store.zoomedPane = original.focusedPane
+    source.onOpenLink?(server.url("/slow").absoluteString, true, .newTab)
+    #expect(store.selectedTab.id == original.id)
+    #expect(store.zoomedPane == original.focusedPane)
+    try await downloadWait { store.downloads.items.count == 5 }
+    #expect(store.session.workspaces.flatMap(\.tabs).count == 3)
+    #expect(store.selectedTab.id == original.id)
+    #expect(store.zoomedPane == original.focusedPane)
+    #expect(!store.canReopenClosed)
+    let existingIDs = Set(store.session.workspaces.flatMap(\.tabs).map(\.id))
+    source.onOpenLink?(server.url("/page").absoluteString, true, .newTab)
+    let backgroundTab = try #require(store.session.workspaces.flatMap(\.tabs).first { !existingIDs.contains($0.id) })
+    let background = try #require(store.existingController(for: backgroundTab.pages[0].id))
+    try await downloadWait { background.webView.title == "Download fixture" && !background.webView.isLoading }
+    #expect(store.selectedTab.id == original.id)
+    #expect(store.selectedTab.focusedPane == original.focusedPane)
+    #expect(store.zoomedPane == original.focusedPane)
+    #expect(try await source.webView.evaluateJavaScript("document.querySelector('input').value") as? String == "unsaved")
 }
 
 // @lat: [[tests#Download destination preferences]]
