@@ -1025,11 +1025,11 @@ Delayed DOM link events cannot erase or replace the title URL while the pointer 
 
 [[Tests/BrowseTests/BrowserWindowTests.swift#privateWindowLifetime]] verifies isolated in-memory history, cookies, favorites exclusion, temporary site settings, transfer rejection, persistence exclusion, closure cleanup, and preservation of regular history.
 
-## Private pane storage isolation
+## Private window storage sharing
 
-[[Tests/BrowseTests/BrowserWindowTests.swift#privatePaneStorageIsolation]] verifies same-origin cookies and web storage are isolated across private panes, tabs, and windows, survive moves and reloads, and reset after closing and reopening a pane.
+[[Tests/BrowseTests/BrowserWindowTests.swift#privateWindowStorageSharing]] verifies cookies, local storage, and history are shared across panes and tabs within a private window, isolated from other windows, and retained across moves, reloads, and tab closure.
 
-Window closure clears every remaining pane's store. Regular browsing cannot see private cookie or storage values.
+Session storage remains scoped to each page session. Window closure clears its shared website store and history without affecting another private window; a newly opened private window starts empty. Regular browsing cannot see private cookie or storage values.
 
 ## Private window keyboard command
 
@@ -1067,7 +1067,7 @@ Trusted native clicks must use the isolated document bridge before navigation po
 
 [[Tests/BrowseTests/LinkContextMenuTests.swift#linkContextMenuDestinations]] invokes WebKit's real context-menu hit testing for main-frame and iframe links and dispatches the resulting pane, tab, and window menu actions.
 
-URLs retain query strings and fragments. Each menu keeps its own target after another menu opens. Copy Link survives and the native window action is replaced. Explicit choices ignore click preferences, preserve the source, place panes adjacent without dedicated-pane reuse, and omit opener metadata for iframe links.
+Open Link in New Tab is first, followed by New Pane and New Window. URLs retain query strings and fragments. Each menu keeps its own target after another menu opens. Copy Link survives and the native window action is replaced. Explicit choices ignore click preferences, preserve the source, place panes adjacent without dedicated-pane reuse, and omit opener metadata for iframe links.
 
 ## Sidebar overflow counts
 
@@ -1094,3 +1094,7 @@ The manual verification helper is exercised with a mocked Keychain export and re
 [[Tests/BrowseTests/AppUpdaterTests.swift#applicationUpdatePreview]] exercises debug-only preview eligibility, the pinned Sparkle fixture, real update windows, download cancellation, replay, and the simulated Install and Relaunch action.
 
 The preview uses no updater or installation helper. The test supplies an isolated bundle and intercepts the completion explanation; the running test process survives the final button. Packaging coverage in [[scripts/test-build-app.sh]] verifies opt-in metadata, its removal by normal builds, and rejection of preview production builds.
+
+## Page printing
+
+[[Tests/BrowseTests/PrintingTests.swift#pagePrinting]] dispatches Command-P and File → Print through native menus, verifies the focused pane supplies the job, cancels real print sheets, and checks disabled states without sending anything to a printer.

@@ -12,8 +12,8 @@ private final class AddressResultsTable: NSTableView {
 }
 
 private enum AddressPopupLayout {
-    static let rowHeight: CGFloat = 48
-    static let chromeHeight: CGFloat = 98
+    static let rowHeight: CGFloat = 42
+    static let chromeHeight: CGFloat = 80
 }
 
 private final class AddressResultCell: NSTableCellView {
@@ -99,42 +99,30 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         panel.appearance = NSAppearance(named: .darkAqua)
         panel.title = "Open Location"
 
-        let background = NSVisualEffectView()
-        background.material = .popover
-        background.blendingMode = .behindWindow
-        background.state = .active
-        // Mask the native backdrop and window shadow together, not only the backing layer.
-        let radius: CGFloat = 18
-        let mask = NSImage(size: NSSize(width: radius * 2 + 1, height: radius * 2 + 1), flipped: false) { rect in
-            NSColor.black.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
-        }
-        mask.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
-        mask.resizingMode = .stretch
-        background.maskImage = mask
-        panel.contentView = background
-
-        let shade = NSView()
-        shade.wantsLayer = true
-        shade.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.4).cgColor
-        // The material mask does not clip subviews.
-        shade.layer?.cornerRadius = radius
-        shade.layer?.borderWidth = 1
-        shade.layer?.borderColor = NSColor.white.withAlphaComponent(0.16).cgColor
-        shade.layer?.masksToBounds = true
-        shade.translatesAutoresizingMaskIntoConstraints = false
-        background.addSubview(shade)
+        let background = NSView()
+        let glass = NSGlassEffectView()
+        glass.style = .regular
+        glass.cornerRadius = 18
+        glass.contentView = background
+        // Clip the complete glass compositor, including its outer decoration.
+        // A bare glass view at the window edge can leave a rectangular rim.
+        let clip = NSView()
+        clip.wantsLayer = true
+        clip.layer?.cornerRadius = glass.cornerRadius
+        clip.layer?.masksToBounds = true
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        clip.addSubview(glass)
         NSLayoutConstraint.activate([
-            shade.leadingAnchor.constraint(equalTo: background.leadingAnchor),
-            shade.trailingAnchor.constraint(equalTo: background.trailingAnchor),
-            shade.topAnchor.constraint(equalTo: background.topAnchor),
-            shade.bottomAnchor.constraint(equalTo: background.bottomAnchor)
+            glass.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            glass.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+            glass.topAnchor.constraint(equalTo: clip.topAnchor),
+            glass.bottomAnchor.constraint(equalTo: clip.bottomAnchor)
         ])
+        panel.contentView = clip
 
-        input.font = .systemFont(ofSize: 17)
+        input.font = .systemFont(ofSize: 14)
         input.placeholderAttributedString = NSAttributedString(string: "Search or enter address", attributes: [
-            .foregroundColor: NSColor(calibratedWhite: 0.75, alpha: 1), .font: NSFont.systemFont(ofSize: 17)
+            .foregroundColor: NSColor.placeholderTextColor, .font: NSFont.systemFont(ofSize: 14)
         ])
         input.textColor = .labelColor
         input.isBordered = false
@@ -154,14 +142,12 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 8
-        searchIcon.widthAnchor.constraint(equalToConstant: 18).isActive = true
-        searchIcon.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        searchIcon.widthAnchor.constraint(equalToConstant: 15).isActive = true
+        searchIcon.heightAnchor.constraint(equalToConstant: 15).isActive = true
         let searchField = NSView()
         searchField.wantsLayer = true
-        searchField.layer?.cornerRadius = 15
-        searchField.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.12).cgColor
-        searchField.layer?.borderWidth = 1
-        searchField.layer?.borderColor = NSColor.white.withAlphaComponent(0.06).cgColor
+        searchField.layer?.cornerRadius = 12
+        searchField.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.09).cgColor
         searchField.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(searchField)
         searchField.addSubview(row)
@@ -171,20 +157,20 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         background.addSubview(footer)
         let separator = NSView()
         separator.wantsLayer = true
-        separator.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        separator.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
         separator.translatesAutoresizingMaskIntoConstraints = false
         footer.addSubview(separator)
         let shortcuts = NSStackView(views: [shortcutHint("Navigate", key: "↑↓"),
             shortcutHint("Dismiss", key: "esc"), shortcutHint("Open", key: "↩")])
         shortcuts.orientation = .horizontal
-        shortcuts.spacing = 16
+        shortcuts.spacing = 12
         shortcuts.translatesAutoresizingMaskIntoConstraints = false
         footer.addSubview(shortcuts)
         NSLayoutConstraint.activate([
             footer.leadingAnchor.constraint(equalTo: background.leadingAnchor),
             footer.trailingAnchor.constraint(equalTo: background.trailingAnchor),
             footer.bottomAnchor.constraint(equalTo: background.bottomAnchor),
-            footer.heightAnchor.constraint(equalToConstant: 32),
+            footer.heightAnchor.constraint(equalToConstant: 28),
             separator.leadingAnchor.constraint(equalTo: footer.leadingAnchor, constant: 1),
             separator.trailingAnchor.constraint(equalTo: footer.trailingAnchor, constant: -1),
             separator.topAnchor.constraint(equalTo: footer.topAnchor),
@@ -221,17 +207,17 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         resultsHeight = resultsScroll.heightAnchor.constraint(equalToConstant: 0)
         resultsTop = resultsScroll.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 8)
         NSLayoutConstraint.activate([
-            searchField.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 8),
-            searchField.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -8),
-            searchField.topAnchor.constraint(equalTo: background.topAnchor, constant: 8),
-            searchField.heightAnchor.constraint(equalToConstant: 42),
+            searchField.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 6),
+            searchField.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -6),
+            searchField.topAnchor.constraint(equalTo: background.topAnchor, constant: 6),
+            searchField.heightAnchor.constraint(equalToConstant: 32),
             row.leadingAnchor.constraint(equalTo: searchField.leadingAnchor, constant: 12),
             row.trailingAnchor.constraint(equalTo: searchField.trailingAnchor, constant: -12),
             row.centerYAnchor.constraint(equalTo: searchField.centerYAnchor),
             errorLabel.leadingAnchor.constraint(equalTo: input.leadingAnchor),
             errorLabel.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 4),
-            resultsScroll.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 8),
-            resultsScroll.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -8),
+            resultsScroll.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 6),
+            resultsScroll.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -6),
             resultsTop,
             resultsHeight
         ])
@@ -250,16 +236,16 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     private func shortcutHint(_ title: String, key: String) -> NSView {
         let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: 11)
-        label.textColor = .secondaryLabelColor
+        label.textColor = .tertiaryLabelColor
         let keycap = NSTextField(labelWithString: key)
         keycap.font = .systemFont(ofSize: 10, weight: .medium)
-        keycap.textColor = .secondaryLabelColor
+        keycap.textColor = .tertiaryLabelColor
         keycap.alignment = .center
         let outline = NSView()
         outline.wantsLayer = true
         outline.layer?.cornerRadius = 4
         outline.layer?.borderWidth = 1
-        outline.layer?.borderColor = NSColor.white.withAlphaComponent(0.15).cgColor
+        outline.layer?.borderColor = NSColor.white.withAlphaComponent(0.1).cgColor
         keycap.translatesAutoresizingMaskIntoConstraints = false
         outline.addSubview(keycap)
         NSLayoutConstraint.activate([
@@ -409,9 +395,10 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         resultsHeight.constant = results.isEmpty ? 0 : rowHeight
         resultsScroll.isHidden = results.isEmpty
         let height = AddressPopupLayout.chromeHeight + rowHeight + errorHeight
-        let width = min(560, max(280, anchor.width - 2 * margin), windowBounds.width - 2 * margin)
+        let width = min(480, max(280, anchor.width - 2 * margin), windowBounds.width - 2 * margin)
         let x = min(max(anchor.midX - width / 2, windowBounds.minX + margin), windowBounds.maxX - width - margin)
         panel.setFrame(NSRect(x: x.rounded(), y: top - height, width: width, height: height), display: true)
+        panel.invalidateShadow()
     }
 
     private func targetPaneView(in view: NSView) -> PaneDropHost? {
@@ -464,7 +451,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         icon.contentTintColor = .secondaryLabelColor
         let title = view.title
         title.stringValue = result.title
-        title.font = .systemFont(ofSize: 14, weight: .medium)
+        title.font = .systemFont(ofSize: 14)
         title.lineBreakMode = .byTruncatingTail
         let detail = view.detail
         detail.stringValue = result.detail
@@ -491,7 +478,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             icon.widthAnchor.constraint(equalToConstant: 16),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
             title.trailingAnchor.constraint(equalTo: remove.leadingAnchor, constant: -8),
-            title.topAnchor.constraint(equalTo: view.topAnchor, constant: 7),
+            title.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
             detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
             detail.trailingAnchor.constraint(equalTo: title.trailingAnchor),
             detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),

@@ -47,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     private var clickMonitor: Any?
     private var settingsWindow: SettingsWindowController?
+    private(set) var printOperation: NSPrintOperation?
     private var browserWindowsReady = false
     private var pendingExternalURLs: [URL] = []
 
@@ -155,6 +156,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         add("Close Pane", #selector(closePane), "w", to: file)
         add("Close Tab", #selector(closeTab), "w", modifiers: [.command, .shift], to: file)
         add("Reopen Closed Pane or Tab", #selector(reopenClosed), "t", modifiers: [.command, .shift], to: file)
+        file.addItem(.separator())
+        add("Print…", #selector(printPage), "p", to: file)
         append(file, to: main)
 
         let edit = NSMenu(title: "Edit")
@@ -225,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func openLocation() { store.requestAddress() }
     private var activeWebPage: PageController? {
         guard let context = browserWindows.active,
-              NSApp.keyWindow == nil || NSApp.keyWindow === context.window,
+              focusedWindow() == nil || focusedWindow() === context.window,
               let page = context.store.existingController(for: context.store.selectedTab.focusedPane),
               !page.isStartPage, page.error == nil,
               let surface = page.webView.superview as? WebSurfaceHost,
@@ -233,6 +236,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return page
     }
     private var findSurface: WebSurfaceHost? { activeWebPage?.webView.superview as? WebSurfaceHost }
+
+    // @lat: [[architecture#Page printing]]
+    private var printablePage: PageController? {
+        guard printOperation == nil, NSPrintOperation.current == nil,
+              let window, window.isVisible, !window.isMiniaturized, window.attachedSheet == nil,
+              let page = activeWebPage, page.webView.window === window else { return nil }
+        return page
+    }
+
+    @objc func printPage() {
+        guard let page = printablePage, let window = page.webView.window else { return }
+        let operation = page.webView.printOperation(with: .shared)
+        operation.jobTitle = page.title
+        operation.showsPrintPanel = true
+        operation.showsProgressPanel = true
+        printOperation = operation
+        operation.runModal(for: window, delegate: self,
+            didRun: #selector(printOperationDidRun(_:success:contextInfo:)), contextInfo: nil)
+    }
+
+    @objc private func printOperationDidRun(_ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        if printOperation === operation { printOperation = nil }
+    }
     @objc func showWebInspector() {
         if let page = activeWebPage, findSurface?.isDeveloperToolsVisible == true { page.webView.closeInspector() }
         else { showDeveloperTools(console: false) }
@@ -297,6 +323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         window?.makeKeyAndOrderFront(nil)
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(printPage) { return printablePage != nil }
         if menuItem.action == #selector(showWebInspector) || menuItem.action == #selector(showJavaScriptConsole) {
             if menuItem.action == #selector(showWebInspector) {
                 menuItem.title = findSurface?.isDeveloperToolsVisible == true ? "Close Web Inspector" : "Show Web Inspector"

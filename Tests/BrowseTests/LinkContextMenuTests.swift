@@ -63,7 +63,7 @@ import WebKitFindSupport
     let top = try await menu(at: NSPoint(x: 30, y: 370))
     #expect(top.1.absoluteString == "http://127.0.0.1:9/top?q=one%20two#anchor")
     #expect(top.2)
-    #expect(top.0.items.prefix(3).map(\.title) == ["Open Link in New Pane", "Open Link in New Tab", "Open Link in New Window"])
+    #expect(top.0.items.prefix(3).map(\.title) == ["Open Link in New Tab", "Open Link in New Pane", "Open Link in New Window"])
     #expect(top.0.items.contains { $0.tag == 3 }) // WebKit's Copy Link item survives.
     #expect(!top.0.items.contains { $0.tag == 1 }) // No duplicate native window action.
     let frame = try await menu(at: NSPoint(x: 30, y: 300))
@@ -77,14 +77,14 @@ import WebKitFindSupport
     // Menus retain their own hit target even after another menu is constructed.
     store.commandClickDestination = .dedicatedPane
     store.optionClickDestination = .newWindow
-    try choose(top.0, 0)
+    try choose(top.0, 1)
     #expect(store.selectedTab.id == original.id)
     #expect(store.selectedTab.pages.count == original.pages.count + 1)
     #expect(store.selectedTab.layout.paneIDs[1] == store.selectedTab.focusedPane)
     #expect(store.selectedTab.pages.last?.address == top.1.absoluteString)
     #expect(store.selectedTab.commandClickPaneID == nil)
     #expect(store.linkOpeners[store.selectedTab.focusedPane] == source.id)
-    try choose(frame.0, 1)
+    try choose(frame.0, 0)
     #expect(store.selectedTab.id != original.id)
     #expect(store.selectedTab.pages.map(\.address) == [frame.1.absoluteString])
     #expect(store.linkOpeners[store.selectedTab.focusedPane] == nil)

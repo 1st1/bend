@@ -1,0 +1,2 @@
+kind: Fixed
+body: Share cookies and website data across tabs and panes within each private window, keeping separate private windows isolated and clearing their data on closure.

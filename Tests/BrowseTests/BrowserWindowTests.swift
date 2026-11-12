@@ -562,15 +562,14 @@ import BrowseCore
     #expect(!store.transfer(tab: store.selectedTab.id, to: regular.store, at: .workspace(regular.store.session.workspaces[0].id)))
     #expect(!regular.store.transfer(tab: regular.store.selectedTab.id, to: store, at: .workspace(store.session.workspaces[0].id)))
     let configuration = WKWebViewConfiguration()
-    let paneID = store.selectedTab.pages[0].id
-    let paneData = store.websiteDataStore(for: paneID)
-    store.configureWebView(configuration, for: paneID)
+    let paneData = store.websiteDataStore
+    store.configureWebView(configuration)
     #expect(!configuration.websiteDataStore.isPersistent)
     #expect(configuration.websiteDataStore === paneData)
     let cookie = try #require(HTTPCookie(properties: [.domain: "private.example", .path: "/", .name: "secret", .value: "1"]))
     await paneData.httpCookieStore.setCookie(cookie)
     #expect(await paneData.httpCookieStore.allCookies().contains { $0.name == "secret" })
-    #expect(await second.store.websiteDataStore(for: second.store.selectedTab.pages[0].id).httpCookieStore.allCookies().isEmpty)
+    #expect(await second.store.websiteDataStore.httpCookieStore.allCookies().isEmpty)
     store.showHistory()
     #expect(store.selectedTab.pages[0].address == "browse://history")
     store.closeTab(store.selectedTab.id)
@@ -584,7 +583,7 @@ import BrowseCore
     #expect(store.history.visits.isEmpty)
     #expect(store.history.suggestions(for: "secret").isEmpty)
     #expect(!store.canReopenClosed)
-    #expect(store.websiteDataStore(for: paneID) !== oldWebsiteData)
+    #expect(store.websiteDataStore !== oldWebsiteData)
     for _ in 0..<50 {
         if await oldWebsiteData.httpCookieStore.allCookies().isEmpty { break }
         try await Task.sleep(for: .milliseconds(20))
@@ -602,8 +601,8 @@ import BrowseCore
     #expect(try JSONDecoder().decode([String].self, from: Data(contentsOf: root.appendingPathComponent("windows.json"))) == [regular.id])
 }
 
-// @lat: [[tests#Private pane storage isolation]]
-@Test @MainActor func privatePaneStorageIsolation() async throws {
+// @lat: [[tests#Private window storage sharing]]
+@Test @MainActor func privateWindowStorageSharing() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePrivatePanes-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -637,17 +636,25 @@ import BrowseCore
     try await navigation.load(firstWeb, url: url)
     _ = try await firstWeb.evaluateJavaScript("document.cookie='\(key)=secret; path=/'; localStorage.setItem('\(key)', 'secret'); sessionStorage.setItem('\(key)', 'secret')")
     #expect(try await firstWeb.evaluateJavaScript(read) as? [Bool] == [true, true, true])
-    for peer in peers {
-        #expect(peer.configuration.websiteDataStore !== firstData)
+    for (index, peer) in peers.enumerated() {
+        let sameWindow = index < 2
+        #expect((peer.configuration.websiteDataStore === firstData) == sameWindow)
         peer.navigationDelegate = navigation
         try await navigation.load(peer, url: url)
-        #expect(try await peer.evaluateJavaScript(read) as? [Bool] == [false, false, false])
-        #expect(await peer.configuration.websiteDataStore.httpCookieStore.allCookies().allSatisfy { $0.name != key })
+        // sessionStorage remains scoped to the individual page session.
+        #expect(try await peer.evaluateJavaScript(read) as? [Bool] == [sameWindow, sameWindow, false])
+        #expect(await peer.configuration.websiteDataStore.httpCookieStore.allCookies().contains { $0.name == key } == sameWindow)
     }
     #expect(!firstData.isPersistent)
     #expect(!peers[0].configuration.websiteDataStore.isPersistent)
     #expect(!peers[1].configuration.websiteDataStore.isPersistent)
-    #expect(peers[0].configuration.websiteDataStore !== peers[1].configuration.websiteDataStore)
+    #expect(peers[0].configuration.websiteDataStore === peers[1].configuration.websiteDataStore)
+    // Visits from panes in different tabs feed the same private history.
+    firstController.onVisit?(url.absoluteString + "first", "First pane")
+    store.controller(for: second).onVisit?(url.absoluteString + "second", "Second tab")
+    #expect(store.history.visits.map(\.title).sorted() == ["First pane", "Second tab"])
+    #expect(otherWindow.store.history.visits.isEmpty)
+    #expect(regular.store.history.visits.isEmpty)
     // A move keeps the same page session; a reload keeps its login.
     #expect(store.movePaneToTab(first.id, from: firstTab, into: secondTab))
     #expect(store.controller(for: first).webView === firstWeb)
@@ -657,28 +664,41 @@ import BrowseCore
     store.closePane(first.id)
     store.reopenClosed()
     let reopened = store.controller(for: first).webView
-    #expect(reopened.configuration.websiteDataStore !== firstData)
+    #expect(reopened.configuration.websiteDataStore === firstData)
     reopened.navigationDelegate = navigation
     try await navigation.load(reopened, url: url)
-    #expect(try await reopened.evaluateJavaScript(read) as? [Bool] == [false, false, false])
+    #expect(try await reopened.evaluateJavaScript(read) as? [Bool] == [true, true, false])
+    #expect(try await peers[0].evaluateJavaScript(read) as? [Bool] == [true, true, false])
+    // Closing a whole tab also retains the window's login for a later tab.
+    store.closeTab(secondTab)
+    store.newTab()
+    let later = store.controller(for: store.selectedTab.pages[0]).webView
+    #expect(later.configuration.websiteDataStore === firstData)
+    later.navigationDelegate = navigation
+    try await navigation.load(later, url: url)
+    #expect(try await later.evaluateJavaScript(read) as? [Bool] == [true, true, false])
+    #expect(store.history.visits.count == 2)
+    // Give another private window its own login; closing this one must retain it.
+    let otherData = peers[2].configuration.websiteDataStore
+    let cookie = try #require(HTTPCookie(properties: [.domain: "127.0.0.1", .path: "/", .name: key, .value: "other-window"]))
+    await otherData.httpCookieStore.setCookie(cookie)
+    window.window.close()
     for _ in 0..<50 {
-        if await firstData.httpCookieStore.allCookies().isEmpty { break }
+        if await firstData.httpCookieStore.allCookies().isEmpty,
+           (try? await later.evaluateJavaScript("localStorage.getItem('\(key)') === null")) as? Bool == true { break }
         try await Task.sleep(for: .milliseconds(20))
     }
     #expect(await firstData.httpCookieStore.allCookies().isEmpty)
-    // Closing the window clears each surviving pane's store.
-    let cookie = try #require(HTTPCookie(properties: [.domain: "127.0.0.1", .path: "/", .name: key, .value: "secret"]))
-    let remainingData = [peers[0].configuration.websiteDataStore, peers[1].configuration.websiteDataStore,
-        reopened.configuration.websiteDataStore]
-    for data in remainingData { await data.httpCookieStore.setCookie(cookie) }
-    window.window.close()
-    for data in remainingData {
-        for _ in 0..<50 {
-            if await data.httpCookieStore.allCookies().isEmpty { break }
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        #expect(await data.httpCookieStore.allCookies().isEmpty)
-    }
+    #expect(try await later.evaluateJavaScript("localStorage.getItem('\(key)') === null") as? Bool == true)
+    #expect(store.history.visits.isEmpty)
+    #expect(await otherData.httpCookieStore.allCookies().contains { $0.name == key && $0.value == "other-window" })
+    let fresh = owner.newPrivateWindow(show: false)
+    let freshWeb = fresh.store.controller(for: fresh.store.selectedTab.pages[0]).webView
+    #expect(freshWeb.configuration.websiteDataStore !== firstData)
+    freshWeb.navigationDelegate = navigation
+    try await navigation.load(freshWeb, url: url)
+    #expect(try await freshWeb.evaluateJavaScript(read) as? [Bool] == [false, false, false])
+
 }
 
 // @lat: [[tests#Private window keyboard command]]

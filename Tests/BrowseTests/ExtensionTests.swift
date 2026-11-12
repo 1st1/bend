@@ -842,7 +842,7 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     #expect(privateWindow.store.extensionConfiguration(for: context) == nil)
     manager.setPrivateAccess(false, id: id)
     privateWeb = privateController.webView
-    #expect(privateWeb.configuration.websiteDataStore === privateWindow.store.websiteDataStore(for: privatePage.id))
+    #expect(privateWeb.configuration.websiteDataStore === privateWindow.store.websiteDataStore)
     #expect(!privateWeb.configuration.websiteDataStore.isPersistent)
     privateWeb.navigationDelegate = navigation
     #expect(!context.hasAccessToPrivateData)

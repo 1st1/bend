@@ -50,7 +50,7 @@ final class BrowserStore: ObservableObject {
     @Published private var localHistory = BrowsingHistory()
     @Published private var localHistoryError: String?
     let isPrivate: Bool
-    private var privateWebsiteDataStores: [UUID: WKWebsiteDataStore] = [:]
+    private var privateWebsiteDataStore: WKWebsiteDataStore?
     private var windowStopped = false
     var historyOwner: BrowserStore { isPrivate ? self : (sharedStore?.historyOwner ?? self) }
     let sharedStore: BrowserStore?
@@ -726,17 +726,17 @@ final class BrowserStore: ObservableObject {
     }
 
     // @lat: [[architecture#Private windows]]
-    func websiteDataStore(for paneID: UUID) -> WKWebsiteDataStore {
+    var websiteDataStore: WKWebsiteDataStore {
         guard isPrivate else { return AppProfile.current.websiteDataStore }
-        if let existing = privateWebsiteDataStores[paneID] { return existing }
+        if let existing = privateWebsiteDataStore { return existing }
         let store = WKWebsiteDataStore.nonPersistent()
-        privateWebsiteDataStores[paneID] = store
+        privateWebsiteDataStore = store
         return store
     }
 
-    func configureWebView(_ configuration: WKWebViewConfiguration, for paneID: UUID) {
+    func configureWebView(_ configuration: WKWebViewConfiguration) {
         if #available(macOS 15.4, *) { extensions.configure(configuration) }
-        if isPrivate { configuration.websiteDataStore = websiteDataStore(for: paneID) }
+        if isPrivate { configuration.websiteDataStore = websiteDataStore }
     }
 
     @available(macOS 15.4, *)
@@ -754,7 +754,7 @@ final class BrowserStore: ObservableObject {
             ["webkit-extension", "safari-web-extension"].contains($0.scheme ?? "") ? $0 : nil
         }
         let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, downloads: downloads, configure: { [weak self] configuration in
-            self?.configureWebView(configuration, for: page.id)
+            self?.configureWebView(configuration)
         })
         bindController(controller, to: page)
         browsers[page.id] = controller
@@ -794,7 +794,7 @@ final class BrowserStore: ObservableObject {
         mediaPlaybackFocus.register(controller.media)
         mediaCoordinator.register(page.id, controller: controller.media)
         controller.configure = { [weak self] configuration in
-            self?.configureWebView(configuration, for: page.id)
+            self?.configureWebView(configuration)
         }
         controller.onStateChanged = { [weak self] in
             if #available(macOS 15.4, *) { self?.extensions.pageChanged(page.id) }
@@ -862,9 +862,6 @@ final class BrowserStore: ObservableObject {
         controller?.media.detach()
         controller?.webView.pauseAllMediaPlayback(completionHandler: nil)
         controller?.webView.stopLoading()
-        if let dataStore = privateWebsiteDataStores.removeValue(forKey: id) {
-            dataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) {}
-        }
     }
 
     // @lat: [[architecture#Cross-window dragging]]
@@ -980,10 +977,8 @@ final class BrowserStore: ObservableObject {
             session = BrowserSession()
             downloads.shutdown(); downloads.clearFinished()
             websiteSettings.resetTemporary()
-            for dataStore in privateWebsiteDataStores.values {
-                dataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) {}
-            }
-            privateWebsiteDataStores.removeAll()
+            privateWebsiteDataStore?.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) {}
+            privateWebsiteDataStore = nil
         }
         onAddressRequested = nil; onSettingsRequested = nil; onEmptiedByTransfer = nil; onNewWindowDrop = nil
         onNewLinkWindow = nil

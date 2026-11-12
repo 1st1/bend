@@ -15,8 +15,8 @@ extension PageController {
         // destinations; keep Copy Link, Download, extension items, and Inspect.
         for item in menu.items where item.tag == 1 { menu.removeItem(item) }
         let choices: [(String, LinkOpenDestination)] = [
-            ("Open Link in New Pane", .newPane),
             ("Open Link in New Tab", .newTab),
+            ("Open Link in New Pane", .newPane),
             ("Open Link in New Window", .newWindow)
         ]
         for (index, choice) in choices.enumerated() {
