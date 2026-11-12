@@ -3,7 +3,7 @@ import BrowseCore
 
 private typealias HistoryState<Value> = SwiftUI.State<Value>
 
-// @lat: [[architecture#History interface]]
+// @lat: [[lat.md/architecture/history#History interface]]
 struct HistoryView: View {
     @ObservedObject var store: BrowserStore
     let navigate: (String) -> Void

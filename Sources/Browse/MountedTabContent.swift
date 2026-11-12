@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import BrowseCore
 
-// @lat: [[architecture#Mounted tab views]]
+// @lat: [[lat.md/architecture/session#Mounted tab views]]
 struct MountedTabContent: NSViewRepresentable {
     @ObservedObject var store: BrowserStore
     @Environment(\.self) private var environment

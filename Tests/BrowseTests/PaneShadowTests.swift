@@ -4,7 +4,7 @@ import Testing
 import BrowseCore
 @testable import Browse
 
-// @lat: [[tests#Pane shadow boundaries]]
+// @lat: [[lat.md/tests/pane-materials-tests#Pane shadow boundaries]]
 @Test @MainActor func paneShadowBoundaries() throws {
     _ = NSApplication.shared
     let root = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 240))

@@ -5,7 +5,7 @@ import Testing
 import WebKit
 @testable import Browse
 
-// @lat: [[tests#Website security preferences]]
+// @lat: [[lat.md/tests/settings-tests#Website security preferences]]
 @Test @MainActor func websiteSecurityPreferences() async throws {
     _ = NSApplication.shared
     let server = try await WebsiteZoomHTTPFixture.start()
@@ -45,7 +45,7 @@ import WebKit
     }
 }
 
-// @lat: [[tests#Website zoom navigation and sharing]]
+// @lat: [[lat.md/tests/settings-tests#Website zoom navigation and sharing]]
 @Test @MainActor func websiteZoomNavigationAndSharing() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendWebsiteZoom-\(UUID())")
@@ -132,7 +132,7 @@ import WebKit
     #expect(page.webView.pageZoom == 1)
 }
 
-// @lat: [[tests#Website zoom during provisional navigation]]
+// @lat: [[lat.md/tests/settings-tests#Website zoom during provisional navigation]]
 @Test @MainActor func websiteZoomDuringProvisionalNavigation() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendProvisionalZoom-\(UUID())")
@@ -182,7 +182,7 @@ import WebKit
     #expect(web.pageZoom == 1.6)
 }
 
-// @lat: [[tests#Website settings failure recovery]]
+// @lat: [[lat.md/tests/settings-tests#Website settings failure recovery]]
 @Test @MainActor func websiteSettingsFailureRecovery() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendWebsiteRecovery-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -250,7 +250,7 @@ private final class WebsiteZoomHTTPFixture: @unchecked Sendable {
     }
 }
 
-// @lat: [[tests#Native privacy preferences]]
+// @lat: [[lat.md/tests/privacy-tests#Native privacy preferences]]
 @Test @MainActor func nativePrivacyPreferences() async throws {
     _ = NSApplication.shared
     let settings = WebsiteSettingsStore(temporary: WebsiteSettings())

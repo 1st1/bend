@@ -21,7 +21,7 @@ private func historySQL(_ file: URL, _ sql: String) throws -> [[String]] {
     }
 }
 
-// @lat: [[tests#SQLite history transactions]]
+// @lat: [[lat.md/tests/history-tests#SQLite history transactions]]
 @Test func sqliteHistoryTransactions() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSQLite-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -66,7 +66,7 @@ private func historySQL(_ file: URL, _ sql: String) throws -> [[String]] {
     }
 }
 
-// @lat: [[tests#JSON history migration]]
+// @lat: [[lat.md/tests/history-tests#JSON history migration]]
 @Test func jsonHistoryMigration() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendMigration-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -94,7 +94,7 @@ private func historySQL(_ file: URL, _ sql: String) throws -> [[String]] {
     #expect(try historySQL(file, "PRAGMA user_version") == [["99"]])
 }
 
-// @lat: [[tests#SQLite history retention]]
+// @lat: [[lat.md/tests/history-tests#SQLite history retention]]
 @Test func sqliteHistoryRetention() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendRetention-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }

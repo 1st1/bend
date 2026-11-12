@@ -19,7 +19,7 @@
 @interface BendInspectorSupport () <WKScriptMessageHandler>
 @end
 
-// @lat: [[architecture#Developer tools]]
+// @lat: [[lat.md/architecture/developer-tools#Developer tools]]
 @implementation BendInspectorSupport {
     __weak WKWebView *_webView;
     __weak id<BendOptionalInspector> _openedInspector;

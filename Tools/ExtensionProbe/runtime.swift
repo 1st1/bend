@@ -18,7 +18,7 @@ import WebKit
 }
 
 @available(macOS 15.4, *)
-// @lat: [[architecture#Extension runtime diagnostics]]
+// @lat: [[lat.md/architecture/extensions/diagnostics#Extension runtime diagnostics]]
 @MainActor final class RuntimeProbe: NSObject, WKScriptMessageHandler, WKWebExtensionControllerDelegate {
     var controller: WKWebExtensionController!
     var context: WKWebExtensionContext!

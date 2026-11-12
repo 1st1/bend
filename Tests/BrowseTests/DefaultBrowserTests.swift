@@ -2,7 +2,7 @@ import AppKit
 import Testing
 @testable import Browse
 
-// @lat: [[tests#Default browser selection]]
+// @lat: [[lat.md/tests/external-links-tests#Default browser selection]]
 @Test @MainActor func defaultBrowserSelection() async {
     let app = URL(fileURLWithPath: "/Applications/Bend.app")
     let identifier = "dev.yury.browse.prototype"
@@ -45,7 +45,7 @@ import Testing
     #expect(failed.error != nil)
 }
 
-// @lat: [[tests#External web links]]
+// @lat: [[lat.md/tests/external-links-tests#External web links]]
 @Test @MainActor func externalWebLinks() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendExternalURLs-\(UUID())")
@@ -73,7 +73,7 @@ import Testing
     #expect(second.window.childWindows?.contains { second.addressPanel.owns($0) && $0.isVisible } != true)
 }
 
-// @lat: [[tests#Local web documents]]
+// @lat: [[lat.md/tests/external-links-tests#Local web documents]]
 @Test @MainActor func localWebDocuments() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendLocalHTML-\(UUID())")

@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-// @lat: [[architecture#Curated extension catalog]]
+// @lat: [[lat.md/architecture/extensions/catalog#Curated extension catalog]]
 struct CatalogExtension: Identifiable, Sendable {
     let id: String
     let name: String

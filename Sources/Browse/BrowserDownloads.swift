@@ -77,7 +77,7 @@ final class BrowserDownload: ObservableObject, Identifiable {
     }
 }
 
-// @lat: [[architecture#Dock download progress]]
+// @lat: [[lat.md/architecture/downloads#Dock download progress]]
 @MainActor
 final class DownloadDockProgress {
     let progress = Progress(totalUnitCount: -1)
@@ -121,7 +121,7 @@ final class DownloadDockProgress {
     }
 }
 
-// @lat: [[architecture#Browser downloads]]
+// @lat: [[lat.md/architecture/downloads#Browser downloads]]
 @MainActor
 final class BrowserDownloads: NSObject, ObservableObject, WKDownloadDelegate {
     @Published private(set) var items: [BrowserDownload] = []

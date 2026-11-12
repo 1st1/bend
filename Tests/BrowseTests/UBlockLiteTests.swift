@@ -3,7 +3,7 @@ import Testing
 import WebKit
 @testable import Browse
 
-// @lat: [[tests#Safari uBlock Lite compatibility]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Safari uBlock Lite compatibility]]
 @Test(.timeLimit(.minutes(1))) @MainActor func safariUBlockLiteSmoke() async throws {
     guard #available(macOS 15.4, *),
           let path = ProcessInfo.processInfo.environment["BROWSE_TEST_UBLOCK_SAFARI_PACKAGE"] else { return }
@@ -106,7 +106,7 @@ import WebKit
     try await manager.enable(false, id: id) { _, _ in true }
 }
 
-// @lat: [[tests#Safari direct-download migration]]
+// @lat: [[lat.md/tests/extension-hosting/extension-updates-tests#Safari direct-download migration]]
 @Test @MainActor func safariUBlockDirectMigration() async throws {
     guard #available(macOS 15.4, *),
           let archive = ProcessInfo.processInfo.environment["BROWSE_TEST_UBLOCK_SAFARI_PACKAGE"],

@@ -1,4 +1,4 @@
-// @lat: [[architecture#Extension WASM diagnostics]]
+// @lat: [[lat.md/architecture/extensions/diagnostics#Extension WASM diagnostics]]
 enum ExtensionWasmDiagnostics {
     // Runs only inside the authorized extension-page adapter. Observations are
     // bounded and classified here, before reaching the host's diagnostic log.

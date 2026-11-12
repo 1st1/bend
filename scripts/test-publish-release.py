@@ -19,7 +19,7 @@ update_feed = importlib.util.module_from_spec(feed_spec)
 feed_spec.loader.exec_module(update_feed)
 
 
-# @lat: [[tests#GitHub release publication]]
+# @lat: [[lat.md/tests/build-tests#GitHub release publication]]
 class PublicationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="bend-publication-test-")

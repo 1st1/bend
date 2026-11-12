@@ -16,7 +16,7 @@ import WebKitFindSupport
     }
 }
 
-// @lat: [[tests#Link context menu destinations]]
+// @lat: [[lat.md/tests/link-navigation-tests#Link context menu destinations]]
 @Test @MainActor func linkContextMenuDestinations() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendLinkMenu-\(UUID())")

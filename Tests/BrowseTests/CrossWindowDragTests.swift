@@ -5,7 +5,7 @@ import WebKit
 @testable import Browse
 
 @Suite(.serialized) struct CrossWindowDragTests {
-// @lat: [[tests#Cross-window live transfers]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Cross-window live transfers]]
 @Test @MainActor func crossWindowLiveTransfers() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendWindowTransfer-\(UUID())")
@@ -83,7 +83,7 @@ import WebKit
     #expect(try await pages[0].webView.evaluateJavaScript("window.token") as? String == "alive")
 }
 
-// @lat: [[tests#Cross-window drag gestures]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Cross-window drag gestures]]
 @Test @MainActor func crossWindowDragGestures() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendWindowGestures-\(UUID())")
@@ -180,7 +180,7 @@ import WebKit
     #expect(descendants(TabDragSurface.self, first.window.contentView!).isEmpty)
 }
 
-// @lat: [[tests#Empty window transfer cleanup]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Empty window transfer cleanup]]
 @Test(.serialized, arguments: [false, true]) @MainActor func emptyWindowTransferCleanup(paneOnly: Bool) async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared

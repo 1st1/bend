@@ -1,6 +1,6 @@
 import WebKit
 
-// @lat: [[architecture#Sidebar media player]]
+// @lat: [[lat.md/architecture/media#Sidebar media player]]
 @MainActor
 final class MediaSessionBridge: NSObject, WKScriptMessageHandler {
     static let script = #"""

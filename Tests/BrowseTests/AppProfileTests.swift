@@ -3,7 +3,7 @@ import Testing
 import WebKit
 @testable import Browse
 
-// @lat: [[tests#Build profile isolation]]
+// @lat: [[lat.md/tests/build-tests#Build profile isolation]]
 @Test @MainActor func buildProfileIsolation() async throws {
     let debug = AppProfile.debug
     let production = AppProfile.production

@@ -26,7 +26,7 @@ func extensionFixture(at root: URL) throws -> URL {
     return source
 }
 
-// @lat: [[tests#Curated extension settings pages]]
+// @lat: [[lat.md/tests/extension-hosting/catalog-tests#Curated extension settings pages]]
 @Test @MainActor func curatedExtensionSettingsPages() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendExtensionSettings-\(UUID())")
@@ -88,7 +88,7 @@ func extensionFixture(at root: URL) throws -> URL {
     }
 }
 
-// @lat: [[tests#Curated extension settings smoke test]]
+// @lat: [[lat.md/tests/extension-hosting/catalog-tests#Curated extension settings smoke test]]
 @Test @MainActor func curatedExtensionSettingsSmoke() async throws {
     let packages = ["BROWSE_TEST_FIREFOX_PACKAGE", "BROWSE_TEST_DARK_READER_PACKAGE"]
         .compactMap { ProcessInfo.processInfo.environment[$0] }
@@ -124,7 +124,7 @@ func extensionFixture(at root: URL) throws -> URL {
     }
 }
 
-// @lat: [[tests#Extension lifecycle and permissions]]
+// @lat: [[lat.md/tests/extension-hosting/lifecycle-tests#Extension lifecycle and permissions]]
 @Test @MainActor func extensionLifecycle() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -160,7 +160,7 @@ func extensionFixture(at root: URL) throws -> URL {
     #expect(!restored.isEnabled(record.id))
 }
 
-// @lat: [[tests#Enabled extension restoration]]
+// @lat: [[lat.md/tests/extension-hosting/lifecycle-tests#Enabled extension restoration]]
 @Test @MainActor func enabledExtensionRestoration() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -229,7 +229,7 @@ func extensionFixture(at root: URL) throws -> URL {
     try await manager.uninstall(id)
 }
 
-// @lat: [[tests#uBlock origin migration and isolation]]
+// @lat: [[lat.md/tests/extension-hosting/extension-updates-tests#uBlock origin migration and isolation]]
 @Test @MainActor func uBlockOriginMigrationAndIsolation() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -332,7 +332,7 @@ private func awaitFixtureRequestRules(_ context: WKWebExtensionContext) async th
         """, arguments: [:], in: nil, contentWorld: .page)
 }
 
-// @lat: [[tests#Extension startup content injection]]
+// @lat: [[lat.md/tests/extension-hosting/lifecycle-tests#Extension startup content injection]]
 @Test @MainActor func extensionStartupContentInjection() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -375,7 +375,7 @@ private func awaitFixtureRequestRules(_ context: WKWebExtensionContext) async th
     }
 }
 
-// @lat: [[tests#Firefox extension restoration smoke test]]
+// @lat: [[lat.md/tests/extension-hosting/lifecycle-tests#Firefox extension restoration smoke test]]
 @Test @MainActor func firefoxExtensionRestorationSmoke() async throws {
     guard #available(macOS 15.4, *), let path = ProcessInfo.processInfo.environment["BROWSE_TEST_FIREFOX_PACKAGE"] else { return }
     _ = NSApplication.shared
@@ -423,7 +423,7 @@ private func awaitFixtureRequestRules(_ context: WKWebExtensionContext) async th
     try await manager.uninstall(id)
 }
 
-// @lat: [[tests#Extension content injection and blocking]]
+// @lat: [[lat.md/tests/extension-hosting/lifecycle-tests#Extension content injection and blocking]]
 @Test @MainActor func extensionContentAndBlocking() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -462,7 +462,7 @@ private func awaitFixtureRequestRules(_ context: WKWebExtensionContext) async th
     #expect(try await web.evaluateJavaScript("window.blockedScriptRan === true") as? Bool == true)
 }
 
-// @lat: [[tests#Extension update permissions and resource pages]]
+// @lat: [[lat.md/tests/extension-hosting/extension-updates-tests#Extension update permissions and resource pages]]
 @Test @MainActor func extensionUpdatesAndPages() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -523,7 +523,7 @@ private func awaitFixtureRequestRules(_ context: WKWebExtensionContext) async th
     document.nativeWindow.close()
 }
 
-// @lat: [[tests#Owned extension packages and updates]]
+// @lat: [[lat.md/tests/extension-hosting/extension-updates-tests#Owned extension packages and updates]]
 @Test @MainActor func extensionOwnedPackages() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -610,7 +610,7 @@ private func awaitFixtureRequestRules(_ context: WKWebExtensionContext) async th
     #expect(FileManager.default.fileExists(atPath: manifest.path))
 }
 
-// @lat: [[tests#Extension package migration and isolation]]
+// @lat: [[lat.md/tests/extension-hosting/extension-updates-tests#Extension package migration and isolation]]
 @Test @MainActor func extensionPackageMigration() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -662,7 +662,7 @@ final class ExtensionTestNavigation: NSObject, WKNavigationDelegate {
     }
 }
 
-// @lat: [[tests#Catalog download integrity and identity]]
+// @lat: [[lat.md/tests/extension-hosting/catalog-tests#Catalog download integrity and identity]]
 @Test @MainActor func catalogIntegrityAndIdentity() async throws {
     let data = Data("package fixture".utf8)
     let url = URL(string: "https://example.test/extension.xpi")!
@@ -702,7 +702,7 @@ final class ExtensionTestNavigation: NSObject, WKNavigationDelegate {
     #expect(manager.catalogRecord(CatalogExtension.curated[1]) == nil)
 }
 
-// @lat: [[tests#Catalog package download smoke test]]
+// @lat: [[lat.md/tests/extension-hosting/catalog-tests#Catalog package download smoke test]]
 @Test(arguments: ["1password", "dark-reader"]) @MainActor func catalogDownloadSmoke(entryID: String) async throws {
     guard #available(macOS 15.4, *), ProcessInfo.processInfo.environment["BROWSE_TEST_CATALOG_DOWNLOAD"] == "1" else { return }
     let entry = try #require(CatalogExtension.curated.first { $0.id == entryID })
@@ -754,7 +754,7 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     }
 }
 
-// @lat: [[tests#Build bundle publication]]
+// @lat: [[lat.md/tests/build-tests#Build bundle publication]]
 @Test func buildBundlePublication() throws {
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     let process = Process()
@@ -765,7 +765,7 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     #expect(process.terminationStatus == 0)
 }
 
-// @lat: [[tests#Production installer publication]]
+// @lat: [[lat.md/tests/build-tests#Production installer publication]]
 @Test func productionInstallerPublication() throws {
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     let process = Process()
@@ -776,7 +776,7 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     #expect(process.terminationStatus == 0)
 }
 
-// @lat: [[tests#Private extension access]]
+// @lat: [[lat.md/tests/extension-hosting/lifecycle-tests#Private extension access]]
 @Test(arguments: [false, true]) @MainActor func privateExtensionAccess(createdBeforeEnable: Bool) async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePrivateExtension-\(UUID())")
@@ -878,7 +878,7 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     #expect(try await privateWeb.evaluateJavaScript("window.blockedScriptRan === true") as? Bool == true)
 }
 
-// @lat: [[tests#Private extension iframe isolation]]
+// @lat: [[lat.md/tests/extension-hosting/lifecycle-tests#Private extension iframe isolation]]
 @Test @MainActor func privateExtensionIframeIsolation() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("PrivateReview-\(UUID())")

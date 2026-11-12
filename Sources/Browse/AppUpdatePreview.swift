@@ -2,7 +2,7 @@
 import AppKit
 import Sparkle
 
-// @lat: [[architecture#Update interface preview]]
+// @lat: [[lat.md/architecture/updates#Update interface preview]]
 @MainActor
 final class AppUpdatePreview {
     let version = "0.3.0"

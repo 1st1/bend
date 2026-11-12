@@ -4,7 +4,7 @@ public enum SplitAxis: String, Codable, Sendable { case horizontal, vertical }
 public enum CommandClickDestination: String, Codable, Sendable { case newPane, dedicatedPane, newTab }
 public enum LinkOpenDestination: String, Codable, Sendable { case newTab, newPane, newWindow }
 
-// @lat: [[architecture#Tiling model]]
+// @lat: [[lat.md/architecture/pane-layout#Tiling model]]
 public indirect enum PaneLayout: Codable, Equatable, Sendable {
     case pane(UUID)
     case split(id: UUID, axis: SplitAxis, fraction: Double, first: PaneLayout, second: PaneLayout, isAutomatic: Bool? = nil)
@@ -37,7 +37,7 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
         }
     }
 
-    // @lat: [[architecture#Pane drag and drop]]
+    // @lat: [[lat.md/architecture/pane-transfers#Pane drag and drop]]
     public func moving(_ source: UUID, beside target: UUID, edge: PaneDropEdge) -> Self? {
         guard source != target, paneIDs.contains(source), paneIDs.contains(target),
               let remaining = removing(source) else { return nil }
@@ -62,7 +62,7 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
         }
     }
 
-    // @lat: [[architecture#Automatic pane sizing]]
+    // @lat: [[lat.md/architecture/pane-layout#Automatic pane sizing]]
     public var usesAutomaticSizing: Bool {
         guard case .split(_, _, let fraction, _, _, let automatic) = self else { return false }
         // Older sessions did not record resize intent. Preserve unequal ratios.
@@ -213,7 +213,7 @@ public enum SidebarSide: String, Codable, CaseIterable, Sendable {
     case left, right
 }
 
-// @lat: [[architecture#Session restoration]]
+// @lat: [[lat.md/architecture/session#Session restoration]]
 public struct BrowserSession: Codable, Sendable {
     public var workspaces: [Workspace]
     public var selectedTab: UUID
@@ -329,7 +329,7 @@ public struct BrowserSession: Codable, Sendable {
     }
 }
 
-// @lat: [[architecture#Address handling]]
+// @lat: [[lat.md/architecture/address-entry#Address handling]]
 public enum AddressResolver {
     public static func resolve(_ input: String, searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil) -> URL? {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)

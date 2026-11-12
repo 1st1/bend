@@ -16,7 +16,7 @@
 @implementation BendFindRequest
 @end
 
-// @lat: [[architecture#Find in page]]
+// @lat: [[lat.md/architecture/find#Find in page]]
 @implementation BendFindSupport {
     __weak WKWebView *_webView;
     NSMutableArray<BendFindRequest *> *_requests;

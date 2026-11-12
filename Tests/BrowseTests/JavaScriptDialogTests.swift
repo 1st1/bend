@@ -51,7 +51,7 @@ import WebKit
     return page
 }
 
-// @lat: [[tests#JavaScript dialog origin and responses]]
+// @lat: [[lat.md/tests/web-pages-tests#JavaScript dialog origin and responses]]
 @Test @MainActor func javaScriptDialogOriginAndResponses() async throws {
     let presentation = DialogPresentation()
     let window = dialogWindow(); defer { window.close() }
@@ -85,7 +85,7 @@ import WebKit
     #expect(JavaScriptDialogs.originLabel(scheme: "", host: "", port: 0) == "an unknown origin")
 }
 
-// @lat: [[tests#JavaScript dialog admission and rate limits]]
+// @lat: [[lat.md/tests/web-pages-tests#JavaScript dialog admission and rate limits]]
 @Test @MainActor func javaScriptDialogAdmissionAndLimits() throws {
     let presentation = DialogPresentation()
     let window = dialogWindow(); defer { window.close() }
@@ -137,7 +137,7 @@ import WebKit
     presentation.completions.last?(.alertFirstButtonReturn)
 }
 
-// @lat: [[tests#JavaScript dialog lifecycle cancellation]]
+// @lat: [[lat.md/tests/web-pages-tests#JavaScript dialog lifecycle cancellation]]
 @Test @MainActor func javaScriptDialogLifecycleCancellation() throws {
     let presentation = DialogPresentation()
     let window = dialogWindow(); defer { window.close() }
@@ -179,7 +179,7 @@ import WebKit
     #expect(responses == 5)
 }
 
-// @lat: [[tests#JavaScript native sheets]]
+// @lat: [[lat.md/tests/web-pages-tests#JavaScript native sheets]]
 @Test @MainActor func javaScriptNativeSheets() async throws {
     let window = dialogWindow(); defer { window.close() }
     var shown: NSAlert?

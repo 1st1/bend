@@ -3,7 +3,7 @@ import SwiftUI
 
 private typealias ButtonState<Value> = SwiftUI.State<Value>
 
-// @lat: [[architecture#Toolbar button styling]]
+// @lat: [[lat.md/architecture/pane-controls#Toolbar button styling]]
 struct ChromeButtonStyle: ButtonStyle {
     static let highlightBackground = Color.primary.opacity(0.06)
     var prominent = false

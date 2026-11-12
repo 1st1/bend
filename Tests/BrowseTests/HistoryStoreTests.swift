@@ -4,7 +4,7 @@ import Testing
 import WebKit
 @testable import Browse
 
-// @lat: [[tests#History persistence and clearing]]
+// @lat: [[lat.md/tests/history-tests#History persistence and clearing]]
 @Test @MainActor func historyPersistence() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseHistory-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -32,7 +32,7 @@ import WebKit
     #expect(!FileManager.default.fileExists(atPath: file.path))
 }
 
-// @lat: [[tests#Unreadable history preservation]]
+// @lat: [[lat.md/tests/history-tests#Unreadable history preservation]]
 @Test(arguments: ["history.json", "History.db"]) @MainActor func unreadableHistory(fileName: String) throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseHistory-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -60,7 +60,7 @@ private final class HistoryWebView: FocusWebView {
     override var isLoading: Bool { testIsLoading }
 }
 
-// @lat: [[tests#Completed navigation history]]
+// @lat: [[lat.md/tests/history-tests#Completed navigation history]]
 @Test @MainActor func completedNavigationHistory() {
     _ = NSApplication.shared
     let config = WKWebViewConfiguration()
@@ -96,7 +96,7 @@ private final class HistoryWebView: FocusWebView {
     #expect(visits.count == 2)
 }
 
-// @lat: [[tests#Remove address suggestion]]
+// @lat: [[lat.md/tests/history-tests#Remove address suggestion]]
 @Test @MainActor func removeAddressSuggestion() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseRemoveSuggestion-\(UUID())")

@@ -1,7 +1,7 @@
 import Foundation
 import WebKit
 
-// @lat: [[architecture#Build profile isolation]]
+// @lat: [[lat.md/architecture/build#Build profile isolation]]
 enum AppProfile: String, Sendable {
     case debug, production
 

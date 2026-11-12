@@ -5,7 +5,7 @@ import WebKit
 import BrowseCore
 @testable import Browse
 
-// @lat: [[tests#Settings section toolbar]]
+// @lat: [[lat.md/tests/settings-tests#Settings section toolbar]]
 @Test @MainActor func settingsSectionToolbar() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSettingsToolbar-\(UUID())")
@@ -109,7 +109,7 @@ import BrowseCore
     #expect(table(in: try #require(fresh.window.contentView))?.selectedRow == 4)
 }
 
-// @lat: [[tests#Settings close shortcut]]
+// @lat: [[lat.md/tests/settings-tests#Settings close shortcut]]
 @Test @MainActor func settingsCloseShortcut() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSettingsClose-\(UUID())")
@@ -165,7 +165,7 @@ import BrowseCore
     #expect(browser.store.session.workspaces.flatMap(\.tabs).count == 1)
 }
 
-// @lat: [[tests#Independent browser windows]]
+// @lat: [[lat.md/tests/windows-tests#Independent browser windows]]
 @Test @MainActor func independentBrowserWindows() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseWindows-\(UUID())")
@@ -227,7 +227,7 @@ import BrowseCore
     }
 }
 
-// @lat: [[tests#Browser window restoration]]
+// @lat: [[lat.md/tests/windows-tests#Browser window restoration]]
 @Test @MainActor func browserWindowRestoration() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseWindowsRestore-\(UUID())")
@@ -276,7 +276,7 @@ import BrowseCore
     }
 }
 
-// @lat: [[tests#New window keyboard command]]
+// @lat: [[lat.md/tests/windows-tests#New window keyboard command]]
 @Test @MainActor func newWindowKeyboardCommand() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseWindowCommand-\(UUID())")
@@ -319,7 +319,7 @@ import BrowseCore
     #expect(second.store.session.workspaces.flatMap(\.tabs).count == 2)
 }
 
-// @lat: [[tests#Closing the last browser pane]]
+// @lat: [[lat.md/tests/windows-tests#Closing the last browser pane]]
 @Test @MainActor func closingLastBrowserPane() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendLastPane-\(UUID())")
@@ -382,7 +382,7 @@ import BrowseCore
     #expect(try encoder.encode(owner.sharedStore.session) == snapshot)
 }
 
-// @lat: [[tests#Window control alignment]]
+// @lat: [[lat.md/tests/windows-tests#Window control alignment]]
 @Test(.serialized, arguments: [false, true], SidebarSide.allCases) @MainActor func windowControlAlignment(isPrivate: Bool, side: SidebarSide) async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendChromeAlignment-\(UUID())")
@@ -436,7 +436,7 @@ import BrowseCore
     }
 }
 
-// @lat: [[tests#Fullscreen chrome transitions]]
+// @lat: [[lat.md/tests/windows-tests#Fullscreen chrome transitions]]
 @Test(.enabled(if: ProcessInfo.processInfo.environment["BEND_FULLSCREEN_TEST"] == "1"))
 @MainActor func fullscreenChromeTransitions() async throws {
     _ = NSApplication.shared
@@ -529,7 +529,7 @@ import BrowseCore
     #expect(try await web.evaluateJavaScript("document.querySelector('input').value") as? String == "draft")
 }
 
-// @lat: [[tests#Private window lifetime]]
+// @lat: [[lat.md/tests/privacy-tests#Private window lifetime]]
 @Test @MainActor func privateWindowLifetime() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePrivate-\(UUID())")
@@ -603,7 +603,7 @@ import BrowseCore
     #expect(try JSONDecoder().decode([String].self, from: Data(contentsOf: root.appendingPathComponent("windows.json"))) == [regular.id])
 }
 
-// @lat: [[tests#Private window storage sharing]]
+// @lat: [[lat.md/tests/privacy-tests#Private window storage sharing]]
 @Test @MainActor func privateWindowStorageSharing() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePrivatePanes-\(UUID())")
@@ -703,7 +703,7 @@ import BrowseCore
 
 }
 
-// @lat: [[tests#Private window keyboard command]]
+// @lat: [[lat.md/tests/privacy-tests#Private window keyboard command]]
 @Test @MainActor func privateWindowKeyboardCommand() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePrivateCommand-\(UUID())")

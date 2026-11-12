@@ -4,7 +4,7 @@ import Testing
 import BrowseCore
 @testable import Browse
 
-// @lat: [[tests#Divider pointer tracking]]
+// @lat: [[lat.md/tests/pane-layout-tests#Divider pointer tracking]]
 @Test(.serialized, arguments: [SplitAxis.horizontal, .vertical]) @MainActor
 func dividerPointerTracking(axis: SplitAxis) async throws {
     _ = NSApplication.shared
@@ -70,7 +70,7 @@ func dividerPointerTracking(axis: SplitAxis) async throws {
     #expect(abs(try divider().firstLength - initial.firstLength + 40) < 2)
 }
 
-// @lat: [[tests#Sidebar visibility animation]]
+// @lat: [[lat.md/tests/sidebar-tests#Sidebar visibility animation]]
 @Test(.serialized, arguments: [false, true], SidebarSide.allCases) @MainActor
 func sidebarVisibilityAnimation(animationsDisabled: Bool, side: SidebarSide) async throws {
     _ = NSApplication.shared
@@ -134,7 +134,7 @@ func sidebarVisibilityAnimation(animationsDisabled: Bool, side: SidebarSide) asy
     #expect(abs(moved.minX - (side == .left ? Chrome.paneInset : store.sidebarWidth + Chrome.paneInset)) < 0.5)
 }
 
-// @lat: [[tests#Sidebar resize tracking and restoration]]
+// @lat: [[lat.md/tests/sidebar-tests#Sidebar resize tracking and restoration]]
 @Test(.serialized, arguments: SidebarSide.allCases) @MainActor
 func sidebarResizeTracking(side: SidebarSide) async throws {
     _ = NSApplication.shared
@@ -222,7 +222,7 @@ func sidebarResizeTracking(side: SidebarSide) async throws {
     #expect(restored.sidebarWidth == 250)
 }
 
-// @lat: [[tests#Clipped resize cursors]]
+// @lat: [[lat.md/tests/pane-layout-tests#Clipped resize cursors]]
 @Test @MainActor func clippedResizeCursors() throws {
     _ = NSApplication.shared
     let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 200, height: 200),

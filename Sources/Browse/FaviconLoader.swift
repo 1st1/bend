@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-// @lat: [[architecture#Page favicons]]
+// @lat: [[lat.md/architecture/favicons#Page favicons]]
 @MainActor
 enum FaviconLoader {
     static let world = WKContentWorld.world(name: "BendFavicon")

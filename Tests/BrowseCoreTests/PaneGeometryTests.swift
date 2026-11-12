@@ -3,7 +3,7 @@ import CoreGraphics
 import Testing
 @testable import BrowseCore
 
-// @lat: [[tests#Pane geometry and insertion]]
+// @lat: [[lat.md/tests/pane-layout-tests#Pane geometry and insertion]]
 @Test func paneGeometryAndInsertion() throws {
     var tab = BrowserTab()
     let original = tab.focusedPane
@@ -30,7 +30,7 @@ import Testing
     #expect(closed.panes.map(\.frame) == split.panes.map(\.frame))
 }
 
-// @lat: [[tests#Pane geometry bounds]]
+// @lat: [[lat.md/tests/pane-layout-tests#Pane geometry bounds]]
 @Test func paneGeometryBounds() throws {
     var tab = BrowserTab()
     tab.split(axis: .horizontal)

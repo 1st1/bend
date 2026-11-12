@@ -1,6 +1,6 @@
 import AppKit
 
-// @lat: [[architecture#External application links]]
+// @lat: [[lat.md/architecture/external-links#External application links]]
 @MainActor
 final class ExternalApplicationLinks {
     struct Application {

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import BrowseCore
 
-// @lat: [[architecture#Browser windows]]
+// @lat: [[lat.md/architecture/windows#Browser windows]]
 @MainActor
 final class BrowserWindows {
     let sharedStore: BrowserStore
@@ -97,7 +97,7 @@ final class BrowserWindows {
         save()
     }
 
-    // @lat: [[architecture#Dragging into a new window]]
+    // @lat: [[lat.md/architecture/pane-transfers#Dragging into a new window]]
     @discardableResult
     func detach(tab tabID: UUID, pane paneID: UUID?, from source: BrowserStore, at point: NSPoint) -> BrowserWindowSession? {
         guard !source.isPrivate, let original = windows.first(where: { $0.store === source }),
@@ -184,7 +184,7 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
         if #available(macOS 15.4, *) { store.extensions.controller.didFocusWindow(nil) }
     }
-    // @lat: [[architecture#Fullscreen chrome]]
+    // @lat: [[lat.md/architecture/windows#Fullscreen chrome]]
     func window(_ window: NSWindow, willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions) -> NSApplication.PresentationOptions {
         proposedOptions.union(.autoHideToolbar)
     }

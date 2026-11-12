@@ -3,7 +3,7 @@ import BrowseCore
 import Testing
 @testable import Browse
 
-// @lat: [[tests#Command popup actions]]
+// @lat: [[lat.md/tests/commands-tests#Command popup actions]]
 @Test @MainActor func commandPopupActions() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendCommands-\(UUID())")

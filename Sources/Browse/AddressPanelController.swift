@@ -60,7 +60,7 @@ private struct AddressResult {
     var command: PopupCommand? = nil
 }
 
-// @lat: [[architecture#Location popup]]
+// @lat: [[lat.md/architecture/address-entry#Location popup]]
 @MainActor
 final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     private let store: BrowserStore

@@ -5,7 +5,7 @@ import Testing
 import BrowseCore
 @testable import Browse
 
-// @lat: [[tests#Location popup requests]]
+// @lat: [[lat.md/tests/address-entry-tests#Location popup requests]]
 @Test @MainActor func locationPopupRequests() {
     let file = FileManager.default.temporaryDirectory
         .appendingPathComponent("BrowseTests-\(UUID())/session.json")
@@ -43,7 +43,7 @@ import BrowseCore
     #expect(requested.count == count)
 }
 
-// @lat: [[tests#UI preference persistence]]
+// @lat: [[lat.md/tests/settings-tests#UI preference persistence]]
 @Test @MainActor func uiPreferencePersistence() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePreferences-\(UUID())")
     let file = directory.appendingPathComponent("session.json")
@@ -194,7 +194,7 @@ import BrowseCore
     #expect(store.paneHighlight.titleTintColor == PaneHighlight().titleTintColor)
 }
 
-// @lat: [[tests#Live window glass preferences]]
+// @lat: [[lat.md/tests/settings-tests#Live window glass preferences]]
 @Test @MainActor func liveWindowGlassPreferences() throws {
     guard #available(macOS 26.0, *) else { return }
     _ = NSApplication.shared
@@ -218,7 +218,7 @@ import BrowseCore
     #expect(glass.contentView === content)
 }
 
-// @lat: [[tests#Canceling new tab entry]]
+// @lat: [[lat.md/tests/address-entry-tests#Canceling new tab entry]]
 @Test @MainActor func cancelNewTabEntry() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseCancelTab-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -276,7 +276,7 @@ import BrowseCore
     #expect(!store.cancelInitialAddressEntry(for: store.selectedTab.focusedPane))
 }
 
-// @lat: [[tests#New tab popup keyboard cancellation]]
+// @lat: [[lat.md/tests/address-entry-tests#New tab popup keyboard cancellation]]
 @Test @MainActor func newTabPopupKeyboardCancellation() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseCancelPopup-\(UUID())")
@@ -391,7 +391,7 @@ import BrowseCore
     #expect(store.session.selectedTab == submitted && store.session.workspaces[0].tabs.count == 3)
 }
 
-// @lat: [[tests#Pane-centered location popup]]
+// @lat: [[lat.md/tests/address-entry-tests#Pane-centered location popup]]
 @Test @MainActor func paneCenteredLocationPopup() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPanePopup-\(UUID())")
@@ -469,7 +469,7 @@ import BrowseCore
     try verify(right, fixedTop: fallbackTop)
 }
 
-// @lat: [[tests#Solid header appearance]]
+// @lat: [[lat.md/tests/pane-materials-tests#Solid header appearance]]
 @Test @MainActor func solidHeaderAppearance() throws {
     for clear in [false, true] {
         let legacy = Data("{\"clear\":\(clear),\"darkening\":0.5}".utf8)
@@ -521,7 +521,7 @@ import BrowseCore
     }
 }
 
-// @lat: [[tests#Search engine preference]]
+// @lat: [[lat.md/tests/address-entry-tests#Search engine preference]]
 @Test @MainActor func searchEnginePreference() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSearch-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }

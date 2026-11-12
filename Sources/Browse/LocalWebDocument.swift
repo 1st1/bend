@@ -1,6 +1,6 @@
 import Foundation
 
-// @lat: [[architecture#Default browser]]
+// @lat: [[lat.md/architecture/external-links#Default browser]]
 enum LocalWebDocument {
     static func accepts(_ url: URL) -> Bool {
         url.isFileURL && (url.host == nil || url.host == "" || url.host == "localhost")

@@ -19,7 +19,7 @@ struct ExtensionRecord: Codable, Identifiable {
     var catalogID: String?
 }
 
-// @lat: [[architecture#Web extensions]]
+// @lat: [[lat.md/architecture/extensions/lifecycle#Web extensions]]
 @available(macOS 15.4, *)
 @MainActor
 final class ExtensionManager: NSObject, ObservableObject {

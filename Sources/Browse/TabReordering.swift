@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import BrowseCore
 
-// @lat: [[architecture#Sidebar tab reordering]]
+// @lat: [[lat.md/architecture/sidebar#Sidebar tab reordering]]
 struct TabDragHandle: NSViewRepresentable {
     let store: BrowserStore
     let tabID: UUID

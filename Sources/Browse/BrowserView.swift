@@ -369,7 +369,7 @@ struct TabSelectionMaterial<SelectionShape: Shape>: ViewModifier {
     }
 }
 
-// @lat: [[architecture#Pane materials]]
+// @lat: [[lat.md/architecture/pane-materials#Pane materials]]
 struct PaneChromeBackground: View {
     var cornerRadius: CGFloat = 0
     var roundsTopCorners = true
@@ -660,7 +660,7 @@ private struct ClippedPaneContent<Content: View>: NSViewRepresentable {
     }
 }
 
-// @lat: [[architecture#Pane navigation controls]]
+// @lat: [[lat.md/architecture/pane-controls#Pane navigation controls]]
 final class ClippedPaneHost: PaneDropHost {
     let content: NSHostingView<AnyView>
     var onPaneHover: ((Bool) -> Void)?
@@ -760,7 +760,7 @@ private struct WebSurface: NSViewRepresentable {
     }
 }
 
-// @lat: [[architecture#Application shell]]
+// @lat: [[lat.md/architecture/windows#Application shell]]
 private struct StartPage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewState private var showsMore = false

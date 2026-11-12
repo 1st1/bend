@@ -46,7 +46,7 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# @lat: [[architecture#Production installer]]
+# @lat: [[lat.md/architecture/build#Production installer]]
 notarize() {
   local artifact="$1" label="$2" result="$logs/$2-submission.json"
   printf 'Notarizing %s (Keychain profile: %s)…\n' "$label" "$profile"

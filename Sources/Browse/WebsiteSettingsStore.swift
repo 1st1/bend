@@ -2,7 +2,7 @@ import Foundation
 import Combine
 import BrowseCore
 
-// @lat: [[architecture#Website settings]]
+// @lat: [[lat.md/architecture/settings#Website settings]]
 @MainActor
 final class WebsiteSettingsStore: ObservableObject {
     @Published private(set) var values = WebsiteSettings()

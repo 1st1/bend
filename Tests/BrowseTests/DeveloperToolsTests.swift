@@ -4,7 +4,7 @@ import Testing
 import WebKit
 @testable import Browse
 
-// @lat: [[tests#Developer tools]]
+// @lat: [[lat.md/tests/developer-tools-tests#Developer tools]]
 @Test @MainActor func developerTools() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendInspector-\(UUID())")

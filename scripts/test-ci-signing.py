@@ -15,7 +15,7 @@ signing = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(signing)
 
 
-# @lat: [[tests#CI signing credential lifecycle]]
+# @lat: [[lat.md/tests/build-tests#CI signing credential lifecycle]]
 class SigningTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="bend-ci-signing-test-")

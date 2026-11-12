@@ -7,7 +7,7 @@ struct SidebarScrollStatus: Equatable {
 
     init() {}
 
-    // @lat: [[architecture#Sidebar overflow indicators]]
+    // @lat: [[lat.md/architecture/sidebar#Sidebar overflow indicators]]
     init(visibleRect: CGRect, tabCount: Int, topInset: CGFloat) {
         guard visibleRect.height > 0, tabCount > 0 else { return }
         topFadeHeight = min(Chrome.sidebarScrollFadeHeight, max(0, visibleRect.minY))

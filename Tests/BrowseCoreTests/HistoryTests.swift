@@ -4,7 +4,7 @@ import Testing
 
 private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
 
-// @lat: [[tests#History recording]]
+// @lat: [[lat.md/tests/history-tests#History recording]]
 @Test func historyRecording() throws {
     var history = BrowsingHistory()
     let internalPage = history.record(url: "browse://history", title: "History")
@@ -28,7 +28,7 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(restored.isValid)
 }
 
-// @lat: [[tests#History matching and completion]]
+// @lat: [[lat.md/tests/history-tests#History matching and completion]]
 @Test func historyMatchingAndCompletion() {
     var history = BrowsingHistory()
     history.record(url: "https://example.com/creme%20brulee", title: "Café recipes", at: historyNow)
@@ -55,7 +55,7 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(history.suggestions(for: "news.example", now: historyNow).first?.completion(for: "example") == nil)
 }
 
-// @lat: [[tests#History ranking and learned choices]]
+// @lat: [[lat.md/tests/history-tests#History ranking and learned choices]]
 @Test func historyRanking() {
     var history = BrowsingHistory()
     let recent = "https://recent.example.com/"
@@ -77,7 +77,7 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(history.suggestions(for: "", limit: 0, now: historyNow).isEmpty)
 }
 
-// @lat: [[tests#History removal and bounds]]
+// @lat: [[lat.md/tests/history-tests#History removal and bounds]]
 @Test func historyRemovalAndBounds() {
     var history = BrowsingHistory()
     for index in 0...BrowsingHistory.maximumVisits {
@@ -96,7 +96,7 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(history.isValid)
 }
 
-// @lat: [[tests#Home page suggestion ranking]]
+// @lat: [[lat.md/tests/history-tests#Home page suggestion ranking]]
 @Test func homePageSuggestionRanking() {
     var history = BrowsingHistory()
     let home = "https://github.com/"

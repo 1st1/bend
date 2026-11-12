@@ -1,6 +1,6 @@
 import AppKit
 
-// @lat: [[architecture#Pane drag and drop]]
+// @lat: [[lat.md/architecture/pane-transfers#Pane drag and drop]]
 @MainActor
 class BrowseWindow: NSWindow {
     weak var browserStore: BrowserStore?

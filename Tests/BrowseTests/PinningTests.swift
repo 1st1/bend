@@ -4,7 +4,7 @@ import Testing
 import BrowseCore
 @testable import Browse
 
-// @lat: [[tests#Pinned pane protection]]
+// @lat: [[lat.md/tests/pane-controls-tests#Pinned pane protection]]
 @Test @MainActor func pinnedPaneProtection() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPins-\(UUID())")
@@ -75,7 +75,7 @@ import BrowseCore
     #expect(!store.session.workspaces[0].tabs.contains { $0.id == download.id })
 }
 
-// @lat: [[tests#Pinned pane transfers]]
+// @lat: [[lat.md/tests/pane-controls-tests#Pinned pane transfers]]
 @Test @MainActor func pinnedPaneTransfers() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPinTransfers-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -111,7 +111,7 @@ import BrowseCore
     #expect(restored.selectedTab.pages.first { $0.id == moving.id }?.pinnedAddress == moving.address)
 }
 
-// @lat: [[tests#Pinned close commands]]
+// @lat: [[lat.md/tests/pane-controls-tests#Pinned close commands]]
 @Test @MainActor func pinnedCloseCommands() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPinCommands-\(UUID())")
@@ -139,7 +139,7 @@ import BrowseCore
     #expect(owner.windows.count == 1)
 }
 
-// @lat: [[tests#Native pin controls]]
+// @lat: [[lat.md/tests/pane-controls-tests#Native pin controls]]
 @Test @MainActor func nativePinControls() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPinControls-\(UUID())")
@@ -230,7 +230,7 @@ import BrowseCore
     #expect(store.session.workspaces[0].tabs.first { $0.id == tab.id }?.isPinned == false)
 }
 
-// @lat: [[tests#Pinned URL return]]
+// @lat: [[lat.md/tests/pane-controls-tests#Pinned URL return]]
 @Test @MainActor func pinnedURLReturn() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPinURL-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }

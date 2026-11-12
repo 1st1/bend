@@ -3,7 +3,7 @@ import SwiftUI
 
 private typealias PermissionViewState<Value> = SwiftUI.State<Value>
 
-// @lat: [[architecture#Extension permission presentation]]
+// @lat: [[lat.md/architecture/extensions/lifecycle#Extension permission presentation]]
 struct ExtensionPermissionSummary {
     struct Item: Identifiable {
         let title: String

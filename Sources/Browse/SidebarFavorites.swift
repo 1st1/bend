@@ -1,7 +1,7 @@
 import SwiftUI
 import BrowseCore
 
-// @lat: [[architecture#Sidebar favorites]]
+// @lat: [[lat.md/architecture/favorites#Sidebar favorites]]
 struct SidebarFavorites: View {
     @ObservedObject var store: BrowserStore
 

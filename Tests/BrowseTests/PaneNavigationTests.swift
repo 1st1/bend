@@ -11,7 +11,7 @@ import Testing
     override func performDrag(with event: NSEvent) {}
 }
 
-// @lat: [[tests#Pane history controls]]
+// @lat: [[lat.md/tests/pane-controls-tests#Pane history controls]]
 @Test @MainActor func paneHistoryControls() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPaneNavigation-\(UUID())")

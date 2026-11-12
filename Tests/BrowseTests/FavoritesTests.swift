@@ -4,7 +4,7 @@ import Testing
 import BrowseCore
 @testable import Browse
 
-// @lat: [[tests#Favorite tabs and persistence]]
+// @lat: [[lat.md/tests/favorites-tests#Favorite tabs and persistence]]
 @Test @MainActor func favoriteTabsAndPersistence() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFavorites-\(UUID())")
@@ -71,7 +71,7 @@ import BrowseCore
     #expect(try JSONDecoder().decode(BrowserSession.self, from: JSONSerialization.data(withJSONObject: oldSession)).favorites == nil)
 }
 
-// @lat: [[tests#Shared favorites and pane transfers]]
+// @lat: [[lat.md/tests/favorites-tests#Shared favorites and pane transfers]]
 @Test @MainActor func sharedFavoritesAndTransfers() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFavoriteWindows-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -107,7 +107,7 @@ import BrowseCore
     #expect(restoredOther.sidebarTabs.contains { $0.id == otherTab })
 }
 
-// @lat: [[tests#Favorite favicon snapshots]]
+// @lat: [[lat.md/tests/favorites-tests#Favorite favicon snapshots]]
 @Test @MainActor func favoriteFaviconSnapshots() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFavoriteIcons-\(UUID())")
@@ -142,7 +142,7 @@ import BrowseCore
     #expect(SidebarFavorite.validated([invalid, oversized] + restored.favorites + restored.favorites).count == 1)
 }
 
-// @lat: [[tests#Favorite tile interaction]]
+// @lat: [[lat.md/tests/favorites-tests#Favorite tile interaction]]
 @Test @MainActor func favoriteTileInteraction() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFavoriteTiles-\(UUID())")

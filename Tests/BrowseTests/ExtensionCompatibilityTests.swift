@@ -61,7 +61,7 @@ import Network
     return source
 }
 
-// @lat: [[tests#Extension compatibility permissions and notifications]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Extension compatibility permissions and notifications]]
 @Test @MainActor func extensionCompatibilityNotifications() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -146,7 +146,7 @@ import Network
     #expect(backend.delivered.isEmpty)
 }
 
-// @lat: [[tests#Extension created navigation events]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Extension created navigation events]]
 @Test @MainActor func extensionCreatedNavigationEvents() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -184,7 +184,7 @@ import Network
     try await manager.enable(false, id: id) { _, _ in true }
 }
 
-// @lat: [[tests#Embedded extension pages and tab transitions]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Embedded extension pages and tab transitions]]
 @Test @MainActor func extensionEmbeddedPagesAndTabTransitions() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -287,7 +287,7 @@ import Network
     try await manager.enable(false, id: id) { _, _ in true }
 }
 
-// @lat: [[tests#Extension browser information and menu settings]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Extension browser information and menu settings]]
 @Test @MainActor func extensionBrowserSettings() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -360,7 +360,7 @@ import Network
     #expect(try await web.callAsyncJavaScript("return (await browser.runtime.getBrowserInfo()).name", arguments: [:], in: nil, contentWorld: .page) as? String == AppProfile.current.name)
 }
 
-// @lat: [[tests#Foxy Gestures options smoke test]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Foxy Gestures options smoke test]]
 @Test @MainActor func foxyGesturesOptionsSmoke() async throws {
     guard #available(macOS 15.4, *), let path = ProcessInfo.processInfo.environment["BEND_TEST_FOXY_PACKAGE"] else { return }
     _ = NSApplication.shared
@@ -468,7 +468,7 @@ import Network
     try await manager.enable(false, id: id) { _, _ in true }
 }
 
-// @lat: [[tests#Extension privacy settings and restored startup]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Extension privacy settings and restored startup]]
 @Test @MainActor func extensionPrivacyRestoration() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -541,7 +541,7 @@ import Network
     try await manager.uninstall(id)
 }
 
-// @lat: [[tests#Extension document authentication round trip]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Extension document authentication round trip]]
 @Test @MainActor func extensionDocumentAuthenticationRoundTrip() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -630,7 +630,7 @@ import Network
     try await manager.enable(false, id: id) { _, _ in true }
 }
 
-// @lat: [[tests#Firefox onboarding smoke test]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Firefox onboarding smoke test]]
 @Test @MainActor func firefoxOnboardingSmoke() async throws {
     guard #available(macOS 15.4, *), let path = ProcessInfo.processInfo.environment["BROWSE_TEST_FIREFOX_PACKAGE"] else { return }
     _ = NSApplication.shared
@@ -711,7 +711,7 @@ import Network
     try await manager.enable(false, id: id) { _, _ in true }
 }
 
-// @lat: [[tests#Extension WASM diagnostic behavior]]
+// @lat: [[lat.md/tests/extension-hosting/diagnostics-tests#Extension WASM diagnostic behavior]]
 @Test @MainActor func extensionWasmDiagnostics() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -787,7 +787,7 @@ import Network
     #expect(rejected as? Bool == true)
 }
 
-// @lat: [[tests#Native extension messaging]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Native extension messaging]]
 @Test @MainActor func nativeExtensionMessaging() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -914,7 +914,7 @@ import Network
     #expect(throws: (any Error).self) { _ = try NativeHost.resolve("missing.host", extensionID: "allowed@test", directories: [root]) }
 }
 
-// @lat: [[tests#Extension diagnostic logging]]
+// @lat: [[lat.md/tests/extension-hosting/diagnostics-tests#Extension diagnostic logging]]
 @Test @MainActor func extensionDiagnosticLogging() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseDiagnosticTests-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -946,7 +946,7 @@ import Network
     #expect(fallback.report().contains("nativeRequested"))
 }
 
-// @lat: [[tests#1Password protocol diagnostic redaction]]
+// @lat: [[lat.md/tests/extension-hosting/diagnostics-tests#1Password protocol diagnostic redaction]]
 @Test func onePasswordProtocolDiagnosticRedaction() {
     let secret = "NEVER-LOG-ACCOUNT-OR-CREDENTIAL"
     let failure: [String: Any] = ["type": "Failure", "content": ["callbackId": secret,
@@ -975,7 +975,7 @@ private struct WasmRestartProfile: Codable {
     let origin: URL
 }
 
-// @lat: [[tests#Firefox WASM process restart]]
+// @lat: [[lat.md/tests/extension-hosting/diagnostics-tests#Firefox WASM process restart]]
 @Test @MainActor func firefoxWasmProcessRestart() async throws {
     let environment = ProcessInfo.processInfo.environment
     guard #available(macOS 15.4, *), let package = environment["BROWSE_TEST_FIREFOX_PACKAGE"],
@@ -1043,7 +1043,7 @@ private struct WasmRestartProfile: Codable {
     }
 }
 
-// @lat: [[tests#Safari mouse gestures]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Safari mouse gestures]]
 @Test @MainActor func mouseGesturesSafariSmoke() async throws {
     guard #available(macOS 15.4, *), let path = ProcessInfo.processInfo.environment["BEND_TEST_MOUSE_GESTURES_APP"] else { return }
     _ = NSApplication.shared

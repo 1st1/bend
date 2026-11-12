@@ -21,7 +21,7 @@ public struct DividerPlacement: Identifiable {
     }
 }
 
-// @lat: [[architecture#Pane layout animation]]
+// @lat: [[lat.md/architecture/pane-layout#Pane layout animation]]
 public struct PaneGeometry {
     public static let gap: CGFloat = 6
     public let size: CGSize

@@ -13,7 +13,7 @@ import WebKit
         userInfo: [NSLocalizedDescriptionKey: "Timed out: \(expression)"])
 }
 
-// @lat: [[tests#Dark Reader compatibility smoke test]]
+// @lat: [[lat.md/tests/extension-hosting/compatibility-tests#Dark Reader compatibility smoke test]]
 @Test @MainActor func darkReaderSmoke() async throws {
     guard #available(macOS 15.4, *),
           let path = ProcessInfo.processInfo.environment["BROWSE_TEST_DARK_READER_PACKAGE"] else { return }

@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import ImageIO
 
-// @lat: [[architecture#Persistent favicon cache]]
+// @lat: [[lat.md/architecture/favicons#Persistent favicon cache]]
 @MainActor
 final class FaviconCache: ObservableObject {
     private struct Entry: Codable {

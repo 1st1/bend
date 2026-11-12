@@ -3,7 +3,7 @@ import Testing
 import WebKit
 @testable import Browse
 
-// @lat: [[tests#Page fullscreen availability]]
+// @lat: [[lat.md/tests/windows-tests#Page fullscreen availability]]
 @Test @MainActor func pageFullscreenAvailability() async throws {
     _ = NSApplication.shared
     let controller = PageController(address: "browse://start")

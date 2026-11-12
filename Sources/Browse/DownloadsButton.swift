@@ -2,7 +2,7 @@ import SwiftUI
 
 private typealias DownloadViewState<Value> = SwiftUI.State<Value>
 
-// @lat: [[architecture#Browser downloads]]
+// @lat: [[lat.md/architecture/downloads#Browser downloads]]
 struct DownloadsButton: View {
     @ObservedObject var downloads: BrowserDownloads
     @DownloadViewState private var showing = false

@@ -4,7 +4,7 @@ import Testing
 import BrowseCore
 @testable import Browse
 
-// @lat: [[tests#Google favorite account URLs]]
+// @lat: [[lat.md/tests/favorites-tests#Google favorite account URLs]]
 @Test func googleFavoriteAccountURLs() throws {
     let email = try #require(GoogleFavoriteService.normalizedEmail(" Person+Work@Example.com \n"))
     #expect(email == "person+work@example.com")
@@ -32,7 +32,7 @@ import BrowseCore
     #expect(try JSONDecoder().decode(SidebarFavorite.self, from: JSONEncoder().encode(legacy)).googleAccountEmail == nil)
 }
 
-// @lat: [[tests#Google favorite customization lifecycle]]
+// @lat: [[lat.md/tests/favorites-tests#Google favorite customization lifecycle]]
 @Test @MainActor func googleFavoriteCustomizationLifecycle() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendGoogleFavorites-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -108,7 +108,7 @@ import BrowseCore
     #expect(restored.saveFavoriteCustomization(stale, email: "new@example.com") != nil)
 }
 
-// @lat: [[tests#Favorite location entry preserves the source]]
+// @lat: [[lat.md/tests/favorites-tests#Favorite location entry preserves the source]]
 @Test @MainActor func favoriteLocationEntryPreservesSource() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFavoriteLocation-\(UUID())")
@@ -157,7 +157,7 @@ import BrowseCore
     #expect(!store.openLocation("https://example.org/", for: page.id)) // stale popup target
 }
 
-// @lat: [[tests#Google favorite popup presentation]]
+// @lat: [[lat.md/tests/favorites-tests#Google favorite popup presentation]]
 @Test @MainActor func googleFavoritePopupPresentation() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendGooglePopup-\(UUID())")

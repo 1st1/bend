@@ -189,7 +189,7 @@ final class NativeMessageConnection {
     }
 }
 
-// @lat: [[architecture#Native extension messaging]]
+// @lat: [[lat.md/architecture/extensions/compatibility#Native extension messaging]]
 @available(macOS 15.4, *)
 @MainActor
 final class ExtensionNativeMessaging {

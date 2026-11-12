@@ -19,7 +19,7 @@ feed = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(feed)
 
 
-# @lat: [[tests#Application update feed]]
+# @lat: [[lat.md/tests/updates-tests#Application update feed]]
 class UpdateFeedTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

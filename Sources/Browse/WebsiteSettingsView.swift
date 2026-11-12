@@ -5,7 +5,7 @@ import WebKit
 
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
-// @lat: [[architecture#Website settings]]
+// @lat: [[lat.md/architecture/settings#Website settings]]
 struct WebsiteSettingsView: View {
     @ObservedObject var settings: WebsiteSettingsStore
     @ViewState private var query = ""

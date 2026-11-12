@@ -1,6 +1,6 @@
 import WebKit
 
-// @lat: [[architecture#Option-click event routing]]
+// @lat: [[lat.md/architecture/link-navigation#Option-click event routing]]
 @MainActor
 final class OptionClickObserver: NSObject, WKScriptMessageHandlerWithReply {
     static let world = WKContentWorld.world(name: "BendOptionClick")

@@ -8,4 +8,4 @@ Bend is a SwiftUI and WebKit macOS browser prototype with Rex-inspired vertical 
 - [[tests]] describes model and store regression coverage.
 - [[releases]] describes version metadata, changelog fragments, and release preparation.
 
-Start with [[architecture#Development signing]] to build and run Bend, or [[tests]] for verification commands and coverage.
+Start with [[lat.md/architecture/build#Development signing]] to build and run Bend, or [[lat.md/tests/tests]] for verification commands and coverage.

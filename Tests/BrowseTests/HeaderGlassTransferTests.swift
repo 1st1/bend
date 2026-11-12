@@ -4,7 +4,7 @@ import Testing
 import WebKit
 @testable import Browse
 
-// @lat: [[tests#Header glass after window transfer]]
+// @lat: [[lat.md/tests/pane-materials-tests#Header glass after window transfer]]
 @Test @MainActor func headerGlassAfterWindowTransfer() async throws {
     guard #available(macOS 26.0, *) else { return }
     _ = NSApplication.shared

@@ -1,7 +1,7 @@
 import WebKit
 import BrowseCore
 
-// @lat: [[architecture#Privacy preferences]]
+// @lat: [[lat.md/architecture/privacy#Privacy preferences]]
 @MainActor
 enum WebKitPrivacy {
     // Keep private WebKit SPI isolated and capability-checked. These preferences

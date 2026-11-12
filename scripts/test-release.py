@@ -9,7 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent
 
 
-# @lat: [[tests#Release metadata and changelog]]
+# @lat: [[lat.md/tests/build-tests#Release metadata and changelog]]
 class ReleaseTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="bend-release-test-")

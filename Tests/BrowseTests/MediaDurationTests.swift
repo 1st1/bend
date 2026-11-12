@@ -11,7 +11,7 @@ import WebKit
     try #require(predicate())
 }
 
-// @lat: [[tests#Short media filtering]]
+// @lat: [[lat.md/tests/media-tests#Short media filtering]]
 @Test @MainActor func shortMediaFiltering() async throws {
     _ = NSApplication.shared
     let configuration = WKWebViewConfiguration()
@@ -78,7 +78,7 @@ import WebKit
     #expect(reported.allSatisfy { $0.timeline?.duration == 7.125 })
 }
 
-// @lat: [[tests#Unknown media duration qualification]]
+// @lat: [[lat.md/tests/media-tests#Unknown media duration qualification]]
 @Test(arguments: [false, true]) @MainActor func unknownMediaDurationQualification(live: Bool) async throws {
     _ = NSApplication.shared
     let page = PageController(address: "browse://start")
@@ -111,7 +111,7 @@ import WebKit
     try await durationWait { page.media.sessions.first?.timeline?.duration == 7.01 }
 }
 
-// @lat: [[tests#Media qualification lifecycle]]
+// @lat: [[lat.md/tests/media-tests#Media qualification lifecycle]]
 @Test @MainActor func mediaQualificationLifecycle() async throws {
     _ = NSApplication.shared
     let page = PageController(address: "browse://start")

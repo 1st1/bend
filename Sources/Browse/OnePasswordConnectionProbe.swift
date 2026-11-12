@@ -76,7 +76,7 @@ struct OnePasswordSigningStatus {
     }
 }
 
-// @lat: [[architecture#1Password connection probe]]
+// @lat: [[lat.md/architecture/extensions/diagnostics#1Password connection probe]]
 @MainActor
 enum OnePasswordConnectionProbe {
     static func run() {

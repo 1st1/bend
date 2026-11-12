@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-// @lat: [[architecture#JavaScript dialogs]]
+// @lat: [[lat.md/architecture/web-pages#JavaScript dialogs]]
 @MainActor
 final class JavaScriptDialogs {
     enum Kind { case alert, confirm, prompt }

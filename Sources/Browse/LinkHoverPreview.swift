@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-// @lat: [[architecture#Link hover preview]]
+// @lat: [[lat.md/architecture/link-navigation#Link hover preview]]
 @MainActor
 final class LinkHoverObserver: NSObject, WKScriptMessageHandler {
     static let world = WKContentWorld.world(name: "BendLinkHover")

@@ -13,7 +13,7 @@ runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 
 
-# @lat: [[tests#Native test runner coverage]]
+# @lat: [[lat.md/tests/build-tests#Native test runner coverage]]
 class TestRunnerTests(unittest.TestCase):
     inventory = "BrowseCoreTests.model()\nBrowseTests.window()\nBrowseTests.optional()\n"
 

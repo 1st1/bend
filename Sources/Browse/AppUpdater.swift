@@ -3,7 +3,7 @@ import Combine
 import Sparkle
 import SwiftUI
 
-// @lat: [[architecture#Application updates]]
+// @lat: [[lat.md/architecture/updates#Application updates]]
 @MainActor
 final class AppUpdater: NSObject, ObservableObject, @preconcurrency SPUStandardUserDriverDelegate, NSMenuItemValidation {
     static let shared = AppUpdater()

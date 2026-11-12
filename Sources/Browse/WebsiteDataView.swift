@@ -3,7 +3,7 @@ import WebKit
 
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
-// @lat: [[architecture#Website data management]]
+// @lat: [[lat.md/architecture/settings#Website data management]]
 struct WebsiteDataView: View {
     let dataStore: WKWebsiteDataStore
     @Environment(\.dismiss) private var dismiss

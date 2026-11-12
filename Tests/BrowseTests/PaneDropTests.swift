@@ -21,7 +21,7 @@ import BrowseCore
     }
 }
 
-// @lat: [[tests#Pane header mouse routing]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Pane header mouse routing]]
 @Test @MainActor func paneHeaderMouseRouting() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseHeaderDrag-\(UUID())")
@@ -139,7 +139,7 @@ func sendPaneMouse(_ type: NSEvent.EventType, at point: NSPoint, to window: NSWi
     window.sendEvent(event)
 }
 
-// @lat: [[tests#Native pane drop lifecycle]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Native pane drop lifecycle]]
 @Test @MainActor func nativePaneDropLifecycle() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseNativeDrop-\(UUID())")
@@ -236,7 +236,7 @@ func sendPaneMouse(_ type: NSEvent.EventType, at point: NSPoint, to window: NSWi
     var hiddenTransitions = 0
 }
 
-// @lat: [[tests#Pane drop validation and persistence]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Pane drop validation and persistence]]
 @Test @MainActor func paneDropValidationAndPersistence() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePaneDrop-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }

@@ -8,7 +8,7 @@ extension PageController {
         let destination: LinkOpenDestination
     }
 
-    // @lat: [[architecture#Link context menus]]
+    // @lat: [[lat.md/architecture/link-navigation#Link context menus]]
     override func contextMenu(_ menu: NSMenu, forLinkURL url: URL, fromMainFrame mainFrame: Bool) -> NSMenu {
         guard onOpenLink != nil else { return menu }
         // WebKit's OpenLinkInNewWindow tag is 1. Replace it with our explicit

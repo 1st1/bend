@@ -15,7 +15,7 @@ struct DownloadRecord: Codable, Equatable, Sendable {
     var directory: URL
 }
 
-// @lat: [[architecture#Download database]]
+// @lat: [[lat.md/architecture/downloads#Download database]]
 final class DownloadDatabase {
     static let limit = 256
     private var connection: OpaquePointer?

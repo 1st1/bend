@@ -4,7 +4,7 @@ import Testing
 import Sparkle
 @testable import Browse
 
-// @lat: [[tests#Application updater isolation]]
+// @lat: [[lat.md/tests/updates-tests#Application updater isolation]]
 @Test @MainActor func applicationUpdaterIsolation() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendUpdater-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -35,7 +35,7 @@ import Sparkle
     }
 }
 
-// @lat: [[tests#Application update launch scheduling]]
+// @lat: [[lat.md/tests/updates-tests#Application update launch scheduling]]
 @Test @MainActor func applicationUpdateLaunchScheduling() {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(AppUpdater.needsLaunchCheck(lastCheck: nil, now: now))
@@ -48,7 +48,7 @@ import Sparkle
 }
 
 #if !BEND_PRODUCTION
-// @lat: [[tests#Application update preview]]
+// @lat: [[lat.md/tests/updates-tests#Application update preview]]
 @Test @MainActor func applicationUpdatePreview() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendUpdatePreview-\(UUID())")

@@ -1,7 +1,7 @@
 import Foundation
 import WebKit
 
-// @lat: [[architecture#Extension diagnostic log]]
+// @lat: [[lat.md/architecture/extensions/diagnostics#Extension diagnostic log]]
 @MainActor
 final class ExtensionDiagnostics {
     enum Event: String, Codable {

@@ -1,7 +1,7 @@
 import Foundation
 import SQLite3
 
-// @lat: [[architecture#Website settings database]]
+// @lat: [[lat.md/architecture/settings#Website settings database]]
 public final class WebsiteSettingsDatabase {
     private var connection: OpaquePointer?
     private var saved = WebsiteSettings()

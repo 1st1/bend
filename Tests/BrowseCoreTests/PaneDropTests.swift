@@ -3,7 +3,7 @@ import CoreGraphics
 import Testing
 @testable import BrowseCore
 
-// @lat: [[tests#Pane drop layout moves]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Pane drop layout moves]]
 @Test func paneDropLayoutMoves() throws {
     let a = UUID(), b = UUID(), c = UUID(), d = UUID()
     let siblingID = UUID()
@@ -40,7 +40,7 @@ import Testing
     #expect(PaneLayout.pane(a).moving(a, beside: a, edge: .top) == nil)
 }
 
-// @lat: [[tests#Pane drop targeting]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Pane drop targeting]]
 @Test func paneDropTargeting() {
     let size = CGSize(width: 1000, height: 400)
     #expect(PaneDropEdge.at(CGPoint(x: 20, y: 200), in: size) == .left)

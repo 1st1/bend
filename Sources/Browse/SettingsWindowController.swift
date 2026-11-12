@@ -5,7 +5,7 @@ import BrowseCore
 
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
-// @lat: [[architecture#Extension settings]]
+// @lat: [[lat.md/architecture/extensions/catalog#Extension settings]]
 @MainActor
 final class SettingsWindowController {
     let window: NSWindow

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import BrowseCore
 
-// @lat: [[tests#Cross-tab pane transfer model]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Cross-tab pane transfer model]]
 @Test func paneTransferModel() throws {
     for edge in PaneDropEdge.allCases {
         let a = Page(address: "https://a.test"), b = Page(address: "https://b.test"), c = Page(address: "https://c.test")
@@ -46,7 +46,7 @@ import Testing
     }
 }
 
-// @lat: [[tests#Joining tab layouts]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Joining tab layouts]]
 @Test func joiningTabLayouts() throws {
     for separateWorkspaces in [false, true] {
         var source = BrowserTab(title: "Source", pages: [Page(), Page()])
@@ -90,7 +90,7 @@ import Testing
     }
 }
 
-// @lat: [[tests#Tab merge placement]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Tab merge placement]]
 @Test func tabMergePlacement() throws {
     for edge in PaneDropEdge.allCases {
         var source = BrowserTab(pages: [Page(), Page()])

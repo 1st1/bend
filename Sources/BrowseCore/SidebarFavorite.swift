@@ -1,6 +1,6 @@
 import Foundation
 
-// @lat: [[architecture#Sidebar favorites]]
+// @lat: [[lat.md/architecture/favorites#Sidebar favorites]]
 public struct SidebarFavorite: Codable, Identifiable, Sendable {
     public static let limit = 9
     public let id: UUID

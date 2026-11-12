@@ -11,7 +11,7 @@ import WebKit
     return window
 }
 
-// @lat: [[tests#External application consent]]
+// @lat: [[lat.md/tests/external-links-tests#External application consent]]
 @Test @MainActor func externalApplicationConsent() async {
     _ = NSApplication.shared
     let window = externalLinkTestWindow()
@@ -64,7 +64,7 @@ import WebKit
     #expect(opened.count == 4)
 }
 
-// @lat: [[tests#External application prompt coalescing]]
+// @lat: [[lat.md/tests/external-links-tests#External application prompt coalescing]]
 @Test @MainActor func externalApplicationPromptCoalescing() async throws {
     _ = NSApplication.shared
     let window = externalLinkTestWindow()
@@ -95,7 +95,7 @@ import WebKit
     #expect(links.request(url, source: nil, in: window) == nil)
 }
 
-// @lat: [[tests#WebKit external application routes]]
+// @lat: [[lat.md/tests/external-links-tests#WebKit external application routes]]
 @Test @MainActor func webKitExternalApplicationRoutes() async throws {
     _ = NSApplication.shared
     let window = externalLinkTestWindow()

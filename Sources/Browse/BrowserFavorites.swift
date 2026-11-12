@@ -1,7 +1,7 @@
 import AppKit
 import BrowseCore
 
-// @lat: [[architecture#Sidebar favorites]]
+// @lat: [[lat.md/architecture/favorites#Sidebar favorites]]
 extension BrowserStore {
     var favorites: [SidebarFavorite] { isPrivate ? [] : (preferencesStore.session.favorites ?? []) }
 

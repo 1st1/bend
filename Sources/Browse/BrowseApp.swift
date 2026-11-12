@@ -88,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         InputDiagnostics.transition(.appActivation, .started, window: window)
     }
 
-    // @lat: [[architecture#Default browser]]
+    // @lat: [[lat.md/architecture/external-links#Default browser]]
     func application(_ application: NSApplication, open urls: [URL]) {
         pendingExternalURLs.append(contentsOf: urls.filter {
             (["http", "https"].contains($0.scheme?.lowercased() ?? "") && !($0.host ?? "").isEmpty)
@@ -226,7 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if settingsWindow == nil { settingsWindow = SettingsWindowController(store: browserWindows.sharedStore) }
         settingsWindow?.show(section: section, centeredOn: browserWindows.active?.window.screen)
     }
-    // @lat: [[architecture#Command popup]]
+    // @lat: [[lat.md/architecture/commands#Command popup]]
     @objc func showCommands() {
         guard let context = browserWindows.active else { return }
         let tabID = context.store.selectedTab.id
@@ -288,7 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     private var findSurface: WebSurfaceHost? { activeWebPage?.webView.superview as? WebSurfaceHost }
 
-    // @lat: [[architecture#Page printing]]
+    // @lat: [[lat.md/architecture/web-pages#Page printing]]
     private var printablePage: PageController? {
         guard printOperation == nil, NSPrintOperation.current == nil,
               let window, window.isVisible, !window.isMiniaturized, window.attachedSheet == nil,
@@ -329,7 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         findSurface?.performFindAction(action)
     }
 
-    // @lat: [[architecture#Page zoom]]
+    // @lat: [[lat.md/architecture/settings#Page zoom]]
     private static let pageZoomLevels = PageZoom.levels.map { CGFloat($0) }
 
     private func pageZoomLevel(_ direction: Int, current: CGFloat) -> CGFloat {

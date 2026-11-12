@@ -180,7 +180,7 @@ final class BrowserStore: ObservableObject {
         }
     }
 
-    // @lat: [[architecture#UI preferences]]
+    // @lat: [[lat.md/architecture/settings#UI preferences]]
     var downloadDirectory: URL {
         get {
             if let sharedStore { return sharedStore.downloadDirectory }
@@ -266,7 +266,7 @@ final class BrowserStore: ObservableObject {
         }
     }
 
-    // @lat: [[architecture#Sidebar placement]]
+    // @lat: [[lat.md/architecture/sidebar#Sidebar placement]]
     var sidebarSide: SidebarSide {
         get { sharedStore?.sidebarSide ?? session.sidebarSide ?? .left }
         set {
@@ -682,7 +682,7 @@ final class BrowserStore: ObservableObject {
         } catch { historyError = "History could not be saved: \(error.localizedDescription)" }
     }
 
-    // @lat: [[architecture#Pinned panes and tabs]]
+    // @lat: [[lat.md/architecture/pane-controls#Pinned panes and tabs]]
     func isPanePinned(_ id: UUID) -> Bool {
         session.workspaces.flatMap(\.tabs).flatMap(\.pages).first { $0.id == id }?.isPinned == true
     }
@@ -760,7 +760,7 @@ final class BrowserStore: ObservableObject {
         if closedItems.count > 50 { closedItems.removeFirst(closedItems.count - 50) }
     }
 
-    // @lat: [[architecture#Reopening closed panes and tabs]]
+    // @lat: [[lat.md/architecture/session#Reopening closed panes and tabs]]
     func reopenClosed() {
         guard let item = closedItems.popLast() else { return }
         let wi = session.workspaces.firstIndex { $0.id == item.workspaceID } ?? 0
@@ -795,7 +795,7 @@ final class BrowserStore: ObservableObject {
         select(item.tab.id)
     }
 
-    // @lat: [[architecture#Private windows]]
+    // @lat: [[lat.md/architecture/privacy#Private windows]]
     var websiteDataStore: WKWebsiteDataStore {
         guard isPrivate else { return AppProfile.current.websiteDataStore }
         if let existing = privateWebsiteDataStore { return existing }
@@ -938,7 +938,7 @@ final class BrowserStore: ObservableObject {
         controller?.webView.stopLoading()
     }
 
-    // @lat: [[architecture#Cross-window dragging]]
+    // @lat: [[lat.md/architecture/pane-transfers#Cross-window dragging]]
     @discardableResult
     func transfer(tab tabID: UUID, pane paneID: UUID? = nil, to destination: BrowserStore,
                   at placement: WindowDropPlacement) -> Bool {
@@ -1115,7 +1115,7 @@ final class BrowserStore: ObservableObject {
     }
 }
 
-// @lat: [[architecture#WebKit integration]]
+// @lat: [[lat.md/architecture/web-pages#WebKit integration]]
 @MainActor
 class FocusWebView: WKWebView {
     var onOptionLink: ((String, Bool) -> Void)?

@@ -13,7 +13,7 @@ struct FavoriteCustomizationRequest: Identifiable {
     let email: String
 }
 
-// @lat: [[architecture#Google account favorites]]
+// @lat: [[lat.md/architecture/favorites#Google account favorites]]
 extension BrowserStore {
     func requestFavorite(_ tabID: UUID) {
         guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }),

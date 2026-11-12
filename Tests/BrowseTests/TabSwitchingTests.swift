@@ -5,7 +5,7 @@ import WebKit
 import BrowseCore
 @testable import Browse
 
-// @lat: [[tests#Mounted tab switching]]
+// @lat: [[lat.md/tests/session-tests#Mounted tab switching]]
 @Test @MainActor func mountedTabSwitching() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared

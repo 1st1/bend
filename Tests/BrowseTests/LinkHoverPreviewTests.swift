@@ -8,7 +8,7 @@ import WebKit
     override var mouseLocationOutsideOfEventStream: NSPoint { pointer }
 }
 
-// @lat: [[tests#Title URL preview]]
+// @lat: [[lat.md/tests/link-navigation-tests#Title URL preview]]
 @Test @MainActor func titleURLPreview() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendTitleHover-\(UUID())")
@@ -74,7 +74,7 @@ import WebKit
     #expect(LinkHoverObserver.displayURL("https://example.com/\u{202E}path\n") == "https://example.com/path")
 }
 
-// @lat: [[tests#Link hover preview]]
+// @lat: [[lat.md/tests/link-navigation-tests#Link hover preview]]
 @Test @MainActor func linkHoverPreview() async throws {
     _ = NSApplication.shared
     let controller = PageController(address: "browse://start")

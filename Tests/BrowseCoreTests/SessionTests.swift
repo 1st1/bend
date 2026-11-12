@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import BrowseCore
 
-// @lat: [[tests#Nested splits and closing]]
+// @lat: [[lat.md/tests/pane-layout-tests#Nested splits and closing]]
 @Test func nestedSplitsAndClosing() {
     var tab = BrowserTab()
     let original = tab.focusedPane
@@ -22,7 +22,7 @@ import Testing
     #expect(tab.layout == .pane(original))
 }
 
-// @lat: [[tests#Link pane placement]]
+// @lat: [[lat.md/tests/link-navigation-tests#Link pane placement]]
 @Test func linkPanePlacement() throws {
     var tab = BrowserTab()
     let source = tab.focusedPane
@@ -53,7 +53,7 @@ import Testing
     #expect(tab.focusedPane == opened)
 }
 
-// @lat: [[tests#Session round trip]]
+// @lat: [[lat.md/tests/session-tests#Session round trip]]
 @Test func sessionRoundTrip() throws {
     var session = BrowserSession()
     session.workspaces[0].tabs[0].split(axis: .vertical)
@@ -69,7 +69,7 @@ import Testing
     #expect(!session.isValid)
 }
 
-// @lat: [[tests#Divider bounds]]
+// @lat: [[lat.md/tests/pane-layout-tests#Divider bounds]]
 @Test func dividerBounds() {
     let id = UUID(), a = UUID(), b = UUID()
     let layout = PaneLayout.split(id: id, axis: .horizontal, fraction: 0.5, first: .pane(a), second: .pane(b))
@@ -80,7 +80,7 @@ import Testing
     #expect(layout.resizing(UUID(), to: 0.2) == layout)
 }
 
-// @lat: [[tests#Address resolution]]
+// @lat: [[lat.md/tests/address-entry-tests#Address resolution]]
 @Test func addresses() {
     #expect(AddressResolver.resolve(" example.com/path ")?.absoluteString == "https://example.com/path")
     #expect(AddressResolver.resolve("localhost:8080")?.absoluteString == "http://localhost:8080")
@@ -106,7 +106,7 @@ import Testing
     #expect(URLComponents(url: query, resolvingAgainstBaseURL: false)?.queryItems?.first?.value == "swift ui & webkit")
 }
 
-// @lat: [[tests#Custom search templates]]
+// @lat: [[lat.md/tests/address-entry-tests#Custom search templates]]
 @Test func customSearchTemplates() throws {
     let query = "C++ & café /?=#100%"
     let engine = CustomSearchEngine(name: " My search ", template: " https://example.com/search?q=%s&language=en&fixed=a%2Bb ")

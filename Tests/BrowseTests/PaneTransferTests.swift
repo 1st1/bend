@@ -5,7 +5,7 @@ import WebKit
 import BrowseCore
 @testable import Browse
 
-// @lat: [[tests#Cross-tab native pane dragging]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Cross-tab native pane dragging]]
 @Test(.serialized, arguments: SidebarSide.allCases) @MainActor
 func crossTabPaneDragging(side: SidebarSide) async throws {
     guard #available(macOS 15.4, *) else { return }
@@ -247,7 +247,7 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     NSApplication.shared.sendEvent(event)
 }
 
-// @lat: [[tests#Native sidebar tab dragging]]
+// @lat: [[lat.md/tests/sidebar-tests#Native sidebar tab dragging]]
 @Test @MainActor func nativeSidebarTabDragging() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseTabDrag-\(UUID())")
@@ -357,7 +357,7 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     #expect(window.frame == frame)
 }
 
-// @lat: [[tests#Pane transfer round trips]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Pane transfer round trips]]
 @Test(.serialized, arguments: [false, true]) @MainActor func paneTransferRoundTrips(crowded: Bool) async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -461,7 +461,7 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     }
 }
 
-// @lat: [[tests#Tab drag hover and merge placement]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Tab drag hover and merge placement]]
 @Test(.serialized, arguments: PaneDropEdge.allCases) @MainActor func tabDragMergePlacement(edge: PaneDropEdge) async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import BrowseCore
 
-// @lat: [[tests#Equal automatic pane sizes]]
+// @lat: [[lat.md/tests/pane-layout-tests#Equal automatic pane sizes]]
 @Test(arguments: [SplitAxis.horizontal, .vertical])
 func equalAutomaticPaneSizes(axis: SplitAxis) throws {
     var tab = BrowserTab()
@@ -41,7 +41,7 @@ func equalAutomaticPaneSizes(axis: SplitAxis) throws {
     }
 }
 
-// @lat: [[tests#Equal pane sizes after transfers]]
+// @lat: [[lat.md/tests/pane-layout-tests#Equal pane sizes after transfers]]
 @Test func equalPaneSizesAfterTransfers() throws {
     let viewport = CGSize(width: 2400, height: 1800)
     for edge in PaneDropEdge.allCases {
@@ -78,7 +78,7 @@ func equalAutomaticPaneSizes(axis: SplitAxis) throws {
     }
 }
 
-// @lat: [[tests#Manual pane sizing intent]]
+// @lat: [[lat.md/tests/pane-layout-tests#Manual pane sizing intent]]
 @Test func manualPaneSizingIntent() throws {
     let viewport = CGSize(width: 2400, height: 1800)
     var tab = BrowserTab(pages: [Page(), Page(), Page()])
@@ -108,7 +108,7 @@ func equalAutomaticPaneSizes(axis: SplitAxis) throws {
     #expect(PaneGeometry(layout: equal.layout, viewport: viewport).panes[0].frame == original)
 }
 
-// @lat: [[tests#Legacy pane sizing migration]]
+// @lat: [[lat.md/tests/pane-layout-tests#Legacy pane sizing migration]]
 @Test func legacyPaneSizingMigration() throws {
     let a = UUID(), b = UUID(), c = UUID()
     for fraction in [0.5, 0.4] {

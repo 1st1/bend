@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// @lat: [[architecture#Sidebar sizing]]
+// @lat: [[lat.md/architecture/sidebar#Sidebar sizing]]
 struct SidebarResizeHandle: NSViewRepresentable {
     let store: BrowserStore
     func makeNSView(context: Context) -> SidebarResizeView { SidebarResizeView() }

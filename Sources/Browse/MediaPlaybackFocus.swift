@@ -1,6 +1,6 @@
 import Foundation
 
-// @lat: [[architecture#Exclusive media playback]]
+// @lat: [[lat.md/architecture/media#Exclusive media playback]]
 @MainActor
 final class MediaPlaybackFocus {
     private struct Entry { weak var controller: PageMediaController? }

@@ -8,7 +8,7 @@ public enum PageZoom {
     }
 }
 
-// @lat: [[architecture#Website settings]]
+// @lat: [[lat.md/architecture/settings#Website settings]]
 public struct WebsiteSettings: Equatable, Sendable {
     public var defaultZoom: Double = 1
     public var zoomByHost: [String: Double] = [:]

@@ -3,7 +3,7 @@ import SQLite3
 import Testing
 @testable import BrowseCore
 
-// @lat: [[tests#Website setting identity]]
+// @lat: [[lat.md/tests/settings-tests#Website setting identity]]
 @Test func websiteSettingIdentity() throws {
     var settings = WebsiteSettings()
     settings.defaultZoom = 1.1
@@ -38,7 +38,7 @@ private func websiteSQL(_ file: URL, _ sql: String) throws {
     guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else { throw CocoaError(.fileReadCorruptFile) }
 }
 
-// @lat: [[tests#Website settings transactions]]
+// @lat: [[lat.md/tests/settings-tests#Website settings transactions]]
 @Test func websiteSettingsTransactions() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendWebsiteDB-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -78,7 +78,7 @@ private func websiteSQL(_ file: URL, _ sql: String) throws {
     #expect(database.load() == changed)
 }
 
-// @lat: [[tests#Website security migration]]
+// @lat: [[lat.md/tests/settings-tests#Website security migration]]
 @Test func websiteSecurityMigration() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSecurityMigration-\(UUID())")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -105,7 +105,7 @@ private func websiteSQL(_ file: URL, _ sql: String) throws {
     #expect(try WebsiteSettingsDatabase(file: file).load() == settings)
 }
 
-// @lat: [[tests#Website settings storage protection]]
+// @lat: [[lat.md/tests/settings-tests#Website settings storage protection]]
 @Test func websiteSettingsStorageProtection() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendWebsiteProtection-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -123,7 +123,7 @@ private func websiteSQL(_ file: URL, _ sql: String) throws {
     #expect(throws: (any Error).self) { try WebsiteSettingsDatabase(file: future) }
 }
 
-// @lat: [[tests#Privacy settings migration]]
+// @lat: [[lat.md/tests/privacy-tests#Privacy settings migration]]
 @Test func privacySettingsMigration() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPrivacyMigration-\(UUID())")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

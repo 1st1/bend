@@ -1,6 +1,6 @@
 import Foundation
 
-// @lat: [[architecture#Search engine preference]]
+// @lat: [[lat.md/architecture/address-entry#Search engine preference]]
 public enum SearchEngine: String, Codable, CaseIterable, Sendable {
     case google, duckDuckGo, kagi, custom
 

@@ -3,7 +3,7 @@ import BrowseCore
 import Testing
 @testable import Browse
 
-// @lat: [[tests#Page zoom shortcuts]]
+// @lat: [[lat.md/tests/settings-tests#Page zoom shortcuts]]
 @Test @MainActor func pageZoomShortcuts() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendZoom-\(UUID())")

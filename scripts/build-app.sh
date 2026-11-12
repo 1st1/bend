@@ -111,7 +111,7 @@ cat > "$candidate/Contents/Info.plist" <<PLIST
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoadsInWebContent</key><true/></dict>
 </dict></plist>
 PLIST
-# @lat: [[architecture#Development signing]]
+# @lat: [[lat.md/architecture/build#Development signing]]
 ./scripts/embed-sparkle.sh "$candidate" "${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}"
 codesign --force --options runtime --sign "${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}" "$candidate"
 codesign --verify --strict "$candidate"

@@ -4,7 +4,7 @@ import Testing
 import WebKit
 @testable import Browse
 
-// @lat: [[tests#Extension update metadata]]
+// @lat: [[lat.md/tests/extension-hosting/extension-updates-tests#Extension update metadata]]
 @Test func extensionUpdateMetadata() throws {
     let hash = String(repeating: "a", count: 64)
     let mozilla = ExtensionUpdateSource.mozilla(slug: "darkreader")
@@ -70,7 +70,7 @@ import WebKit
     #expect(!ExtensionVersion.isNewer("1..1", than: "1.0"))
 }
 
-// @lat: [[tests#Automatic extension updates]]
+// @lat: [[lat.md/tests/extension-hosting/extension-updates-tests#Automatic extension updates]]
 @Test @MainActor func automaticExtensionUpdates() async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
@@ -193,7 +193,7 @@ import WebKit
     #expect(updater.messages[record.id]?.contains("changed") == true)
 }
 
-// @lat: [[tests#Extension update service smoke test]]
+// @lat: [[lat.md/tests/extension-hosting/extension-updates-tests#Extension update service smoke test]]
 @Test(arguments: ["ublock-lite", "1password", "dark-reader"])
 func extensionUpdateServiceSmoke(entryID: String) async throws {
     guard let selection = ProcessInfo.processInfo.environment["BROWSE_TEST_EXTENSION_UPDATES"],

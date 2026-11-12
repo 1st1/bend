@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import BrowseCore
 
-// @lat: [[architecture#Pane layout animation]]
+// @lat: [[lat.md/architecture/pane-layout#Pane layout animation]]
 struct PaneDivider: NSViewRepresentable {
     let placement: DividerPlacement
     let paneIDs: [UUID]

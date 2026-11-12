@@ -5,7 +5,7 @@ import WebKit
 @testable import Browse
 
 @Suite(.serialized) struct DetachedWindowTests {
-// @lat: [[tests#Detached window ownership]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Detached window ownership]]
 @Test(arguments: [false, true]) @MainActor func detachedWindowOwnership(paneOnly: Bool) async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendDetach-\(UUID())")
@@ -54,7 +54,7 @@ import WebKit
     #expect(saved.selectedTab == destination.store.selectedTab.id && saved.workspaces[0].tabs[0].isPinned)
 }
 
-// @lat: [[tests#Outside-window drag gestures]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Outside-window drag gestures]]
 @Test(arguments: [false, true]) @MainActor func outsideWindowDragGestures(paneOnly: Bool) async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendOutsideDrag-\(UUID())")
@@ -162,7 +162,7 @@ import WebKit
 }
 }
 
-// @lat: [[tests#Drag preview motion]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Drag preview motion]]
 @Test(arguments: [NSSize(width: 1000, height: 700), NSSize(width: 800, height: 1100)])
 @MainActor func dragPreviewMotion(sourceSize: NSSize) async throws {
     _ = NSApplication.shared
@@ -204,7 +204,7 @@ import WebKit
     expectThumbnailFit()
 }
 
-// @lat: [[tests#Drag preview rendered proportions]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Drag preview rendered proportions]]
 @Test(arguments: [NSSize(width: 1000, height: 400), NSSize(width: 400, height: 1000), NSSize(width: 1000, height: 150)])
 @MainActor func dragPreviewRenderedProportions(sourceSize: NSSize) async throws {
     _ = NSApplication.shared
@@ -280,7 +280,7 @@ private final class PreviewCapturePane: PaneDropHost {
     }
 }
 
-// @lat: [[tests#Drag preview glass isolation]]
+// @lat: [[lat.md/tests/pane-transfers-tests#Drag preview glass isolation]]
 @Test @MainActor func dragPreviewGlassIsolation() async throws {
     guard #available(macOS 26.0, *) else { return }
     _ = NSApplication.shared

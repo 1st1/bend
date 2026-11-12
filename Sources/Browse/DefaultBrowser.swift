@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// @lat: [[architecture#Default browser]]
+// @lat: [[lat.md/architecture/external-links#Default browser]]
 @MainActor
 final class DefaultBrowser: ObservableObject {
     @Published private(set) var isDefault = false

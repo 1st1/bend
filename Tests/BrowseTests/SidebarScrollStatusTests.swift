@@ -2,7 +2,7 @@ import AppKit
 import Testing
 @testable import Browse
 
-// @lat: [[tests#Sidebar overflow counts]]
+// @lat: [[lat.md/tests/sidebar-tests#Sidebar overflow counts]]
 @Test func sidebarOverflowCounts() {
     // Five rows occupy 6...40, 47...81, 88...122, 129...163, 170...204.
     func status(_ top: CGFloat, _ bottom: CGFloat, count: Int = 5, inset: CGFloat = 6) -> SidebarScrollStatus {

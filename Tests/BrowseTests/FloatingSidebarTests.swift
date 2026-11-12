@@ -3,7 +3,7 @@ import Testing
 import BrowseCore
 @testable import Browse
 
-// @lat: [[tests#Floating sidebar interaction]]
+// @lat: [[lat.md/tests/sidebar-tests#Floating sidebar interaction]]
 @Test(.serialized, arguments: SidebarSide.allCases) @MainActor
 func floatingSidebarInteraction(side: SidebarSide) async throws {
     _ = NSApplication.shared

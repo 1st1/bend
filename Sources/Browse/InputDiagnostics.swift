@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-// @lat: [[architecture#Native input diagnostics]]
+// @lat: [[lat.md/architecture/developer-tools#Native input diagnostics]]
 @MainActor
 final class InputDiagnostics {
     static let enabledPreferenceKey = "inputAndPaneLoggingEnabled"

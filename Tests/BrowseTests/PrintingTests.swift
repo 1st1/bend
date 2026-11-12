@@ -4,7 +4,7 @@ import Testing
 import WebKit
 @testable import Browse
 
-// @lat: [[tests#Page printing]]
+// @lat: [[lat.md/tests/web-pages-tests#Page printing]]
 @Test @MainActor func pagePrinting() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPrinting-\(UUID())")

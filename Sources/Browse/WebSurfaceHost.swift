@@ -6,7 +6,7 @@ import BrowseCore
 
 // SwiftUI's shape clip does not reliably clip WebKit's native composited layers.
 // Keep the clip on an AppKit ancestor, outside WebKit's own layer management.
-// @lat: [[architecture#Find in page]]
+// @lat: [[lat.md/architecture/find#Find in page]]
 final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     private weak var hostedWebView: WKWebView?
     private(set) var developerToolsPanel: DeveloperToolsPanel?
@@ -421,7 +421,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         linkPreview.place(in: webView.frame, avoiding: linkPreviewPointer)
     }
 
-    // @lat: [[architecture#Pane materials]]
+    // @lat: [[lat.md/architecture/pane-materials#Pane materials]]
     private func updateWebKitHeaderEffect(_ webView: WKWebView) {
         // WebKit's obscured inset creates its own scroll-pocket blur. Moving
         // between windows can turn that effect opaque beneath our glass,

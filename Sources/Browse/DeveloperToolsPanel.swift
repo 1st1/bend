@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-// @lat: [[architecture#Developer tools]]
+// @lat: [[lat.md/architecture/developer-tools#Developer tools]]
 @MainActor
 final class DeveloperToolsPanel: NSView {
     enum Dock { case bottom, right }

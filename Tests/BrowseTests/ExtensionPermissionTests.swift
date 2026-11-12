@@ -3,7 +3,7 @@ import SwiftUI
 import Testing
 @testable import Browse
 
-// @lat: [[tests#Extension permission presentation]]
+// @lat: [[lat.md/tests/extension-hosting/lifecycle-tests#Extension permission presentation]]
 @Test @MainActor func extensionPermissionPresentation() throws {
     _ = NSApplication.shared
     let details = ["<all_urls>", "activeTab", "alarms", "declarativeNetRequest",

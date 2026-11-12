@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// @lat: [[architecture#Window dragging]]
+// @lat: [[lat.md/architecture/windows#Window dragging]]
 struct WindowDragArea: NSViewRepresentable {
     var excluded = false
     var onPress: (() -> Void)?

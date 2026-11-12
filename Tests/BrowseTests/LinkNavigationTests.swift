@@ -47,7 +47,7 @@ private final class LinkAction: WKNavigationAction {
     }
 }
 
-// @lat: [[tests#Command-click navigation]]
+// @lat: [[lat.md/tests/link-navigation-tests#Command-click navigation]]
 @Test @MainActor func commandClickNavigation() {
     _ = NSApplication.shared
     let controller = PageController(address: "browse://start")
@@ -80,7 +80,7 @@ private final class LinkAction: WKNavigationAction {
     #expect(panes.count == 1)
 }
 
-// @lat: [[tests#Command-click new-window links]]
+// @lat: [[lat.md/tests/link-navigation-tests#Command-click new-window links]]
 @Test @MainActor func commandClickNewWindowLink() {
     _ = NSApplication.shared
     let controller = PageController(address: "browse://start")
@@ -101,7 +101,7 @@ private final class LinkAction: WKNavigationAction {
     #expect(tabs == [action.destination.absoluteString])
 }
 
-// @lat: [[tests#Configurable link destination]]
+// @lat: [[lat.md/tests/link-navigation-tests#Configurable link destination]]
 @Test @MainActor func configurableLinkDestination() throws {
     _ = NSApplication.shared
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("BrowsePreferences-\(UUID())")
@@ -147,7 +147,7 @@ private final class LinkAction: WKNavigationAction {
     #expect(store.linkOpeners[store.selectedTab.focusedPane] == nil)
 }
 
-// @lat: [[tests#Dedicated Command-click pane]]
+// @lat: [[lat.md/tests/link-navigation-tests#Dedicated Command-click pane]]
 @Test @MainActor func dedicatedCommandClickPane() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseDedicatedLink-\(UUID())")
@@ -245,7 +245,7 @@ private final class LinkAction: WKNavigationAction {
     #expect(legacyRestored.selectedTab.pages[0].id == replacement)
 }
 
-// @lat: [[tests#Command-click preference migration]]
+// @lat: [[lat.md/tests/link-navigation-tests#Command-click preference migration]]
 @Test @MainActor func commandClickPreferenceMigration() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseLinkMigration-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -265,12 +265,12 @@ private final class LinkAction: WKNavigationAction {
     }
 }
 
-// @lat: [[tests#Command-Shift-click destinations]]
+// @lat: [[lat.md/tests/link-navigation-tests#Command-Shift-click destinations]]
 @Test @MainActor func commandShiftClickDestinations() async throws {
     try await modifiedClickDestinations(option: false)
 }
 
-// @lat: [[tests#Option-click destinations]]
+// @lat: [[lat.md/tests/link-navigation-tests#Option-click destinations]]
 @Test @MainActor func optionClickDestinations() async throws {
     try await modifiedClickDestinations(option: true)
 }
@@ -384,7 +384,7 @@ private final class LinkAction: WKNavigationAction {
     }
 }
 
-// @lat: [[tests#Native Option-click links]]
+// @lat: [[lat.md/tests/link-navigation-tests#Native Option-click links]]
 @Test @MainActor func nativeOptionClickLinks() async throws {
     _ = NSApplication.shared
     let controller = PageController(address: "browse://start", configure: { $0.websiteDataStore = .nonPersistent() })
@@ -465,7 +465,7 @@ private final class LinkAction: WKNavigationAction {
     }
 }
 
-// @lat: [[tests#Option-click shared controller isolation]]
+// @lat: [[lat.md/tests/link-navigation-tests#Option-click shared controller isolation]]
 @Test @MainActor func optionClickSharedControllerIsolation() async throws {
     _ = NSApplication.shared
     let shared = WKUserContentController()
@@ -494,7 +494,7 @@ private final class LinkAction: WKNavigationAction {
     #expect(opened.isEmpty)
 }
 
-// @lat: [[tests#Dedicated pane window restoration]]
+// @lat: [[lat.md/tests/link-navigation-tests#Dedicated pane window restoration]]
 @Test @MainActor func dedicatedPaneWindowRestoration() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendDedicatedRestart-\(UUID())")

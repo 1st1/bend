@@ -2,7 +2,7 @@ import Foundation
 import WebKit
 import UserNotifications
 
-// @lat: [[architecture#Extension compatibility adapters]]
+// @lat: [[lat.md/architecture/extensions/compatibility#Extension compatibility adapters]]
 @available(macOS 15.4, *)
 @MainActor
 final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {

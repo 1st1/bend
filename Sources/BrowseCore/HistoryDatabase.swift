@@ -1,7 +1,7 @@
 import Foundation
 import SQLite3
 
-// @lat: [[architecture#History database]]
+// @lat: [[lat.md/architecture/history#History database]]
 // One connection owned by the root BrowserStore, used on its main actor.
 public final class HistoryDatabase {
     private var connection: OpaquePointer?

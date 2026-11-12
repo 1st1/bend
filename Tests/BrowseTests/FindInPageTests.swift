@@ -5,7 +5,7 @@ import Testing
 import WebKit
 @testable import Browse
 
-// @lat: [[tests#Find in page]]
+// @lat: [[lat.md/tests/find-tests#Find in page]]
 @Test @MainActor func findInPage() async throws {
     _ = NSApplication.shared
     // An unhandled Escape must also be safe before the web view is mounted.

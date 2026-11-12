@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-// @lat: [[architecture#Extension updates]]
+// @lat: [[lat.md/architecture/extensions/extension-updates#Extension updates]]
 enum ExtensionUpdateSource: Sendable {
     case mozilla(slug: String)
     case uBlockSafari

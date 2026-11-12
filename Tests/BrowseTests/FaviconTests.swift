@@ -7,7 +7,7 @@ import Combine
 import BrowseCore
 @testable import Browse
 
-// @lat: [[tests#Favicon discovery]]
+// @lat: [[lat.md/tests/favicons-tests#Favicon discovery]]
 @Test @MainActor func faviconCandidates() async throws {
     let page = URL(string: "https://example.com/articles/page")!
     let urls = FaviconLoader.candidates(links: [
@@ -60,7 +60,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     }
 }
 
-// @lat: [[tests#Favicon fallback and cancellation]]
+// @lat: [[lat.md/tests/favicons-tests#Favicon fallback and cancellation]]
 @Test @MainActor func faviconFallback() async throws {
     _ = NSApplication.shared
     let server = try await FaviconHTTPFixture.start()
@@ -82,7 +82,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     #expect(await task.value == nil)
 }
 
-// @lat: [[tests#Favicon history navigation]]
+// @lat: [[lat.md/tests/favicons-tests#Favicon history navigation]]
 @Test @MainActor func faviconHistoryNavigation() async throws {
     _ = NSApplication.shared
     let server = try await FaviconHTTPFixture.start()
@@ -103,7 +103,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     #expect(web.url?.path == "/watch")
 }
 
-// @lat: [[tests#Favicon navigation reset]]
+// @lat: [[lat.md/tests/favicons-tests#Favicon navigation reset]]
 @Test @MainActor func faviconNavigationReset() async throws {
     _ = NSApplication.shared
     let target = try await FaviconHTTPFixture.start()
@@ -169,7 +169,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     #expect(!FaviconLoader.sameOrigin(URL(string: "https://a.com/"), URL(string: "https://other.a.com/example")))
 }
 
-// @lat: [[tests#Favicon request security]]
+// @lat: [[lat.md/tests/favicons-tests#Favicon request security]]
 @Test @MainActor func faviconRequestSecurity() async throws {
     _ = NSApplication.shared
     let target = try await FaviconHTTPFixture.start()
@@ -200,7 +200,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     #expect(await FaviconLoader.load([server.url("/icon.png")], in: web)?.isValid == true)
 }
 
-// @lat: [[tests#Sidebar favicons]]
+// @lat: [[lat.md/tests/favicons-tests#Sidebar favicons]]
 @Test @MainActor func sidebarFavicons() async throws {
     _ = NSApplication.shared
     let server = try await FaviconHTTPFixture.start()
@@ -319,7 +319,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     #expect(find(context.window.contentView!)?.frontIcon.image != nil)
 }
 
-// @lat: [[tests#Stacked favicon transitions]]
+// @lat: [[lat.md/tests/favicons-tests#Stacked favicon transitions]]
 @Test @MainActor func stackedFaviconTransitions() throws {
     _ = NSApplication.shared
     let icon = SidebarTabIconView(frame: NSRect(origin: .zero, size: SidebarTabIconView.slotSize))
@@ -350,7 +350,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     #expect(icon.backIcon.isHidden)
 }
 
-// @lat: [[tests#Persistent favicon restoration]]
+// @lat: [[lat.md/tests/favicons-tests#Persistent favicon restoration]]
 @Test @MainActor func persistentFaviconRestoration() async throws {
     _ = NSApplication.shared
     let server = try await FaviconHTTPFixture.start()
@@ -425,7 +425,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     #expect(FaviconCache(file: cacheFile).image(for: server.url("/page")) == nil)
 }
 
-// @lat: [[tests#Favicon cache bounds and recovery]]
+// @lat: [[lat.md/tests/favicons-tests#Favicon cache bounds and recovery]]
 @Test @MainActor func faviconCacheBoundsAndRecovery() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFaviconBounds-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }

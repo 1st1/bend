@@ -41,7 +41,7 @@ struct HistoryChoice: Codable, Equatable, Sendable {
     var date: Date
 }
 
-// @lat: [[architecture#Browsing history]]
+// @lat: [[lat.md/architecture/history#Browsing history]]
 public struct BrowsingHistory: Codable, Equatable, Sendable {
     public static let maximumVisits = 10_000
     public private(set) var visits: [HistoryVisit] = []
@@ -121,7 +121,7 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
         if choices.count > 1_000 { choices.removeLast(choices.count - 1_000) }
     }
 
-    // @lat: [[architecture#History suggestions]]
+    // @lat: [[lat.md/architecture/history#History suggestions]]
     public func suggestions(for query: String, limit: Int = 6, now: Date = Date()) -> [HistorySuggestion] {
         let query = Self.fold(query).trimmingCharacters(in: .whitespacesAndNewlines)
         let grouped = Dictionary(grouping: visits, by: \.url)

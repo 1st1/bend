@@ -13,7 +13,7 @@ import WebKit
     try #require(predicate())
 }
 
-// @lat: [[tests#Dock download progress]]
+// @lat: [[lat.md/tests/downloads-tests#Dock download progress]]
 @Test @MainActor func dockDownloadProgress() {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let requested = folder.appendingPathComponent("report.txt")
@@ -39,7 +39,7 @@ import WebKit
     #expect(!failed.isPublished)
 }
 
-// @lat: [[tests#Website downloads]]
+// @lat: [[lat.md/tests/downloads-tests#Website downloads]]
 @Test @MainActor func websiteDownloads() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendDownloads-\(UUID())")
@@ -105,7 +105,7 @@ import WebKit
     #expect(page.error != nil)
 }
 
-// @lat: [[tests#Download cancellation and retry]]
+// @lat: [[lat.md/tests/downloads-tests#Download cancellation and retry]]
 @Test @MainActor func downloadCancellationAndRetry() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendDownloadRetry-\(UUID())")
@@ -157,7 +157,7 @@ import WebKit
     #expect(try Data(contentsOf: #require(independent.fileURL)).count == DownloadHTTPFixture.slowSize)
 }
 
-// @lat: [[tests#Download filenames]]
+// @lat: [[lat.md/tests/downloads-tests#Download filenames]]
 @Test @MainActor func downloadFilenames() {
     for input in ["../../escape.txt", "C:\\folder\\escape.txt", ".hidden", "..", "", "a\u{202E}txt.exe", "a\nfile.txt", String(repeating: "🦊", count: 300)] {
         let name = BrowserDownloads.safeFilename(input)
@@ -171,7 +171,7 @@ import WebKit
     #expect(!BrowserDownloads.supports(URL(string: "someapp://open")))
 }
 
-// @lat: [[tests#Persistent download history]]
+// @lat: [[lat.md/tests/downloads-tests#Persistent download history]]
 @Test @MainActor func persistentDownloadHistory() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendPersistentDownloads-\(UUID())")
@@ -217,7 +217,7 @@ import WebKit
     #expect(FileManager.default.fileExists(atPath: try #require(completed.fileURL).path))
 }
 
-// @lat: [[tests#Downloads with collapsed sidebar]]
+// @lat: [[lat.md/tests/downloads-tests#Downloads with collapsed sidebar]]
 @Test @MainActor func downloadsWithCollapsedSidebar() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendDownloadChrome-\(UUID())")
@@ -273,7 +273,7 @@ import WebKit
     #expect(controls(try #require(context.window.contentView)).count == 1)
 }
 
-// @lat: [[tests#Download-only tabs]]
+// @lat: [[lat.md/tests/downloads-tests#Download-only tabs]]
 @Test @MainActor func downloadOnlyTabs() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendDownloadTabs-\(UUID())")
@@ -354,7 +354,7 @@ import WebKit
     #expect(try await source.webView.evaluateJavaScript("document.querySelector('input').value") as? String == "unsaved")
 }
 
-// @lat: [[tests#Download destination preferences]]
+// @lat: [[lat.md/tests/downloads-tests#Download destination preferences]]
 @Test @MainActor func downloadDestinationPreferences() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendDownloadPreferences-\(UUID())")

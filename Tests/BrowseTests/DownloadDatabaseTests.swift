@@ -5,7 +5,7 @@ import SQLite3
 import Testing
 @testable import Browse
 
-// @lat: [[tests#Download database retention and transactions]]
+// @lat: [[lat.md/tests/downloads-tests#Download database retention and transactions]]
 @Test func downloadDatabaseRetention() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendDownloadDB-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -44,7 +44,7 @@ import Testing
     #expect(FileManager.default.fileExists(atPath: oldest.fileURL!.path))
 }
 
-// @lat: [[tests#Download history recovery]]
+// @lat: [[lat.md/tests/downloads-tests#Download history recovery]]
 @Test @MainActor func downloadHistoryRecovery() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendDownloadRecovery-\(UUID())")
@@ -75,7 +75,7 @@ import Testing
     #expect(restored.activeCount == 0 && restored.progressFraction == nil)
 }
 
-// @lat: [[tests#Combined download progress]]
+// @lat: [[lat.md/tests/downloads-tests#Combined download progress]]
 @Test @MainActor func combinedDownloadProgress() async throws {
     #expect(BrowserDownloads.combinedProgress([]) == nil)
     #expect(BrowserDownloads.combinedProgress([(50, 100), (25, 100)]) == 0.375)

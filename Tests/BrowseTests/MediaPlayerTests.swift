@@ -28,7 +28,7 @@ private let mediaSessionFixture = #"""
     </script>
     """#
 
-// @lat: [[tests#Media session commands and metadata]]
+// @lat: [[lat.md/tests/media-tests#Media session commands and metadata]]
 @Test @MainActor func mediaSessionCommandsAndMetadata() async throws {
     _ = NSApplication.shared
     let controller = PageController(address: "browse://start")
@@ -72,7 +72,7 @@ private let mediaSessionFixture = #"""
     #expect(PageMediaController.clean("a\u{202E}b\n" + String(repeating: "x", count: 1000)).count <= 512)
 }
 
-// @lat: [[tests#Media playback progress]]
+// @lat: [[lat.md/tests/media-tests#Media playback progress]]
 @Test @MainActor func mediaPlaybackProgress() async throws {
     _ = NSApplication.shared
     let page = PageController(address: "browse://start")
@@ -117,7 +117,7 @@ private let mediaSessionFixture = #"""
     }
 }
 
-// @lat: [[tests#Media progress layout]]
+// @lat: [[lat.md/tests/media-tests#Media progress layout]]
 @Test @MainActor func mediaProgressLayout() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendProgressLayout-\(UUID())")
@@ -163,7 +163,7 @@ private let mediaSessionFixture = #"""
     }
 }
 
-// @lat: [[tests#Media slider interaction]]
+// @lat: [[lat.md/tests/media-tests#Media slider interaction]]
 @Test @MainActor func mediaSliderInteraction() async throws {
     _ = NSApplication.shared
     var position = 60.0
@@ -201,7 +201,7 @@ private let mediaSessionFixture = #"""
 
 }
 
-// @lat: [[tests#Media frame routing and lifecycle]]
+// @lat: [[lat.md/tests/media-tests#Media frame routing and lifecycle]]
 @Test @MainActor func mediaFrameRoutingAndLifecycle() async throws {
     _ = NSApplication.shared
     let shared = WKUserContentController()
@@ -234,7 +234,7 @@ private let mediaSessionFixture = #"""
     #expect(shared.userScripts.filter { $0.source == MediaSessionBridge.script }.count == 1)
 }
 
-// @lat: [[tests#HTML media fallback controls]]
+// @lat: [[lat.md/tests/media-tests#HTML media fallback controls]]
 @Test(arguments: ["shadow", "detached audio", "detached element"])
 @MainActor func htmlMediaFallbackControls(placement: String) async throws {
     _ = NSApplication.shared
@@ -295,7 +295,7 @@ private let mediaSessionFixture = #"""
     try await mediaWait { controller.media.sessions.isEmpty }
 }
 
-// @lat: [[tests#Exclusive media playback]]
+// @lat: [[lat.md/tests/media-tests#Exclusive media playback]]
 @Test @MainActor func exclusiveMediaPlayback() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendMediaFocus-\(UUID())")
@@ -334,7 +334,7 @@ private let mediaSessionFixture = #"""
     #expect(third.media.sessions.first?.playing == false)
 }
 
-// @lat: [[tests#Sidebar media ownership]]
+// @lat: [[lat.md/tests/media-tests#Sidebar media ownership]]
 @Test @MainActor func sidebarMediaOwnership() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendMedia-\(UUID())")
@@ -416,7 +416,7 @@ private let mediaSessionFixture = #"""
     #expect(second.store.mediaCoordinator.sources.isEmpty)
 }
 
-// @lat: [[tests#Media track transitions]]
+// @lat: [[lat.md/tests/media-tests#Media track transitions]]
 @Test @MainActor func mediaTrackTransitions() async throws {
     _ = NSApplication.shared
     let first = PageController(address: "browse://start"), second = PageController(address: "browse://start")
@@ -462,7 +462,7 @@ private let mediaSessionFixture = #"""
     #expect(second.media.sessions.isEmpty)
 }
 
-// @lat: [[tests#Media source menu images]]
+// @lat: [[lat.md/tests/media-tests#Media source menu images]]
 @Test @MainActor func mediaSourceMenuImages() throws {
     _ = NSApplication.shared
     let source = SidebarMediaSource(paneID: UUID(), state: MediaSessionState(
@@ -492,7 +492,7 @@ private let mediaSessionFixture = #"""
     #expect(selected == other.id)
 }
 
-// @lat: [[tests#Media source selection]]
+// @lat: [[lat.md/tests/media-tests#Media source selection]]
 @Test @MainActor func mediaSourceSelection() async throws {
     _ = NSApplication.shared
     let first = PageController(address: "browse://start"), second = PageController(address: "browse://start")
@@ -542,7 +542,7 @@ private let mediaSessionFixture = #"""
     #expect(coordinator.sources.isEmpty)
 }
 
-// @lat: [[tests#Live media session smoke test]]
+// @lat: [[lat.md/tests/media-tests#Live media session smoke test]]
 @Test(.enabled(if: ProcessInfo.processInfo.environment["BEND_MEDIA_SMOKE_URL"] != nil))
 @MainActor func liveMediaSessionSmoke() async throws {
     _ = NSApplication.shared

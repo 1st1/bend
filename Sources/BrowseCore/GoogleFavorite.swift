@@ -1,6 +1,6 @@
 import Foundation
 
-// @lat: [[architecture#Google account favorites]]
+// @lat: [[lat.md/architecture/favorites#Google account favorites]]
 public enum GoogleFavoriteService: String, Sendable, CaseIterable {
     case gmail, drive, calendar
 

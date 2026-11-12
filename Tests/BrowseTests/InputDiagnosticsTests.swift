@@ -5,7 +5,7 @@ import SwiftUI
 import Testing
 @testable import Browse
 
-// @lat: [[tests#Input logging preference]]
+// @lat: [[lat.md/tests/developer-tools-tests#Input logging preference]]
 @Test @MainActor func inputTracePreference() throws {
     let suite = "BrowseTracePreference-\(UUID())"
     let defaults = try #require(UserDefaults(suiteName: suite))
@@ -53,7 +53,7 @@ import Testing
     #expect(try traceRows(root, "panes").count == 2)
 }
 
-// @lat: [[tests#Input trace rotation]]
+// @lat: [[lat.md/tests/developer-tools-tests#Input trace rotation]]
 @Test func inputTraceRotation() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseInputTest-" + UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -83,7 +83,7 @@ import Testing
     }
 }
 
-// @lat: [[tests#Independent input and pane log retention]]
+// @lat: [[lat.md/tests/developer-tools-tests#Independent input and pane log retention]]
 @Test func inputTraceStreams() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseTraceStreams-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -107,7 +107,7 @@ import Testing
     #expect(InputTraceFile(root: root).maximumBytes == 500 * 1024)
 }
 
-// @lat: [[tests#Pane trace correlation]]
+// @lat: [[lat.md/tests/developer-tools-tests#Pane trace correlation]]
 @Test @MainActor func inputTracePaneCorrelation() throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseTracePanes-\(UUID())")
@@ -183,7 +183,7 @@ private func traceRows(_ root: URL, _ stream: String) throws -> [[String: Any]] 
     }
 }
 
-// @lat: [[tests#Input diagnostics during hosting teardown]]
+// @lat: [[lat.md/tests/developer-tools-tests#Input diagnostics during hosting teardown]]
 @Test @MainActor func inputTraceHostingTeardown() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseTraceTeardown-\(UUID())")

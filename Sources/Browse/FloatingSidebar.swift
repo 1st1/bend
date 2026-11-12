@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// @lat: [[architecture#Floating sidebar]]
+// @lat: [[lat.md/architecture/sidebar#Floating sidebar]]
 struct FloatingSidebarTracking: NSViewRepresentable {
     let store: BrowserStore
 
