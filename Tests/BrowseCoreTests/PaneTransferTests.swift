@@ -26,7 +26,7 @@ import Testing
         #expect(movedB)
         #expect(session.isValid)
         #expect(!session.workspaces.flatMap(\.tabs).contains { $0.id == source.id })
-        #expect(session.workspaces[0].tabs[0].pages[0].address == "browse://start")
+        #expect(session.workspaces[0].tabs[0].pages[0].address == "bend://start")
         let detachedID = session.detachPane(a.id, from: destination.id, into: session.workspaces[0].id, title: "A")
         let detached = try #require(detachedID)
         #expect(session.selectedTab == detached)

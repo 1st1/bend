@@ -54,7 +54,7 @@ import Testing
     let delegate = AppDelegate(browserWindows: windows)
     defer { windows.prepareToQuit(); for context in windows.windows { context.window.close() } }
     let urls = [URL(string: "https://example.invalid/first?x=1#fragment")!, URL(string: "http://example.invalid/second")!]
-    delegate.application(NSApp, open: urls + [URL(string: "file:///tmp/private.txt")!, URL(string: "browse://start")!])
+    delegate.application(NSApp, open: urls + [URL(string: "file:///tmp/private.txt")!, URL(string: "bend://start")!])
     #expect(windows.windows.isEmpty)
     delegate.restoreBrowserWindows(show: false)
     let first = try #require(windows.active)

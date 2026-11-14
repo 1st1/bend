@@ -46,7 +46,7 @@ import WebKit
 @MainActor private func dialogPage(_ dialogs: JavaScriptDialogs, in window: NSWindow) -> PageController {
     let configuration = WKWebViewConfiguration(); configuration.websiteDataStore = .nonPersistent()
     let web = FocusWebView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), configuration: configuration)
-    let page = PageController(address: "browse://start", webView: web, javaScriptDialogs: dialogs)
+    let page = PageController(address: "bend://start", webView: web, javaScriptDialogs: dialogs)
     window.contentView = web
     return page
 }
@@ -151,7 +151,7 @@ import WebKit
         }
     }
     start()
-    page.navigate("browse://guide")
+    page.navigate("bend://guide")
     #expect(responses == 1)
     presentation.completions.last?(.alertFirstButtonReturn)
     #expect(responses == 1)

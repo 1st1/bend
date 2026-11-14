@@ -58,7 +58,7 @@ private final class LinkAction: WKNavigationAction {
     controller.webView(controller.webView, decidePolicyFor: action) { policies.append($0) }
     #expect(policies == [.cancel])
     #expect(panes == [action.destination.absoluteString])
-    #expect(controller.address == "browse://start")
+    #expect(controller.address == "bend://start")
 
     action.modifiers = []
     controller.webView(controller.webView, decidePolicyFor: action) { policies.append($0) }
@@ -83,7 +83,7 @@ private final class LinkAction: WKNavigationAction {
 // @lat: [[lat.md/tests/link-navigation-tests#Command-click new-window links]]
 @Test @MainActor func commandClickNewWindowLink() {
     _ = NSApplication.shared
-    let controller = PageController(address: "browse://start")
+    let controller = PageController(address: "bend://start")
     var panes: [String] = []
     var tabs: [String] = []
     controller.onNewPane = { panes.append($0) }
@@ -111,7 +111,7 @@ private final class LinkAction: WKNavigationAction {
     let source = try #require(originalTab.pages.first)
     let controller = store.controller(for: source)
     let initialCount = originalTab.pages.count
-    store.newTab(address: "browse://guide")
+    store.newTab(address: "bend://guide")
     let trailingTab = store.selectedTab.id
     store.select(originalTab.id)
 
@@ -158,39 +158,39 @@ private final class LinkAction: WKNavigationAction {
     let original = store.selectedTab
     let source = original.pages[0], other = original.pages[1]
     let sourceController = store.controller(for: source)
-    sourceController.onNewLink?("browse://guide", true, true)
+    sourceController.onNewLink?("bend://guide", true, true)
     let dedicated = try #require(store.selectedTab.commandClickPaneID)
     #expect(store.selectedTab.pages.count == original.pages.count + 1)
     #expect(store.selectedTab.layout.paneIDs.firstIndex(of: dedicated) == 1)
     let target = store.controller(for: try #require(store.selectedTab.pages.first { $0.id == dedicated }))
     let web = target.webView
     let otherController = store.controller(for: other)
-    otherController.onNewLink?("browse://history", true, true)
+    otherController.onNewLink?("bend://history", true, true)
     #expect(store.selectedTab.pages.count == original.pages.count + 1)
     #expect(store.selectedTab.focusedPane == dedicated && store.selectedTab.commandClickPaneID == dedicated)
-    #expect(target.address == "browse://history" && target.webView === web)
+    #expect(target.address == "bend://history" && target.webView === web)
     #expect(store.linkOpeners[dedicated] == other.id)
     #expect(sourceController.address == source.address && otherController.address == other.address)
     // Reuse from an iframe clears the preceding main-frame opener. Clicking in
     // the dedicated pane reuses it too, without a self-referential opener.
-    sourceController.onNewLink?("browse://guide", true, false)
+    sourceController.onNewLink?("bend://guide", true, false)
     #expect(store.linkOpeners[dedicated] == nil)
-    target.onNewLink?("browse://history", true, true)
+    target.onNewLink?("bend://history", true, true)
     #expect(store.selectedTab.pages.count == original.pages.count + 1)
     #expect(store.linkOpeners[dedicated] == nil)
-    store.newTab(address: "browse://guide")
+    store.newTab(address: "bend://guide")
     let secondTab = store.selectedTab
-    store.controller(for: secondTab.pages[0]).onNewLink?("browse://history", true, true)
+    store.controller(for: secondTab.pages[0]).onNewLink?("bend://history", true, true)
     #expect(store.selectedTab.pages.count == 2)
     #expect(store.selectedTab.commandClickPaneID != dedicated)
-    sourceController.onNewLink?("browse://guide", true, true)
+    sourceController.onNewLink?("bend://guide", true, true)
     #expect(store.selectedTab.id == original.id && store.selectedTab.commandClickPaneID == dedicated)
     store.closePage(dedicated)
     #expect(store.selectedTab.commandClickPaneID == nil)
     store.reopenClosed()
     #expect(store.selectedTab.commandClickPaneID == dedicated)
     store.closePage(dedicated)
-    sourceController.onNewLink?("browse://history", true, true)
+    sourceController.onNewLink?("bend://history", true, true)
     let replacement = try #require(store.selectedTab.commandClickPaneID)
     #expect(replacement != dedicated)
     #expect(store.selectedTab.pages.count == original.pages.count + 1)
@@ -198,16 +198,16 @@ private final class LinkAction: WKNavigationAction {
     let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
     #expect(restored.commandClickDestination == .dedicatedPane)
     #expect(restored.selectedTab.commandClickPaneID == replacement)
-    restored.controller(for: source).onNewLink?("browse://guide", true, true)
+    restored.controller(for: source).onNewLink?("bend://guide", true, true)
     #expect(restored.selectedTab.commandClickPaneID == replacement)
     #expect(restored.selectedTab.pages.count == original.pages.count + 1)
     // Switching modes is live and must not repurpose an ordinary pane.
     restored.commandClickDestination = .newPane
-    restored.controller(for: source).onNewLink?("browse://guide", true, true)
+    restored.controller(for: source).onNewLink?("bend://guide", true, true)
     #expect(restored.selectedTab.pages.count == original.pages.count + 2)
     #expect(restored.selectedTab.commandClickPaneID == replacement)
     restored.commandClickDestination = .dedicatedPane
-    restored.controller(for: source).onNewLink?("browse://history", true, true)
+    restored.controller(for: source).onNewLink?("bend://history", true, true)
     #expect(restored.selectedTab.pages.count == original.pages.count + 2)
     #expect(restored.selectedTab.focusedPane == replacement)
 
@@ -227,13 +227,13 @@ private final class LinkAction: WKNavigationAction {
     #expect(survivorController.address == survivorAddress)
     restored.save()
     #expect(BrowserStore(sessionFile: file, persistentExtensions: false).selectedTab.commandClickPaneID == nil)
-    survivorController.onNewLink?("browse://guide", true, true)
+    survivorController.onNewLink?("bend://guide", true, true)
     let newTarget = try #require(restored.selectedTab.commandClickPaneID)
     #expect(newTarget != replacement)
     #expect(restored.selectedTab.pages.count == 2)
     #expect(survivorController.address == survivorAddress && survivorController.webView === survivorWeb)
     #expect(restored.linkOpeners[newTarget] == replacement)
-    survivorController.onNewLink?("browse://history", true, true)
+    survivorController.onNewLink?("bend://history", true, true)
     #expect(restored.selectedTab.commandClickPaneID == newTarget && restored.selectedTab.pages.count == 2)
 
     // Normalize the stale single-pane designation saved by older versions too.
@@ -296,7 +296,7 @@ private final class LinkAction: WKNavigationAction {
         ? \.commandShiftClickDestination : \.optionClickDestination
     store[keyPath: otherPreference] = .newPane
     store.commandClickDestination = .dedicatedPane
-    store.newTab(address: "browse://guide")
+    store.newTab(address: "bend://guide")
     let trailing = store.selectedTab.id
     store.select(original.id)
     let action = LinkAction()
@@ -387,7 +387,7 @@ private final class LinkAction: WKNavigationAction {
 // @lat: [[lat.md/tests/link-navigation-tests#Native Option-click links]]
 @Test @MainActor func nativeOptionClickLinks() async throws {
     _ = NSApplication.shared
-    let controller = PageController(address: "browse://start", configure: { $0.websiteDataStore = .nonPersistent() })
+    let controller = PageController(address: "bend://start", configure: { $0.websiteDataStore = .nonPersistent() })
     let web = controller.webView
     let probe = NativeLinkNavigationProbe(controller: controller)
     web.navigationDelegate = probe
@@ -469,7 +469,7 @@ private final class LinkAction: WKNavigationAction {
 @Test @MainActor func optionClickSharedControllerIsolation() async throws {
     _ = NSApplication.shared
     let shared = WKUserContentController()
-    let pane = PageController(address: "browse://start", configure: {
+    let pane = PageController(address: "bend://start", configure: {
         $0.websiteDataStore = .nonPersistent()
         $0.userContentController = shared
     })
@@ -507,9 +507,9 @@ private final class LinkAction: WKNavigationAction {
     var targets: [String: (tab: UUID, source: UUID, destination: UUID)] = [:]
     for window in [first, second] {
         let store = window.store
-        store.newTab(address: "browse://guide")
+        store.newTab(address: "bend://guide")
         let source = store.selectedTab.pages[0]
-        store.controller(for: source).onNewLink?("browse://history", true, true)
+        store.controller(for: source).onNewLink?("bend://history", true, true)
         let originalDestination = try #require(store.selectedTab.commandClickPaneID)
         store.duplicateTab(store.selectedTab.id)
         let copy = store.selectedTab
@@ -535,7 +535,7 @@ private final class LinkAction: WKNavigationAction {
         #expect(store.selectedTab.id == target.tab)
         #expect(store.selectedTab.commandClickPaneID == target.destination)
         let source = try #require(store.selectedTab.pages.first { $0.id == target.source })
-        store.controller(for: source).onNewLink?("browse://guide", true, true)
+        store.controller(for: source).onNewLink?("bend://guide", true, true)
         #expect(store.selectedTab.pages.count == 2)
         #expect(store.selectedTab.focusedPane == target.destination)
         #expect(store.selectedTab.commandClickPaneID == target.destination)

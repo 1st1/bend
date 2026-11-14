@@ -24,3 +24,18 @@ func liveNativeGatewaySearch() async throws {
     print("Native Gateway smoke passed: \(id), steps=\(result.steps)")
   }
 }
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["AI_OPENAI_ACCOUNT_SMOKE"] == "1"))
+func liveOpenAIAccountTools() async throws {
+  let key = try #require(ProcessInfo.processInfo.environment["OPENAI_ACCOUNT_ACCESS_TOKEN"])
+  let provider = try OpenAIResponsesProvider(apiKey: key, baseURL: URL(string: "https://api.openai.com/v1")!)
+  let agent = try Agent(tools: [Tool(name: "echo_test", description: "Return a synthetic test greeting", parameters: emptySchema) { _, _ in .string("Hello from the test tool.") }], maxSteps: 3)
+  let run = agent.run(Model("gpt-6.1-sol", provider: provider),
+                      messages: [.system("You are testing a tool. Call echo_test once, then repeat its greeting in your final answer."),
+                                 .user("Please run the greeting test.")],
+                      options: .init(includeReasoning: true))
+  let (result, _) = try await drain(run)
+  #expect(result.messages.contains { $0.toolResults.contains { $0.name == "echo_test" } })
+  #expect(!result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+  print("OpenAI account tool round-trip completed: steps=\(result.steps), answerCharacters=\(result.output.count)")
+}

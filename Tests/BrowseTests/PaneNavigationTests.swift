@@ -129,6 +129,6 @@ import Testing
     window.active = true
     NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window)
     try await wait { controlsArea(firstPane) != nil }
-    store.newTab(address: "browse://guide")
+    store.newTab(address: "bend://guide")
     try await wait { firstPane.isHiddenOrHasHiddenAncestor && !firstPane.isPaneHovered }
 }

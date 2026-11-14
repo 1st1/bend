@@ -6,7 +6,7 @@ import WebKit
 // @lat: [[lat.md/tests/windows-tests#Page fullscreen availability]]
 @Test @MainActor func pageFullscreenAvailability() async throws {
     _ = NSApplication.shared
-    let controller = PageController(address: "browse://start")
+    let controller = PageController(address: "bend://start")
     let web = controller.webView
     defer { controller.media.detach(); web.stopLoading() }
     web.loadHTMLString("<title>Fullscreen fixture</title><video></video>",

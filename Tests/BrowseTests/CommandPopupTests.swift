@@ -19,7 +19,7 @@ import Testing
         for window in owner.windows { window.window.close() }
         try? FileManager.default.removeItem(at: root)
     }
-    let pages = [Page(address: "https://example.com"), Page(address: "browse://guide")]
+    let pages = [Page(address: "https://example.com"), Page(address: "bend://guide")]
     var original = BrowserTab(title: "Split", pages: pages)
     original.focusedPane = pages[0].id
     original.layout = .split(id: UUID(), axis: .vertical, fraction: 0.35,
@@ -38,7 +38,7 @@ import Testing
     #expect(try command("pinTab").title == "Unpin Tab")
     #expect(try !command("returnPinned").isEnabled)
     let pinnedController = store.controller(for: store.selectedTab.pages[0])
-    pinnedController.navigate("browse://history")
+    pinnedController.navigate("bend://history")
     #expect(try command("returnPinned").isEnabled)
     try command("returnPinned").perform()
     #expect(pinnedController.address == pages[0].address)

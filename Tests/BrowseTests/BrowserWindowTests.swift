@@ -181,7 +181,7 @@ import BrowseCore
     #expect(first.addressPanel !== second.addressPanel)
     #expect(second.store.session.workspaces.flatMap(\.tabs).count == 1)
     #expect(second.store.selectedTab.pages.count == 1)
-    #expect(second.store.selectedTab.pages[0].address == "browse://start")
+    #expect(second.store.selectedTab.pages[0].address == "bend://start")
     second.store.newTab()
     #expect(first.store.session.selectedTab == firstSelection)
     #expect(first.store.session.workspaces.flatMap(\.tabs).count == 1)
@@ -340,7 +340,7 @@ import BrowseCore
     #expect(owner.windows.count == 2)
     #expect(first.store.selectedTab.pages.count == 1)
     let originalTabID = first.store.selectedTab.id
-    first.store.newTab(address: "browse://guide")
+    first.store.newTab(address: "bend://guide")
     delegate.closeFocusedWindow(first.window)
     #expect(owner.windows.count == 2)
     #expect(first.store.selectedTab.id == originalTabID)
@@ -359,7 +359,7 @@ import BrowseCore
     #expect(owner.windows.count == 1)
     #expect(other.window.isVisible)
     #expect(other.store.selectedTab.pages.count == 1)
-    #expect(other.store.selectedTab.pages[0].address == "browse://start")
+    #expect(other.store.selectedTab.pages[0].address == "bend://start")
     #expect(other.store.selectedTab.pages[0].id != closedPage.id)
     #expect(other.store.existingController(for: closedPage.id) == nil)
     #expect(other.store.canReopenClosed)
@@ -369,7 +369,7 @@ import BrowseCore
     delegate.closeFocusedWindow(popup)
     #expect(owner.windows.count == 1)
     #expect(other.store.selectedTab.pages.count == 1)
-    #expect(other.store.selectedTab.pages[0].address == "browse://start")
+    #expect(other.store.selectedTab.pages[0].address == "bend://start")
     #expect(popup.isVisible)
     // Explicitly closing the native window still closes it.
     other.window.close()
@@ -573,7 +573,7 @@ import BrowseCore
     #expect(await paneData.httpCookieStore.allCookies().contains { $0.name == "secret" })
     #expect(await second.store.websiteDataStore.httpCookieStore.allCookies().isEmpty)
     store.showHistory()
-    #expect(store.selectedTab.pages[0].address == "browse://history")
+    #expect(store.selectedTab.pages[0].address == "bend://history")
     store.closeTab(store.selectedTab.id)
     #expect(store.canReopenClosed)
     owner.save()
@@ -617,7 +617,7 @@ import BrowseCore
     let store = window.store
     let firstTab = store.selectedTab.id
     let first = store.selectedTab.pages[0]
-    store.openPane(address: "browse://start", toRightOf: first.id)
+    store.openPane(address: "bend://start", toRightOf: first.id)
     let split = try #require(store.selectedTab.pages.first { $0.id != first.id })
     store.newTab()
     let secondTab = store.selectedTab.id

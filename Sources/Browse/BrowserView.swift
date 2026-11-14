@@ -29,6 +29,7 @@ struct BrowserView: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            if store.sidebarSide == .right { chatSidebar }
             if store.sidebarVisible && store.sidebarSide == .left { dockedSidebar }
             MountedTabContent(store: store)
             .padding(Chrome.paneInset)
@@ -38,14 +39,7 @@ struct BrowserView: View {
                 }
             }
             if store.sidebarVisible && store.sidebarSide == .right { dockedSidebar }
-            if store.openChats.contains(store.selectedTab.id), let chat = store.chats[store.selectedTab.id] {
-                ChatSidebar(chat: chat, close: { store.openChats.remove(chat.tabID) },
-                    settings: { store.onSettingsRequested?(.ai) })
-                    .id(chat.tabID)
-                    .frame(width: 360)
-                    .background(WindowDragArea(excluded: true))
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
+            if store.sidebarSide == .left { chatSidebar }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.openChats.contains(store.selectedTab.id))
         .onChange(of: store.sidebarSide) { _, _ in store.sidebarFloating = false }
@@ -75,6 +69,18 @@ struct BrowserView: View {
         .preferredColorScheme(.dark)
         .sheet(item: $store.favoriteCustomization) { request in
             FavoriteCustomizationView(store: store, request: request)
+        }
+    }
+
+    @ViewBuilder private var chatSidebar: some View {
+        if !store.isPrivate, store.openChats.contains(store.selectedTab.id), let chat = store.chats[store.selectedTab.id] {
+            ChatSidebar(chat: chat, onLeft: store.sidebarSide == .right,
+                close: { store.openChats.remove(chat.tabID) },
+                settings: { store.onSettingsRequested?(.ai) })
+                .id(chat.tabID)
+                .frame(width: 360)
+                .background(WindowDragArea(excluded: true))
+                .transition(.move(edge: store.sidebarSide == .right ? .leading : .trailing).combined(with: .opacity))
         }
     }
 
@@ -604,7 +610,7 @@ private struct BrowserPane: View {
     @ViewBuilder
     private var pageIcon: some View {
         if controller.isStartPage {
-            Image(systemName: controller.address == "browse://history" ? "clock" : "square.grid.2x2")
+            Image(systemName: controller.address == "bend://history" ? "clock" : "square.grid.2x2")
                 .font(.system(size: 11)).foregroundStyle(Chrome.muted)
         } else if let favicon = controller.favicon {
             Image(nsImage: favicon).resizable().scaledToFit()
@@ -627,7 +633,7 @@ private struct BrowserPane: View {
                 Text(error).font(.system(size: 12)).foregroundStyle(Chrome.muted).multilineTextAlignment(.center)
                 Button("Try again") { controller.navigate(controller.address) }.buttonStyle(.bordered)
             }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if controller.address == "browse://history" {
+        } else if controller.address == "bend://history" {
             HistoryView(store: store, navigate: controller.navigate)
         } else if controller.isStartPage {
             StartPage()

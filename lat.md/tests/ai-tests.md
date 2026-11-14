@@ -50,7 +50,7 @@ Tests exercise [[lat.md/architecture/ai|native chat]] with scripted model provid
 
 ## Chat header controls
 
-[[Tests/BrowseTests/ChatHeaderTests.swift#chatHeaderControls]] verifies native window mouse dispatch activates both fixed chat header controls at the shared sidebar centerline, remain visible and spaced correctly across window sizes, and are excluded from window dragging.
+[[Tests/BrowseTests/ChatHeaderTests.swift#chatHeaderControls]] exercises both left and right chat placement and verifies native mouse dispatch, alignment, visibility, spacing across window sizes, and exclusion from window dragging.
 
 ## Streaming transcript
 
@@ -73,3 +73,31 @@ The summary moves above the first response delta, remains anchored there through
 ## Progressive Markdown
 
 [[Tests/BrowseTests/ChatMarkdownTests.swift#progressiveChatMarkdown]] checks every streamed prefix of a pane citation hides its routing identifiers, code stays literal, and incremental native text updates retain final content and attributes.
+
+## Account authorization validation
+
+[[Tests/BrowseTests/AIOAuthTests.swift#aiOAuthValidation]] checks PKCE and callback binding, duplicate parameters, denial, and client substitution. Signed RSA fixtures reject tampering, wrong issuer/audience/nonce, and expiry.
+
+## Account refresh and logout
+
+[[Tests/BrowseTests/AIOAuthTests.swift#aiOAuthLifecycle]] checks serialized refresh and atomic token rotation, denied plan scopes, retained registration after logout, local logout during revocation failure, and prevention of refresh resurrection.
+
+## Loopback sign-in callback
+
+[[Tests/BrowseTests/AIOAuthTests.swift#aiOAuthLoopback]] verifies the real loopback listener rejects wrong state without ending sign-in, accepts a subsequent valid callback, and terminates on cancellation.
+
+## Account request routing
+
+[[Tests/BrowseTests/AIOAuthTests.swift#aiOAuthRouting]] verifies account bearer replacement and explicit Vercel team scoping. Requests to an unexpected host are rejected before credentials reach the transport.
+
+## Account selection and models
+
+[[Tests/BrowseTests/AIOAuthTests.swift#aiOAuthAccountSelection]] checks account restoration, visible model filtering, reuse of the loaded catalog on sidebar reopening, direct Responses routing with OAuth, logout disabling inference, and switching back to a Gateway key with a matching model catalog.
+
+## Empty answer reporting
+
+[[Tests/BrowseTests/AIChatTests.swift#aiEmptyAnswerReporting]] verifies a completed run without answer text shows a retryable error rather than silently leaving only the user's bubble.
+
+## Private window exclusion
+
+[[Tests/BrowseTests/AIChatTests.swift#aiPrivateWindowExclusion]] verifies private windows cannot create chats, send model requests, expose pane context, execute any pane tool, or follow chat links.

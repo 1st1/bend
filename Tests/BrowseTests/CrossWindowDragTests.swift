@@ -37,7 +37,7 @@ import WebKit
     #expect(owner.windows.count == 2)
     #expect(source.selectedTab.id == anchor.id)
     #expect(source.selectedTab.pages.count == 1)
-    #expect(source.selectedTab.pages[0].address == "browse://start")
+    #expect(source.selectedTab.pages[0].address == "bend://start")
     #expect(destination.selectedTab.id == tab.id)
     #expect(destination.selectedTab.layout == tab.layout)
     #expect(destination.selectedTab.commandClickPaneID == tab.commandClickPaneID)
@@ -53,8 +53,8 @@ import WebKit
     // Navigation and new-link callbacks must now update the destination store.
     pages[0].onNavigation?("https://example.com/moved", "Moved title")
     #expect(destination.selectedTab.pages[0].address == "https://example.com/moved")
-    #expect(source.selectedTab.pages[0].address == "browse://start")
-    pages[0].onNewPane?("browse://guide")
+    #expect(source.selectedTab.pages[0].address == "bend://start")
+    pages[0].onNewPane?("bend://guide")
     #expect(destination.selectedTab.pages.count == 3)
     #expect(source.selectedTab.pages.count == 1)
     let sourceTab = source.selectedTab

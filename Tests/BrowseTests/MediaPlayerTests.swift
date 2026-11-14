@@ -31,7 +31,7 @@ private let mediaSessionFixture = #"""
 // @lat: [[lat.md/tests/media-tests#Media session commands and metadata]]
 @Test @MainActor func mediaSessionCommandsAndMetadata() async throws {
     _ = NSApplication.shared
-    let controller = PageController(address: "browse://start")
+    let controller = PageController(address: "bend://start")
     let web = controller.webView
     defer { controller.media.reset(); web.stopLoading() }
     web.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://media.example"))
@@ -75,7 +75,7 @@ private let mediaSessionFixture = #"""
 // @lat: [[lat.md/tests/media-tests#Media playback progress]]
 @Test @MainActor func mediaPlaybackProgress() async throws {
     _ = NSApplication.shared
-    let page = PageController(address: "browse://start")
+    let page = PageController(address: "bend://start")
     defer { page.media.detach(); page.webView.stopLoading() }
     page.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://progress.example"))
     try await mediaWait { !page.media.sessions.isEmpty }
@@ -209,7 +209,7 @@ private let mediaSessionFixture = #"""
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = shared
         configuration.websiteDataStore = .nonPersistent()
-        return PageController(address: "browse://start", webView: FocusWebView(frame: .zero, configuration: configuration))
+        return PageController(address: "bend://start", webView: FocusWebView(frame: .zero, configuration: configuration))
     }
     let first = make(), second = make()
     defer { first.media.reset(); second.media.reset(); first.webView.stopLoading(); second.webView.stopLoading() }
@@ -242,7 +242,7 @@ private let mediaSessionFixture = #"""
     configuration.websiteDataStore = .nonPersistent()
     configuration.mediaTypesRequiringUserActionForPlayback = []
     let web = FocusWebView(frame: NSRect(x: 0, y: 0, width: 500, height: 400), configuration: configuration)
-    let controller = PageController(address: "browse://start", webView: web)
+    let controller = PageController(address: "bend://start", webView: web)
     let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 500, height: 400),
                           styleMask: [.titled], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
@@ -284,7 +284,7 @@ private let mediaSessionFixture = #"""
     try await mediaWait { controller.media.sessions.first?.playing == true }
     let focus = MediaPlaybackFocus()
     focus.register(controller.media)
-    let other = PageController(address: "browse://start")
+    let other = PageController(address: "bend://start")
     focus.register(other.media)
     defer { other.media.detach(); other.webView.stopLoading() }
     other.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://interrupt.example"))
@@ -351,7 +351,7 @@ private let mediaSessionFixture = #"""
     pageController.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://music.example"))
     try await mediaWait { first.store.mediaCoordinator.selected?.state.title == "First track" }
     if let path = ProcessInfo.processInfo.environment["BEND_MEDIA_SNAPSHOT"] {
-        let alternate = PageController(address: "browse://start")
+        let alternate = PageController(address: "bend://start")
         let alternateID = UUID()
         alternate.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://second.example"))
         try await mediaWait { !alternate.media.sessions.isEmpty }
@@ -419,7 +419,7 @@ private let mediaSessionFixture = #"""
 // @lat: [[lat.md/tests/media-tests#Media track transitions]]
 @Test @MainActor func mediaTrackTransitions() async throws {
     _ = NSApplication.shared
-    let first = PageController(address: "browse://start"), second = PageController(address: "browse://start")
+    let first = PageController(address: "bend://start"), second = PageController(address: "bend://start")
     let coordinator = WindowMediaCoordinator()
     let firstID = UUID(), secondID = UUID()
     coordinator.register(firstID, controller: first.media)
@@ -457,7 +457,7 @@ private let mediaSessionFixture = #"""
     try await mediaWait { coordinator.selected?.paneID == secondID }
     _ = try await second.webView.evaluateJavaScript(clear)
     try await mediaWait { coordinator.selected?.state.actions.isEmpty == true }
-    second.navigate("browse://start")
+    second.navigate("bend://start")
     #expect(coordinator.selected?.paneID == firstID)
     #expect(second.media.sessions.isEmpty)
 }
@@ -495,7 +495,7 @@ private let mediaSessionFixture = #"""
 // @lat: [[lat.md/tests/media-tests#Media source selection]]
 @Test @MainActor func mediaSourceSelection() async throws {
     _ = NSApplication.shared
-    let first = PageController(address: "browse://start"), second = PageController(address: "browse://start")
+    let first = PageController(address: "bend://start"), second = PageController(address: "bend://start")
     let coordinator = WindowMediaCoordinator()
     let firstID = UUID(), secondID = UUID()
     coordinator.register(firstID, controller: first.media)
@@ -535,7 +535,7 @@ private let mediaSessionFixture = #"""
     #expect(await first.media.send("play", to: firstSource.state))
     try await mediaWait { coordinator.selected?.paneID == firstID }
     #expect(coordinator.sources.count == 2)
-    first.navigate("browse://start")
+    first.navigate("bend://start")
     #expect(first.media.sessions.isEmpty)
     #expect(coordinator.selected?.paneID == secondID)
     coordinator.unregister(secondID)

@@ -77,7 +77,7 @@ import WebKit
 // @lat: [[lat.md/tests/link-navigation-tests#Link hover preview]]
 @Test @MainActor func linkHoverPreview() async throws {
     _ = NSApplication.shared
-    let controller = PageController(address: "browse://start")
+    let controller = PageController(address: "bend://start")
     let web = controller.webView
     let window = HoverTestWindow(contentRect: NSRect(x: -10000, y: -10000, width: 600, height: 400),
                           styleMask: [.titled], backing: .buffered, defer: false)

@@ -11,7 +11,7 @@ func dividerPointerTracking(axis: SplitAxis) async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseResize-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
-    let a = Page(address: "browse://start"), b = Page(address: "browse://start"), splitID = UUID()
+    let a = Page(address: "bend://start"), b = Page(address: "bend://start"), splitID = UUID()
     var tab = BrowserTab(pages: [a, b])
     tab.layout = .split(id: splitID, axis: axis, fraction: 0.5, first: .pane(a.id), second: .pane(b.id))
     store.session.workspaces = [Workspace(name: "Test", tabs: [tab])]

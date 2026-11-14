@@ -13,6 +13,7 @@ final class BrowserStore: ObservableObject {
     @Published var openChats: Set<UUID> = []
 
     func showChat() {
+        guard !isPrivate else { return }
         let id = selectedTab.id
         if chats[id] == nil { chats[id] = TabChat(store: self, tabID: id) }
         openChats.insert(id)
@@ -515,12 +516,13 @@ final class BrowserStore: ObservableObject {
         focus(id); zoomedPane = zoomedPane == id ? nil : id
     }
 
-    func newTab(in workspace: UUID? = nil, address: String = "browse://start", linkOpener: UUID? = nil,
+    func newTab(in workspace: UUID? = nil, address: String = "bend://start", linkOpener: UUID? = nil,
                 closeIfDownload: Bool = false, afterCurrent: Bool = false, inBackground: Bool = false) {
+        let address = AddressResolver.canonicalAddress(address)
         let previousTabID = session.selectedTab, previousZoom = zoomedPane
         let index = session.workspaces.firstIndex { $0.id == workspace }
             ?? session.workspaces.firstIndex { $0.tabs.contains { $0.id == session.selectedTab } } ?? 0
-        let tab = BrowserTab(title: address == "browse://history" ? "History" : "New tab", pages: [Page(address: address)])
+        let tab = BrowserTab(title: address == "bend://history" ? "History" : "New tab", pages: [Page(address: address)])
         if let linkOpener { linkOpeners[tab.pages[0].id] = linkOpener }
         let insertion = afterCurrent ? session.workspaces[index].tabs.firstIndex { $0.id == previousTabID }.map { $0 + 1 } : nil
         session.workspaces[index].tabs.insert(tab, at: insertion ?? session.workspaces[index].tabs.count)
@@ -528,9 +530,9 @@ final class BrowserStore: ObservableObject {
             saveSoon()
         } else {
             select(tab.id)
-            pendingAddressEntry = address == "browse://start" ? PendingAddressEntry(tabID: tab.id, paneID: tab.pages[0].id,
+            pendingAddressEntry = address == "bend://start" ? PendingAddressEntry(tabID: tab.id, paneID: tab.pages[0].id,
                 kind: .tab(previousTabID: previousTabID), previousZoom: previousZoom) : nil
-            if address == "browse://start" { requestAddress() }
+            if address == "bend://start" { requestAddress() }
         }
         // Background tabs have no mounted view yet, but should start loading now.
         if inBackground { _ = controller(for: tab.pages[0]) }
@@ -593,8 +595,8 @@ final class BrowserStore: ObservableObject {
               let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == pending.tabID } }),
               let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == pending.tabID }) else { return false }
         let tab = session.workspaces[wi].tabs[ti]
-        guard let page = tab.pages.first(where: { $0.id == paneID }), !page.isPinned, page.address == "browse://start",
-              (browsers[paneID]?.address ?? "browse://start") == "browse://start" else { return false }
+        guard let page = tab.pages.first(where: { $0.id == paneID }), !page.isPinned, page.address == "bend://start",
+              (browsers[paneID]?.address ?? "bend://start") == "bend://start" else { return false }
         switch pending.kind {
         case .tab:
             guard tab.pages.count == 1, session.workspaces[wi].tabs.count > 1 else { return false }
@@ -624,12 +626,12 @@ final class BrowserStore: ObservableObject {
 
     func showHistory() {
         for workspace in session.workspaces {
-            if let tab = workspace.tabs.first(where: { $0.pages.contains { $0.address == "browse://history" } }),
-               let page = tab.pages.first(where: { $0.address == "browse://history" }) {
+            if let tab = workspace.tabs.first(where: { $0.pages.contains { $0.address == "bend://history" } }),
+               let page = tab.pages.first(where: { $0.address == "bend://history" }) {
                 select(tab.id); focus(page.id); return
             }
         }
-        newTab(address: "browse://history")
+        newTab(address: "bend://history")
     }
 
     func recordVisit(url: String, title: String, at date: Date = Date()) {
@@ -802,8 +804,8 @@ final class BrowserStore: ObservableObject {
             if let replacementID = item.replacementID,
                let index = session.workspaces[wi].tabs.firstIndex(where: { $0.id == replacementID }) {
                 let replacement = session.workspaces[wi].tabs[index]
-                if !replacement.isPinned, replacement.pages.count == 1, replacement.pages[0].address == "browse://start",
-                   (browsers[replacement.pages[0].id]?.address ?? "browse://start") == "browse://start" {
+                if !replacement.isPinned, replacement.pages.count == 1, replacement.pages[0].address == "bend://start",
+                   (browsers[replacement.pages[0].id]?.address ?? "bend://start") == "bend://start" {
                     removeController(replacement.pages[0].id)
                     session.workspaces[wi].tabs.remove(at: index)
                 }
@@ -841,7 +843,7 @@ final class BrowserStore: ObservableObject {
         let extensionURL = URL(string: page.address).flatMap {
             ["webkit-extension", "safari-web-extension"].contains($0.scheme ?? "") ? $0 : nil
         }
-        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, downloads: downloads, searchEngine: searchEngine, customSearchEngine: customSearchEngine, configure: { [weak self] configuration in
+        let controller = PageController(address: extensionURL == nil ? page.address : "bend://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, downloads: downloads, searchEngine: searchEngine, customSearchEngine: customSearchEngine, configure: { [weak self] configuration in
             self?.configureWebView(configuration)
         })
         bindController(controller, to: page)
@@ -855,7 +857,7 @@ final class BrowserStore: ObservableObject {
             Task { [weak controller] in
                 await manager.restorationTask?.value
                 guard let controller, manager.store(for: page.id)?.existingController(for: page.id) === controller,
-                      controller.address == "browse://start" else { return }
+                      controller.address == "bend://start" else { return }
                 let extensionURL = manager.restoredExtensionURL(extensionURL)
                 guard let context = manager.controller.extensionContext(for: extensionURL), context.isLoaded,
                       let configuration = manager.store(for: page.id)?.extensionConfiguration(for: context) else {
@@ -987,8 +989,8 @@ final class BrowserStore: ObservableObject {
         case .emptyWindow:
             guard nextDestination.workspaces.count == 1, nextDestination.workspaces[0].tabs.count == 1,
                   let blank = nextDestination.workspaces[0].tabs.first, !blank.isPinned,
-                  blank.pages.count == 1, blank.pages[0].address == "browse://start",
-                  (destination.browsers[blank.pages[0].id]?.address ?? "browse://start") == "browse://start" else { return false }
+                  blank.pages.count == 1, blank.pages[0].address == "bend://start",
+                  (destination.browsers[blank.pages[0].id]?.address ?? "bend://start") == "bend://start" else { return false }
             replacedPages = blank.pages.map(\.id)
             nextDestination.workspaces[0].tabs = [incoming]
             nextDestination.selectedTab = incoming.id
@@ -1410,7 +1412,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
 
     func unloadExtension(at origin: URL) {
         guard extensionOrigin?.scheme == origin.scheme, extensionOrigin?.host == origin.host else { return }
-        navigate("browse://start")
+        navigate("bend://start")
         error = "This extension page is unavailable. Enable its extension in Settings."
     }
 
@@ -1433,11 +1435,11 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     private func load(_ url: URL) {
         javaScriptDialogs.cancel(for: webView)
         webView.clearURLPreview()
-        InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "browse"])
+        InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "bend"])
         resetFavicon(for: url)
         error = nil; address = url.absoluteString
         completedAddress = nil
-        isStartPage = url.scheme == "browse"
+        isStartPage = url.scheme == "bend"
         localDocumentDirectory = url.isFileURL ? url.deletingLastPathComponent() : nil
         // A reused view still displays the outgoing document until commit.
         // Only a fresh view (or native internal page) can take the target zoom now.
@@ -1449,7 +1451,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
                 media.detach()
                 webView.pauseAllMediaPlayback(completionHandler: nil)
             }
-            title = address == "browse://history" ? "History" : (address == "browse://guide" ? "Tiling guide" : "New tab")
+            title = address == "bend://history" ? "History" : (address == "bend://guide" ? "Tiling guide" : "New tab")
             reportNavigation()
         } else {
             if webView.mediaController == nil { media.attach(to: webView) }

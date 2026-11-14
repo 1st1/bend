@@ -107,3 +107,29 @@ private func nativeFixture(_ events: [String]) -> FixtureTransport {
     #expect(body["reasoning"]?["effort"] == (model == "openai/gpt-6-astra" ? .string("high") : nil))
   }
 }
+
+@Test func responsesCompletedItemRetention() async throws {
+  let call = #"{"type":"function_call","id":"item1","call_id":"call1","name":"read_pane","arguments":"{\"pane\":\"one\"}","status":"completed"}"#
+  let done = #"{"type":"response.output_item.done","output_index":0,"item":\#(call)}"#
+  let terminal = #"{"type":"response.completed","response":{"status":"completed","output":[]}}"#
+  let provider = try OpenAIResponsesProvider(apiKey: "test", transport: nativeFixture([done, terminal]))
+  let (result, events) = try await drain(stream(Model("gpt-6.1-sol", provider: provider), messages: [.user("Read")]))
+  #expect(result.message.toolCalls == [.init(id: "call1", name: "read_pane", arguments: #"{"pane":"one"}"#)])
+  #expect(events.contains(.toolCall(result.message.toolCalls[0])))
+  #expect(result.message.nativeContent?.count == 1)
+
+  // A repeated terminal snapshot must not execute the same tool twice.
+  let repeated = #"{"type":"response.completed","response":{"status":"completed","output":[\#(call)]}}"#
+  let duplicateProvider = try OpenAIResponsesProvider(apiKey: "test", transport: nativeFixture([done, repeated]))
+  let (deduplicated, _) = try await drain(stream(Model("test", provider: duplicateProvider), messages: []))
+  #expect(deduplicated.message.toolCalls.count == 1)
+
+  let textDone = #"{"type":"response.output_item.done","output_index":0,"item":{"id":"message1","type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello"}]}}"#
+  let textProvider = try OpenAIResponsesProvider(apiKey: "test", transport: nativeFixture([textDone, terminal]))
+  let (text, textEvents) = try await drain(stream(Model("test", provider: textProvider), messages: []))
+  #expect(text.text == "Hello")
+  #expect(textEvents.filter { $0 == .textDelta("Hello") }.count == 1)
+
+  let interrupted = try OpenAIResponsesProvider(apiKey: "test", transport: nativeFixture([done]))
+  await #expect(throws: AIError.incompleteResponse) { try await drain(stream(Model("test", provider: interrupted), messages: [])) }
+}

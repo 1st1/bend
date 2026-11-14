@@ -5,24 +5,25 @@ private typealias ViewState<Value> = SwiftUI.State<Value>
 struct ChatSidebar: View {
     @ObservedObject var chat: TabChat
     @ObservedObject private var settings = AISettings.shared
+    var onLeft = false
     var close: () -> Void
     var settingsAction: () -> Void
     @FocusState private var inputFocused: Bool
     @ViewState private var scrollFollow = ChatScrollFollow()
 
-    init(chat: TabChat, close: @escaping () -> Void, settings: @escaping () -> Void) {
-        self.chat = chat; self.close = close; self.settingsAction = settings
+    init(chat: TabChat, onLeft: Bool = false, close: @escaping () -> Void, settings: @escaping () -> Void) {
+        self.onLeft = onLeft; self.chat = chat; self.close = close; self.settingsAction = settings
     }
     var body: some View {
         VStack(spacing: 0) {
-            ChatHeader(canStartNew: !chat.running && !chat.bubbles.isEmpty,
+            ChatHeader(onLeft: onLeft, canStartNew: !chat.running && !chat.bubbles.isEmpty,
                        newChat: { chat.clear() }, close: close)
                 .zIndex(1)
             if !settings.connected {
                 VStack(spacing: 16) {
                     Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 32)).foregroundStyle(.secondary)
                     Text("A conversation with your tab").font(.headline)
-                    Text("Connect Vercel Gateway to ask questions and work across all panes in this tab.")
+                    Text("Log in to an AI account to ask questions and work across all panes in this tab.")
                         .foregroundStyle(.secondary).multilineTextAlignment(.center)
                     Button("Connect in Settings…", action: settingsAction).buttonStyle(.borderedProminent)
                 }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -37,9 +38,10 @@ struct ChatSidebar: View {
             return .handled
         })
         .task {
+            inputFocused = true
+            if chat.modelID.isEmpty { chat.modelID = settings.modelID }
             await settings.restore()
             if chat.modelID.isEmpty { chat.modelID = settings.modelID }
-            inputFocused = true
         }
         .onChange(of: settings.modelID) { _, model in if chat.modelID.isEmpty { chat.modelID = model } }
         .onChange(of: settings.connected) { _, connected in if !connected { chat.stop() } }
@@ -160,13 +162,15 @@ struct ChatSidebar: View {
         // extends glass above its bounds to join a separate header.
         .background(PaneChromeBackground(cornerRadius: 12))
         .background(WindowDragArea(excluded: true))
-        .padding(.horizontal, Chrome.paneInset)
+        // The adjacent pane canvas supplies the inner gap.
+        .padding(onLeft ? .leading : .trailing, Chrome.paneInset)
         .padding(.bottom, Chrome.paneInset)
     }
 }
 
 // The fixed header stays above native transcript views during scrolling.
 struct ChatHeader: View {
+    var onLeft = false
     var canStartNew: Bool
     var newChat: () -> Void
     var close: () -> Void
@@ -174,9 +178,9 @@ struct ChatHeader: View {
     var body: some View {
         HStack(spacing: Chrome.sidebarControlSpacing) {
             Spacer(minLength: 0)
-            ChatHeaderButton(symbol: "square.and.pencil", label: "Clear chat", visibleTitle: "Clear chat", controlWidth: 100, enabled: canStartNew, trailingInset: 44, action: newChat)
+            ChatHeaderButton(symbol: "square.and.pencil", label: "Clear chat", visibleTitle: "Clear chat", controlWidth: 100, enabled: canStartNew, trailingInset: 44, onLeft: onLeft, action: newChat)
                 .frame(width: 100, height: 28)
-            ChatHeaderButton(symbol: "xmark", label: "Close chat", action: close)
+            ChatHeaderButton(symbol: "xmark", label: "Close chat", onLeft: onLeft, action: close)
                 .frame(width: 28, height: 28)
         }
         .buttonStyle(ChromeButtonStyle(prominent: true))
@@ -215,8 +219,20 @@ private struct ChatActivityRow: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(bubble.kind == .serverTool ? "Search activity" : "Arguments").font(.caption).foregroundStyle(.secondary)
-                    Text(bubble.text.isEmpty ? "{}" : bubble.text).font(.system(size: 11, design: .monospaced))
+                    if bubble.argumentFields.isEmpty {
+                        Text("No arguments").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 8) {
+                            ForEach(bubble.argumentFields.indices, id: \.self) { index in
+                                GridRow {
+                                    Text(bubble.argumentFields[index].label)
+                                        .foregroundStyle(.secondary)
+                                    Text(bubble.argumentFields[index].value)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                        }.font(.callout)
+                    }
                     if !bubble.detail.isEmpty {
                         Text(bubble.detailTruncated ? "Result preview — model received the full chunk" : "Result").font(.caption).foregroundStyle(.secondary)
                         Text(bubble.detail).font(.system(size: 11, design: .monospaced))

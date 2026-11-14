@@ -30,9 +30,9 @@ struct SidebarTabIcon: NSViewRepresentable {
             view.image = image
             view.contentTintColor = nil
         } else {
-            let address = controller?.address ?? page?.address ?? "browse://start"
-            let symbol = address.hasPrefix("browse://")
-                ? (address == "browse://history" ? "clock" : "square.grid.2x2") : "globe"
+            let address = controller?.address ?? page?.address ?? "bend://start"
+            let symbol = address.hasPrefix("bend://")
+                ? (address == "bend://history" ? "clock" : "square.grid.2x2") : "globe"
             view.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
             view.contentTintColor = .secondaryLabelColor
         }

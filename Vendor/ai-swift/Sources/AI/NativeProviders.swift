@@ -175,6 +175,7 @@ struct NativeAccumulator {
   var arguments: [Int: String] = [:]
   var openBlocks = Set<Int>()
   var searches: [String: ServerToolActivity] = [:]
+  var completedOutput: [Int: JSONValue] = [:]
   var usage = Usage()
   var reason: String?
   var started = false
@@ -189,7 +190,15 @@ struct NativeAccumulator {
       case "response.reasoning_summary_text.delta":
         let text = value["delta"]?.string ?? ""; message.reasoning += text; emit(.reasoningDelta(text))
       case "response.output_item.added", "response.output_item.done":
-        if let item = value["item"], item["type"] == .string("web_search_call") { updateSearch(item, emit: emit) }
+        if let item = value["item"] {
+          if type == "response.output_item.done" {
+            guard case .integer(let index) = value["output_index"], index >= 0, index <= 10000 else {
+              throw AIError.invalidResponse("Invalid completed output index")
+            }
+            completedOutput[Int(index)] = item
+          }
+          if item["type"] == .string("web_search_call") { updateSearch(item, emit: emit) }
+        }
       case "response.web_search_call.in_progress", "response.web_search_call.searching", "response.web_search_call.completed":
         if let id = value["item_id"]?.string {
           var activity = searches[id] ?? ServerToolActivity(id: id)
@@ -198,7 +207,15 @@ struct NativeAccumulator {
         }
       case "response.incomplete": throw AIError.incompleteResponse
       case "response.completed":
-        guard let response = value["response"], response["status"] == .string("completed"), case .array(let output) = response["output"] else { throw AIError.incompleteResponse }
+        guard let response = value["response"], response["status"] == .string("completed"), case .array(let terminalOutput) = response["output"] else { throw AIError.incompleteResponse }
+        // Direct account streams may omit output items from the terminal snapshot.
+        // Completed item events are authoritative; never execute added/partial items.
+        var output = completedOutput.keys.sorted().compactMap { completedOutput[$0] }
+        for item in terminalOutput {
+          if let id = item["id"]?.string, let index = output.firstIndex(where: { $0["id"]?.string == id }) {
+            output[index] = item
+          } else { output.append(item) }
+        }
         var finalText = ""
         var finalReasoning = ""
         for item in output {

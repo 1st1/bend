@@ -8,6 +8,8 @@ See [[lat.md/tests/address-entry-tests|Test coverage]].
 
 [Session.swift](../../Sources/BrowseCore/Session.swift) resolves web addresses, localhost development URLs, built-in start pages, and search queries. Explicit non-web schemes are rejected; search text uses the selected [[lat.md/architecture/address-entry#Search engine preference|search engine]].
 
+Native pages use `bend://start`, `bend://guide`, and `bend://history`. [[Sources/BrowseCore/Session.swift#AddressResolver#canonicalAddress]] accepts their legacy `browse://` aliases; page decoding migrates saved addresses and pinned destinations. Tool details display native page names rather than URLs.
+
 Bare hostnames containing dots use HTTPS, while localhost and loopback IPv4 addresses use HTTP. [BrowserStore.swift](../../Sources/Browse/BrowserStore.swift) also limits WebKit navigation to web URLs and internal blank documents.
 
 ## Location popup

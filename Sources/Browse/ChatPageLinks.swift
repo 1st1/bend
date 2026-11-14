@@ -22,6 +22,7 @@ import WebKit
     }
 
     static func open(_ url: URL, tabID: UUID, store: BrowserStore) async throws {
+        guard !store.isPrivate else { throw LinkError.unavailable }
         guard let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }) else {
             throw LinkError.unavailable
         }

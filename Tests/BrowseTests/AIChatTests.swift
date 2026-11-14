@@ -160,7 +160,7 @@ private struct GatewayFixtureTransport: HTTPTransport {
     await invalid.connect("rejected-secret")
     #expect(!invalid.connected && credential.value == nil)
     #expect(invalid.error?.contains("rejected-secret") == false)
-    #expect(invalid.error?.contains("rejected this key") == true)
+    #expect(invalid.error?.contains("rejected these credentials") == true)
 }
 
 // @lat: [[lat.md/tests/ai-tests#AI preferences and tool permissions]]
@@ -316,4 +316,55 @@ private struct GatewayFixtureTransport: HTTPTransport {
     #expect(requests[1].messages.first?.text.contains("changed.example") == true)
     #expect(requests[1].messages.first?.text.contains(paneID.uuidString) == false)
     #expect(requests.allSatisfy { $0.messages.filter { $0.role == .system }.count == 1 })
+}
+
+private struct EmptyChatProvider: Provider {
+    func stream(_ request: ModelRequest) -> AI.Stream<ModelResponse> {
+        AI.Stream { _ in ModelResponse(message: .assistant("")) }
+    }
+}
+
+// @lat: [[lat.md/tests/ai-tests#Empty answer reporting]]
+@Test @MainActor func aiEmptyAnswerReporting() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("EmptyChat-\(UUID())")
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    defer { store.stopWindow(); try? FileManager.default.removeItem(at: root) }
+    let chat = TabChat(store: store, tabID: store.selectedTab.id)
+    chat.input = "Hello"
+    chat.send(model: Model("empty", provider: EmptyChatProvider()))
+    for _ in 0..<200 where chat.running { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(!chat.running)
+    #expect(chat.error?.contains("without an answer") == true)
+    #expect(chat.bubbles.count == 1 && chat.bubbles[0].isUser)
+}
+
+
+// @lat: [[lat.md/tests/ai-tests#Private window exclusion]]
+@Test @MainActor func aiPrivateWindowExclusion() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("AIPrivate-\(UUID())")
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false, isPrivate: true)
+    defer { store.stopWindow(); try? FileManager.default.removeItem(at: root) }
+    store.showChat()
+    #expect(store.chats.isEmpty && store.openChats.isEmpty)
+    let script = ChatScript()
+    let chat = TabChat(store: store, tabID: store.selectedTab.id)
+    chat.input = "Private prompt"
+    chat.send(model: Model("test", provider: ChatProvider(script: script)))
+    await Task.yield()
+    #expect(await script.requests.isEmpty)
+    #expect(!chat.running && chat.bubbles.isEmpty && chat.history.isEmpty)
+    #expect(chat.error == "AI is unavailable in private windows.")
+    let tools = PaneChatTools(store: store, tabID: store.selectedTab.id)
+    #expect(tools.tools().isEmpty)
+    #expect(tools.paneContext() == .array([]))
+    for name in ["read_pane", "navigate_pane", "click_element", "fill_element"] {
+        await #expect(throws: Error.self) {
+            try await tools.execute(name, input: .init(pane: store.selectedTab.focusedPane.uuidString, url: "https://example.com", selector: "body", text: "test"))
+        }
+    }
+    await #expect(throws: Error.self) {
+        try await ChatPageLinks.open(URL(string: "https://example.com")!, tabID: store.selectedTab.id, store: store)
+    }
 }

@@ -4,16 +4,17 @@ import Testing
 @testable import Browse
 
 // @lat: [[lat.md/tests/ai-tests#Chat header controls]]
-@Test @MainActor func chatHeaderControls() async throws {
+@Test(arguments: [false, true]) @MainActor func chatHeaderControls(onLeft: Bool) async throws {
     _ = NSApplication.shared
     var newChats = 0
     var closes = 0
     let host = NSHostingView(rootView: HStack(spacing: 0) {
-        Color.clear
+        if !onLeft { Color.clear }
         VStack(spacing: 0) {
-            ChatHeader(canStartNew: true, newChat: { newChats += 1 }, close: { closes += 1 })
+            ChatHeader(onLeft: onLeft, canStartNew: true, newChat: { newChats += 1 }, close: { closes += 1 })
             Color.clear
         }.frame(width: 360)
+        if onLeft { Color.clear }
     }.ignoresSafeArea())
     host.safeAreaRegions = []
     let window = BrowseWindow(contentRect: NSRect(x: -10000, y: -10000, width: 900, height: 500),
@@ -41,8 +42,8 @@ import Testing
         let close = try #require(controls.first(where: { $0.toolTip == "Close chat" }))
         let new = try #require(controls.first(where: { $0.toolTip == "Clear chat" }))
         #expect(!close.isHidden && !new.isHidden)
-        #expect(close.frame.maxX == frame.bounds.maxX - 10)
-        #expect(new.frame.maxX == frame.bounds.maxX - 44)
+        #expect(close.frame.maxX == (onLeft ? 360 : frame.bounds.maxX) - 10)
+        #expect(new.frame.maxX == (onLeft ? 360 : frame.bounds.maxX) - 44)
         #expect(close.frame.minX - new.frame.maxX == 6)
         #expect(new.title == "Clear chat" && new.frame.width == 100)
     }

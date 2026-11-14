@@ -48,7 +48,7 @@ final class BrowserWindows {
         return result
     }
 
-    private func create(id: String, fresh: Bool, show: Bool, isPrivate: Bool = false, address: String = "browse://start") -> BrowserWindowSession {
+    private func create(id: String, fresh: Bool, show: Bool, isPrivate: Bool = false, address: String = "bend://start") -> BrowserWindowSession {
         let store = id == "main" ? sharedStore : BrowserStore(
             sessionFile: root.appendingPathComponent("Windows/\(id).json"), sharedStore: sharedStore, isPrivate: isPrivate)
         if fresh {

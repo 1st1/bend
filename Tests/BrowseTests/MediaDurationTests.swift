@@ -18,8 +18,8 @@ import WebKit
     configuration.websiteDataStore = .nonPersistent()
     configuration.mediaTypesRequiringUserActionForPlayback = []
     let web = FocusWebView(frame: NSRect(x: 0, y: 0, width: 500, height: 400), configuration: configuration)
-    let page = PageController(address: "browse://start", webView: web)
-    let music = PageController(address: "browse://start")
+    let page = PageController(address: "bend://start", webView: web)
+    let music = PageController(address: "bend://start")
     let focus = MediaPlaybackFocus()
     focus.register(page.media); focus.register(music.media)
     let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 500, height: 400),
@@ -81,7 +81,7 @@ import WebKit
 // @lat: [[lat.md/tests/media-tests#Unknown media duration qualification]]
 @Test(arguments: [false, true]) @MainActor func unknownMediaDurationQualification(live: Bool) async throws {
     _ = NSApplication.shared
-    let page = PageController(address: "browse://start")
+    let page = PageController(address: "bend://start")
     defer { page.media.detach(); page.webView.stopLoading() }
     let web = page.webView
     web.loadHTMLString("""
@@ -114,7 +114,7 @@ import WebKit
 // @lat: [[lat.md/tests/media-tests#Media qualification lifecycle]]
 @Test @MainActor func mediaQualificationLifecycle() async throws {
     _ = NSApplication.shared
-    let page = PageController(address: "browse://start")
+    let page = PageController(address: "bend://start")
     defer { page.media.detach(); page.webView.stopLoading() }
     let web = page.webView
     // A controlled HTML media clock covers buffering and resource changes

@@ -20,7 +20,7 @@ import BrowseCore
     #expect(!store.sidebarTabs.contains { $0.id == original.id })
     #expect(store.existingController(for: original.focusedPane) == nil)
     store.editTab(original.id) { $0.pages[0].address = "https://example.com/message/42" }
-    store.newTab(address: "browse://guide")
+    store.newTab(address: "bend://guide")
     store.openFavorite(id)
     #expect(store.selectedTab.id == original.id)
     #expect(store.selectedTab.pages[0].address == "https://example.com/message/42")
@@ -59,12 +59,12 @@ import BrowseCore
     #expect(store.favorites.count == 9)
     store.removeFavorite(id)
     #expect(store.addFavorite(store.selectedTab.id) != nil)
-    for address in ["browse://history", "file:///tmp/page.html", "javascript:alert(1)", "https://user:secret@example.com/"] {
+    for address in ["bend://history", "file:///tmp/page.html", "javascript:alert(1)", "https://user:secret@example.com/"] {
         store.newTab(address: address)
         #expect(!store.canFavorite(store.selectedTab))
     }
     #expect(store.session.isValid)
-    let legacy = Data("{\"id\":\"\(UUID())\",\"address\":\"browse://start\"}".utf8)
+    let legacy = Data("{\"id\":\"\(UUID())\",\"address\":\"bend://start\"}".utf8)
     #expect(try JSONDecoder().decode(Page.self, from: legacy).favoriteID == nil)
     var oldSession = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(BrowserSession())) as? [String: Any])
     oldSession.removeValue(forKey: "favorites")

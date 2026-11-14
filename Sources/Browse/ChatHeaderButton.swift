@@ -8,6 +8,7 @@ struct ChatHeaderButton: NSViewRepresentable {
     var controlWidth: CGFloat = 28
     var enabled = true
     var trailingInset: CGFloat = 10
+    var onLeft = false
     let action: () -> Void
     func makeNSView(context: Context) -> ChatHeaderButtonAnchor {
         let button = ChatHeaderNativeButton()
@@ -19,6 +20,7 @@ struct ChatHeaderButton: NSViewRepresentable {
         return ChatHeaderButtonAnchor(button: button)
     }
     func updateNSView(_ anchor: ChatHeaderButtonAnchor, context: Context) {
+        anchor.onLeft = onLeft
         anchor.trailingInset = trailingInset
         anchor.controlWidth = controlWidth
         let button = anchor.button
@@ -73,6 +75,7 @@ final class ChatHeaderNativeButton: NSButton {
 final class ChatHeaderButtonAnchor: NSView {
     let button: ChatHeaderNativeButton
     var trailingInset: CGFloat = 10
+    var onLeft = false
     var controlWidth: CGFloat = 28
     init(button: ChatHeaderNativeButton) { self.button = button; super.init(frame: .zero) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -92,10 +95,9 @@ final class ChatHeaderButtonAnchor: NSView {
     func placeButton() {
         guard let frameView = window?.contentView?.superview else { button.removeFromSuperview(); return }
         if button.superview !== frameView { frameView.addSubview(button, positioned: .above, relativeTo: nil) }
-        // Ancestor transforms during the sidebar transition do not trigger an
-        // anchor frame change. The chat is always window-trailing, so pin the
-        // controls to the window rather than caching an intermediate conversion.
-        button.frame = NSRect(x: frameView.bounds.maxX - trailingInset - controlWidth,
+        // Pin to the configured chat edge, independent of transition transforms.
+        let rightEdge = onLeft ? frameView.bounds.minX + 360 : frameView.bounds.maxX
+        button.frame = NSRect(x: rightEdge - trailingInset - controlWidth,
                               y: frameView.bounds.maxY - Chrome.headerCenterY - 14,
                               width: controlWidth, height: 28)
         button.isHidden = isHiddenOrHasHiddenAncestor

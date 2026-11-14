@@ -4,6 +4,11 @@ import BrowseCore
 import AI
 import Combine
 
+struct ChatArgumentField {
+    let label: String
+    let value: String
+}
+
 struct ChatBubble: Identifiable {
     let id = UUID()
     let isUser: Bool
@@ -13,6 +18,7 @@ struct ChatBubble: Identifiable {
     var title = ""
     var detail = ""
     var argumentSummary = ""
+    var argumentFields: [ChatArgumentField] = []
     var sources: [SearchSource] = []
     var detailTruncated = false
     var state = "Running"
@@ -35,6 +41,7 @@ struct ChatBubble: Identifiable {
     private(set) var history: [Message] = []
     private let settings: AISettings
     private var connectionObservation: AnyCancellable?
+    private var accountObservation: AnyCancellable?
     private var task: Task<Void, Never>?
     private var run: AI.Stream<AgentResult>?
 
@@ -42,13 +49,14 @@ struct ChatBubble: Identifiable {
         self.store = store; self.tabID = tabID
         self.settings = settings
         modelID = settings.modelID
+        accountObservation = settings.$connectionGeneration.dropFirst().sink { [weak self] _ in self?.stop(); self?.modelID = "" }
         connectionObservation = settings.$connected.removeDuplicates().dropFirst().sink { [weak self] connected in
             if !connected { self?.stop() }
         }
     }
 
     func openLink(_ url: URL) async {
-        guard let store else { return }
+        guard let store, !store.isPrivate else { return }
         AIDiagnostics.shared.record("link.clicked", tab: tabID, fields: ["scheme": url.scheme ?? "", "host": url.host ?? ""])
         do {
             try await ChatPageLinks.open(url, tabID: tabID, store: store)
@@ -62,6 +70,10 @@ struct ChatBubble: Identifiable {
     }
 
     func send(model override: Model? = nil) {
+        guard let store, !store.isPrivate else {
+            error = "AI is unavailable in private windows."
+            return
+        }
         let prompt = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !running, !prompt.isEmpty else { return }
         do {
@@ -90,6 +102,9 @@ struct ChatBubble: Identifiable {
                         self.consume(event)
                     }
                     let result = try await run.result
+                    guard !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        throw AIError.configuration("The model finished without an answer. Please retry or choose another model.")
+                    }
                     self?.history = Array(result.messages.dropFirst())
                     AIDiagnostics.shared.record("run.finished", tab: self?.tabID)
                 } catch {
@@ -114,6 +129,12 @@ struct ChatBubble: Identifiable {
     // @lat: [[lat.md/architecture/ai#Streaming transcript]]
     func consume(_ event: AI.Event) {
         switch event {
+        case .streamEnd(let response):
+            AIDiagnostics.shared.record("model.finished", tab: tabID, fields: [
+                "textCharacters": String(response.text.count),
+                "reasoningCharacters": String(response.message.reasoning.count),
+                "toolCalls": String(response.message.toolCalls.count),
+                "finishReason": response.finishReason ?? ""])
         case .stepStart:
             thinkingText = ""
         case .textDelta(let text):
@@ -170,10 +191,11 @@ struct ChatBubble: Identifiable {
         case .toolCall(let call):
             bubbles.append(ChatBubble(isUser: false, text: call.arguments, kind: .tool, toolID: call.id,
                                       title: AIPaneTool(rawValue: call.name)?.title ?? call.name))
+            bubbles[bubbles.count - 1].argumentFields = argumentFields(call.arguments)
             if call.name == "read_pane" {
                 let args = try? JSONDecoder().decode(PaneChatTools.Input.self, from: Data(call.arguments.utf8))
                 let chunk = args?.cursor?.split(separator: ":").last.flatMap { Int($0) }.map { $0 + 1 } ?? 1
-                bubbles[bubbles.count - 1].argumentSummary = "chunk \(chunk)"
+                bubbles[bubbles.count - 1].argumentSummary = "part \(chunk)"
             }
             status = "Using \(call.name)…"
             AIDiagnostics.shared.record("tool.called", tab: tabID, fields: ["name": call.name, "call": call.id])
@@ -193,6 +215,42 @@ struct ChatBubble: Identifiable {
         }
     }
 
+    func argumentFields(_ arguments: String) -> [ChatArgumentField] {
+        guard let data = arguments.data(using: .utf8),
+              let values = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return [ChatArgumentField(label: "Arguments", value: "Unable to display arguments")]
+        }
+        let order = ["pane", "url", "query", "cursor", "selector", "text"]
+        return values.keys.sorted {
+            let a = order.firstIndex(of: $0) ?? order.count
+            let b = order.firstIndex(of: $1) ?? order.count
+            return a == b ? $0 < $1 : a < b
+        }.map { key in
+            let value = values[key]!
+            if key == "pane" {
+                let page = store?.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID })?
+                    .pages.first(where: { $0.id.uuidString.lowercased() == (value as? String)?.lowercased() })
+                let controller = page.flatMap { store?.existingController(for: $0.id) }
+                if let address = page?.address, let title = AddressResolver.nativePageTitle(address) {
+                    return ChatArgumentField(label: "Page", value: title)
+                }
+                let title = controller?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return ChatArgumentField(label: "Page", value: title.isEmpty ? (page?.address ?? "Unavailable page") : title)
+            }
+            if key == "cursor" {
+                let part = (value as? String)?.split(separator: ":").last.flatMap { Int($0) }
+                return ChatArgumentField(label: "Read", value: part.map { "Part \($0 + 1)" } ?? "Next part")
+            }
+            let labels = ["url": "URL", "query": "Search", "selector": "Element", "text": "Text"]
+            let text: String
+            if let string = value as? String { text = string }
+            else if let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed, .sortedKeys]),
+                    let string = String(data: data, encoding: .utf8) { text = string }
+            else { text = String(describing: value) }
+            return ChatArgumentField(label: labels[key] ?? key.capitalized, value: text)
+        }
+    }
+
     func stop() { run?.cancel(); task?.cancel() }
     func clear() { guard !running else { return }; history = []; bubbles = []; thinkingText = ""; thinkingSummary = ""; thinkingSummaryBeforeBubbleID = nil; error = nil; modelID = settings.modelID }
 
@@ -209,7 +267,7 @@ struct ChatBubble: Identifiable {
     }
 
     func paneContext() -> JSONValue {
-        guard let tab = store?.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }) else { return .array([]) }
+        guard store?.isPrivate == false, let tab = store?.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }) else { return .array([]) }
         return .array(tab.pages.map { page in
             let controller = store?.existingController(for: page.id)
             let address = controller?.address ?? page.address
@@ -231,7 +289,8 @@ struct ChatBubble: Identifiable {
         var text: String?
     }
     func tools() -> [Tool] {
-        [tool("read_pane", "Read a stable main-frame snapshot in chunks of 24000 characters and 100 elements/references. When has_more is true, call again with the same pane and returned next_cursor. Omit cursor to start a fresh read. Read all relevant chunks before summarizing; excludes input values.", fields: ["pane"]),
+        guard store?.isPrivate == false else { return [] }
+        return [tool("read_pane", "Read a stable main-frame snapshot in chunks of 24000 characters and 100 elements/references. When has_more is true, call again with the same pane and returned next_cursor. Omit cursor to start a fresh read. Read all relevant chunks before summarizing; excludes input values.", fields: ["pane"]),
          tool("navigate_pane", "Navigate a pane to an HTTP or HTTPS URL when requested by the user.", fields: ["pane", "url"]),
          tool("click_element", "Click one element using a CSS selector observed in read_pane. Re-read afterward.", fields: ["pane", "selector"]),
          tool("fill_element", "Fill an ordinary text input using an observed CSS selector; does not submit. Password and payment fields are excluded.", fields: ["pane", "selector", "text"])].filter { settings.isToolEnabled($0.definition.name) }
@@ -259,6 +318,7 @@ struct ChatBubble: Identifiable {
     }
     func execute(_ name: String, input: Input) async throws -> JSONValue {
         try Task.checkCancellation()
+        guard store?.isPrivate == false else { throw AIError.configuration("AI is unavailable in private windows.") }
         guard settings.isToolEnabled(name) else { throw AIError.configuration("This tool is disabled in Settings → AI.") }
         guard let store, let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }) else {
             throw AIError.configuration("This tab is closed.")
@@ -394,7 +454,10 @@ private struct PageReadRange: Decodable {
     var text_end: Int?
     var chunk: Int?
     var summary: String {
-        if let start = text_start, let end = text_end { return "chars \(start.formatted())–\(end.formatted())" }
-        return "metadata · chunk \(chunk ?? 1)"
+        if let start = text_start, let end = text_end {
+            if start == 1 { return "Page text · \(end.formatted()) characters" }
+            return "Page text · characters \(start.formatted())–\(end.formatted())"
+        }
+        return "Links & controls · part \(chunk ?? 1)"
     }
 }

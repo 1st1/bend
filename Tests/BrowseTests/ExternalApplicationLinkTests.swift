@@ -50,7 +50,7 @@ import WebKit
     }
     #expect(opened.count == 4)
     for blocked in ["https://example.com", "http://example.com", "about:blank", "file:///tmp/test.html",
-                    "data:text/html,test", "javascript:alert(1)", "blob:https://example.com/id", "browse://start", "applewebdata://id/page", "webkit-extension://id/page", "safari-web-extension://id/page"] {
+                    "data:text/html,test", "javascript:alert(1)", "blob:https://example.com/id", "bend://start", "applewebdata://id/page", "webkit-extension://id/page", "safari-web-extension://id/page"] {
         #expect(links.request(URL(string: blocked)!, source: source, in: window) == nil)
     }
     available = false
@@ -108,7 +108,7 @@ import WebKit
         if case .open(_, let source) = prompt { origins.append(source) }
         return true
     }, open: { url, _ in opened.append(url) })
-    let controller = PageController(address: "browse://start", externalApplications: links) {
+    let controller = PageController(address: "bend://start", externalApplications: links) {
         $0.preferences.javaScriptCanOpenWindowsAutomatically = true
     }
     window.contentView = controller.webView

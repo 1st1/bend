@@ -144,15 +144,15 @@ import Testing
         windowNumber: window.windowNumber, context: nil, characters: "private-input", charactersIgnoringModifiers: "private-input",
         isARepeat: false, keyCode: 0))
     InputDiagnostics.record(.application, event: key)
-    let controller = PageController(address: "browse://start", paneID: firstID) { $0.websiteDataStore = .nonPersistent() }
+    let controller = PageController(address: "bend://start", paneID: firstID) { $0.websiteDataStore = .nonPersistent() }
     let originalWeb = controller.webView
     let replacementConfiguration = WKWebViewConfiguration()
     replacementConfiguration.websiteDataStore = .nonPersistent()
     // Exercise the actual replacement path without loading external content.
-    controller.navigateExtension(URL(string: "browse://start")!, configuration: replacementConfiguration)
+    controller.navigateExtension(URL(string: "bend://start")!, configuration: replacementConfiguration)
     #expect(controller.webView !== originalWeb)
     #expect(controller.webView.diagnosticPaneID == firstID)
-    controller.navigate("browse://start")
+    controller.navigate("bend://start")
     #expect(controller.webView.diagnosticPaneID == firstID)
     InputDiagnostics.flush()
     let inputs = try traceRows(root, "events")

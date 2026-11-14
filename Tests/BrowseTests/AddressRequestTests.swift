@@ -270,7 +270,7 @@ import BrowseCore
     #expect(!store.cancelInitialAddressEntry(for: split))
     #expect(store.selectedTab.pages.count == 2)
     let newPane = store.selectedTab.focusedPane
-    store.controller(for: store.selectedTab.pages.last!).navigate("browse://guide")
+    store.controller(for: store.selectedTab.pages.last!).navigate("bend://guide")
     #expect(!store.cancelInitialAddressEntry(for: newPane))
     store.newTab(address: "https://example.com")
     #expect(!store.cancelInitialAddressEntry(for: store.selectedTab.focusedPane))
@@ -382,10 +382,10 @@ import BrowseCore
     let panel = try popup()
     let content = try #require(panel.contentView)
     let input = try #require(fields(content).first { $0.isEditable })
-    input.stringValue = "browse://guide"
+    input.stringValue = "bend://guide"
     #expect(input.sendAction(try #require(input.action), to: input.target))
     #expect(!panel.isVisible)
-    #expect(store.controller(for: store.selectedTab.pages[0]).address == "browse://guide")
+    #expect(store.controller(for: store.selectedTab.pages[0]).address == "bend://guide")
     try command("Open Location…")
     try escape(try popup())
     #expect(store.session.selectedTab == submitted && store.session.workspaces[0].tabs.count == 3)

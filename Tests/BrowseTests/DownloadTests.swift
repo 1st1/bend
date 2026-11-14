@@ -249,7 +249,7 @@ import WebKit
     for (index, visible) in [true, false, false, false, true].enumerated() {
         store.sidebarVisible = visible
         if index == 2 { store.toggleZoom(store.selectedTab.pages.last!.id) }
-        if index == 3 { store.newTab(address: "browse://guide") }
+        if index == 3 { store.newTab(address: "bend://guide") }
         for _ in 0..<6 {
             context.window.contentView?.layoutSubtreeIfNeeded()
             try await Task.sleep(for: .milliseconds(40))
@@ -315,7 +315,7 @@ import WebKit
     }
     // A later selection must not be stolen when the download tab disappears.
     source.onNewLink?(server.url("/slow").absoluteString, false, true)
-    store.newTab(address: "browse://guide")
+    store.newTab(address: "bend://guide")
     let selectedElsewhere = store.selectedTab.id
     try await downloadWait { store.downloads.items.count == 3 }
     #expect(store.selectedTab.id == selectedElsewhere)

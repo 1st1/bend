@@ -244,7 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let tab = store.selectedTab
         let favorite = store.favorite(for: tab)
         return [
-            PopupCommand(id: "chat", title: "Chat", detail: "Chat with the panes in this tab", icon: "bubble.left.and.bubble.right") { store.showChat() },
+            PopupCommand(id: "chat", title: "Chat", detail: store.isPrivate ? "Unavailable in private windows" : "Chat with the panes in this tab", icon: "bubble.left.and.bubble.right", isEnabled: !store.isPrivate) { store.showChat() },
             PopupCommand(id: "favorite", title: favorite == nil ? "Add Tab to Favorites" : "Remove Tab from Favorites",
                 detail: "Save the active pane’s website", icon: "star", isEnabled: favorite != nil || store.canFavorite(tab)) {
                     if let favorite { store.removeFavorite(favorite.id) } else { store.requestFavorite(tab.id) }
