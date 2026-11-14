@@ -67,6 +67,7 @@ final class SettingsWindowController {
 enum SettingsSection: String, CaseIterable, Identifiable {
     case ui = "UI"
     case search = "Search"
+    case ai = "AI"
     case websites = "Websites"
     case privacy = "Privacy"
     case extensions = "Extensions"
@@ -77,6 +78,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .ui: "slider.horizontal.3"
         case .search: "magnifyingglass"
+        case .ai: "sparkles"
         case .websites: "globe"
         case .privacy: "hand.raised.fill"
         case .extensions: "puzzlepiece.extension.fill"
@@ -87,6 +89,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .ui: .blue
         case .search: .orange
+        case .ai: .indigo
         case .websites: .teal
         case .privacy: .green
         case .extensions: .purple
@@ -133,6 +136,8 @@ struct BrowserSettingsView: View {
                     UISettingsView(store: store)
                 case .search:
                     SearchSettingsView(store: store)
+                case .ai:
+                    AISettingsView()
                 case .websites:
                     WebsiteSettingsView(settings: store.websiteSettings)
                 case .privacy:
@@ -274,6 +279,7 @@ private struct SettingsScrollEdge: ViewModifier {
 }
 
 private struct DevelopmentSettingsView: View {
+    @ObservedObject private var aiDebugging = AIDiagnostics.shared
     @AppStorage(InputDiagnostics.enabledPreferenceKey) private var loggingEnabled = false
 
     var body: some View {
@@ -284,6 +290,16 @@ private struct DevelopmentSettingsView: View {
                 Text("Diagnostics")
             } footer: {
                 Text("Records mouse event routing and pane activity in separate logs, each rotating at 500 KiB. Typed text and page content are excluded.")
+            }
+            Section {
+                Toggle("AI debugging", isOn: $aiDebugging.enabled)
+                HStack {
+                    Button("Show Logs in Finder") { aiDebugging.reveal() }
+                    Button("Clear AI Logs") { aiDebugging.clear() }
+                }
+                if let error = aiDebugging.error { Text(error).foregroundStyle(.orange) }
+            } footer: {
+                Text("Records local AI run, tool, and citation-routing events, including page URL paths and selectors. URL query values, credentials, prompts, and page text are excluded. Two rotating files retain up to 1 MiB. Nothing is uploaded. Enable, reproduce the issue, then open the logs.")
             }
         }
         .formStyle(.grouped)

@@ -1,6 +1,6 @@
 # Settings
 
-Application preferences and per-website settings, storage, and zoom.
+Application preferences and per-website settings, storage, and zoom. The AI section configures [[lat.md/architecture/ai#Gateway connection|Vercel Gateway authentication]].
 
 See [[lat.md/tests/settings-tests|Test coverage]].
 

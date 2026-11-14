@@ -29,7 +29,7 @@ import Testing
     func command(_ id: String) throws -> PopupCommand {
         try #require(delegate.popupCommands().first { $0.id == id })
     }
-    #expect(delegate.popupCommands().count == 11)
+    #expect(delegate.popupCommands().count == 12)
     try command("favorite").perform()
     #expect(store.favorite(for: store.selectedTab) != nil)
     #expect(try command("favorite").title == "Remove Tab from Favorites")
@@ -72,7 +72,7 @@ import Testing
     let content = try #require(panel.contentView)
     let input = try #require(descendants(NSTextField.self, content).first { $0.isEditable })
     let table = try #require(descendants(NSTableView.self, content).first)
-    #expect(table.numberOfRows == 11 && input.stringValue.isEmpty)
+    #expect(table.numberOfRows == 12 && input.stringValue.isEmpty)
     input.stringValue = "sidebar"
     context.addressPanel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: input))
     #expect(table.numberOfRows == 1)

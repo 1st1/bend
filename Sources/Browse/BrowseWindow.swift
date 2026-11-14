@@ -22,7 +22,24 @@ class BrowseWindow: NSWindow {
         return true
     }
 
+    private weak var chatHeaderPress: ChatHeaderNativeButton?
     override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown,
+           let button = contentView?.superview?.subviews.compactMap({ $0 as? ChatHeaderNativeButton }).last(where: {
+               !$0.isHiddenOrHasHiddenAncestor && $0.bounds.contains($0.convert(event.locationInWindow, from: nil))
+           }) {
+            chatHeaderPress = button
+            button.mouseDown(with: event)
+            return
+        }
+        if let button = chatHeaderPress {
+            if event.type == .leftMouseDragged { button.mouseDragged(with: event); return }
+            if event.type == .leftMouseUp {
+                chatHeaderPress = nil
+                button.mouseUp(with: event)
+                return
+            }
+        }
         InputDiagnostics.record(.window, event: event)
         switch event.type {
         case .leftMouseDown:

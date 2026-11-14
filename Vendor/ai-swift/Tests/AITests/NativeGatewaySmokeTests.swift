@@ -1,0 +1,26 @@
+import Foundation
+import Testing
+@testable import AI
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["AI_NATIVE_GATEWAY_SMOKE"] == "1"))
+func liveNativeGatewaySearch() async throws {
+  let key = try #require(ProcessInfo.processInfo.environment["AI_GATEWAY_API_KEY"])
+  for id in (ProcessInfo.processInfo.environment["AI_SMOKE_MODEL"].map { [$0] } ?? ["anthropic/claude-sonnet-4.5", "openai/gpt-5.4-mini"]) {
+    let model = try Model.gateway(id, apiKey: key)
+    let agent = try Agent(tools: [Tool(name: "echo_test", description: "Echo a public test value", parameters: emptySchema) { _, _ in .string("ok") }], maxSteps: 5)
+    let run = agent.run(model, messages: [.user("Search the web once for the official Swift programming language website, then call echo_test, then answer with its URL in one sentence.")], options: .init(maxCompletionTokens: 2048, gatewayWebSearch: true))
+    var sawQuery = false; var sawSource = false
+    for try await event in run {
+      if case .serverToolActivity(let activity) = event {
+        sawQuery = sawQuery || !activity.query.isEmpty
+        sawSource = sawSource || !activity.sources.isEmpty
+      }
+      if case .source = event { sawSource = true }
+    }
+    let result = try await run.result
+    #expect(!result.output.isEmpty)
+    #expect(sawQuery && sawSource, "Missing search details for \(id)")
+    #expect(result.messages.contains { $0.toolResults.contains { $0.name == "echo_test" } })
+    print("Native Gateway smoke passed: \(id), steps=\(result.steps)")
+  }
+}

@@ -35,3 +35,4 @@ lat check
 - [[commands-tests|Command panel]] — Command discovery, validation, and execution in the command popup.
 - [[link-navigation-tests|Link navigation]] — Modified clicks, link context menus, and destination previews.
 - [[extension-hosting|Extensions]] — Lifecycle, compatibility, catalog, diagnostics, and updates.
+- [[ai-tests|Native AI chat]] — Streaming, conversation isolation, Gateway connection, and pane tool boundaries.

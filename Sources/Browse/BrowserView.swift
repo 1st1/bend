@@ -38,7 +38,16 @@ struct BrowserView: View {
                 }
             }
             if store.sidebarVisible && store.sidebarSide == .right { dockedSidebar }
+            if store.openChats.contains(store.selectedTab.id), let chat = store.chats[store.selectedTab.id] {
+                ChatSidebar(chat: chat, close: { store.openChats.remove(chat.tabID) },
+                    settings: { store.onSettingsRequested?(.ai) })
+                    .id(chat.tabID)
+                    .frame(width: 360)
+                    .background(WindowDragArea(excluded: true))
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.openChats.contains(store.selectedTab.id))
         .onChange(of: store.sidebarSide) { _, _ in store.sidebarFloating = false }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.sidebarVisible)
         .overlay(alignment: store.sidebarSide == .left ? .topLeading : .topTrailing) {

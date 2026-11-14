@@ -6,7 +6,25 @@ import WebKitFindSupport
 
 @MainActor
 final class BrowserStore: ObservableObject {
-    @Published var session: BrowserSession
+    @Published var session: BrowserSession {
+        didSet { pruneChats() }
+    }
+    @Published var chats: [UUID: TabChat] = [:]
+    @Published var openChats: Set<UUID> = []
+
+    func showChat() {
+        let id = selectedTab.id
+        if chats[id] == nil { chats[id] = TabChat(store: self, tabID: id) }
+        openChats.insert(id)
+    }
+
+    private func pruneChats() {
+        let ids = Set(session.workspaces.flatMap(\.tabs).map(\.id))
+        for id in Array(chats.keys) where !ids.contains(id) {
+            chats.removeValue(forKey: id)?.stop()
+            openChats.remove(id)
+        }
+    }
     @Published var favoriteCustomization: FavoriteCustomizationRequest?
     @Published var sidebarVisible = true {
         didSet { if sidebarVisible { sidebarFloating = false } }
@@ -1035,6 +1053,8 @@ final class BrowserStore: ObservableObject {
 
     func stopWindow() {
         windowStopped = true
+        for chat in chats.values { chat.stop() }
+        chats.removeAll(); openChats.removeAll()
         mediaCoordinator.removeAll()
         save()
         pendingSave?.cancel(); pendingSave = nil
