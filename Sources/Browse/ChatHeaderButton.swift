@@ -9,6 +9,8 @@ struct ChatHeaderButton: NSViewRepresentable {
     var enabled = true
     var trailingInset: CGFloat = 10
     var onLeft = false
+    var panelWidth: CGFloat = BrowserStore.defaultChatWidth
+    var topOffset: CGFloat = 0
     let action: () -> Void
     func makeNSView(context: Context) -> ChatHeaderButtonAnchor {
         let button = ChatHeaderNativeButton()
@@ -21,6 +23,8 @@ struct ChatHeaderButton: NSViewRepresentable {
     }
     func updateNSView(_ anchor: ChatHeaderButtonAnchor, context: Context) {
         anchor.onLeft = onLeft
+        anchor.panelWidth = panelWidth
+        anchor.topOffset = topOffset
         anchor.trailingInset = trailingInset
         anchor.controlWidth = controlWidth
         let button = anchor.button
@@ -76,6 +80,8 @@ final class ChatHeaderButtonAnchor: NSView {
     let button: ChatHeaderNativeButton
     var trailingInset: CGFloat = 10
     var onLeft = false
+    var panelWidth: CGFloat = BrowserStore.defaultChatWidth
+    var topOffset: CGFloat = 0
     var controlWidth: CGFloat = 28
     init(button: ChatHeaderNativeButton) { self.button = button; super.init(frame: .zero) }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -96,9 +102,9 @@ final class ChatHeaderButtonAnchor: NSView {
         guard let frameView = window?.contentView?.superview else { button.removeFromSuperview(); return }
         if button.superview !== frameView { frameView.addSubview(button, positioned: .above, relativeTo: nil) }
         // Pin to the configured chat edge, independent of transition transforms.
-        let rightEdge = onLeft ? frameView.bounds.minX + 360 : frameView.bounds.maxX
+        let rightEdge = onLeft ? frameView.bounds.minX + panelWidth : frameView.bounds.maxX
         button.frame = NSRect(x: rightEdge - trailingInset - controlWidth,
-                              y: frameView.bounds.maxY - Chrome.headerCenterY - 14,
+                              y: frameView.bounds.maxY - Chrome.headerCenterY - 14 - topOffset,
                               width: controlWidth, height: 28)
         button.isHidden = isHiddenOrHasHiddenAncestor
     }

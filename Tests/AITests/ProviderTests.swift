@@ -3,6 +3,7 @@ import Testing
 
 @testable import AI
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Provider behavior#Fragmented text and usage]]
 @Test func streamingTextUsageAndUnicodeAcrossByteBoundaries() async throws {
   let provider = try fixtureProvider(
     """
@@ -26,6 +27,7 @@ import Testing
   #expect(events.last == .streamEnd(response))
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Provider behavior#Interleaved tool calls]]
 @Test func interleavedToolCallsAreAssembledByIndex() async throws {
   let provider = try fixtureProvider(
     """
@@ -46,6 +48,7 @@ import Testing
   #expect(events.filter { if case .toolCallDelta = $0 { true } else { false } }.count == 4)
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Provider behavior#Missing finish reason]]
 @Test func rejectsTruncatedStreamEvenAfterText() async throws {
   for suffix in ["", "data: [DONE]\n\n"] {
     let provider = try fixtureProvider(
@@ -56,6 +59,7 @@ import Testing
   }
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Provider behavior#Invalid completion]]
 @Test func rejectsMissingDoneAndMalformedJSONAndInBandError() async throws {
   let bodies = [
     "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
@@ -70,6 +74,7 @@ import Testing
   }
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Provider behavior#HTTP error details]]
 @Test func preservesHTTPErrorStatusAndBody() async throws {
   let provider = try fixtureProvider("rate limited", status: 429)
   await #expect(throws: AIError.http(status: 429, body: "rate limited")) {
@@ -77,6 +82,7 @@ import Testing
   }
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Provider behavior#Request encoding]]
 @Test func requestEncodesToolsAndConversationWithoutNestedHistory() throws {
   let provider = try OpenAICompatibleProvider(
     baseURL: URL(string: "https://example.invalid/v1/")!, apiKey: "test-key")
@@ -110,6 +116,7 @@ import Testing
   #expect(messages[3]["content"] == .string("found"))
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Provider behavior#SSE line framing]]
 @Test func sseSupportsMultilineCRAndBOM() throws {
   var parser = SSEParser()
   let events = try parser.feed(
@@ -117,6 +124,7 @@ import Testing
   #expect(events == ["one\ntwo", "three"])
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Provider behavior#SSE input limits]]
 @Test func sseRejectsOversizedFramesAndInvalidUTF8() throws {
   var parser = SSEParser()
   #expect(throws: AIError.self) { try parser.feed(Data(repeating: 65, count: 1_048_577)) }
@@ -124,6 +132,7 @@ import Testing
   #expect(throws: AIError.self) { try other.feed(Data([0xFF, 10])) }
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Provider behavior#JSON value fidelity]]
 @Test func jsonRoundTripsNullAndLargeIntegers() throws {
   let value = JSONValue.object([
     "large": .integer(9_007_199_254_740_993), "null": .null,
@@ -132,6 +141,7 @@ import Testing
   #expect(try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(value)) == value)
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Gateway web search]]
 @Test func gatewayWebSearchEncodingAndReportedUsage() async throws {
   let provider = try OpenAICompatibleProvider(baseURL: URL(string: "https://example.invalid/v1")!)
   for enabled in [false, true] {

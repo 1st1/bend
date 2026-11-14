@@ -272,6 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             PopupCommand(id: "print", title: "Print…", detail: "Print the active page · ⌘P", icon: "printer",
                 isEnabled: printablePage != nil) { [weak self] in self?.printPage() },
             PopupCommand(id: "history", title: "View History", detail: "Browse visited pages · ⌘Y", icon: "clock") { [weak self] in self?.showHistory() },
+            PopupCommand(id: "chat-history", title: "Show AI Chat History", detail: "Restore conversations and their pane layouts", icon: "clock.arrow.circlepath", isEnabled: !store.isPrivate) { store.showChatHistory() },
             PopupCommand(id: "devTools", title: findSurface?.isDeveloperToolsVisible == true ? "Hide Developer Tools" : "Show Developer Tools",
                 detail: "Toggle dev tools / Web Inspector · ⇧⌘I", icon: "hammer", isEnabled: activeWebPage != nil) { [weak self] in self?.showWebInspector() }
         ]

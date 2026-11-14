@@ -3,6 +3,7 @@ import Testing
 
 @testable import AI
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Agent behavior#Tool round trip]]
 @Test func agentExecutesTypedToolAndContinuesConversation() async throws {
   struct Input: Decodable, Sendable { let city: String }
   let weather = Tool(
@@ -33,6 +34,7 @@ import Testing
   #expect(try JSONDecoder().decode(AgentResult.self, from: JSONEncoder().encode(result)) == result)
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Agent behavior#Direct streaming]]
 @Test func directStreamDoesNotExecuteTools() async throws {
   let call = ToolCall(id: "a", name: "anything", arguments: "{}")
   let script = Script([
@@ -44,6 +46,7 @@ import Testing
   #expect(await script.requests.count == 1)
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Agent behavior#Recoverable tool errors]]
 @Test func unknownMalformedAndThrowingToolsBecomeErrorResults() async throws {
   enum Failure: Error { case unavailable }
   let tool = Tool(name: "fail", description: "Fails", parameters: emptySchema) { _, _ in
@@ -70,6 +73,7 @@ import Testing
   #expect(results.map(\.callID) == ["1", "2", "3", "4"])
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Agent behavior#Subagent isolation]]
 @Test func subagentStreamsAndReturnsFinalTextWithSeparateHistory() async throws {
   let childScript = Script([
     .init(
@@ -124,6 +128,7 @@ actor ConcurrencyProbe {
   func leave() { active -= 1 }
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Agent behavior#Bounded concurrency]]
 @Test func toolConcurrencyIsBoundedAndHistoryKeepsCallOrder() async throws {
   let probe = ConcurrencyProbe()
   let tool = Tool(name: "work", description: "Work", parameters: emptySchema) { _, context in
@@ -150,6 +155,7 @@ actor Flag {
   func set() { value = true }
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Agent behavior#Step budget]]
 @Test func stepLimitPreventsFurtherRequestsAndToolSideEffects() async throws {
   let flag = Flag()
   let tool = Tool(name: "work", description: "Work", parameters: emptySchema) { _, _ in
@@ -171,6 +177,7 @@ actor Flag {
   #expect(await script.requests.count == 1)
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Agent behavior#Truncated tool completion]]
 @Test func refusesToolsFromTruncatedCompletion() async throws {
   let flag = Flag()
   let tool = Tool(name: "work", description: "Work", parameters: emptySchema) { _, _ in
@@ -193,6 +200,7 @@ actor Flag {
   #expect(await flag.value == false)
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Agent behavior#Invalid configuration]]
 @Test func validatesAgentConfiguration() throws {
   let tool = Tool(name: "same", description: "", parameters: emptySchema) { _, _ in .null }
   #expect(throws: AIError.self) { try Agent(tools: [tool, tool]) }
@@ -200,6 +208,7 @@ actor Flag {
   #expect(throws: AIError.self) { try Agent(maxConcurrentTools: 0) }
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Agent behavior#Nested cancellation]]
 @Test func cancellingParentCancelsSubagentTool() async throws {
   let started = AsyncStream<Void>.makeStream()
   let cancelled = Flag()

@@ -4,13 +4,15 @@ import SwiftUI
 // @lat: [[lat.md/architecture/sidebar#Sidebar sizing]]
 struct SidebarResizeHandle: NSViewRepresentable {
     let store: BrowserStore
+    var isChat = false
     func makeNSView(context: Context) -> SidebarResizeView { SidebarResizeView() }
-    func updateNSView(_ view: SidebarResizeView, context: Context) { view.store = store }
+    func updateNSView(_ view: SidebarResizeView, context: Context) { view.store = store; view.isChat = isChat }
 }
 
 @MainActor
 final class SidebarResizeView: NSView {
     weak var store: BrowserStore?
+    var isChat = false
     private var startX: CGFloat?
     private var startWidth: CGFloat = 0
     private var dragDirection: CGFloat = 1
@@ -28,16 +30,17 @@ final class SidebarResizeView: NSView {
     override func mouseDown(with event: NSEvent) {
         InputDiagnostics.record(.sidebarResize, event: event, view: self)
         InputDiagnostics.transition(.sidebarResizeLifetime, .started, view: self)
-        dragDirection = store?.sidebarSide == .right ? -1 : 1
+        dragDirection = (store?.sidebarSide == .right ? -1 : 1) * (isChat ? -1 : 1)
         startX = event.locationInWindow.x
-        startWidth = store?.sidebarWidth ?? BrowserStore.defaultSidebarWidth
+        startWidth = isChat ? (store?.chatWidth ?? BrowserStore.defaultChatWidth) : (store?.sidebarWidth ?? BrowserStore.defaultSidebarWidth)
     }
 
     override func mouseDragged(with event: NSEvent) {
         InputDiagnostics.record(.sidebarResize, event: event, view: self)
         guard let startX else { return }
         // Window coordinates stay fixed while this handle moves with the edge.
-        store?.resizeSidebar(to: startWidth + dragDirection * (event.locationInWindow.x - startX))
+        let width = startWidth + dragDirection * (event.locationInWindow.x - startX)
+        if isChat { store?.resizeChat(to: width) } else { store?.resizeSidebar(to: width) }
     }
 
     override func mouseUp(with event: NSEvent) {

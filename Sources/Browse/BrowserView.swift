@@ -74,11 +74,17 @@ struct BrowserView: View {
 
     @ViewBuilder private var chatSidebar: some View {
         if !store.isPrivate, store.openChats.contains(store.selectedTab.id), let chat = store.chats[store.selectedTab.id] {
-            ChatSidebar(chat: chat, onLeft: store.sidebarSide == .right,
+            ChatSidebar(chat: chat, panelWidth: store.chatWidth, onLeft: store.sidebarSide == .right,
                 close: { store.openChats.remove(chat.tabID) },
                 settings: { store.onSettingsRequested?(.ai) })
                 .id(chat.tabID)
-                .frame(width: 360)
+                .frame(width: store.chatWidth)
+                .overlay(alignment: store.sidebarSide == .right ? .trailing : .leading) {
+                    SidebarResizeHandle(store: store, isChat: true).frame(width: 8)
+                        .background(WindowDragArea(excluded: true))
+                        .offset(x: store.sidebarSide == .right ? 4 : -4)
+                }
+                .zIndex(1)
                 .background(WindowDragArea(excluded: true))
                 .transition(.move(edge: store.sidebarSide == .right ? .leading : .trailing).combined(with: .opacity))
         }
@@ -633,7 +639,9 @@ private struct BrowserPane: View {
                 Text(error).font(.system(size: 12)).foregroundStyle(Chrome.muted).multilineTextAlignment(.center)
                 Button("Try again") { controller.navigate(controller.address) }.buttonStyle(.bordered)
             }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if controller.address == "bend://history" {
+        } else if controller.address == "bend://chats" {
+                    ChatHistoryView(store: store, history: store.chatHistory)
+                } else if controller.address == "bend://history" {
             HistoryView(store: store, navigate: controller.navigate)
         } else if controller.isStartPage {
             StartPage()

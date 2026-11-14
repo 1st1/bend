@@ -5,21 +5,22 @@ private typealias ViewState<Value> = SwiftUI.State<Value>
 struct ChatSidebar: View {
     @ObservedObject var chat: TabChat
     @ObservedObject private var settings = AISettings.shared
+    var panelWidth: CGFloat = BrowserStore.defaultChatWidth
     var onLeft = false
     var close: () -> Void
     var settingsAction: () -> Void
     @FocusState private var inputFocused: Bool
     @ViewState private var scrollFollow = ChatScrollFollow()
 
-    init(chat: TabChat, onLeft: Bool = false, close: @escaping () -> Void, settings: @escaping () -> Void) {
-        self.onLeft = onLeft; self.chat = chat; self.close = close; self.settingsAction = settings
+    init(chat: TabChat, panelWidth: CGFloat = BrowserStore.defaultChatWidth, onLeft: Bool = false, close: @escaping () -> Void, settings: @escaping () -> Void) {
+        self.panelWidth = panelWidth; self.onLeft = onLeft; self.chat = chat; self.close = close; self.settingsAction = settings
     }
     var body: some View {
         VStack(spacing: 0) {
-            ChatHeader(onLeft: onLeft, canStartNew: !chat.running && !chat.bubbles.isEmpty,
+            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: !chat.running && !chat.bubbles.isEmpty,
                        newChat: { chat.clear() }, close: close)
                 .zIndex(1)
-            if !settings.connected {
+            if !settings.connected && chat.bubbles.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 32)).foregroundStyle(.secondary)
                     Text("A conversation with your tab").font(.headline)
@@ -171,6 +172,9 @@ struct ChatSidebar: View {
 // The fixed header stays above native transcript views during scrolling.
 struct ChatHeader: View {
     var onLeft = false
+    var panelWidth: CGFloat = BrowserStore.defaultChatWidth
+    private var buttonWidth: CGFloat { panelWidth < 240 ? 86 : 100 }
+    private var topOffset: CGFloat { onLeft && panelWidth < 330 ? 32 : 0 }
     var canStartNew: Bool
     var newChat: () -> Void
     var close: () -> Void
@@ -178,15 +182,16 @@ struct ChatHeader: View {
     var body: some View {
         HStack(spacing: Chrome.sidebarControlSpacing) {
             Spacer(minLength: 0)
-            ChatHeaderButton(symbol: "square.and.pencil", label: "Clear chat", visibleTitle: "Clear chat", controlWidth: 100, enabled: canStartNew, trailingInset: 44, onLeft: onLeft, action: newChat)
-                .frame(width: 100, height: 28)
-            ChatHeaderButton(symbol: "xmark", label: "Close chat", onLeft: onLeft, action: close)
-                .frame(width: 28, height: 28)
+            ChatHeaderButton(symbol: "square.and.pencil", label: "Clear chat", visibleTitle: "Clear chat", controlWidth: buttonWidth, enabled: canStartNew, trailingInset: buttonWidth + 16, onLeft: onLeft, panelWidth: panelWidth, topOffset: topOffset, action: newChat)
+                .frame(width: buttonWidth, height: 28)
+            ChatHeaderButton(symbol: "xmark", label: "Close chat", visibleTitle: "Close chat", controlWidth: buttonWidth, onLeft: onLeft, panelWidth: panelWidth, topOffset: topOffset, action: close)
+                .frame(width: buttonWidth, height: 28)
         }
         .buttonStyle(ChromeButtonStyle(prominent: true))
-        .padding(.leading, 18)
+        .padding(.leading, 10)
         .padding(.trailing, Chrome.sidebarHorizontalInset)
-        .frame(height: 2 * Chrome.headerCenterY)
+        .padding(.top, topOffset)
+        .frame(height: 2 * Chrome.headerCenterY + topOffset)
         .contentShape(Rectangle())
         .background(WindowDragArea(excluded: true))
     }

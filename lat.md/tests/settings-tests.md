@@ -30,7 +30,7 @@ Changing page zoom preserves an injected document marker and edited form content
 
 [BrowserWindowTests.swift](../../Tests/BrowseTests/BrowserWindowTests.swift) verifies Command-W closes the focused Settings window without changing browser panes, still closes a focused browser pane, and cancels a new tab from its address popup.
 
-The test dispatches real menu key equivalents with an explicit focused-window provider, avoiding dependence on desktop activation in a headless test host. The native Settings window hides the centered window title and keeps full-size content, with a transparent titlebar before content scrolls beneath the section heading.
+The test dispatches real menu key equivalents with an explicit focused-window provider, avoiding dependence on desktop activation in a headless test host. The test also checks that only the Close traffic-light button remains visible and fullscreen is disabled. The native Settings window hides the centered window title and keeps full-size content, with a transparent titlebar before content scrolls beneath the section heading.
 
 ## Settings section toolbar
 

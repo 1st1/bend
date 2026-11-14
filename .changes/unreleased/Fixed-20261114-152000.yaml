@@ -1,0 +1,3 @@
+kind: Fixed
+body: Prevent a crash when closing a tab with AI chat open while extensions are active.
+time: 2026-11-14T15:20:00-08:00

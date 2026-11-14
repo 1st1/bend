@@ -6,6 +6,7 @@ private func nativeFixture(_ events: [String]) -> FixtureTransport {
   FixtureTransport(chunks: events.flatMap { Array(("data: " + $0 + "\n\n").utf8).map { Data([$0]) } })
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Native Gateway adapters]]
 @Test func nativeGatewayAdapters() async throws {
   let anthropicEvents = [
     #"{"type":"message_start","message":{"usage":{"input_tokens":12}}}"#,
@@ -75,6 +76,7 @@ private func nativeFixture(_ events: [String]) -> FixtureTransport {
   #expect(try Model.gateway("google/test", apiKey: "test").provider is OpenAICompatibleProvider)
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Native stream completion]]
 @Test func nativeStreamCompletion() async throws {
   for api in [NativeGatewayWire.API.anthropic, .openai] {
     let wire = try NativeGatewayWire(api: api, apiKey: "test", baseURL: URL(string: "https://example.invalid/v1")!, transport: nativeFixture([#"{"type":"ping"}"#]))
@@ -87,6 +89,7 @@ private func nativeFixture(_ events: [String]) -> FixtureTransport {
   #expect(result.steps == 2 && result.output == "Done")
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Thinking summary options]]
 @Test func nativeThinkingOptions() throws {
   for (model, expected) in [("anthropic/claude-sonnet-5.5", "adaptive"), ("anthropic/claude-sonnet-4.6", "adaptive"), ("anthropic/claude-sonnet-4.5", "enabled"), ("anthropic/claude-sonnet-4-20250514", "enabled")] {
     let provider = try AnthropicMessagesProvider(apiKey: "test")
@@ -108,6 +111,7 @@ private func nativeFixture(_ events: [String]) -> FixtureTransport {
   }
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Responses completed item retention]]
 @Test func responsesCompletedItemRetention() async throws {
   let call = #"{"type":"function_call","id":"item1","call_id":"call1","name":"read_pane","arguments":"{\"pane\":\"one\"}","status":"completed"}"#
   let done = #"{"type":"response.output_item.done","output_index":0,"item":\#(call)}"#

@@ -4,13 +4,13 @@ import BrowseCore
 import AI
 import Combine
 
-struct ChatArgumentField {
+struct ChatArgumentField: Codable {
     let label: String
     let value: String
 }
 
-struct ChatBubble: Identifiable {
-    let id = UUID()
+struct ChatBubble: Identifiable, Codable {
+    var id = UUID()
     let isUser: Bool
     var text: String
     var kind: Kind = .text
@@ -22,15 +22,23 @@ struct ChatBubble: Identifiable {
     var sources: [SearchSource] = []
     var detailTruncated = false
     var state = "Running"
-    enum Kind { case text, tool, serverTool, reasoning }
+    enum Kind: String, Codable { case text, tool, serverTool, reasoning }
 }
 
 // @lat: [[lat.md/architecture/ai#Tab conversations]]
 @MainActor final class TabChat: ObservableObject {
+    private(set) var conversationID = UUID()
+    private var createdAt = Date()
+    private var updatedAt = Date()
+    private var generation = UUID()
+    private var pendingPersistence: Task<Void, Never>?
+    private var clearObservation: AnyCancellable?
+    private var deletionObservation: AnyCancellable?
+    private var savedTab: BrowserTab?
     let tabID: UUID
     weak var store: BrowserStore?
     @Published var bubbles: [ChatBubble] = []
-    @Published var input = ""
+    @Published var input = "" { didSet { if input != oldValue { updatedAt = Date(); schedulePersistence() } } }
     @Published var modelID = ""
     @Published private(set) var running = false
     @Published private(set) var status = ""
@@ -49,6 +57,15 @@ struct ChatBubble: Identifiable {
         self.store = store; self.tabID = tabID
         self.settings = settings
         modelID = settings.modelID
+        savedTab = store.session.workspaces.flatMap(\.tabs).first { $0.id == tabID }
+        clearObservation = store.chatHistory.clearRequests.sink { [weak self] cutoff in
+            guard let self, self.updatedAt >= cutoff else { return }
+            self.resetConversation()
+        }
+        deletionObservation = store.chatHistory.deletions.sink { [weak self] ids in
+            guard let self, ids.contains(self.conversationID) else { return }
+            self.resetConversation()
+        }
         accountObservation = settings.$connectionGeneration.dropFirst().sink { [weak self] _ in self?.stop(); self?.modelID = "" }
         connectionObservation = settings.$connected.removeDuplicates().dropFirst().sink { [weak self] connected in
             if !connected { self?.stop() }
@@ -88,6 +105,8 @@ struct ChatBubble: Identifiable {
             input = ""; error = nil; running = true; status = "Thinking…"
             thinkingText = ""; thinkingSummary = ""; thinkingSummaryBeforeBubbleID = nil
             bubbles.append(ChatBubble(isUser: true, text: prompt))
+            updatedAt = Date(); persist(); store.saveSoon()
+            let token = generation
             let responseStart = bubbles.count
             let messages = history + [.user(prompt)]
             let run = agent.run(model, messages: [.system(settings.systemPrompt)] + messages,
@@ -98,17 +117,18 @@ struct ChatBubble: Identifiable {
                 do {
                     for try await event in run {
                         try Task.checkCancellation()
-                        guard let self else { return }
+                        guard let self, self.generation == token else { return }
                         self.consume(event)
                     }
                     let result = try await run.result
                     guard !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                         throw AIError.configuration("The model finished without an answer. Please retry or choose another model.")
                     }
+                    guard self?.generation == token else { return }
                     self?.history = Array(result.messages.dropFirst())
                     AIDiagnostics.shared.record("run.finished", tab: self?.tabID)
                 } catch {
-                    if let self {
+                    if let self, self.generation == token {
                         // A failed run may have performed actions. Never replay its tool calls.
                         // Keep visible partial output as context without dangling tool messages.
                         AIDiagnostics.shared.record("run.failed", tab: self.tabID, fields: ["domain": (error as NSError).domain, "code": String((error as NSError).code), "cancelled": String(Task.isCancelled)])
@@ -117,17 +137,19 @@ struct ChatBubble: Identifiable {
                         self.error = Task.isCancelled ? "Response stopped." : AISettings.message(for: error)
                     }
                 }
-                guard let self else { return }
+                guard let self, self.generation == token else { return }
                 for index in self.bubbles.indices where (self.bubbles[index].kind == .tool || self.bubbles[index].kind == .serverTool) && self.bubbles[index].state == "Running" {
                     self.bubbles[index].state = "Stopped"
                 }
                 self.running = false; self.status = ""; self.run = nil; self.task = nil
+                self.updatedAt = Date(); self.persist()
             }
         } catch { self.error = AISettings.message(for: error) }
     }
 
     // @lat: [[lat.md/architecture/ai#Streaming transcript]]
     func consume(_ event: AI.Event) {
+        defer { updatedAt = Date(); schedulePersistence() }
         switch event {
         case .streamEnd(let response):
             AIDiagnostics.shared.record("model.finished", tab: tabID, fields: [
@@ -251,9 +273,47 @@ struct ChatBubble: Identifiable {
         }
     }
 
-    func stop() { run?.cancel(); task?.cancel() }
-    func clear() { guard !running else { return }; history = []; bubbles = []; thinkingText = ""; thinkingSummary = ""; thinkingSummaryBeforeBubbleID = nil; error = nil; modelID = settings.modelID }
+    private func schedulePersistence() {
+        guard pendingPersistence == nil else { return }
+        pendingPersistence = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(1)) } catch { return }
+            self?.pendingPersistence = nil
+            self?.persist()
+        }
+    }
 
+    func persist() {
+        guard let store, !store.isPrivate else { return }
+        pendingPersistence?.cancel(); pendingPersistence = nil
+        if let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }) {
+            savedTab = store.snapshot(tab)
+        }
+        guard let tab = savedTab, !bubbles.isEmpty || !input.isEmpty else { return }
+        store.chatHistory.save(SavedChat(id: conversationID, createdAt: createdAt, updatedAt: updatedAt,
+            tab: tab, bubbles: bubbles, modelID: modelID, draft: input,
+            thinkingSummary: thinkingSummary, thinkingSummaryBeforeBubbleID: thinkingSummaryBeforeBubbleID))
+    }
+
+    func restore(_ record: SavedChat) {
+        conversationID = record.id; createdAt = record.createdAt; updatedAt = record.updatedAt
+        savedTab = record.tab; bubbles = record.bubbles; modelID = record.modelID; input = record.draft
+        updatedAt = record.updatedAt
+        thinkingSummary = record.thinkingSummary; thinkingSummaryBeforeBubbleID = record.thinkingSummaryBeforeBubbleID
+        for i in bubbles.indices where bubbles[i].state == "Running" { bubbles[i].state = "Stopped" }
+        // Portable text context avoids replaying tool actions or expired provider state.
+        history = bubbles.filter { $0.kind == .text }.map { $0.isUser ? .user($0.text) : .assistant($0.text) }
+    }
+
+    func stop() { run?.cancel(); task?.cancel(); persist() }
+    private func resetConversation() {
+        generation = UUID(); run?.cancel(); task?.cancel(); pendingPersistence?.cancel(); pendingPersistence = nil
+        run = nil; task = nil; running = false; status = ""
+        conversationID = UUID(); createdAt = Date(); updatedAt = createdAt
+        history = []; bubbles = []; input = ""; thinkingText = ""; thinkingSummary = ""
+        thinkingSummaryBeforeBubbleID = nil; error = nil; modelID = settings.modelID
+        store?.saveSoon()
+    }
+    func clear() { guard !running else { return }; persist(); resetConversation() }
 
 }
 

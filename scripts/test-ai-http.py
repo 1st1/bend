@@ -63,7 +63,7 @@ if __name__ == "__main__":
     env = dict(os.environ, AI_HTTP_FIXTURE_URL=f"http://127.0.0.1:{server.server_port}")
     try:
         result = subprocess.run(
-            [env.get("SWIFT_EXECUTABLE", "swift"), "test", "--filter", "HTTPIntegration"]
+            [str(root / "scripts/test.sh"), "--filter", "HTTPIntegration"]
             + sys.argv[1:],
             cwd=root, env=env, timeout=180,
         )

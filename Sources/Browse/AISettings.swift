@@ -4,6 +4,19 @@ import AI
 
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
+enum AIConnection: String, CaseIterable, Identifiable {
+    case openai, openaiKey, anthropicKey, gateway
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .openai: "Login with OpenAI"
+        case .openaiKey: "OpenAI API Key"
+        case .anthropicKey: "Anthropic API Key"
+        case .gateway: "Vercel Gateway API Key"
+        }
+    }
+}
+
 struct GatewayModel: Decodable, Identifiable, Sendable {
     let id: String
     let name: String?
@@ -26,7 +39,7 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
 
     @Published private(set) var connected = false
     @Published private(set) var busy = false
-    @Published private(set) var connectionGeneration = 0
+    @Published private(set) var connectionGeneration = 0 { didSet { resetConnectionTest() } }
     @Published private(set) var accountEmails: [String: String] = [:]
     @Published private(set) var activeConnection = "gateway"
     @Published var vercelClientID: String { didSet { defaults.set(vercelClientID, forKey: "ai.vercel.clientID") } }
@@ -38,7 +51,7 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     @Published private(set) var models: [GatewayModel] = []
     @Published var error: String?
     @Published var modelID: String {
-        didSet { defaults.set(modelID, forKey: "ai.model") }
+        didSet { defaults.set(modelID, forKey: "ai.model"); if oldValue != modelID { resetConnectionTest() } }
     }
     @Published var webSearchEnabled: Bool {
         didSet { defaults.set(webSearchEnabled, forKey: "ai.webSearch") }
@@ -62,15 +75,21 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
         defaults.set(disabledTools.sorted(), forKey: "ai.disabledTools")
     }
 
+    private var directKeys: [String: String] = [:]
+    private let directCredentials: [String: any AICredentialStore]
     private var key: String?
     private var revision = 0
     private let transport: any HTTPTransport
     private let credential: any AICredentialStore
 
-    init(transport: any HTTPTransport = URLSessionTransport(), credential: any AICredentialStore = GatewayCredential(), defaults: UserDefaults = AppProfile.current.defaults, accounts: AIOAuthAccounts? = nil) {
+    init(transport: any HTTPTransport = URLSessionTransport(), credential: any AICredentialStore = GatewayCredential(), defaults: UserDefaults = AppProfile.current.defaults, accounts: AIOAuthAccounts? = nil, directCredentials: [String: any AICredentialStore]? = nil) {
+        self.directCredentials = directCredentials ?? [
+            "openaiKey": GatewayCredential(service: AppProfile.current.bundleIdentifier + ".ai-openai-key"),
+            "anthropicKey": GatewayCredential(service: AppProfile.current.bundleIdentifier + ".ai-anthropic-key")
+        ]
         self.defaults = defaults
         self.accounts = accounts ?? AIOAuthAccounts(transport: transport, defaults: defaults)
-        activeConnection = defaults.string(forKey: "ai.connection") ?? "gateway"
+        activeConnection = AIConnection(rawValue: defaults.string(forKey: "ai.connection") ?? "")?.rawValue ?? "gateway"
         vercelClientID = defaults.string(forKey: "ai.vercel.clientID") ?? ""
         vercelTeam = defaults.string(forKey: "ai.vercel.team") ?? ""
         webSearchEnabled = defaults.object(forKey: "ai.webSearch") as? Bool ?? true
@@ -95,7 +114,15 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
                 accountsRestored = true
                 updateAccounts()
             }
-            if activeConnection != "gateway" {
+            if isDirectKey(activeConnection) {
+                let connection = activeConnection
+                if directKeys[connection] == nil, let saved = try await directCredentials[connection]?.readAsync() {
+                    guard connectionGeneration == generation else { return }
+                    directKeys[connection] = saved
+                }
+                connected = directKeys[connection] != nil
+                if connected && models.isEmpty { await refreshModels() }
+            } else if activeConnection != "gateway" {
                 connected = accountEmails[activeConnection] != nil
                 if connected && models.isEmpty { await refreshModels() }
             } else if key == nil, let saved = try await credential.readAsync() {
@@ -131,12 +158,26 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     func cancelLogin() { loginTask?.cancel() }
 
     func selectConnection(_ value: String) async {
-        guard value == "gateway" || AIAccountProvider(rawValue: value) != nil else { return }
+        guard AIConnection(rawValue: value) != nil || value == "vercel" else { return }
+        revision += 1
         connectionGeneration += 1
+        let generation = connectionGeneration
+        error = nil
         activeConnection = value; defaults.set(value, forKey: "ai.connection")
         connected = value == "gateway" ? key != nil : accountEmails[value] != nil
         models = []; modelID = ""
-        if value == "gateway", key == nil, let saved = try? await credential.readAsync() { key = saved; connected = true }
+        if value == "gateway", key == nil, let saved = try? await credential.readAsync() {
+            guard connectionGeneration == generation else { return }
+            key = saved; connected = true
+        }
+        if isDirectKey(value) {
+            if directKeys[value] == nil, let saved = try? await directCredentials[value]?.readAsync() {
+                guard connectionGeneration == generation else { return }
+                directKeys[value] = saved
+            }
+            connected = directKeys[value] != nil
+        }
+        guard connectionGeneration == generation else { return }
         await refreshModels()
     }
 
@@ -150,6 +191,83 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
             let revoked = try await accounts.logout(provider)
             error = revoked ? nil : "Logged out locally. Remote logout could not be confirmed; remove Bend from your provider’s connected apps."
         } catch { self.error = error.localizedDescription }
+    }
+
+    private func isDirectKey(_ connection: String) -> Bool {
+        connection == "openaiKey" || connection == "anthropicKey"
+    }
+
+    func connectSelectedKey(_ input: String) async {
+        if activeConnection == "gateway" { await connect(input); return }
+        let connection = activeConnection
+        guard isDirectKey(connection), !busy else { return }
+        let candidate = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty, !candidate.contains(where: \.isWhitespace) else {
+            error = "Enter a valid API key."; return
+        }
+        busy = true; error = nil
+        let generation = connectionGeneration
+        defer { busy = false }
+        do {
+            let catalog = try await directModels(connection, key: candidate)
+            try Task.checkCancellation()
+            guard connectionGeneration == generation, activeConnection == connection else { return }
+            guard let storage = directCredentials[connection] else { throw AIError.configuration("Credential storage unavailable.") }
+            try storage.save(candidate)
+            directKeys[connection] = candidate
+            connectionGeneration += 1
+            connected = true; models = catalog
+            if !models.contains(where: { $0.id == modelID }) { modelID = models.first?.id ?? "" }
+        } catch { if connectionGeneration == generation { self.error = Self.message(for: error) } }
+    }
+
+    func disconnectSelectedKey() {
+        guard isDirectKey(activeConnection) else { disconnect(); return }
+        do {
+            try directCredentials[activeConnection]?.delete()
+            directKeys.removeValue(forKey: activeConnection)
+            connectionGeneration += 1
+            connected = false; models = []; modelID = ""; error = nil
+        } catch { self.error = "Could not remove the API key from Keychain." }
+    }
+
+    private func directModels(_ connection: String, key: String) async throws -> [GatewayModel] {
+        let anthropic = connection == "anthropicKey"
+        let base = anthropic ? "https://api.anthropic.com/v1/models" : "https://api.openai.com/v1/models"
+        struct Item: Decodable { let id: String; let display_name: String? }
+        struct Catalog: Decodable { let data: [Item]; let has_more: Bool?; let last_id: String? }
+        var models: [GatewayModel] = []
+        var cursor: String?
+        var seen = Set<String>()
+        repeat {
+            var components = URLComponents(string: base)!
+            if anthropic {
+                components.queryItems = [URLQueryItem(name: "limit", value: "100")]
+                if let cursor { components.queryItems?.append(URLQueryItem(name: "after_id", value: cursor)) }
+            }
+            var request = URLRequest(url: components.url!)
+            request.timeoutInterval = 30
+            if anthropic {
+                request.setValue(key, forHTTPHeaderField: "x-api-key")
+                request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+            } else { request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization") }
+            let catalog = try JSONDecoder().decode(Catalog.self, from: await responseData(request))
+            models += catalog.data.filter { item in
+                if anthropic { return item.id.hasPrefix("claude-") }
+                let id = item.id
+                let generation = Int(id.split(separator: "-").dropFirst().first?.split(separator: ".").first ?? "") ?? 0
+                let modernGPT = id.hasPrefix("gpt-") && generation >= 5
+                return (id.hasPrefix("gpt-4o") || id.hasPrefix("gpt-4.1") || modernGPT || id.hasPrefix("o3") || id.hasPrefix("o4"))
+                    && !["audio", "realtime", "transcribe", "tts", "image", "instruct", "search", "deep-research"].contains(where: id.contains)
+            }.map { GatewayModel(id: $0.id, name: $0.display_name, type: "language", tags: ["tool-use"]) }
+            if anthropic && catalog.has_more == true {
+                guard let next = catalog.last_id, seen.insert(next).inserted, seen.count < 100 else {
+                    throw AIError.invalidResponse("Invalid model pagination")
+                }
+                cursor = next
+            } else { cursor = nil }
+        } while cursor != nil
+        return models
     }
 
     func connect(_ input: String) async {
@@ -183,14 +301,71 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
             try credential.delete()
             revision += 1; busy = false; key = nil; error = nil
             connectionGeneration += 1
-            if activeConnection == "gateway" { connected = false }
+            if activeConnection == "gateway" { connected = false; models = []; modelID = "" }
         } catch { self.error = "Could not remove the Gateway key from Keychain." }
+    }
+
+    @Published private(set) var testingConnection = false
+    @Published private(set) var connectionTestResult: String?
+    @Published private(set) var connectionTestSucceeded = false
+    private var connectionTestStream: AI.Stream<ModelResponse>?
+    private var testRevision = 0
+
+    private func resetConnectionTest() {
+        testRevision += 1
+        connectionTestStream?.cancel(); connectionTestStream = nil
+        testingConnection = false; connectionTestResult = nil; connectionTestSucceeded = false
+    }
+
+    func testConnection(model override: Model? = nil) async {
+        guard !busy, !testingConnection, connected, !modelID.isEmpty else { return }
+        resetConnectionTest()
+        let revision = testRevision
+        testingConnection = true
+        defer { if revision == testRevision { testingConnection = false; connectionTestStream = nil } }
+        do {
+            let model = try override ?? self.model(modelID)
+            let stream = model.provider.stream(.init(modelID: model.id,
+                messages: [.user("This is a connection test. Reply with OK.")],
+                options: .init(maxCompletionTokens: 1024)))
+            connectionTestStream = stream
+            var timedOut = false
+            let timeout = Task {
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                timedOut = true
+                stream.cancel()
+            }
+            defer { timeout.cancel(); stream.cancel() }
+            do {
+                for try await _ in stream { try Task.checkCancellation() }
+                let result = try await stream.result
+                guard !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw AIError.configuration("The model returned no text. Try another model.")
+                }
+                guard revision == testRevision else { return }
+                connectionTestSucceeded = true
+                connectionTestResult = "Connection successful"
+            } catch {
+                guard revision == testRevision else { return }
+                connectionTestResult = timedOut ? "Connection test timed out. Try again." : Self.message(for: error)
+            }
+        } catch {
+            if revision == testRevision { connectionTestResult = Self.message(for: error) }
+        }
     }
 
     func refreshModels() async {
         let connection = activeConnection
         let generation = connectionGeneration
         do {
+            if isDirectKey(connection) {
+                guard let key = directKeys[connection] else { return }
+                let catalog = try await directModels(connection, key: key)
+                guard activeConnection == connection, connectionGeneration == generation else { return }
+                models = catalog
+                if modelID.isEmpty { modelID = models.first?.id ?? "" }
+                return
+            }
             if connection == "openai" {
                 let token = try await accounts.accessToken(.openai)
                 let data = try await accounts.request("https://api.openai.com/v1/models", bearer: token)
@@ -215,6 +390,14 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
 
     func model(_ id: String) throws -> Model {
         guard connected, !id.isEmpty else { throw AIError.configuration("Log in in Settings → AI and select a model.") }
+        if isDirectKey(activeConnection) {
+            guard let key = directKeys[activeConnection] else { throw AIError.configuration("Connect an API key in Settings → AI.") }
+            if activeConnection == "openaiKey" {
+                return Model(id, provider: try OpenAIResponsesProvider(apiKey: key, baseURL: URL(string: "https://api.openai.com/v1")!, transport: transport))
+            }
+            return Model(id, provider: try AnthropicMessagesProvider(apiKey: key, baseURL: URL(string: "https://api.anthropic.com/v1")!,
+                transport: AnthropicKeyTransport(base: transport)))
+        }
         if let provider = AIAccountProvider(rawValue: activeConnection) {
             if provider == .vercel && vercelTeam.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 throw AIError.configuration("Enter the Vercel team slug in Settings → AI to choose which team pays for requests.")
@@ -247,6 +430,10 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
         var request = URLRequest(url: URL(string: "https://ai-gateway.vercel.sh/v1/\(path)")!)
         request.timeoutInterval = 30
         if let key { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
+        return try await responseData(request)
+    }
+
+    private func responseData(_ request: URLRequest) async throws -> Data {
         var status = 0
         var data = Data()
         for try await event in transport.send(request) {
@@ -341,61 +528,76 @@ struct AISettingsView: View {
     @ViewState private var key = ""
     var body: some View {
         Form {
-            Section("AI accounts") {
-                ForEach(AIAccountProvider.allCases.filter { $0 == .openai || !settings.vercelClientID.isEmpty }) { provider in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(provider.title)
-                            if let email = settings.accountEmails[provider.rawValue] {
-                                Text(email).font(.caption).foregroundStyle(.secondary)
+            Section("AI connection") {
+                Picker("Connection", selection: Binding(
+                    get: { settings.activeConnection },
+                    set: { value in
+                        key = ""
+                        Task { await settings.selectConnection(value) }
+                    }
+                )) {
+                    ForEach(AIConnection.allCases) { connection in
+                        Text(connection.title).tag(connection.rawValue)
+                    }
+                }.disabled(settings.busy)
+
+                if settings.activeConnection == "openai" {
+                    if let email = settings.accountEmails["openai"] {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(email.isEmpty ? "Connected to OpenAI" : email)
+                                Text("Using your ChatGPT plan").font(.caption).foregroundStyle(.secondary)
                             }
+                            Spacer()
+                            Button("Log out") { Task { await settings.logout(.openai) } }.disabled(settings.busy)
                         }
-                        Spacer()
-                        if settings.accountEmails[provider.rawValue] != nil {
-                            if settings.activeConnection == provider.rawValue {
-                                Label("Active", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                            } else {
-                                Button("Use account") { Task { await settings.selectConnection(provider.rawValue) } }.disabled(settings.busy)
-                            }
-                            Button("Log out") { Task { await settings.logout(provider) } }.disabled(settings.busy)
-                        } else {
-                            Button(provider == .openai ? "Log in with OpenAI" : "Log in with Vercel") { settings.login(provider) }
-                                .disabled(settings.busy)
+                    } else {
+                        Button("Log in with OpenAI") { settings.login(.openai) }.disabled(settings.busy)
+                    }
+                } else {
+                    if settings.connected {
+                        HStack {
+                            Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                            Spacer()
+                            Button("Remove key") { settings.disconnectSelectedKey() }.disabled(settings.busy)
+                        }
+                    } else {
+                        HStack {
+                            SecureField("API key", text: $key)
+                            Button("Connect") {
+                                let candidate = key; key = ""
+                                Task { await settings.connectSelectedKey(candidate) }
+                            }.disabled(settings.busy || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                     }
+                    Text(settings.activeConnection == "gateway"
+                         ? "Uses your Vercel AI Gateway balance."
+                         : "Billed to your API account, separately from a chat subscription.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 if settings.busy {
-                    HStack { ProgressView().controlSize(.small); Text("Connecting…"); Button("Cancel") { settings.cancelLogin() } }
-                }
-                if settings.activeConnection == "openai" && settings.connected {
-                    Text("Using your ChatGPT plan").foregroundStyle(.secondary)
-                    Link("Manage usage", destination: URL(string: "https://chatgpt.com/settings/usage")!)
-                }
-                if settings.accountEmails["vercel"] != nil {
-                    TextField("Vercel team slug", text: $settings.vercelTeam)
-                    Text("Requests use this team’s AI Gateway balance and eligible Token Pass credits.").font(.caption).foregroundStyle(.secondary)
-                }
-                Text("Credentials stay in macOS Keychain. Messages and requested page content go to the selected account’s provider. Chats stay in memory until the tab closes.")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
-            Section("Vercel AI Gateway") {
-                if settings.activeConnection == "gateway" && settings.connected {
                     HStack {
-                        Label("Connected with API key", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                        Spacer()
-                        Button("Log out") { settings.disconnect() }.disabled(settings.busy)
+                        ProgressView().controlSize(.small)
+                        Text("Connecting…")
+                        if settings.activeConnection == "openai" { Button("Cancel") { settings.cancelLogin() } }
                     }
                 }
-                DisclosureGroup("Use an API key instead") {
-                    SecureField("Gateway API key", text: $key)
-                    Button("Connect API key") {
-                        let candidate = key; key = ""
-                        Task { await settings.connect(candidate) }
-                    }.disabled(settings.busy || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    if settings.activeConnection != "gateway" {
-                        Button("Use saved Gateway key") { Task { await settings.selectConnection("gateway") } }.disabled(settings.busy)
+            }
+            Section {
+                HStack {
+                    Button("Test connection") { Task { await settings.testConnection() } }
+                        .disabled(settings.busy || settings.testingConnection || !settings.connected || settings.modelID.isEmpty)
+                    if settings.testingConnection {
+                        ProgressView().controlSize(.small)
+                        Text("Testing…").foregroundStyle(.secondary)
+                    } else if let result = settings.connectionTestResult {
+                        Label(result, systemImage: settings.connectionTestSucceeded ? "checkmark.circle.fill" : "exclamationmark.triangle")
+                            .foregroundStyle(settings.connectionTestSucceeded ? Color.green : Color.orange)
+                            .font(.callout)
                     }
                 }
+                Text("Sends a short test to the preferred model. Uses a small amount of your plan or API credits.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Preferred model") {
                 AIModelPicker(models: settings.models, selection: $settings.modelID)
@@ -423,7 +625,7 @@ struct AISettingsView: View {
             }
             Section("Web search") {
                 Toggle("Web Search", isOn: $settings.webSearchEnabled).toggleStyle(.switch)
-                Text("Let the model search through the selected connection. Claude and OpenAI use native search with query and source details; other models use Perplexity. Applies to the next message.")
+                Text("Let the model search through the selected connection. OpenAI and Anthropic use native search; other Gateway models use Perplexity. Applies to the next message.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             Section("Tools") {
@@ -444,5 +646,23 @@ struct AISettingsView: View {
             await settings.restore()
             if settings.models.isEmpty { await settings.refreshModels() }
         }
+    }
+}
+
+
+// The native Messages adapter uses bearer auth for Gateway. Direct Anthropic
+// requests use its API-key header instead, without changing Gateway behavior.
+struct AnthropicKeyTransport: HTTPTransport {
+    let base: any HTTPTransport
+    func send(_ request: URLRequest) -> AsyncThrowingStream<HTTPEvent, Error> {
+        guard request.url?.scheme == "https", request.url?.host == "api.anthropic.com" else {
+            return AsyncThrowingStream { $0.finish(throwing: AIError.configuration("Unexpected Anthropic host.")) }
+        }
+        var request = request
+        if let bearer = request.value(forHTTPHeaderField: "Authorization"), bearer.hasPrefix("Bearer ") {
+            request.setValue(String(bearer.dropFirst(7)), forHTTPHeaderField: "x-api-key")
+        }
+        request.setValue(nil, forHTTPHeaderField: "Authorization")
+        return base.send(request)
     }
 }

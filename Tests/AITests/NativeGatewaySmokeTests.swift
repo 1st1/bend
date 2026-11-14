@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import AI
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Live native Gateway search]]
 @Test(.enabled(if: ProcessInfo.processInfo.environment["AI_NATIVE_GATEWAY_SMOKE"] == "1"))
 func liveNativeGatewaySearch() async throws {
   let key = try #require(ProcessInfo.processInfo.environment["AI_GATEWAY_API_KEY"])
@@ -25,6 +26,7 @@ func liveNativeGatewaySearch() async throws {
   }
 }
 
+// @lat: [[lat.md/ai-sdk/sdk-tests#Live OpenAI account tools]]
 @Test(.enabled(if: ProcessInfo.processInfo.environment["AI_OPENAI_ACCOUNT_SMOKE"] == "1"))
 func liveOpenAIAccountTools() async throws {
   let key = try #require(ProcessInfo.processInfo.environment["OPENAI_ACCOUNT_ACCESS_TOKEN"])

@@ -219,6 +219,7 @@ public struct BrowserSession: Codable, Sendable {
     public var workspaces: [Workspace]
     public var selectedTab: UUID
     public var sidebarWidth: Double?
+    public var chatWidth: Double?
     public var sidebarSide: SidebarSide?
     public var searchEngine: SearchEngine?
     public var customSearchEngine: CustomSearchEngine?
@@ -234,6 +235,8 @@ public struct BrowserSession: Codable, Sendable {
     public var paneHighlight: PaneHighlight?
     public var downloadDirectory: String?
     public var favorites: [SidebarFavorite]?
+    public var openChatTabs: [UUID]?
+    public var activeChatIDs: [UUID: UUID]?
 
     public init() {
         let initial = BrowserTab(title: "Start here", pages: [Page(), Page(address: "bend://guide")])
@@ -347,6 +350,7 @@ public enum AddressResolver {
         case "bend://start": return "Start page"
         case "bend://guide": return "Tiling guide"
         case "bend://history": return "History"
+        case "bend://chats": return "AI Chat History"
         default: return nil
         }
     }
@@ -354,7 +358,7 @@ public enum AddressResolver {
     public static func resolve(_ input: String, searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil) -> URL? {
         let text = canonicalAddress(input.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty else { return nil }
-        if ["bend://start", "bend://guide", "bend://history"].contains(text) { return URL(string: text) }
+        if ["bend://start", "bend://guide", "bend://history", "bend://chats"].contains(text) { return URL(string: text) }
         if text.contains("://") {
             guard let url = URL(string: text), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
                   let host = url.host, !host.isEmpty else { return nil }

@@ -4,16 +4,16 @@ import Testing
 @testable import Browse
 
 // @lat: [[lat.md/tests/ai-tests#Chat header controls]]
-@Test(arguments: [false, true]) @MainActor func chatHeaderControls(onLeft: Bool) async throws {
+@Test(arguments: [false, true], [CGFloat(200), 360, 600]) @MainActor func chatHeaderControls(onLeft: Bool, panelWidth: CGFloat) async throws {
     _ = NSApplication.shared
     var newChats = 0
     var closes = 0
     let host = NSHostingView(rootView: HStack(spacing: 0) {
         if !onLeft { Color.clear }
         VStack(spacing: 0) {
-            ChatHeader(onLeft: onLeft, canStartNew: true, newChat: { newChats += 1 }, close: { closes += 1 })
+            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: true, newChat: { newChats += 1 }, close: { closes += 1 })
             Color.clear
-        }.frame(width: 360)
+        }.frame(width: panelWidth)
         if onLeft { Color.clear }
     }.ignoresSafeArea())
     host.safeAreaRegions = []
@@ -42,10 +42,10 @@ import Testing
         let close = try #require(controls.first(where: { $0.toolTip == "Close chat" }))
         let new = try #require(controls.first(where: { $0.toolTip == "Clear chat" }))
         #expect(!close.isHidden && !new.isHidden)
-        #expect(close.frame.maxX == (onLeft ? 360 : frame.bounds.maxX) - 10)
-        #expect(new.frame.maxX == (onLeft ? 360 : frame.bounds.maxX) - 44)
+        #expect(close.frame.maxX == (onLeft ? panelWidth : frame.bounds.maxX) - 10)
+        #expect(new.frame.maxX == (onLeft ? panelWidth : frame.bounds.maxX) - (panelWidth < 240 ? 102 : 116))
         #expect(close.frame.minX - new.frame.maxX == 6)
-        #expect(new.title == "Clear chat" && new.frame.width == 100)
+        #expect(new.title == "Clear chat" && new.frame.width == (panelWidth < 240 ? 86 : 100))
     }
     for control in controls {
         let point = control.convert(NSPoint(x: control.bounds.midX, y: control.bounds.midY), to: nil)

@@ -10,7 +10,10 @@ final class BrowserStore: ObservableObject {
         didSet { pruneChats() }
     }
     @Published var chats: [UUID: TabChat] = [:]
-    @Published var openChats: Set<UUID> = []
+    // Session observers can prune chats midway through a tab mutation. Only queue
+    // persistence here; extension synchronization requires the completed layout.
+    @Published var openChats: Set<UUID> = [] { didSet { if !windowStopped { scheduleSessionSave() } } }
+    let chatHistory: ChatHistoryStore
 
     func showChat() {
         guard !isPrivate else { return }
@@ -38,6 +41,7 @@ final class BrowserStore: ObservableObject {
     let downloads: BrowserDownloads
     @Published private(set) var paneMoveRevision = 0
     var onAddressRequested: ((UUID) -> Void)?
+    var onCloseAllWindows: (() throws -> Void)?
     var onSettingsRequested: ((SettingsSection) -> Void)?
     var onEmptiedByTransfer: ((BrowserStore) -> Void)?
     var onNewWindowDrop: ((UUID, UUID?, NSPoint) -> Bool)?
@@ -119,6 +123,7 @@ final class BrowserStore: ObservableObject {
         self.persistentExtensions = sharedStore?.persistentExtensions ?? persistentExtensions
         let root = AppProfile.current.supportDirectory
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
+        chatHistory = isPrivate ? ChatHistoryStore(directory: nil) : (sharedStore?.chatHistory ?? ChatHistoryStore(directory: self.sessionFile.deletingLastPathComponent().appendingPathComponent("AIChats")))
         faviconCache = isPrivate ? nil : (sharedStore?.faviconCache ?? FaviconCache(
             file: self.sessionFile.deletingLastPathComponent().appendingPathComponent("Favicons.json")))
         if isPrivate {
@@ -170,6 +175,18 @@ final class BrowserStore: ObservableObject {
             } catch {
                 historyWritable = false
                 historyError = "Saved history could not be read. Clear history to reset it."
+            }
+        }
+        if !isPrivate {
+            for tab in session.workspaces.flatMap(\.tabs) {
+                if let id = session.activeChatIDs?[tab.id], let record = chatHistory.records.first(where: { $0.id == id }) {
+                    let chat = TabChat(store: self, tabID: tab.id)
+                    chat.restore(record); chats[tab.id] = chat
+                }
+                if session.openChatTabs?.contains(tab.id) == true {
+                    if chats[tab.id] == nil { chats[tab.id] = TabChat(store: self, tabID: tab.id) }
+                    openChats.insert(tab.id)
+                }
             }
         }
         if sharedStore == nil { downloads.directory = downloadDirectory }
@@ -297,6 +314,20 @@ final class BrowserStore: ObservableObject {
 
     static let defaultSidebarWidth: CGFloat = 250
     static let sidebarWidthRange: ClosedRange<CGFloat> = 200...400
+
+    static let defaultChatWidth: CGFloat = 360
+    static let chatWidthRange = sidebarWidthRange.lowerBound...(sidebarWidthRange.upperBound * 1.5)
+    var chatWidth: CGFloat {
+        let width = session.chatWidth.map { CGFloat($0) } ?? Self.defaultChatWidth
+        return width.isFinite ? min(Self.chatWidthRange.upperBound, max(Self.chatWidthRange.lowerBound, width)) : Self.defaultChatWidth
+    }
+    func resizeChat(to width: CGFloat) {
+        guard width.isFinite else { return }
+        let clamped = min(Self.chatWidthRange.upperBound, max(Self.chatWidthRange.lowerBound, width))
+        guard clamped != chatWidth else { return }
+        session.chatWidth = clamped
+        scheduleSessionSave()
+    }
 
     var sidebarWidth: CGFloat {
         let width = session.sidebarWidth.map { CGFloat($0) } ?? Self.defaultSidebarWidth
@@ -654,6 +685,14 @@ final class BrowserStore: ObservableObject {
         saveHistory()
     }
 
+    func clearHistory(since cutoff: Date) {
+        if historyOwner !== self { historyOwner.clearHistory(since: cutoff); return }
+        if cutoff == .distantPast { clearHistory(); return }
+        guard historyWritable else { historyError = "Saved history cannot be read. Choose All to reset it."; return }
+        history.clear(since: cutoff)
+        historyDirty = true; saveHistory()
+    }
+
     func clearHistory() {
         if historyOwner !== self { historyOwner.clearHistory(); return }
         faviconCache?.clear()
@@ -767,7 +806,7 @@ final class BrowserStore: ObservableObject {
         closePage(id)
     }
 
-    private func snapshot(_ tab: BrowserTab) -> BrowserTab {
+    func snapshot(_ tab: BrowserTab) -> BrowserTab {
         var result = tab
         for index in result.pages.indices {
             if let controller = browsers[result.pages[index].id] { result.pages[index].address = controller.address }
@@ -1053,12 +1092,26 @@ final class BrowserStore: ObservableObject {
         return true
     }
 
-    func stopWindow() {
-        windowStopped = true
+    func clearOpenTabsForPrivacy() {
+        // Explicit privacy clearing includes pinned panes and must not populate Reopen Closed Tab.
         for chat in chats.values { chat.stop() }
         chats.removeAll(); openChats.removeAll()
+        let tab = BrowserTab()
+        var cleared = session
+        cleared.workspaces = [Workspace(name: "Tabs", tabs: [tab])]
+        cleared.selectedTab = tab.id
+        cleared.openChatTabs = []; cleared.activeChatIDs = [:]
+        session = cleared
+        closedItems.removeAll(); pendingAddressEntry = nil; linkOpeners.removeAll(); zoomedPane = nil
+        save()
+    }
+
+    func stopWindow() {
+        for chat in chats.values { chat.stop() }
         mediaCoordinator.removeAll()
         save()
+        windowStopped = true
+        chats.removeAll(); openChats.removeAll()
         pendingSave?.cancel(); pendingSave = nil
         for page in browsers.values {
             page.webView.closeInspector()
@@ -1117,6 +1170,10 @@ final class BrowserStore: ObservableObject {
         let pageIDs = Set(session.workspaces.flatMap(\.tabs).flatMap(\.pages).map(\.id))
         linkOpeners = linkOpeners.filter { pageIDs.contains($0.key) && pageIDs.contains($0.value) }
         if #available(macOS 15.4, *), let manager = extensionStorage as? ExtensionManager { manager.synchronizeTabs() }
+        scheduleSessionSave()
+    }
+
+    private func scheduleSessionSave() {
         guard !isPrivate else { return }
         pendingSave?.cancel()
         pendingSave = Task { [weak self] in
@@ -1130,7 +1187,14 @@ final class BrowserStore: ObservableObject {
         faviconCache?.flush()
         do {
             try FileManager.default.createDirectory(at: sessionFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(session).write(to: sessionFile, options: .atomic)
+            for chat in chats.values { chat.persist() }
+            var saved = session
+            if !windowStopped {
+                saved.openChatTabs = Array(openChats)
+                saved.activeChatIDs = chats.mapValues(\.conversationID)
+                session = saved
+            }
+            try JSONEncoder().encode(saved).write(to: sessionFile, options: .atomic)
             persistenceError = nil
         } catch { persistenceError = "Session could not be saved: \(error.localizedDescription)" }
         saveHistory()
@@ -1451,7 +1515,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
                 media.detach()
                 webView.pauseAllMediaPlayback(completionHandler: nil)
             }
-            title = address == "bend://history" ? "History" : (address == "bend://guide" ? "Tiling guide" : "New tab")
+            title = address == "bend://chats" ? "AI Chat History" : address == "bend://history" ? "History" : (address == "bend://guide" ? "Tiling guide" : "New tab")
             reportNavigation()
         } else {
             if webView.mediaController == nil { media.attach(to: webView) }

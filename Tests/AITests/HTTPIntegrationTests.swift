@@ -11,6 +11,7 @@ import Testing
 struct HTTPIntegration {
   var root: URL { URL(string: ProcessInfo.processInfo.environment["AI_HTTP_FIXTURE_URL"]!)! }
 
+  // @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#HTTP behavior#Incremental network delivery]]
   @Test func receivesDeltaBeforeServerFinishesResponse() async throws {
     let provider = try OpenAICompatibleProvider(
       baseURL: root.appendingPathComponent("v1"), timeout: 15)
@@ -30,6 +31,7 @@ struct HTTPIntegration {
     #expect(try await run.result.text == text)
   }
 
+  // @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#HTTP behavior#Network error response]]
   @Test func returnsHTTPFailure() async throws {
     let provider = try OpenAICompatibleProvider(baseURL: root.appendingPathComponent("v1"))
     await #expect(throws: AIError.http(status: 401, body: "{\"error\":\"fixture unauthorized\"}")) {
@@ -37,6 +39,7 @@ struct HTTPIntegration {
     }
   }
 
+  // @lat: [[lat.md/ai-sdk/sdk-tests#Behavior specifications#HTTP behavior#Connection cancellation]]
   @Test func cancellationClosesNetworkConnection() async throws {
     let provider = try OpenAICompatibleProvider(
       baseURL: root.appendingPathComponent("v1"), timeout: 15)

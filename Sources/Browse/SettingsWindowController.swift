@@ -20,6 +20,9 @@ final class SettingsWindowController {
             window.titlebarSeparatorStyle = .none
         }
         window.isReleasedWhenClosed = false
+        window.collectionBehavior.insert(.fullScreenNone)
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
         window.toolbarStyle = .unified
         window.toolbar = NSToolbar(identifier: "BendSettingsTitlebar")
         window.setFrameAutosaveName(AppProfile.current.frameName("BrowseSettings"))
@@ -141,7 +144,7 @@ struct BrowserSettingsView: View {
                 case .websites:
                     WebsiteSettingsView(settings: store.websiteSettings)
                 case .privacy:
-                    PrivacySettingsView(settings: store.websiteSettings, dataStore: store.websiteDataStore)
+                    PrivacySettingsView(settings: store.websiteSettings, dataStore: store.websiteDataStore, store: store)
                 case .extensions:
                     if #available(macOS 15.4, *) {
                         ExtensionSettingsView(manager: store.extensions)

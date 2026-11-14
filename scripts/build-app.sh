@@ -71,6 +71,8 @@ trap cleanup EXIT
 candidate="$staging/$app_name.app"
 mkdir -p "$candidate/Contents/MacOS" "$candidate/Contents/Resources"
 cp "$PWD/Assets/AppIcon.icns" "$candidate/Contents/Resources/AppIcon.icns"
+mkdir -p "$candidate/Contents/Resources/Licenses/AI"
+cp "$PWD/LICENSES/ai-swift/LICENSE" "$PWD/LICENSES/ai-swift/NOTICE" "$candidate/Contents/Resources/Licenses/AI/"
 bin_dir="$(swift build -c "$configuration" --show-bin-path)"
 cp "$bin_dir/Bend" "$candidate/Contents/MacOS/Bend"
 cat > "$candidate/Contents/Info.plist" <<PLIST

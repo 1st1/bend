@@ -1,42 +1,20 @@
 # AI for Swift
 
-A small Swift port of the non-durable core of the adjacent `ai-python` framework.
+Bend’s owned Swift implementation of the non-durable core of `ai-python`.
 Build basic agents that stream model responses, execute local tools, and delegate
 to subagents. No third-party Swift package dependencies. Swift 6 language mode.
 
-## Linux setup
+## Building in Bend
 
-This workspace's machine is x86-64 Omarchy (Arch Linux). Install:
-
-```bash
-sudo pacman -S --needed base-devel git libxml2-legacy util-linux-libs ncurses patchelf
-yay -S --needed swift-bin
-swift --version
-```
-
-`yay` is an Arch User Repository (AUR) helper, already available on this machine.
-`swift-bin` is an AUR package; `pacman -S swift-bin` does not fetch it. The current
-package recipe installs Swift 6.4.2, depends on `libxml2-legacy`, `util-linux-libs`,
-and `ncurses`, and uses `patchelf` when packaging the upstream binaries for Arch.
-`base-devel` provides the system compiler/linker tools. Swift includes its own
-Clang, Swift Package Manager, and Swift Testing; a separate Clang install is not
-required. Python 3 is needed only for the optional loopback HTTP integration tests.
-The optional `python312` dependency is for the REPL, not builds or tests.
-
-Sources: [AUR package](https://aur.archlinux.org/packages/swift-bin),
-[Swift's official Linux installation guide](https://www.swift.org/install/linux/).
+AI is an owned target in Bend’s root Swift package, implemented in `Sources/AI` with regression tests in `Tests/AITests`. No separate checkout or package download is needed. The original Apache license, notice, and provenance are retained in `LICENSES/ai-swift`.
 
 ```bash
-cd ai-swift
-swift build
-swift test
-python3 scripts/test-http.py
+./scripts/build-app.sh
+./scripts/test.sh --filter AITests
+python3 scripts/test-ai-http.py
 ```
 
-The first test command runs offline unit tests. The Python script starts a local
-HTTP server, runs the HTTP integration suite, and shuts the server down. It checks
-incremental delivery before response completion, HTTP errors, and connection
-cancellation. Neither test command calls a model or requires credentials.
+The HTTP runner uses only a local fixture server. Live model smoke tests require explicit opt-in environment variables; ordinary tests do not need provider credentials. Architecture and behavior specifications live in [the SDK knowledge graph](../lat.md/ai-sdk/ai-sdk.md).
 
 ## Provider choice
 
@@ -196,9 +174,10 @@ a plain `break` does not guarantee immediate cancellation. Async tools must
 cooperate with task cancellation. Final results are available on success;
 partial output on failure can be retained from events. SSE parsing handles UTF-8
 and tool arguments split across chunks, CR/LF framing, and usage-only chunks.
-It requires both a finish reason and `[DONE]`; incomplete streams throw.
+Chat Completions requires both a finish reason and `[DONE]`; native Messages and Responses require their successful terminal events. Incomplete streams throw.
 
 Scope deliberately excludes durability, persistence services, hooks, MCP,
-multimodal content, structured-output modes, provider-native tools, automatic
-retries, and provider-specific reasoning controls. This is a focused port of the
+multimodal content, structured-output modes, and automatic retries. Native web
+search and supported provider reasoning summaries are implemented by the
+Messages and Responses adapters. This is a focused port of the
 core behavior, not complete API parity.

@@ -29,3 +29,15 @@ See [[lat.md/tests/privacy-tests|Test coverage]].
 The additional native protection bundle is enabled for all website views before creation and on navigation, including private windows. It requests fingerprinting protections, link filtering, and enhanced network privacy without provisioning a proxy service. Open documents need reloading for navigation protections. Turning ITP off leaves this bundle enabled. Extension documents retain their own policies. Native updates and independent-store behavior are covered by [[lat.md/tests/privacy-tests#Native privacy preferences]].
 
 The green-check list describes origin isolation, temporary private storage, and available additional protections; filtering depends on macOS rules. Bend does not claim anonymity, IP hiding, or full Safari parity. Cookie controls and Manage Website Data live here rather than in Websites.
+
+## Clearing browser state
+
+[[Sources/Browse/ClearBrowserStateView.swift#ClearBrowserStateView]] adds independent checkboxes for browsing history, AI chats, download history, cache, and cookies/localStorage/other website data in Privacy settings.
+
+History and chat selectors offer All, Last hour, Last 24 hours, Last 7 days, and Last 30 days as rolling durations. Select Everything checks all data categories and the option to close browser windows without changing their time ranges. A confirmation lists the selected categories and ranges. [[Sources/BrowseCore/History.swift#BrowsingHistory#clear]] removes visits and learned choices within the chosen range, retaining older visits. [[lat.md/architecture/ai#Saved chat history]] deletes entire chats by last activity, including their live copies. Cache removal clears WebKit cache categories and saved favicons; the separate website-data option clears the remaining WebKit categories including cookies, local/session storage, databases, and service workers. Both website-data categories apply to all time. Open panes remain open, and AI account credentials remain in Keychain. Download history clearing uses [[Sources/Browse/BrowserDownloads.swift#BrowserDownloads#clearFinished]] to remove completed, cancelled, and failed records for all time while retaining downloaded files and active transfers. Completion and persistence failures appear inline.
+
+## Closing all browsing windows
+
+[[Sources/Browse/BrowserWindows.swift#BrowserWindows#closeAllForPrivacy]] handles the Privacy option to close all tabs and windows, including private windows and pinned panes, after explicit confirmation.
+
+[[Sources/Browse/BrowserStore.swift#BrowserStore#clearOpenTabsForPrivacy]] archives chats, resets each window to a valid blank session, and clears its reopen stack before native teardown. The retained root’s fallback session is also reset, and the window manifest points to that blank root so restarting cannot revive closed tabs. Saved chats and browsing history remain unless separately selected for clearing. Windows close before website data is cleared, preventing their pages from immediately writing data back. Settings remains open to report completion or errors.

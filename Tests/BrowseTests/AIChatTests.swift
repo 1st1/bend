@@ -368,3 +368,131 @@ private struct EmptyChatProvider: Provider {
         try await ChatPageLinks.open(URL(string: "https://example.com")!, tabID: store.selectedTab.id, store: store)
     }
 }
+
+
+private actor DirectKeyRequests {
+    var values: [URLRequest] = []
+    func append(_ request: URLRequest) { values.append(request) }
+}
+private struct DirectKeyFixture: HTTPTransport {
+    let requests: DirectKeyRequests
+    func send(_ request: URLRequest) -> AsyncThrowingStream<HTTPEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                await requests.append(request)
+                let invalid = request.value(forHTTPHeaderField: "Authorization") == "Bearer invalid"
+                continuation.yield(.response(status: invalid ? 401 : 200))
+                let data: String
+                if request.url?.lastPathComponent == "models" {
+                    if request.url?.host == "api.anthropic.com" {
+                        if request.url?.query?.contains("after_id") == true {
+                            data = #"{"data":[{"id":"claude-haiku-4-5","display_name":"Claude Haiku"}],"has_more":false}"#
+                        } else {
+                            data = #"{"data":[{"id":"claude-sonnet-4-6","display_name":"Claude Sonnet"}],"has_more":true,"last_id":"claude-sonnet-4-6"}"#
+                        }
+                    } else {
+                        data = #"{"data":[{"id":"gpt-4.1"},{"id":"text-embedding-3-small"},{"id":"whisper-5"},{"id":"gpt-4o-audio-preview"}]}"#
+                    }
+                } else if request.url?.lastPathComponent == "messages" {
+                    data = "data: " + #"{"type":"message_start","message":{"usage":{}}}"# + "\n\n"
+                        + "data: " + #"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{}}"# + "\n\n"
+                        + "data: " + #"{"type":"message_stop"}"# + "\n\n"
+                } else {
+                    data = "data: " + #"{"type":"response.completed","response":{"status":"completed","output":[],"usage":{}}}"# + "\n\n"
+                }
+                continuation.yield(.data(Data(data.utf8)))
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
+// @lat: [[lat.md/tests/ai-tests#Direct API key connections]]
+@Test @MainActor func aiDirectKeyConnections() async throws {
+    let domain = "DirectKeys-\(UUID())"
+    let defaults = UserDefaults(suiteName: domain)!
+    defer { defaults.removePersistentDomain(forName: domain) }
+    let openai = MemoryGatewayCredential(), anthropic = MemoryGatewayCredential(), gateway = MemoryGatewayCredential()
+    let requests = DirectKeyRequests()
+    let transport = DirectKeyFixture(requests: requests)
+    let credentials: [String: any AICredentialStore] = ["openaiKey": openai, "anthropicKey": anthropic]
+    let settings = AISettings(transport: transport, credential: gateway, defaults: defaults, accounts: AIOAuthAccounts(storage: MemoryGatewayCredential(), transport: transport, defaults: defaults), directCredentials: credentials)
+    await settings.selectConnection("openaiKey")
+    #expect(!settings.connected)
+    await settings.connectSelectedKey("invalid")
+    #expect(openai.value == nil && !settings.connected)
+    await settings.connectSelectedKey("openai-secret")
+    #expect(settings.connected && openai.value == "openai-secret")
+    #expect(settings.models.map(\.id) == ["gpt-4.1"])
+    var model = try settings.model(settings.modelID)
+    let openaiStream = model.provider.stream(.init(modelID: model.id, messages: [.user("test")]))
+    for try await _ in openaiStream {}
+    var sent = try #require(await requests.values.last)
+    #expect(sent.url?.absoluteString == "https://api.openai.com/v1/responses")
+    #expect(sent.value(forHTTPHeaderField: "Authorization") == "Bearer openai-secret")
+    await settings.selectConnection("anthropicKey")
+    #expect(!settings.connected && settings.models.isEmpty)
+    await settings.connectSelectedKey("anthropic-secret")
+    #expect(settings.models.map(\.id) == ["claude-sonnet-4-6", "claude-haiku-4-5"])
+    #expect(openai.value == "openai-secret" && gateway.value == nil)
+    model = try settings.model(settings.modelID)
+    let anthropicStream = model.provider.stream(.init(modelID: model.id, messages: [.user("test")]))
+    for try await _ in anthropicStream {}
+    sent = try #require(await requests.values.last)
+    #expect(sent.url?.absoluteString == "https://api.anthropic.com/v1/messages")
+    #expect(sent.value(forHTTPHeaderField: "x-api-key") == "anthropic-secret")
+    #expect(sent.value(forHTTPHeaderField: "Authorization") == nil)
+    #expect(sent.value(forHTTPHeaderField: "anthropic-version") == "2023-06-01")
+    let restored = AISettings(transport: transport, credential: gateway, defaults: defaults, accounts: AIOAuthAccounts(storage: MemoryGatewayCredential(), transport: transport, defaults: defaults), directCredentials: credentials)
+    await restored.restore()
+    #expect(restored.connected && restored.activeConnection == "anthropicKey")
+    restored.disconnectSelectedKey()
+    #expect(anthropic.value == nil && openai.value == "openai-secret")
+    #expect(!restored.connected && restored.models.isEmpty)
+    await restored.selectConnection("openaiKey")
+    #expect(restored.connected && restored.modelID == "gpt-4.1")
+    #expect(!defaults.dictionaryRepresentation().values.contains { ($0 as? String)?.contains("-secret") == true })
+}
+
+
+private actor ConnectionProbeRequests {
+    var requests: [ModelRequest] = []
+    func record(_ request: ModelRequest) { requests.append(request) }
+}
+private struct ConnectionProbeProvider: Provider {
+    let requests: ConnectionProbeRequests
+    var fail = false
+    func stream(_ request: ModelRequest) -> AI.Stream<ModelResponse> {
+        AI.Stream { _ in
+            await requests.record(request)
+            if fail { throw AIError.http(status: 401, body: "secret error body") }
+            return ModelResponse(message: .assistant("OK"))
+        }
+    }
+}
+
+// @lat: [[lat.md/tests/ai-tests#Connection test]]
+@Test @MainActor func aiConnectionTest() async throws {
+    let domain = "ConnectionProbe-\(UUID())"
+    let defaults = UserDefaults(suiteName: domain)!
+    defer { defaults.removePersistentDomain(forName: domain) }
+    let settings = AISettings(transport: GatewayFixtureTransport(), credential: MemoryGatewayCredential(), defaults: defaults)
+    await settings.connect("test-key")
+    let requests = ConnectionProbeRequests()
+    await settings.testConnection(model: Model("test", provider: ConnectionProbeProvider(requests: requests)))
+    #expect(settings.connectionTestSucceeded && settings.connectionTestResult == "Connection successful")
+    #expect(!settings.testingConnection)
+    let request = try #require(await requests.requests.first)
+    #expect(request.messages.count == 1 && request.messages[0].text == "This is a connection test. Reply with OK.")
+    #expect(request.tools.isEmpty && !request.options.gatewayWebSearch && !request.options.includeReasoning)
+    settings.modelID = "other-model"
+    #expect(settings.connectionTestResult == nil)
+    await settings.testConnection(model: Model("test", provider: ConnectionProbeProvider(requests: requests, fail: true)))
+    #expect(!settings.connectionTestSucceeded && settings.connectionTestResult?.contains("rejected") == true)
+    #expect(settings.connectionTestResult?.contains("secret") == false)
+    settings.disconnect()
+    #expect(settings.connectionTestResult == nil)
+    await settings.testConnection(model: Model("test", provider: ConnectionProbeProvider(requests: requests)))
+    #expect(await requests.requests.count == 2)
+}
