@@ -1,3 +1,0 @@
-kind: Fixed
-body: Preserve native text styling when recalling chat prompts, cap both message bubble widths at 90%, remove the header glass strip, and let messages scroll behind the clear-glass composer.
-time: 2026-11-14T21:40:00-08:00
