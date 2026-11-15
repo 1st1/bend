@@ -160,12 +160,24 @@ Opening or reusing chat history gives its sidebar tab the AI Chat History title.
 
 ## Chat approval lifecycle
 
-[[Tests/BrowseTests/AISecurityTests.swift#aiChatApprovalLifecycle]] verifies a real agent turn pauses at its tool bubble, only an open active chat can approve it, and stopping or restoring a conversation cannot revive pending actions.
+[[Tests/BrowseTests/AISecurityTests.swift#aiChatApprovalLifecycle]] verifies a real agent turn pauses at its tool bubble, only an open active chat can approve it, and stopping or restoring a conversation cannot revive pending actions. Native Escape first clears a recalled prompt, then cancels a pending run.
 
 ## Composer keyboard controls
 
-[[Tests/BrowseTests/ChatComposerTests.swift#chatComposerKeyboard]] exercises native Enter and Shift-Enter insertion at the cursor, Command-Enter submission, disabled sending, and protection of active input-method composition.
+[[Tests/BrowseTests/ChatComposerTests.swift#chatComposerKeyboard]] exercises native Enter and Shift-Enter insertion at the cursor, Command-Enter submission, disabled sending, protection of active input-method composition, and local prompt history selection, traversal, editing, and Escape clearing.
 
 ## Expanded tool card layout
 
 [[Tests/BrowseTests/ChatComposerTests.swift#chatExpandedToolLayout]] verifies long expanded tool contents scroll inside a bounded viewport while approval controls and the composer remain outside it. An opt-in capture supports visual inspection.
+
+## Creating panes from chat
+
+[[Tests/BrowseTests/AISecurityTests.swift#aiCreatePaneApproval]] verifies pane creation waits for approval, preserves the source, and returns the new pane’s metadata within the same tab.
+
+Denied, cancelled, disabled, and stale-source actions leave the layout unchanged. Unsafe URLs and foreign pane IDs are rejected. The advertised tools and prompt accurately reflect live disabled-tool settings.
+
+## Chat composer window spacing
+
+[[Tests/BrowseTests/ChatComposerTests.swift#chatComposerWindowSpacing]] checks equal bottom and outside composer gaps on both window edges across supported panel widths, plus a transcript viewport extending underneath the fixed glass header.
+
+Scrolling leaves the header fixed, its native shield blocks underlying links, and an optional snapshot supports visual inspection.

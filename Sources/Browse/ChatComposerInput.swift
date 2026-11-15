@@ -6,6 +6,7 @@ struct ChatComposerInput: NSViewRepresentable {
     @Binding var text: String
     @Binding var focused: Bool
     var canSend: Bool
+    var prompts: [String] = []
     var send: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -40,8 +41,10 @@ struct ChatComposerInput: NSViewRepresentable {
         guard let input = scroll.documentView as? ChatComposerTextView else { return }
         input.canSend = canSend
         input.send = send
+        if input.prompts != prompts { input.historyIndex = nil; input.prompts = prompts }
         input.wantsFocus = focused
         if input.string != text {
+            input.historyIndex = nil
             let selection = input.selectedRange()
             input.string = text
             input.setSelectedRange(NSRange(location: min(selection.location, (text as NSString).length), length: 0))
@@ -76,6 +79,53 @@ final class ChatComposerTextView: NSTextView {
     var canSend = false
     var send: () -> Void = {}
     var wantsFocus = false
+    var prompts: [String] = []
+    var historyIndex: Int?
+
+    func clearRecalledPrompt() -> Bool {
+        guard !hasMarkedText(), let index = historyIndex, prompts.indices.contains(index),
+              string == prompts[index], selectedRange() == NSRange(location: 0, length: (string as NSString).length) else { return false }
+        let range = NSRange(location: 0, length: (string as NSString).length)
+        guard shouldChangeText(in: range, replacementString: "") else { return false }
+        textStorage?.replaceCharacters(in: range, with: "")
+        didChangeText()
+        historyIndex = nil
+        setSelectedRange(NSRange(location: 0, length: 0))
+        return true
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if !clearRecalledPrompt() { super.cancelOperation(sender) }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53, event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+           clearRecalledPrompt() { return }
+        if (event.keyCode == 126 || event.keyCode == 125),
+           event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+           !hasMarkedText() {
+            let selected = selectedRange() == NSRange(location: 0, length: (string as NSString).length)
+            if let index = historyIndex, (!selected || prompts.indices.contains(index) == false || string != prompts[index]) {
+                historyIndex = nil
+            }
+            if !prompts.isEmpty, historyIndex != nil || (string.isEmpty && event.keyCode == 126) {
+                let next = (historyIndex ?? prompts.count) + (event.keyCode == 126 ? -1 : 1)
+                let index = max(0, min(next, prompts.count))
+                let value = index == prompts.count ? "" : prompts[index]
+                let range = NSRange(location: 0, length: (string as NSString).length)
+                if shouldChangeText(in: range, replacementString: value) {
+                    textStorage?.replaceCharacters(in: range, with: value)
+                    didChangeText()
+                    historyIndex = index == prompts.count ? nil : index
+                    setSelectedRange(NSRange(location: 0, length: (value as NSString).length))
+                    scrollRangeToVisible(selectedRange())
+                }
+                return
+            }
+        }
+        historyIndex = nil
+        super.keyDown(with: event)
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if (event.keyCode == 36 || event.keyCode == 76),

@@ -4,6 +4,12 @@ import Testing
 import AI
 @testable import Browse
 
+@MainActor private final class EmptyChatCredential: AICredentialStore {
+    func read() throws -> String? { nil }
+    func save(_ value: String) throws {}
+    func delete() throws {}
+}
+
 // @lat: [[lat.md/tests/ai-tests#Composer keyboard controls]]
 @Test @MainActor func chatComposerKeyboard() async throws {
     _ = NSApplication.shared
@@ -45,6 +51,93 @@ import AI
     input.setMarkedText("composition", selectedRange: NSRange(location: 0, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
     #expect(input.performKeyEquivalent(with: try enter(.command)))
     #expect(sent.count == 1)
+    input.unmarkText()
+    input.string = ""; input.didChangeText()
+    input.prompts = ["First prompt", "Last prompt\nwith two lines"]
+    func key(_ code: UInt16) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+            context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: code))
+    }
+    input.keyDown(with: try key(126))
+    #expect(text == input.prompts[1] && input.selectedRange() == NSRange(location: 0, length: (text as NSString).length))
+    input.keyDown(with: try key(126))
+    #expect(text == input.prompts[0])
+    input.keyDown(with: try key(126))
+    #expect(text == input.prompts[0])
+    input.keyDown(with: try key(125))
+    #expect(text == input.prompts[1])
+    input.keyDown(with: try key(125))
+    #expect(text.isEmpty && input.historyIndex == nil)
+    input.keyDown(with: try key(126))
+    input.keyDown(with: try key(53))
+    #expect(text.isEmpty && input.historyIndex == nil)
+    input.keyDown(with: try key(126))
+    input.insertText("Edited", replacementRange: input.selectedRange())
+    input.keyDown(with: try key(126))
+    #expect(text == "Edited" && input.historyIndex == nil)
+    #expect(!input.clearRecalledPrompt())
+    #expect(sent.count == 1)
+}
+
+// @lat: [[lat.md/tests/ai-tests#Chat composer window spacing]]
+@Test(arguments: [false, true], [CGFloat(200), 300, 360, 600]) @MainActor func chatComposerWindowSpacing(onLeft: Bool, panelWidth: CGFloat) async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("ChatSpacing-\(UUID())")
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let domain = "ChatSpacing-\(UUID())"
+    let defaults = UserDefaults(suiteName: domain)!
+    let settings = AISettings(credential: EmptyChatCredential(), defaults: defaults, directCredentials: [:])
+    let chat = TabChat(store: store, tabID: store.selectedTab.id, settings: settings)
+    chat.bubbles = [ChatBubble(isUser: true, text: "Test message")] + (0..<15).map {
+        ChatBubble(isUser: false, text: "Response \($0): [A reference](https://example.com). " + String(repeating: "Scrollable transcript content. ", count: 5))
+    }
+    let host = NSHostingView(rootView: HStack(spacing: 0) {
+        if !onLeft { Color.clear }
+        ChatSidebar(chat: chat, panelWidth: panelWidth, onLeft: onLeft, aiSettings: settings, close: {}, settings: {})
+            .frame(width: panelWidth)
+        if onLeft { Color.clear }
+    }.ignoresSafeArea().preferredColorScheme(.dark))
+    let window = BrowseWindow(contentRect: NSRect(x: -10000, y: -10000, width: 900, height: 600),
+                              styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.titleVisibility = .hidden
+    window.toolbar = NSToolbar(identifier: "ChatSpacing")
+    window.appearance = NSAppearance(named: .darkAqua)
+    window.contentView = BrowserWindowGlass(store: store, content: host)
+    window.orderFront(nil)
+    defer { window.close(); store.stopWindow(); defaults.removePersistentDomain(forName: domain); try? FileManager.default.removeItem(at: root) }
+    for _ in 0..<10 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(20)) }
+    func dragAreas(_ view: NSView) -> [WindowDragAreaView] {
+        (view as? WindowDragAreaView).map { [$0] } ?? view.subviews.flatMap(dragAreas)
+    }
+    let composer = try #require(dragAreas(host).max { $0.bounds.height < $1.bounds.height })
+    let rect = composer.convert(composer.bounds, to: nil)
+    let content = try #require(window.contentView)
+    let bounds = content.convert(content.bounds, to: nil)
+    let side = onLeft ? rect.minX - bounds.minX : bounds.maxX - rect.maxX
+    let bottom = rect.minY - bounds.minY
+    #expect(abs(side - bottom) <= 1, "Side inset \(side), bottom inset \(bottom), composer \(rect), content \(bounds)")
+    #expect(abs(side - Chrome.paneInset) <= 1)
+    func descendants<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, of: type) }
+    }
+    let glass = try #require(descendants(host, of: ChatHeaderGlassView.self).first)
+    let header = glass.convert(glass.bounds, to: nil)
+    let transcript = try #require(descendants(host, of: NSScrollView.self).max { $0.bounds.height < $1.bounds.height })
+    #expect(abs(transcript.convert(transcript.bounds, to: nil).maxY - header.maxY) <= 1)
+    #expect(abs(header.height - ChatHeader.height(onLeft: onLeft, panelWidth: panelWidth)) <= 1)
+    transcript.contentView.scroll(to: NSPoint(x: 0, y: 150))
+    transcript.reflectScrolledClipView(transcript.contentView)
+    #expect(transcript.contentView.bounds.minY > 0)
+    #expect(glass.convert(glass.bounds, to: nil) == header)
+    let shieldPoint = NSPoint(x: header.midX, y: header.minY + 2)
+    #expect(glass.hitTest(glass.superview!.convert(shieldPoint, from: nil)) === glass)
+    if let path = ProcessInfo.processInfo.environment["BEND_CHAT_SPACING_CAPTURE"], !onLeft,
+       let frame = window.contentView?.superview, let bitmap = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) {
+        frame.cacheDisplay(in: frame.bounds, to: bitmap)
+        try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
 }
 
 // @lat: [[lat.md/tests/ai-tests#Expanded tool card layout]]

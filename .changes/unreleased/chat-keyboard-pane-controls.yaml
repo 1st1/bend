@@ -1,0 +1,3 @@
+kind: Changed
+body: Add prompt history and Escape controls to chat, support approved opening of new panes, scroll messages beneath a glass header, center a compact glass Latest pill, and cap user bubbles at 85% width.
+time: 2026-11-14T21:30:00-08:00

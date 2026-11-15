@@ -192,11 +192,89 @@ private struct ApprovalChatProvider: Provider {
     restored.restore(saved)
     #expect(restored.actionApproval.pending == nil && !restored.running)
     restored.approveAction(stopped.id)
-    chat.stop()
+    let window = BrowseWindow(contentRect: NSRect(x: -10000, y: -10000, width: 400, height: 300),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.browserStore = fixture.store
+    let editor = ChatComposerTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
+    window.contentView = editor
+    window.makeFirstResponder(editor)
+    defer { window.close() }
+    let escape = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: window.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53))
+    editor.prompts = ["Recall me"]; editor.string = "Recall me"; editor.historyIndex = 0
+    editor.setSelectedRange(NSRange(location: 0, length: 9))
+    window.sendEvent(escape)
+    #expect(editor.string.isEmpty && chat.actionApproval.pending?.id == stopped.id)
+    window.sendEvent(escape)
     chat.approveAction(stopped.id)
     for _ in 0..<200 where chat.running { try await Task.sleep(for: .milliseconds(10)) }
     #expect(chat.actionApproval.pending == nil && !chat.running)
     #expect(try await fixture.controller.webView.evaluateJavaScript("document.querySelector('#field').value") as? String == "unchanged")
+}
+
+// @lat: [[lat.md/tests/ai-tests#Creating panes from chat]]
+@Test @MainActor func aiCreatePaneApproval() async throws {
+    let fixture = SecurityFixture(); defer { fixture.clean() }
+    try await fixture.load("<body>Original page</body>")
+    let domain = "AICreatePane-\(UUID())"
+    let defaults = UserDefaults(suiteName: domain)!
+    defer { defaults.removePersistentDomain(forName: domain) }
+    let settings = AISettings(defaults: defaults)
+    let approval = AIActionApproval()
+    let tools = PaneChatTools(store: fixture.store, tabID: fixture.tab.id, settings: settings, approve: approval.request)
+    let input = PaneChatTools.Input(pane: fixture.page.id.uuidString, url: "https://example.org/comments")
+    #expect(tools.tools().contains { $0.definition.name == "create_pane" })
+    #expect(tools.renderPrompt("${panes}").contains("Tools disabled in Settings → AI: none"))
+    func create() -> Task<JSONValue, Error> { Task { try await tools.execute("create_pane", input: input) } }
+    func pending() async throws -> AIActionApproval.Request {
+        for _ in 0..<100 where approval.pending == nil { try await Task.sleep(for: .milliseconds(10)) }
+        return try #require(approval.pending)
+    }
+    for address in ["file:///etc/passwd", "javascript:alert(1)", "https://user:secret@example.com"] {
+        await #expect(throws: Error.self) {
+            try await tools.execute("create_pane", input: .init(pane: input.pane, url: address))
+        }
+    }
+    let denied = create()
+    let proposal = try await pending()
+    #expect(proposal.action == .create && proposal.action.buttonTitle == "Open in new pane")
+    #expect(fixture.store.selectedTab.pages.count == 1)
+    approval.resolve(proposal.id, approved: false)
+    await #expect(throws: Error.self) { try await denied.value }
+    #expect(fixture.store.selectedTab.pages.count == 1)
+    let disabled = create()
+    let disabledRequest = try await pending()
+    settings.setToolEnabled("create_pane", enabled: false)
+    approval.resolve(disabledRequest.id, approved: true)
+    await #expect(throws: Error.self) { try await disabled.value }
+    #expect(fixture.store.selectedTab.pages.count == 1)
+    #expect(!tools.tools().contains { $0.definition.name == "create_pane" })
+    #expect(tools.renderPrompt("${panes}").contains("Tools disabled in Settings → AI: create_pane"))
+    settings.setToolEnabled("create_pane", enabled: true)
+    let stale = create()
+    let staleRequest = try await pending()
+    fixture.controller.webView(fixture.controller.webView, didStartProvisionalNavigation: nil)
+    approval.resolve(staleRequest.id, approved: true)
+    await #expect(throws: Error.self) { try await stale.value }
+    let cancelled = create()
+    _ = try await pending()
+    cancelled.cancel()
+    await #expect(throws: Error.self) { try await cancelled.value }
+    #expect(approval.pending == nil && fixture.store.selectedTab.pages.count == 1)
+    let accepted = create()
+    let acceptedRequest = try await pending()
+    approval.resolve(acceptedRequest.id, approved: true)
+    let result = try await accepted.value
+    guard case .object(let values) = result else { Issue.record("Expected created pane metadata"); return }
+    let tab = fixture.store.selectedTab
+    #expect(tab.pages.count == 2 && tab.pages[0].id == fixture.page.id && tab.pages[0].address == fixture.page.address)
+    #expect(tab.pages[1].address == input.url && tab.focusedPane == tab.pages[1].id)
+    #expect(values["pane"] == .string(tab.pages[1].id.uuidString))
+    #expect(fixture.store.existingController(for: tab.pages[1].id) != nil)
+    #expect(fixture.store.linkOpeners[tab.pages[1].id] == nil)
+    #expect(try tools.paneContext().jsonString().contains(tab.pages[1].id.uuidString))
+    await #expect(throws: Error.self) { try await tools.execute("create_pane", input: .init(pane: UUID().uuidString, url: input.url)) }
 }
 
 // @lat: [[lat.md/tests/ai-tests#Page read field privacy]]

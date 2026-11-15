@@ -4,22 +4,22 @@ private typealias ViewState<Value> = SwiftUI.State<Value>
 
 struct ChatSidebar: View {
     @ObservedObject var chat: TabChat
-    @ObservedObject private var settings = AISettings.shared
+    @ObservedObject private var settings: AISettings
     var panelWidth: CGFloat = BrowserStore.defaultChatWidth
     var onLeft = false
     var close: () -> Void
     var settingsAction: () -> Void
     @ViewState private var inputFocused = false
     @ViewState private var scrollFollow = ChatScrollFollow()
+    private var headerHeight: CGFloat { ChatHeader.height(onLeft: onLeft, panelWidth: panelWidth) }
 
-    init(chat: TabChat, panelWidth: CGFloat = BrowserStore.defaultChatWidth, onLeft: Bool = false, close: @escaping () -> Void, settings: @escaping () -> Void) {
+    init(chat: TabChat, panelWidth: CGFloat = BrowserStore.defaultChatWidth, onLeft: Bool = false,
+         aiSettings: AISettings = .shared, close: @escaping () -> Void, settings: @escaping () -> Void) {
         self.panelWidth = panelWidth; self.onLeft = onLeft; self.chat = chat; self.close = close; self.settingsAction = settings
+        _settings = ObservedObject(wrappedValue: aiSettings)
     }
     var body: some View {
         VStack(spacing: 0) {
-            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: !chat.running && !chat.bubbles.isEmpty,
-                       newChat: { chat.clear() }, close: close)
-                .zIndex(1)
             if !settings.connected && chat.bubbles.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 32)).foregroundStyle(.secondary)
@@ -27,13 +27,18 @@ struct ChatSidebar: View {
                     Text("Log in to an AI account to ask questions and work across all panes in this tab.")
                         .foregroundStyle(.secondary).multilineTextAlignment(.center)
                     Button("Connect in Settings…", action: settingsAction).buttonStyle(.borderedProminent)
-                }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }.padding(24).padding(.top, headerHeight).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 transcript
                 composer
             }
         }
         .frame(maxHeight: .infinity)
+        .overlay(alignment: .top) {
+            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: !chat.running && !chat.bubbles.isEmpty,
+                       newChat: { chat.clear() }, close: close)
+                .background(ChatHeaderGlass())
+        }
         .environment(\.openURL, OpenURLAction { url in
             Task { await chat.openLink(url) }
             return .handled
@@ -69,7 +74,7 @@ struct ChatSidebar: View {
                             thinkingSummary
                         }
                         HStack {
-                            if bubble.isUser { Spacer(minLength: 24) }
+                            if bubble.isUser { Spacer(minLength: 0) }
                             Group {
                                 if bubble.kind != .text {
                                     ChatActivityRow(bubble: bubble, streaming: chat.running,
@@ -84,6 +89,8 @@ struct ChatSidebar: View {
                                 .padding(.horizontal, bubble.kind == .text ? 12 : 4)
                                 .padding(.vertical, bubble.kind == .text ? 12 : 2)
                                 .background(bubble.kind != .text ? Color.clear : bubble.isUser ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                                .frame(maxWidth: bubble.isUser ? max(0, panelWidth - 32) * 0.85 : nil,
+                                       alignment: bubble.isUser ? .trailing : .leading)
                             if !bubble.isUser { Spacer(minLength: 4) }
                         }.padding(.vertical, bubble.kind == .text ? 5 : 0)
                     }
@@ -104,11 +111,13 @@ struct ChatSidebar: View {
                     if let error = chat.error { Text(error).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
                     Color.clear.frame(height: 1).id("bottom")
                 }.padding(16)
+                    .padding(.top, headerHeight)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
                         if scrollFollow.shouldFollow { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
             }
             .clipped()
+            .contentMargins(.top, headerHeight, for: .scrollIndicators)
             .contentShape(Rectangle())
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentSize.height - geometry.visibleRect.maxY < 40
@@ -137,12 +146,17 @@ struct ChatSidebar: View {
             .onChange(of: chat.actionApproval.pending?.id) { _, _ in
                 if scrollFollow.shouldFollow { proxy.scrollTo("bottom", anchor: .bottom) }
             }
-            .overlay(alignment: .bottomTrailing) {
+            .overlay(alignment: .bottom) {
                 if !scrollFollow.following {
                     Button("Latest", systemImage: "arrow.down") {
                         scrollFollow.resume()
                         proxy.scrollTo("bottom", anchor: .bottom)
-                    }.buttonStyle(.bordered).padding(12)
+                    }
+                    .font(.system(size: 10.4, weight: .medium))
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
+                    .padding(12)
                 }
             }
         }
@@ -152,7 +166,8 @@ struct ChatSidebar: View {
     }
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ChatComposerInput(text: $chat.input, focused: $inputFocused, canSend: canSend) { chat.send() }
+            ChatComposerInput(text: $chat.input, focused: $inputFocused, canSend: canSend,
+                              prompts: chat.bubbles.filter(\.isUser).map(\.text)) { chat.send() }
             HStack {
                 AIModelPicker(models: settings.models, selection: $chat.modelID)
                     .disabled(chat.running)
@@ -160,6 +175,7 @@ struct ChatSidebar: View {
                 Spacer()
                 if chat.running {
                     Button("Stop", systemImage: "stop.fill") { chat.stop() }
+                        .help("Stop response (Esc)")
                 } else {
                     Button("Send", systemImage: "arrow.up") { chat.send() }
                         .disabled(!canSend)
@@ -173,13 +189,16 @@ struct ChatSidebar: View {
         .background(PaneChromeBackground(cornerRadius: 12))
         .background(WindowDragArea(excluded: true))
         // The adjacent pane canvas supplies the inner gap.
-        .padding(onLeft ? .leading : .trailing, Chrome.paneInset)
-        .padding(.bottom, Chrome.paneInset)
+        .padding(EdgeInsets(top: 0, leading: onLeft ? Chrome.paneInset : 0,
+                            bottom: Chrome.paneInset, trailing: onLeft ? 0 : Chrome.paneInset))
     }
 }
 
 // The fixed header stays above native transcript views during scrolling.
 struct ChatHeader: View {
+    static func height(onLeft: Bool, panelWidth: CGFloat) -> CGFloat {
+        2 * Chrome.headerCenterY + (onLeft && panelWidth < 330 ? 32 : 0)
+    }
     var onLeft = false
     var panelWidth: CGFloat = BrowserStore.defaultChatWidth
     private var buttonWidth: CGFloat { panelWidth < 240 ? 86 : 100 }
@@ -200,7 +219,7 @@ struct ChatHeader: View {
         .padding(.leading, 10)
         .padding(.trailing, Chrome.sidebarHorizontalInset)
         .padding(.top, topOffset)
-        .frame(height: 2 * Chrome.headerCenterY + topOffset)
+        .frame(height: Self.height(onLeft: onLeft, panelWidth: panelWidth))
         .contentShape(Rectangle())
         .background(WindowDragArea(excluded: true))
     }

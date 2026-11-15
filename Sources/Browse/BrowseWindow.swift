@@ -72,6 +72,16 @@ class BrowseWindow: NSWindow {
         case .keyDown where event.keyCode == 53 && capturesPaneGesture:
             cancelPaneDrag()
             return
+        case .keyDown where event.keyCode == 53:
+            if event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+               (firstResponder as? ChatComposerTextView)?.clearRecalledPrompt() == true { return }
+            if event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+               attachedSheet == nil, (firstResponder as? NSTextInputClient)?.hasMarkedText() != true,
+               let store = browserStore, store.openChats.contains(store.selectedTab.id),
+               let chat = store.chats[store.selectedTab.id], chat.running {
+                chat.stop()
+                return
+            }
         default: break
         }
         forwardToAppKit(event)

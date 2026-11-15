@@ -4,10 +4,11 @@ import Combine
 // @lat: [[lat.md/architecture/ai#Action approval]]
 @MainActor final class AIActionApproval: ObservableObject {
     enum Action: String {
-        case navigate = "navigate_pane", click = "click_element", fill = "fill_element"
+        case navigate = "navigate_pane", create = "create_pane", click = "click_element", fill = "fill_element"
         var buttonTitle: String {
             switch self {
             case .navigate: "Open page"
+            case .create: "Open in new pane"
             case .click: "Click element"
             case .fill: "Fill field"
             }
@@ -30,7 +31,7 @@ import Combine
         var target: Target?
 
         var fields: [ChatArgumentField] {
-            var result = [ChatArgumentField(label: "Current page", value: page)]
+            var result = [ChatArgumentField(label: action == .create ? "Beside page" : "Current page", value: page)]
             if let destination { result.append(.init(label: "Open", value: destination)) }
             if let target {
                 result.append(.init(label: "Element", value: target.label.isEmpty ? target.tag.lowercased() : target.label))

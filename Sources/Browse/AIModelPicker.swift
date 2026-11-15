@@ -85,13 +85,14 @@ private struct AIModelSearch: View {
 }
 
 enum AIPaneTool: String, CaseIterable, Identifiable {
-    case read = "read_pane", navigate = "navigate_pane"
+    case read = "read_pane", navigate = "navigate_pane", create = "create_pane"
     case click = "click_element", fill = "fill_element"
     var id: String { rawValue }
     var title: String {
         switch self {
         case .read: "Read page"
         case .navigate: "Navigate panes"
+        case .create: "Open a new pane"
         case .click: "Click elements"
         case .fill: "Fill text fields"
         }
@@ -100,6 +101,7 @@ enum AIPaneTool: String, CaseIterable, Identifiable {
         switch self {
         case .read: "Read page text and find interactive elements."
         case .navigate: "Open a web address in an existing pane."
+        case .create: "Open a web address beside an existing pane in this tab."
         case .click: "Click links, buttons, and other page elements."
         case .fill: "Enter text in ordinary fields without submitting."
         }

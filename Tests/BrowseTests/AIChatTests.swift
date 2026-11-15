@@ -359,7 +359,7 @@ private struct EmptyChatProvider: Provider {
     let tools = PaneChatTools(store: store, tabID: store.selectedTab.id)
     #expect(tools.tools().isEmpty)
     #expect(tools.paneContext() == .array([]))
-    for name in ["read_pane", "navigate_pane", "click_element", "fill_element"] {
+    for name in AIPaneTool.allCases.map(\.rawValue) {
         await #expect(throws: Error.self) {
             try await tools.execute(name, input: .init(pane: store.selectedTab.focusedPane.uuidString, url: "https://example.com", selector: "body", text: "test"))
         }
