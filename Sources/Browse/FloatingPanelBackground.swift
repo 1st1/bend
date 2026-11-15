@@ -1,19 +1,25 @@
 import AppKit
 import SwiftUI
+import BrowseCore
 
 struct FloatingPanelBackground: View {
+    var appearance: GlassAppearance = .floatingPanelDefault
     var body: some View {
-        FloatingPanelGlass()
+        FloatingPanelGlass(appearance: appearance)
             .overlay {
-                RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.45))
+                RoundedRectangle(cornerRadius: 12).fill(.black.opacity(appearance.darkening))
                     .allowsHitTesting(false)
             }
     }
 }
 
 private struct FloatingPanelGlass: NSViewRepresentable {
+    var appearance: GlassAppearance
     func makeNSView(context: Context) -> FloatingPanelGlassView { FloatingPanelGlassView() }
-    func updateNSView(_ view: FloatingPanelGlassView, context: Context) {}
+    func updateNSView(_ view: FloatingPanelGlassView, context: Context) {
+        view.style = appearance.clear ? .clear : .regular
+        view.tintColor = appearance.tint?.nsColor
+    }
 }
 
 final class FloatingPanelGlassView: NSGlassEffectView {

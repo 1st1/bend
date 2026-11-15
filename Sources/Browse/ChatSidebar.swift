@@ -1,4 +1,5 @@
 import SwiftUI
+import BrowseCore
 
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
@@ -7,6 +8,7 @@ struct ChatSidebar: View {
     @ObservedObject private var settings: AISettings
     var panelWidth: CGFloat = BrowserStore.defaultChatWidth
     var onLeft = false
+    var composerAppearance: GlassAppearance
     var close: () -> Void
     var settingsAction: () -> Void
     @ViewState private var inputFocused = false
@@ -14,8 +16,9 @@ struct ChatSidebar: View {
     @ViewState private var composerHeight: CGFloat = 110
 
     init(chat: TabChat, panelWidth: CGFloat = BrowserStore.defaultChatWidth, onLeft: Bool = false,
-         aiSettings: AISettings = .shared, close: @escaping () -> Void, settings: @escaping () -> Void) {
+         composerAppearance: GlassAppearance = .floatingPanelDefault, aiSettings: AISettings = .shared, close: @escaping () -> Void, settings: @escaping () -> Void) {
         self.panelWidth = panelWidth; self.onLeft = onLeft; self.chat = chat; self.close = close; self.settingsAction = settings
+        self.composerAppearance = composerAppearance
         _settings = ObservedObject(wrappedValue: aiSettings)
     }
     var body: some View {
@@ -122,17 +125,7 @@ struct ChatSidebar: View {
                     }
             }
             .clipped()
-            .mask {
-                VStack(spacing: 0) {
-                    LinearGradient(stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .clear, location: 0.35),
-                        .init(color: .black, location: 1)
-                    ], startPoint: .top, endPoint: .bottom)
-                        .frame(height: headerHeight + 16)
-                    Color.black
-                }
-            }
+            .mask { ToolbarScrollFade(height: headerHeight) }
             .contentMargins(.top, headerHeight, for: .scrollIndicators)
             .contentMargins(.bottom, composerHeight, for: .scrollIndicators)
             .contentShape(Rectangle())
@@ -202,7 +195,7 @@ struct ChatSidebar: View {
             }.controlSize(.small)
         }
         .padding(10)
-        .background { FloatingPanelBackground() }
+        .background { FloatingPanelBackground(appearance: composerAppearance) }
         .background(WindowDragArea(excluded: true))
         // The adjacent pane canvas supplies the inner gap.
         .padding(EdgeInsets(top: 0, leading: onLeft ? Chrome.paneInset : 0,

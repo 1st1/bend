@@ -6,7 +6,7 @@ See [[lat.md/tests/settings-tests|Test coverage]].
 
 ## UI preferences
 
-[SettingsWindowController.swift](../../Sources/Browse/SettingsWindowController.swift) opens Settings on the UI sidebar section, with link-opening, active-pane highlighting, and independent window/header glass controls.
+[SettingsWindowController.swift](../../Sources/Browse/SettingsWindowController.swift) opens Settings on the UI sidebar section, with link-opening, active-pane highlighting, and independent window, pane-header, media-player, and chat-input glass controls.
 
 Only the Close traffic-light button is visible; minimize and zoom controls are hidden, and fullscreen is disabled.
 
@@ -61,3 +61,11 @@ Removal covers cookies, caches, and other WebKit storage without changing Bend h
 Schema version 3 adds tracking, payment disclosure, and ad measurement preferences; tracking prevention and payment disclosure default on, while ad measurement defaults off. Earlier security and zoom choices survive migration. [[lat.md/tests/privacy-tests#Privacy settings migration]] covers version 2 upgrades. [[lat.md/tests/settings-tests#Website security migration]] covers migration and persistence; security changes participate in the same atomic transactions as zoom changes.
 
 One shared store owns the connection and cached settings. A singleton defaults row and hostname-keyed website rows store page zoom, bounded from 25% to 500%. Schema versioning rejects newer or unrelated databases; corrupt storage is preserved instead of overwritten. Saves update changed rows in a transaction with WAL and full synchronous commits. The cache advances only after commit, so failures roll back and can be retried. Website settings are browser preferences, separate from WebKit cookies, localStorage, and IndexedDB. [[lat.md/tests/settings-tests#Website settings transactions]] and [[lat.md/tests/settings-tests#Website settings storage protection]] cover persistence and failure boundaries.
+
+## Floating panel appearance
+
+Settings → UI offers separate Media player and AI chat input sections with Regular/Clear glass, optional color tint, a continuous Darkening slider with percentage readout, and independent resets.
+
+[[Sources/Browse/BrowserStore.swift#BrowserStore#mediaPlayerGlass]] and [[Sources/Browse/BrowserStore.swift#BrowserStore#chatComposerGlass]] persist independently in the root session and apply live across windows. Both default to [[Sources/BrowseCore/GlassAppearance.swift#GlassAppearance#floatingPanelDefault|regular frosted glass with no tint and 45% darkening]]. Older sessions receive those defaults; numeric and color normalization uses the existing glass-appearance rules.
+
+[[Sources/Browse/FloatingPanelBackground.swift#FloatingPanelBackground]] applies darkening only to the background, preserving foreground controls. Its native glass view updates style and tint in place, retaining hit testing and layout. Blur and refraction remain system-controlled. [[lat.md/tests/settings-tests#Live floating panel glass preferences]] checks independent updates and reset without replacing the surfaces.

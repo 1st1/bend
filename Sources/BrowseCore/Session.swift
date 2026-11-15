@@ -231,6 +231,8 @@ public struct BrowserSession: Codable, Sendable {
     public var inactivePaneDimAmount: Double?
     public var windowGlass: GlassAppearance?
     public var paneHeaderGlass: GlassAppearance?
+    public var mediaPlayerGlass: GlassAppearance?
+    public var chatComposerGlass: GlassAppearance?
     public var paneHeaderTopRimClipping: Double?
     public var paneHeaderBottomRimClipping: Double?
     public var paneHighlight: PaneHighlight?

@@ -510,6 +510,8 @@ private struct UISettingsView: View {
                 GlassSettingsSection(title: "Pane headers", appearance: $store.paneHeaderGlass, defaults: .headerDefault, allowsSolid: true,
                                      topRimClipping: $store.paneHeaderTopRimClipping,
                                      bottomRimClipping: $store.paneHeaderBottomRimClipping)
+                GlassSettingsSection(title: "Media player", appearance: $store.mediaPlayerGlass, defaults: .floatingPanelDefault)
+                GlassSettingsSection(title: "AI chat input", appearance: $store.chatComposerGlass, defaults: .floatingPanelDefault)
             }
         }.formStyle(.grouped)
     }
@@ -575,7 +577,7 @@ private struct GlassSettingsSection: View {
                 if let topRimClipping { rimClippingSlider("Top rim clipping", value: topRimClipping) }
                 if let bottomRimClipping { rimClippingSlider("Bottom rim clipping", value: bottomRimClipping) }
                 if topRimClipping != nil || bottomRimClipping != nil {
-                    Text("Higher values hide more of each glass rim. Zero restores it. Applies to pane and mini-player headers.")
+                    Text("Higher values hide more of each glass rim. Zero restores it. Applies to pane headers.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

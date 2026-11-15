@@ -352,6 +352,16 @@ final class BrowserStore: ObservableObject {
         set { if let sharedStore { sharedStore.paneHeaderGlass = newValue; return }; session.paneHeaderGlass = newValue.normalized(defaultDarkening: 0.5); saveSoon() }
     }
 
+    var mediaPlayerGlass: GlassAppearance {
+        get { if let sharedStore { return sharedStore.mediaPlayerGlass }; return (session.mediaPlayerGlass ?? .floatingPanelDefault).normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening) }
+        set { if let sharedStore { sharedStore.mediaPlayerGlass = newValue; return }; session.mediaPlayerGlass = newValue.normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening); saveSoon() }
+    }
+
+    var chatComposerGlass: GlassAppearance {
+        get { if let sharedStore { return sharedStore.chatComposerGlass }; return (session.chatComposerGlass ?? .floatingPanelDefault).normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening) }
+        set { if let sharedStore { sharedStore.chatComposerGlass = newValue; return }; session.chatComposerGlass = newValue.normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening); saveSoon() }
+    }
+
     static let defaultHeaderTopRimClipping: Double = 0.5
     static let defaultHeaderBottomRimClipping: Double = 1.1
     static let headerRimClippingRange: ClosedRange<Double> = 0...16

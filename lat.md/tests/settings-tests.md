@@ -12,7 +12,7 @@ See [[lat.md/architecture/settings|Architecture and behavior]].
 
 [AddressRequestTests.swift](../../Tests/BrowseTests/AddressRequestTests.swift) verifies legacy session defaults, preference persistence across store recreation, preserved tab identity, and numeric bounds and nonfinite-value handling.
 
-Window/header appearances persist independently, including the solid header color and style, preserve legacy defaults, and support resetting both appearances. Top- and bottom-rim clipping default independently for legacy sessions, persist fractional values, delegate through secondary windows, and clamp invalid input. Sessions containing retired custom separator settings still load without affecting the clipping defaults or tabs.
+Window/header and media/chat-input appearances persist independently, including the solid header color and style, preserve legacy defaults, and support resetting each appearance. Media/chat-input preferences also delegate through secondary windows and normalize invalid values. Top- and bottom-rim clipping default independently for legacy sessions, persist fractional values, delegate through secondary windows, and clamp invalid input. Sessions containing retired custom separator settings still load without affecting the clipping defaults or tabs.
 
 Highlight settings preserve separate colors, outline gap and width, intensity, spread, and mode across restart, including None mode and retained title-tint color and intensity; absent highlight settings use None. Older records without an outline gap receive the default gap. Older records without spread decode with their previous intensity-derived radius; records without title-tint fields receive the default color and intensity. Invalid colors and nonfinite numeric values normalize to defaults, and out-of-range values are bounded.
 
@@ -79,3 +79,9 @@ Live settings changes during the delay affect the visible source document; the d
 ## Modal settings lifecycle
 
 [[Tests/BrowseTests/BrowserWindowTests.swift#settingsModalLifecycle]] verifies native application modality, async responsiveness, section changes, Command-W and Escape dismissal, reopening, and cancellation before presentation starts.
+
+## Live floating panel glass preferences
+
+[[Tests/BrowseTests/AddressRequestTests.swift#floatingPanelGlassPreferences]] changes media-player and chat-input glass independently through the root store, checking native style and tint in a secondary window’s view.
+
+Reset restores regular untinted glass on the same native surfaces. The persistence test covers separate saved values, older-session defaults, bounds, invalid values, and resets.

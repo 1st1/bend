@@ -26,6 +26,7 @@ struct BrowserView: View {
     @ObservedObject var store: BrowserStore
     @ViewState<SidebarScrollStatus> private var sidebarScrollStatus = .init()
     @ViewState private var mediaPlayerHeight: CGFloat = 0
+    @ViewState private var sidebarHeaderHeight: CGFloat = 52
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -80,6 +81,7 @@ struct BrowserView: View {
     @ViewBuilder private var chatSidebar: some View {
         if !store.isPrivate, store.openChats.contains(store.selectedTab.id), let chat = store.chats[store.selectedTab.id] {
             ChatSidebar(chat: chat, panelWidth: store.chatWidth, onLeft: store.sidebarSide == .right,
+                composerAppearance: store.chatComposerGlass,
                 close: { store.openChats.remove(chat.tabID) },
                 settings: { store.onSettingsRequested?(.ai) })
                 .id(chat.tabID)
@@ -111,28 +113,6 @@ struct BrowserView: View {
         let leadingInset = Chrome.sidebarHorizontalInset - (!floating && store.sidebarSide == .right ? Chrome.paneInset : 0)
         let trailingInset = Chrome.sidebarHorizontalInset - (!floating && store.sidebarSide == .left ? Chrome.paneInset : 0)
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: Chrome.sidebarControlSpacing) {
-                if floating && store.sidebarSide == .left && !store.isFullScreen { Color.clear.frame(width: 66) }
-                Spacer(minLength: 0)
-                DownloadsButton(downloads: store.downloads)
-                iconButton(store.sidebarSide == .left ? "sidebar.left" : "sidebar.right", floating ? "Keep sidebar open · ⌘⇧S" : "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
-                    .background(WindowDragArea(excluded: true))
-            }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
-                .frame(height: 2 * (Chrome.headerCenterY - (floating ? FloatingSidebarTrackingView.inset : 0)))
-                .padding(.top, !floating && store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
-                .zIndex(1)
-
-            if store.isPrivate {
-                Label("Private Browsing", systemImage: "eye.slash")
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 20).padding(.vertical, 8)
-            }
-            if !store.favorites.isEmpty {
-                SidebarFavorites(store: store)
-                    .padding(.leading, leadingInset).padding(.trailing, trailingInset)
-                    .padding(.top, 6)
-            }
-
             ScrollView {
                 VStack(alignment: .leading, spacing: Chrome.sidebarTabSpacing) {
                     ForEach(store.sidebarTabs) { tab in
@@ -140,28 +120,25 @@ struct BrowserView: View {
                     }
 
                 }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
-                    .padding(.top, store.favorites.isEmpty ? 6 : 16)
+                    .padding(.top, sidebarHeaderHeight + 16)
                     .padding(.bottom, Chrome.sidebarScrollFadeHeight + mediaPlayerHeight)
             }
             .onScrollGeometryChange(for: SidebarScrollStatus.self) { geometry in
                 SidebarScrollStatus(visibleRect: geometry.visibleRect, tabCount: store.sidebarTabs.count,
-                                    topInset: store.favorites.isEmpty ? 6 : 16, bottomOcclusion: mediaPlayerHeight)
+                                    topInset: sidebarHeaderHeight + 16, bottomOcclusion: mediaPlayerHeight,
+                                    topOcclusion: sidebarHeaderHeight)
             } action: { _, status in
                 sidebarScrollStatus = status
             }
             .clipped()
             .mask {
-                VStack(spacing: 0) {
-                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                        .frame(height: sidebarScrollStatus.topFadeHeight)
-                    Color.black
-                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                        .frame(height: Chrome.sidebarScrollFadeHeight)
-                }
+                ToolbarScrollFade(height: sidebarHeaderHeight,
+                    clearHeight: store.favorites.isEmpty && !store.isPrivate ? 0 : max(0, sidebarHeaderHeight - Chrome.sidebarScrollFadeHeight),
+                    bottomFadeHeight: Chrome.sidebarScrollFadeHeight)
             }
             .overlay(alignment: .top) {
                 if sidebarScrollStatus.above > 0 {
-                    SidebarOverflowPill(count: sidebarScrollStatus.above, above: true).padding(.top, 2)
+                    SidebarOverflowPill(count: sidebarScrollStatus.above, above: true).padding(.top, sidebarHeaderHeight + 2)
                 }
             }
             .overlay(alignment: .bottom) {
@@ -170,6 +147,7 @@ struct BrowserView: View {
                 }
             }
             .contentShape(Rectangle())
+            .contentMargins(.top, sidebarHeaderHeight, for: .scrollIndicators)
             .contentMargins(.bottom, mediaPlayerHeight, for: .scrollIndicators)
             .overlay(alignment: .bottom) {
                 SidebarMediaPlayer(coordinator: store.mediaCoordinator, store: store, floating: floating)
@@ -181,6 +159,32 @@ struct BrowserView: View {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.system(size: 10)).foregroundStyle(.orange).padding(20)
             }
+        }
+        .overlay(alignment: .top) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: Chrome.sidebarControlSpacing) {
+                    if floating && store.sidebarSide == .left && !store.isFullScreen { Color.clear.frame(width: 66) }
+                    Spacer(minLength: 0)
+                    DownloadsButton(downloads: store.downloads)
+                    iconButton(store.sidebarSide == .left ? "sidebar.left" : "sidebar.right", floating ? "Keep sidebar open · ⌘⇧S" : "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
+                        .background(WindowDragArea(excluded: true))
+                }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
+                    .frame(height: 2 * (Chrome.headerCenterY - (floating ? FloatingSidebarTrackingView.inset : 0)))
+                    .padding(.top, !floating && store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
+                    .zIndex(1)
+
+                if store.isPrivate {
+                    Label("Private Browsing", systemImage: "eye.slash")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 20).padding(.vertical, 8)
+                }
+                if !store.favorites.isEmpty {
+                    SidebarFavorites(store: store)
+                        .padding(.leading, leadingInset).padding(.trailing, trailingInset)
+                        .padding(.top, 6)
+                }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sidebarHeaderHeight = $0 }
         }
         .overlay(WindowDragArea())
         .background(PaneSidebarTarget(store: store, destination: .workspace(

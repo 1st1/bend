@@ -214,14 +214,14 @@ func floatingMediaPlayer(floating: Bool, side: SidebarSide) async throws {
     let document = try #require(scroll.documentView)
     scroll.contentView.scroll(to: NSPoint(x: 0, y: document.bounds.height - scroll.contentView.bounds.height))
     scroll.reflectScrolledClipView(scroll.contentView)
-    let lastRowBottom = (store.favorites.isEmpty ? CGFloat(6) : 16)
-        + CGFloat(store.sidebarTabs.count) * (Chrome.sidebarTabHeight + Chrome.sidebarTabSpacing) - Chrome.sidebarTabSpacing
-    let clearance = playerRect.maxY - viewport.minY + PaneGeometry.gap
-    #expect(scroll.contentView.bounds.maxY - clearance >= lastRowBottom)
+    let lastRow = try #require(descendants(host, of: TabDragSourceView.self).first { $0.tabID == store.sidebarTabs.last?.id })
+    #expect(lastRow.convert(lastRow.bounds, to: nil).minY >= playerRect.maxY)
+    let contentHeight = document.bounds.height
     store.mediaCoordinator.dismiss()
     try await settle()
     #expect(descendants(host, of: FloatingPanelGlassView.self).isEmpty)
-    #expect(document.bounds.height < lastRowBottom + 2 * Chrome.sidebarScrollFadeHeight)
+    #expect(abs(contentHeight - document.bounds.height - playerRect.height - 2 * PaneGeometry.gap) <= 1)
+
 }
 
 // @lat: [[lat.md/tests/media-tests#Media slider interaction]]
