@@ -12,6 +12,8 @@ See [[lat.md/architecture/settings|Architecture and behavior]].
 
 [AddressRequestTests.swift](../../Tests/BrowseTests/AddressRequestTests.swift) verifies legacy session defaults, preference persistence across store recreation, preserved tab identity, and numeric bounds and nonfinite-value handling.
 
+The AI bubble transparency slider preserves its default and saved values across restart and secondary windows, clamps out-of-range edits, ignores nonfinite edits, and supports reset.
+
 Window, header, and shared media/chat-input appearances persist independently, including the solid header color and style, preserve legacy defaults, and support resetting each appearance. The shared media/chat-input preference also delegates through secondary windows and normalizes invalid values; migration prefers the saved chat appearance over the saved media appearance and clears both old fields on edit. Top- and bottom-rim clipping default independently for legacy sessions, persist fractional values, delegate through secondary windows, and clamp invalid input. Sessions containing retired custom separator settings still load without affecting the clipping defaults or tabs.
 
 Highlight settings preserve separate colors, outline gap and width, intensity, spread, and mode across restart, including None mode and retained title-tint color and intensity; absent highlight settings use None. Older records without an outline gap receive the default gap. Older records without spread decode with their previous intensity-derived radius; records without title-tint fields receive the default color and intensity. Invalid colors and nonfinite numeric values normalize to defaults, and out-of-range values are bounded.

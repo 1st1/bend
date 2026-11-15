@@ -61,9 +61,11 @@ import BrowseCore
     #expect(store.windowGlass == .windowDefault)
     #expect(store.paneHeaderGlass == .headerDefault)
     #expect(store.floatingPanelGlass == .floatingPanelDefault)
+    #expect(store.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
     #expect(store.paneHeaderTopRimClipping == BrowserStore.defaultHeaderTopRimClipping)
     #expect(store.paneHighlight == PaneHighlight())
     #expect(store.paneHighlight.style == .none)
+    store.aiBubbleTransparency = 0.73
     store.commandClickDestination = .newTab
     store.inactivePaneDimAmount = 0.35
     store.windowGlass = GlassAppearance(clear: true, tint: .init(red: 0.2, green: 0.4, blue: 0.8), darkening: 0.15)
@@ -93,6 +95,7 @@ import BrowseCore
     store.save()
     #expect(store.persistenceError == nil)
     let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(restored.aiBubbleTransparency == 0.73)
     #expect(restored.commandClickDestination == .newTab)
     #expect(restored.inactivePaneDimAmount == 0.35)
     #expect(restored.windowGlass == store.windowGlass)
@@ -102,6 +105,16 @@ import BrowseCore
     #expect(restored.paneHeaderBottomRimClipping == 1.25)
     let secondary = BrowserStore(sessionFile: directory.appendingPathComponent("secondary.json"),
                                  persistentExtensions: false, sharedStore: store)
+    #expect(secondary.aiBubbleTransparency == 0.73)
+    secondary.aiBubbleTransparency = 2
+    #expect(store.aiBubbleTransparency == 1)
+    secondary.aiBubbleTransparency = -1
+    #expect(store.aiBubbleTransparency == 0)
+    secondary.aiBubbleTransparency = .nan
+    #expect(store.aiBubbleTransparency == 0)
+    store.session.aiBubbleTransparency = .infinity
+    #expect(store.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
+    store.aiBubbleTransparency = BrowserStore.defaultAIBubbleTransparency
     #expect(secondary.floatingPanelGlass == store.floatingPanelGlass)
     secondary.floatingPanelGlass.darkening = 2
     #expect(store.floatingPanelGlass.darkening == 1)
@@ -172,6 +185,7 @@ import BrowseCore
     store.save()
     #expect(store.persistenceError == nil)
     let reset = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(reset.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
     #expect(reset.windowGlass == .windowDefault)
     #expect(reset.paneHeaderGlass == .headerDefault)
     #expect(reset.floatingPanelGlass == .floatingPanelDefault)

@@ -53,9 +53,6 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     @Published var modelID: String {
         didSet { defaults.set(modelID, forKey: "ai.model"); if oldValue != modelID { resetConnectionTest() } }
     }
-    @Published var transparentBubbles: Bool {
-        didSet { defaults.set(transparentBubbles, forKey: "ai.transparentBubbles") }
-    }
     @Published var webSearchEnabled: Bool {
         didSet { defaults.set(webSearchEnabled, forKey: "ai.webSearch") }
     }
@@ -95,7 +92,6 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
         activeConnection = AIConnection(rawValue: defaults.string(forKey: "ai.connection") ?? "")?.rawValue ?? "gateway"
         vercelClientID = defaults.string(forKey: "ai.vercel.clientID") ?? ""
         vercelTeam = defaults.string(forKey: "ai.vercel.team") ?? ""
-        transparentBubbles = defaults.bool(forKey: "ai.transparentBubbles")
         webSearchEnabled = defaults.object(forKey: "ai.webSearch") as? Bool ?? true
         systemPrompt = defaults.string(forKey: "ai.systemPrompt") ?? Self.defaultSystemPrompt
         disabledTools = Set(defaults.stringArray(forKey: "ai.disabledTools") ?? [])
@@ -601,11 +597,6 @@ struct AISettingsView: View {
                     }
                 }
                 Text("Sends a short test to the preferred model. Uses a small amount of your plan or API credits.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Appearance") {
-                Toggle("Transparent AI bubbles", isOn: $settings.transparentBubbles).toggleStyle(.switch)
-                Text("Hide the background behind assistant messages.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Preferred model") {

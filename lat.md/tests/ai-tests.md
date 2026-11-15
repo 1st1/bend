@@ -28,8 +28,6 @@ Tests exercise [[lat.md/architecture/ai|native chat]] with scripted model provid
 
 [[Tests/BrowseTests/AIChatTests.swift#aiPreferencesAndToolPermissions]] verifies preferred-model persistence, per-chat overrides, catalog refresh retention, tool advertisement filtering, live revocation after advertisement, and re-enabling tools.
 
-It also checks the transparent-bubble default and persistence when enabled or disabled.
-
 ## Custom system prompt
 
 [[Tests/BrowseTests/AIChatTests.swift#aiCustomSystemPrompt]] verifies prompt persistence, default/reset state, actual model requests using the edited prompt on follow-ups, and exclusion of stale system instructions from conversation history.

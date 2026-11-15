@@ -81,7 +81,7 @@ struct BrowserView: View {
     @ViewBuilder private var chatSidebar: some View {
         if !store.isPrivate, store.openChats.contains(store.selectedTab.id), let chat = store.chats[store.selectedTab.id] {
             ChatSidebar(chat: chat, panelWidth: store.chatWidth, onLeft: store.sidebarSide == .right,
-                composerAppearance: store.floatingPanelGlass,
+                composerAppearance: store.floatingPanelGlass, bubbleTransparency: store.aiBubbleTransparency,
                 close: { store.openChats.remove(chat.tabID) },
                 settings: { store.onSettingsRequested?(.ai) })
                 .id(chat.tabID)

@@ -352,6 +352,21 @@ final class BrowserStore: ObservableObject {
         set { if let sharedStore { sharedStore.paneHeaderGlass = newValue; return }; session.paneHeaderGlass = newValue.normalized(defaultDarkening: 0.5); saveSoon() }
     }
 
+    static let defaultAIBubbleTransparency = 0.94
+    var aiBubbleTransparency: Double {
+        get {
+            if let sharedStore { return sharedStore.aiBubbleTransparency }
+            let value = session.aiBubbleTransparency ?? Self.defaultAIBubbleTransparency
+            return value.isFinite ? min(1, max(0, value)) : Self.defaultAIBubbleTransparency
+        }
+        set {
+            guard newValue.isFinite else { return }
+            if let sharedStore { sharedStore.aiBubbleTransparency = newValue; return }
+            session.aiBubbleTransparency = min(1, max(0, newValue))
+            saveSoon()
+        }
+    }
+
     var floatingPanelGlass: GlassAppearance {
         get {
             if let sharedStore { return sharedStore.floatingPanelGlass }

@@ -9,6 +9,7 @@ struct ChatSidebar: View {
     var panelWidth: CGFloat = BrowserStore.defaultChatWidth
     var onLeft = false
     var composerAppearance: GlassAppearance
+    var bubbleTransparency: Double
     var close: () -> Void
     var settingsAction: () -> Void
     @ViewState private var inputFocused = false
@@ -16,9 +17,10 @@ struct ChatSidebar: View {
     @ViewState private var composerHeight: CGFloat = 110
 
     init(chat: TabChat, panelWidth: CGFloat = BrowserStore.defaultChatWidth, onLeft: Bool = false,
-         composerAppearance: GlassAppearance = .floatingPanelDefault, aiSettings: AISettings = .shared, close: @escaping () -> Void, settings: @escaping () -> Void) {
+         composerAppearance: GlassAppearance = .floatingPanelDefault, bubbleTransparency: Double = BrowserStore.defaultAIBubbleTransparency, aiSettings: AISettings = .shared, close: @escaping () -> Void, settings: @escaping () -> Void) {
         self.panelWidth = panelWidth; self.onLeft = onLeft; self.chat = chat; self.close = close; self.settingsAction = settings
         self.composerAppearance = composerAppearance
+        self.bubbleTransparency = bubbleTransparency
         _settings = ObservedObject(wrappedValue: aiSettings)
     }
     var body: some View {
@@ -94,7 +96,7 @@ struct ChatSidebar: View {
                             }
                                 .padding(.horizontal, bubble.kind == .text ? 12 : 4)
                                 .padding(.vertical, bubble.kind == .text ? 12 : 2)
-                                .background(bubble.kind != .text ? Color.clear : bubble.isUser ? Color.accentColor.opacity(0.22) : Color.white.opacity(settings.transparentBubbles ? 0 : 0.06), in: RoundedRectangle(cornerRadius: 14))
+                                .background(bubble.kind != .text ? Color.clear : bubble.isUser ? Color.accentColor.opacity(0.22) : Color.white.opacity(1 - bubbleTransparency), in: RoundedRectangle(cornerRadius: 14))
                                 .frame(maxWidth: bubble.kind == .text ? max(0, panelWidth - 32) * 0.9 : nil,
                                        alignment: bubble.isUser ? .trailing : .leading)
                             if !bubble.isUser { Spacer(minLength: 4) }

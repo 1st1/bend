@@ -505,6 +505,21 @@ private struct UISettingsView: View {
             } header: {
                 Text("Panes")
             }
+            Section("AI chat bubbles") {
+                VStack(spacing: 10) {
+                    HStack {
+                        Text("Bubble transparency")
+                        Spacer()
+                        Text(store.aiBubbleTransparency, format: .percent.precision(.fractionLength(0)))
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    Slider(value: $store.aiBubbleTransparency, in: 0...1) {
+                        Text("AI bubble transparency")
+                    }.labelsHidden()
+                }
+                Button("Reset to Default") { store.aiBubbleTransparency = BrowserStore.defaultAIBubbleTransparency }
+                    .disabled(store.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
+            }
             if #available(macOS 26.0, *) {
                 GlassSettingsSection(title: "Browser window", appearance: $store.windowGlass, defaults: .windowDefault)
                 GlassSettingsSection(title: "Pane headers", appearance: $store.paneHeaderGlass, defaults: .headerDefault, allowsSolid: true,
