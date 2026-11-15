@@ -131,7 +131,7 @@ extension Data {
         defaults.set(hostID, forKey: "ai.openai.host")
         let browser = AIOAuthBrowser(anchor: anchor)
         let authorizationURL = attempt.authorizationURL(provider: provider, clientID: clientID, redirect: redirect, hostID: hostID)
-        let response = try await browser.authenticate(url: authorizationURL, callback: callback)
+        let response = try await browser.authenticate(url: authorizationURL, callback: callback, redirect: redirect)
         let result = try attempt.callback(response, redirect: redirect, clientID: clientID)
         try Task.checkCancellation()
         guard generations[provider, default: 0] == generation else { throw CancellationError() }
