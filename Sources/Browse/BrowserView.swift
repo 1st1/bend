@@ -302,19 +302,27 @@ private struct PaneCanvas: View {
         let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
         let layout = zoomed.map(PaneLayout.pane) ?? tab.layout
         let geometry = PaneGeometry(layout: layout, viewport: viewport)
+        let clipped = geometry.clippedPaneIDs(in: viewport)
+        let regions = geometry.overflowRegions(layout: layout, in: viewport)
         let livePages = Set(store.session.workspaces.flatMap(\.tabs).first { $0.id == tab.id }?.pages.map(\.id) ?? [])
         ScrollViewReader { proxy in
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
                     ForEach(geometry.panes) { placement in
                         if livePages.contains(placement.id), let page = tab.pages.first(where: { $0.id == placement.id }) {
+                            let hidden = clipped.contains(page.id)
+                            let visibleFrame = placement.frame.intersection(CGRect(origin: .zero, size: viewport))
+                            let frame = hidden ? placement.frame : visibleFrame
                             BrowserPane(store: store, controller: store.controller(for: page), tab: tab, pageID: page.id)
-                                .frame(width: placement.frame.width, height: placement.frame.height)
+                                .frame(width: frame.width, height: frame.height)
+                                .opacity(hidden ? 0 : 1)
+                                .allowsHitTesting(!hidden)
+                                .accessibilityHidden(hidden)
                                 .transition(reduceMotion ? .identity : .asymmetric(
                                     insertion: .modifier(active: PaneReveal(progress: 0, axis: placement.insertionAxis),
                                                          identity: PaneReveal(progress: 1, axis: placement.insertionAxis)),
                                     removal: .identity))
-                                .position(x: placement.frame.midX, y: placement.frame.midY)
+                                .position(x: frame.midX, y: frame.midY)
                                 .id(page.id)
                         }
                     }
@@ -329,13 +337,67 @@ private struct PaneCanvas: View {
                 .animation(animation, value: store.paneMoveRevision)
             }
             .scrollIndicators(.hidden)
+            .scrollDisabled(!clipped.isEmpty)
+            .overlay(alignment: .topLeading) {
+                ForEach(regions) { region in
+                    PaneSpacePlaceholder(count: region.paneIDs.count, canSeparate: tab.pages.count > 1) {
+                        store.separatePanes(region.paneIDs, from: tab.id)
+                    }
+                    .frame(width: region.frame.width, height: region.frame.height)
+                    .clipped()
+                    .position(x: region.frame.midX, y: region.frame.midY)
+                }
+            }
+            .onChange(of: clipped) { _, ids in
+                guard !ids.isEmpty else { return }
+                for page in tab.pages where ids.contains(page.id) {
+                    guard let web = store.existingController(for: page.id)?.webView,
+                          let responder = web.window?.firstResponder as? NSView,
+                          responder === web || responder.isDescendant(of: web) else { continue }
+                    web.window?.makeFirstResponder(nil)
+                }
+            }
             .onChange(of: tab.pages.map(\.id)) { previous, current in
-                guard current.count > previous.count,
+                guard clipped.isEmpty, current.count > previous.count,
                       let added = current.first(where: { !previous.contains($0) }) else { return }
                 InputDiagnostics.transition(.canvasScroll, .requested, paneID: added, tabID: tab.id)
                 withAnimation(animation) { proxy.scrollTo(added, anchor: .bottomTrailing) }
             }
         }
+    }
+}
+
+// @lat: [[lat.md/architecture/pane-layout#Layouts that do not fit]]
+struct PaneSpacePlaceholder: View {
+    let count: Int
+    let canSeparate: Bool
+    let separate: () -> Void
+
+    private var message: AttributedString {
+        var text = AttributedString(count == 1 ? "1 pane doesn’t fit. " : "\(count) panes don’t fit. ")
+        if canSeparate {
+            var link = AttributedString("Open in separate tabs")
+            link.link = URL(string: "bend-action://separate-panes")
+            text.append(link)
+        } else {
+            text.append(AttributedString("Widen the window to show it."))
+        }
+        return text
+    }
+
+    var body: some View {
+        Text(message)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .tint(.blue)
+            .multilineTextAlignment(.center)
+            .environment(\.openURL, OpenURLAction { _ in
+                separate()
+                return .handled
+            })
+            .padding(8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(WindowDragArea(excluded: true))
     }
 }
 

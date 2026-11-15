@@ -34,6 +34,47 @@ public struct PaneGeometry {
         place(layout, in: CGRect(origin: .zero, size: size), insertionAxis: .horizontal)
     }
 
+    /// Panes whose visible region is too small to host a page.
+    public func clippedPaneIDs(in viewport: CGSize) -> [UUID] {
+        panes.filter {
+            let frame = $0.frame.intersection(CGRect(origin: .zero, size: viewport))
+            return frame.isNull || frame.width < 339.5 || frame.height < 239.5
+        }.map(\.id)
+    }
+
+    public struct OverflowRegion: Identifiable {
+        public var id: UUID { paneIDs[0] }
+        public var paneIDs: [UUID]
+        public let frame: CGRect
+    }
+
+    /// Coalesce hidden subtrees, keeping neighboring usable panes visible.
+    public func overflowRegions(layout: PaneLayout, in viewport: CGSize) -> [OverflowRegion] {
+        let hidden = Set(clippedPaneIDs(in: viewport))
+        let visible = CGRect(origin: .zero, size: viewport)
+        func ids(_ node: PaneLayout) -> [UUID] {
+            switch node {
+            case .pane(let id): return [id]
+            case .split(_, _, _, let a, let b, _): return ids(a) + ids(b)
+            }
+        }
+        func regions(_ node: PaneLayout) -> [OverflowRegion] {
+            let members = ids(node)
+            if members.allSatisfy(hidden.contains) {
+                let bounds = panes.filter { members.contains($0.id) }.reduce(CGRect.null) { $0.union($1.frame) }
+                return [OverflowRegion(paneIDs: members, frame: bounds.intersection(visible))]
+            }
+            if case .split(_, _, _, let a, let b, _) = node { return regions(a) + regions(b) }
+            return []
+        }
+        let all = regions(layout)
+        var result = all.filter { !$0.frame.isNull && !$0.frame.isEmpty }
+        // Fully offscreen siblings still need a reachable recovery action.
+        let offscreen = all.filter { $0.frame.isNull || $0.frame.isEmpty }.flatMap(\.paneIDs)
+        if !offscreen.isEmpty, !result.isEmpty { result[result.count - 1].paneIDs += offscreen }
+        return result
+    }
+
     private static func minimumSize(_ layout: PaneLayout) -> CGSize {
         switch layout {
         case .pane: return CGSize(width: 340, height: 240)

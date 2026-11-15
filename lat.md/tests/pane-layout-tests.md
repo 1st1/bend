@@ -53,3 +53,9 @@ Divider updates clamp fractions to safe bounds and leave unrelated split nodes u
 [[Tests/BrowseTests/PaneResizingTests.swift#clippedResizeCursors]] exercises pane and sidebar resize handles outside a clip view, then visible, hidden, empty, and detached, ensuring invalid cursor rectangles never reach AppKit.
 
 The fully clipped case has a null intersection with an infinite origin, matching the cursor-registration crash. Visible handles still register their resize regions.
+
+## Overflowing pane layouts
+
+[[Tests/BrowseTests/PaneOverflowTests.swift#overflowingPaneLayouts]] verifies width and height clipping detection, placeholder hit testing, retained WebKit state after resizing, and separation into valid tabs without losing pane identities, pins, forms, or controllers.
+
+The overflow fixture also verifies that the fitting left pane remains hit-testable while the undersized right subtree shares a recovery region, and that only those hidden panes are moved.

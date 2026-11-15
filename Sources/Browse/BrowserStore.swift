@@ -484,6 +484,25 @@ final class BrowserStore: ObservableObject {
         return true
     }
 
+    func separatePanes(_ ids: [UUID], from tabID: UUID) {
+        guard let workspace = session.workspaces.first(where: { $0.tabs.contains { $0.id == tabID } }) else { return }
+        var next = session
+        var firstDestination: UUID?
+        for id in ids {
+            let title = browsers[id]?.title ?? "New tab"
+            if let destination = next.detachPane(id, from: tabID, into: workspace.id, title: title) {
+                if firstDestination == nil { firstDestination = destination }
+            }
+        }
+        guard let firstDestination else { return }
+        next.selectedTab = firstDestination
+        refreshTransferredTitles(&next)
+        zoomedPane = nil
+        session = next
+        paneMoveRevision += 1
+        saveSoon()
+    }
+
     @discardableResult
     func detachPane(_ source: UUID, from sourceTabID: UUID, into workspaceID: UUID) -> Bool {
         var next = session
