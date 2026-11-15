@@ -5,6 +5,17 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.7.0
+### Added
+- Add website file uploads, camera and microphone capture controls, and per-site camera, microphone, and location blocking.
+- Toggle the active tab’s chat with Command-Shift-C.
+### Changed
+- Remember website camera, microphone, and location permissions, manage Ask/Allow/Block in Websites settings, hide unavailable passkey settings, and provide compact searchable site controls with certificate inspection, domain labels, and extension actions.
+- Reduce sidebar spacing above and below favorite tiles.
+### Fixed
+- Restore camera and microphone access for video calls and other website media capture.
+- Keep embedded website permissions separate from their parent sites and immediately stop camera or microphone capture when access is blocked.
+
 ## v0.6.0
 ### Added
 - Chat with AI about the current tab's panes in a resizable sidebar, with streaming Markdown, clickable citations, web search, and expandable tool details.

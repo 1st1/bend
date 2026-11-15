@@ -14,6 +14,10 @@ See [[lat.md/architecture/build|Architecture and behavior]].
 
 Signing and verification failures retain the previous bundle and executable inode. Successful publication installs a new inode and removes staging files. The test checks VERSION and BEND_BUILD_NUMBER propagation into both profiles, invalid metadata rejection without replacing an existing bundle, the macOS 26 minimum in both profiles and the linker arguments, Debug’s distinct name, identifier, compiler configuration, and profile marker, production’s explicit Release flag and retained identifier, publication without touching the other channel, the icon resource and plist entry, bundled AI SDK license and notice files in both profiles, HTTP/HTTPS URL-handler and HTML/XHTML document-viewer declarations, and precedence of the new signing override over the legacy override. These checks do not exercise macOS signing or WebKit runtime behavior.
 
+[[scripts/test-build-app.sh]] verifies camera, microphone, and location usage descriptions in both profiles and checks the entitlements passed to app signing.
+
+The signed entitlement payload must enable camera and audio input only. [[scripts/test-build-prod.sh]] also requires both entitlements on the timestamped app signature. These isolated checks do not authorize devices or verify a live call; that requires the signed app, an HTTPS website, and user permission.
+
 ## Production installer publication
 
 [test-build-prod.sh](../../scripts/test-build-prod.sh) exercises the production script with isolated native-tool stand-ins, checking notarization, ticket validation, packaging order, and failure-safe publication.

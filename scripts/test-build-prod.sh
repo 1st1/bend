@@ -4,7 +4,7 @@ root="$(mktemp -d "${TMPDIR:-/tmp}/bend-prod-test.XXXXXX")"
 root="$(cd "$root" && pwd)"
 trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/scripts" "$root/bin" "$root/dist/Bend.app/Contents/MacOS"
-cp "$(dirname "$0")/build-prod.sh" "$root/scripts/"
+cp "$(dirname "$0")/build-prod.sh" "$(dirname "$0")/Bend.entitlements" "$root/scripts/"
 export BEND_PROD_TEST_ROOT="$root"
 export PATH="$root/bin:$PATH"
 export BEND_SIGNING_IDENTITY='Developer ID Application: Test (TESTTEAM)'
@@ -30,6 +30,11 @@ cat > "$root/bin/codesign" <<'SH'
 #!/bin/bash
 if [[ "$1" == --display ]]; then
   printf 'Authority=Developer ID Application: Test (TESTTEAM)\nTimestamp=now\n' >&2
+elif [[ "$1" == --force && "${!#}" == *.app ]]; then
+  [[ "$7" == --entitlements && -f "$8" ]] || exit 3
+  for key in com.apple.security.device.camera com.apple.security.device.audio-input; do
+    [[ "$(/usr/libexec/PlistBuddy -c "Print :$key" "$8")" == true ]] || exit 4
+  done
 elif [[ "$1" == --force && "${!#}" == *.dmg ]]; then
   printf 'dmg-sign\n' >> "$BEND_PROD_TEST_ROOT/events"
 fi

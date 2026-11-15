@@ -20,6 +20,27 @@ final class WebsiteSettingsStore: ObservableObject {
         self.values = values
     }
 
+    func setPermission(_ choice: WebsitePermissionChoice, permission: WebsitePermission, origin: String) {
+        setPermissions(choice, permissions: [permission], origin: origin)
+    }
+
+    func setPermissions(_ choice: WebsitePermissionChoice, permissions: [WebsitePermission], origin: String) {
+        update { settings in
+            for permission in permissions {
+                settings.blockedPermissions[origin]?.remove(permission)
+                settings.allowedPermissions[origin]?.remove(permission)
+                if choice == .block { settings.blockedPermissions[origin, default: []].insert(permission) }
+                if choice == .allow { settings.allowedPermissions[origin, default: []].insert(permission) }
+            }
+            if settings.blockedPermissions[origin]?.isEmpty == true { settings.blockedPermissions[origin] = nil }
+            if settings.allowedPermissions[origin]?.isEmpty == true { settings.allowedPermissions[origin] = nil }
+        }
+    }
+
+    func setBlocked(_ blocked: Bool, permission: WebsitePermission, origin: String) {
+        setPermission(blocked ? .block : .ask, permission: permission, origin: origin)
+    }
+
     func resetTemporary() {
         guard file == nil else { return }
         values = WebsiteSettings()

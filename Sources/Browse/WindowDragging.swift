@@ -5,9 +5,11 @@ import SwiftUI
 struct WindowDragArea: NSViewRepresentable {
     var excluded = false
     var onPress: (() -> Void)?
+    var identifier: String?
 
     func makeNSView(context: Context) -> WindowDragAreaView { WindowDragAreaView() }
     func updateNSView(_ view: WindowDragAreaView, context: Context) {
+        view.identifier = identifier.map { NSUserInterfaceItemIdentifier(rawValue: $0) }
         view.excluded = excluded
         view.onPress = onPress
     }

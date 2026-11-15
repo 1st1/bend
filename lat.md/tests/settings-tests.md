@@ -87,3 +87,7 @@ Live settings changes during the delay affect the visible source document; the d
 [[Tests/BrowseTests/AddressRequestTests.swift#floatingPanelGlassPreferences]] changes the shared media-player and chat-input glass through the root store, checking native style and tint in a secondary window’s view.
 
 Both surfaces update together; reset restores regular untinted glass on the same native surfaces. The persistence test covers shared saved values, migration from separate settings, older-session defaults, bounds, invalid values, and resets.
+
+## Website permission persistence
+
+[[Tests/BrowseCoreTests/WebsitePermissionTests.swift#websitePermissionPersistence]] verifies scheme/port/subdomain isolation, canonical origins, Allow/Block persistence and removal, version 4 block migration, invalid-origin rejection, and preservation of zoom settings.

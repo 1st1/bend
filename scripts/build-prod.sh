@@ -87,7 +87,7 @@ app="$payload/Bend.app"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :BendBuildProfile' "$app/Contents/Info.plist")" == production ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" == dev.yury.browse.prototype ]]
 # Sign the private release copy with an explicit secure timestamp.
-codesign --force --options runtime --timestamp --sign "$identity" "$app"
+codesign --force --options runtime --timestamp --sign "$identity" --entitlements scripts/Bend.entitlements "$app"
 codesign --verify --strict "$app"
 codesign --display --verbose=4 "$app" 2> "$logs/app-signature.txt"
 if ! grep -q '^Authority=Developer ID Application:' "$logs/app-signature.txt"; then

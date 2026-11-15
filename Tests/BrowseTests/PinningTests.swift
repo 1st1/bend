@@ -199,8 +199,11 @@ import BrowseCore
     try await settle()
     #expect(store.pinnedReturnAddress(first) == "bend://start")
     // Return remains clickable even while this pinned pane is inactive.
-    let pinPoint = try paneButton(first)
-    try click(NSPoint(x: pinPoint.x - 24, y: pinPoint.y))
+    let firstPane = try #require(descendants(ClippedPaneHost.self, content).first { $0.pageID == first })
+    let returnControl = try #require(descendants(WindowDragAreaView.self, firstPane).first {
+        $0.identifier?.rawValue == "pinnedReturnControl"
+    })
+    try click(returnControl.convert(NSPoint(x: returnControl.bounds.midX, y: returnControl.bounds.midY), to: nil))
     try await settle()
     #expect(firstController.address == "bend://start")
     #expect(store.isPanePinned(first))

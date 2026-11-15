@@ -693,17 +693,12 @@ struct PaneExtensionsMenu: View {
     let pageID: UUID
     let showSettings: () -> Void
     var body: some View {
-        Menu {
+        Section("Extensions") {
             ForEach(manager.records.filter { manager.isAvailable($0.id, pageID: pageID) }) { record in
                 Button(record.name) { manager.performAction(record.id, pageID: pageID) }
             }
-            Divider()
             Button("Manage Extensions…", action: showSettings)
-        } label: {
-            Image(systemName: "puzzlepiece.extension").resizable().scaledToFit().frame(width: 12, height: 12)
         }
-        .menuStyle(.button).buttonStyle(ChromeButtonStyle()).menuIndicator(.hidden).fixedSize()
-        .help("Extensions").accessibilityLabel("Extensions")
     }
 }
 
