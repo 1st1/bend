@@ -46,7 +46,7 @@ The native preview layer is observed during continuous movement and edge changes
 
 Ordinary header hit testing reaches the compact title handles, which drive hover feedback and pane dragging. During a title press, native dispatch instead uses the window-owned mouse target, which accepts first mouse and remains mounted through release. All three mouse event types must pass through AppKit. Mouse-down focuses the pane; small motion does not move the window or begin a drag, and mouse-up clears tracking. Empty header and sidebar backgrounds request native window dragging. Tab rows, toolbar controls, sidebar resize handles, and traffic lights are excluded; native clicks still activate the sidebar toggle without creating a tab.
 
-Background drag gestures cross the native titlebar drag threshold before asserting the request: AppKit can defer the initial mouse-down. Every background window-drag request must originate inside AppKit's normal event dispatch, so activating clicks cannot skip native window appearance bookkeeping. Outside mouse-down dispatch the background targets do not claim hit testing, preserving underlying scroll and hover behavior.
+Background drag gestures select empty space outside the measured title and control bounds, then cross the native titlebar drag threshold before asserting the request: AppKit can defer the initial mouse-down. Every background window-drag request must originate inside AppKit's normal event dispatch, so activating clicks cannot skip native window appearance bookkeeping. Outside mouse-down dispatch the background targets do not claim hit testing, preserving underlying scroll and hover behavior.
 
 ## Pane transfer round trips
 

@@ -90,7 +90,18 @@ import BrowseCore
     let backgrounds = regions.filter { !$0.excluded }
     #expect(backgrounds.count == 3) // sidebar plus both pane headers
     for area in backgrounds {
-        let point = area.convert(NSPoint(x: area.bounds.midX, y: area.bounds.midY), to: nil)
+        // Site controls can cover a header's midpoint. Choose empty space from
+        // the actual layout without using the routing function under test.
+        let controls: [NSView] = regions.filter(\.excluded).map { $0 as NSView }
+            + handles(in: content).map { $0 as NSView }
+            + [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { window.standardWindowButton($0) }
+        let point = try #require(stride(from: area.bounds.minX + 8, through: area.bounds.maxX - 8, by: 4)
+            .map { area.convert(NSPoint(x: $0, y: area.bounds.midY), to: nil) }
+            .first { point in
+                area.visibleRect.contains(area.convert(point, from: nil)) && !controls.contains { control in
+                    !control.isHiddenOrHasHiddenAncestor && control.bounds.contains(control.convert(point, from: nil))
+                }
+            })
         #expect(WindowDragAreaView.find(at: point, in: window) === area)
         let frameView = try #require(window.contentView?.superview)
         // Outside native mouse-down dispatch, the overlay must not claim

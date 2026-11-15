@@ -14,7 +14,7 @@ See [[lat.md/architecture/pane-controls|Architecture and behavior]].
 
 The complete focused toolbar stays visible; inactive pane buttons appear together on whole-pane hover without shifting the title or stealing focus. Disabled clicks do not navigate. History clicks focus and navigate only their own pane, preserving other page state. Window deactivation and hidden tabs clear hover, while reactivation refreshes it.
 
-Long titles fill the available header width without overlapping or pushing out the trailing buttons at different window sizes.
+Long titles expand into the available header width without overlapping or pushing out the trailing buttons at different window sizes. Checks use measured title and control boundaries rather than a fixed expansion amount, since site controls and AppKit metrics affect available space.
 
 ## Pinned pane protection
 
