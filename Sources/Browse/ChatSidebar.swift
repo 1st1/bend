@@ -11,7 +11,7 @@ struct ChatSidebar: View {
     var settingsAction: () -> Void
     @ViewState private var inputFocused = false
     @ViewState private var scrollFollow = ChatScrollFollow()
-    private var headerHeight: CGFloat { ChatHeader.height(onLeft: onLeft, panelWidth: panelWidth) }
+    @ViewState private var composerHeight: CGFloat = 110
 
     init(chat: TabChat, panelWidth: CGFloat = BrowserStore.defaultChatWidth, onLeft: Bool = false,
          aiSettings: AISettings = .shared, close: @escaping () -> Void, settings: @escaping () -> Void) {
@@ -20,6 +20,9 @@ struct ChatSidebar: View {
     }
     var body: some View {
         VStack(spacing: 0) {
+            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: !chat.running && !chat.bubbles.isEmpty,
+                       newChat: { chat.clear() }, close: close)
+                .zIndex(1)
             if !settings.connected && chat.bubbles.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 32)).foregroundStyle(.secondary)
@@ -27,18 +30,16 @@ struct ChatSidebar: View {
                     Text("Log in to an AI account to ask questions and work across all panes in this tab.")
                         .foregroundStyle(.secondary).multilineTextAlignment(.center)
                     Button("Connect in Settings…", action: settingsAction).buttonStyle(.borderedProminent)
-                }.padding(24).padding(.top, headerHeight).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                transcript
-                composer
+                ZStack(alignment: .bottom) {
+                    transcript
+                    composer
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { composerHeight = $0 }
+                }.clipped()
             }
         }
         .frame(maxHeight: .infinity)
-        .overlay(alignment: .top) {
-            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: !chat.running && !chat.bubbles.isEmpty,
-                       newChat: { chat.clear() }, close: close)
-                .background(ChatHeaderGlass())
-        }
         .environment(\.openURL, OpenURLAction { url in
             Task { await chat.openLink(url) }
             return .handled
@@ -89,7 +90,7 @@ struct ChatSidebar: View {
                                 .padding(.horizontal, bubble.kind == .text ? 12 : 4)
                                 .padding(.vertical, bubble.kind == .text ? 12 : 2)
                                 .background(bubble.kind != .text ? Color.clear : bubble.isUser ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
-                                .frame(maxWidth: bubble.isUser ? max(0, panelWidth - 32) * 0.85 : nil,
+                                .frame(maxWidth: bubble.kind == .text ? max(0, panelWidth - 32) * 0.9 : nil,
                                        alignment: bubble.isUser ? .trailing : .leading)
                             if !bubble.isUser { Spacer(minLength: 4) }
                         }.padding(.vertical, bubble.kind == .text ? 5 : 0)
@@ -109,15 +110,16 @@ struct ChatSidebar: View {
                         .padding(.bottom, 4)
                     }
                     if let error = chat.error { Text(error).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
-                    Color.clear.frame(height: 1).id("bottom")
+                    // The scroll target includes the overlay clearance, so Latest
+                    // and streaming keep the final message above the composer.
+                    Color.clear.frame(height: composerHeight).id("bottom")
                 }.padding(16)
-                    .padding(.top, headerHeight)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
                         if scrollFollow.shouldFollow { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
             }
             .clipped()
-            .contentMargins(.top, headerHeight, for: .scrollIndicators)
+            .contentMargins(.bottom, composerHeight, for: .scrollIndicators)
             .contentShape(Rectangle())
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentSize.height - geometry.visibleRect.maxY < 40
@@ -157,6 +159,7 @@ struct ChatSidebar: View {
                     .buttonBorderShape(.capsule)
                     .controlSize(.small)
                     .padding(12)
+                    .padding(.bottom, composerHeight)
                 }
             }
         }
@@ -184,9 +187,7 @@ struct ChatSidebar: View {
             }.controlSize(.small)
         }
         .padding(10)
-        // This standalone panel needs its own rounded top; the media body
-        // extends glass above its bounds to join a separate header.
-        .background(PaneChromeBackground(cornerRadius: 12))
+        .background(ChatComposerGlass())
         .background(WindowDragArea(excluded: true))
         // The adjacent pane canvas supplies the inner gap.
         .padding(EdgeInsets(top: 0, leading: onLeft ? Chrome.paneInset : 0,

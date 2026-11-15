@@ -178,6 +178,12 @@ Denied, cancelled, disabled, and stale-source actions leave the layout unchanged
 
 ## Chat composer window spacing
 
-[[Tests/BrowseTests/ChatComposerTests.swift#chatComposerWindowSpacing]] checks equal bottom and outside composer gaps on both window edges across supported panel widths, plus a transcript viewport extending underneath the fixed glass header.
+[[Tests/BrowseTests/ChatComposerTests.swift#chatComposerWindowSpacing]] checks equal bottom and outside composer gaps on both window edges across supported panel widths, plus a transcript viewport extending beneath the floating composer.
 
-Scrolling leaves the header fixed, its native shield blocks underlying links, and an optional snapshot supports visual inspection.
+The header has no overlay material. Scrolling keeps the clear-glass composer fixed; its native background blocks underlying links while the input remains clickable. Assistant text respects the 90% width cap, and the last message scrolls above the composer. An optional snapshot supports visual inspection.
+
+## Recalled prompt appearance
+
+[[Tests/BrowseTests/ChatComposerTests.swift#chatHistoryAppearance]] compares single-line and multiline prompts inserted normally versus recalled with Up/Down, including attributes, full selection, and native editor height.
+
+Clearing recalled text and typing again must retain the same editor styling.

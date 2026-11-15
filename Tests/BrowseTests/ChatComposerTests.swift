@@ -122,22 +122,103 @@ import AI
     func descendants<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
         (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, of: type) }
     }
-    let glass = try #require(descendants(host, of: ChatHeaderGlassView.self).first)
-    let header = glass.convert(glass.bounds, to: nil)
+    let glass = try #require(descendants(host, of: ChatComposerGlassView.self).first)
+    #expect(glass.style == .clear)
+    #expect(glass.convert(glass.bounds, to: nil) == rect)
     let transcript = try #require(descendants(host, of: NSScrollView.self).max { $0.bounds.height < $1.bounds.height })
-    #expect(abs(transcript.convert(transcript.bounds, to: nil).maxY - header.maxY) <= 1)
-    #expect(abs(header.height - ChatHeader.height(onLeft: onLeft, panelWidth: panelWidth)) <= 1)
+    let viewport = transcript.convert(transcript.bounds, to: nil)
+    #expect(viewport.maxY >= bounds.maxY - ChatHeader.height(onLeft: onLeft, panelWidth: panelWidth) - 1)
+    #expect(viewport.maxY <= bounds.maxY + 1)
+    #expect(abs(viewport.minY - bounds.minY) <= 1)
+    let messages = descendants(host, of: NSTextView.self).filter { !$0.isEditable }
+    #expect(!messages.isEmpty)
+    for message in messages {
+        #expect(message.bounds.width + 24 <= (panelWidth - 32) * 0.9 + 1)
+    }
+    let document = try #require(transcript.documentView)
+    transcript.contentView.scroll(to: NSPoint(x: 0, y: document.bounds.height - transcript.contentView.bounds.height))
+    transcript.reflectScrolledClipView(transcript.contentView)
+    let last = try #require(messages.last)
+    #expect(last.convert(last.bounds, to: nil).minY >= rect.maxY)
     transcript.contentView.scroll(to: NSPoint(x: 0, y: 150))
     transcript.reflectScrolledClipView(transcript.contentView)
     #expect(transcript.contentView.bounds.minY > 0)
-    #expect(glass.convert(glass.bounds, to: nil) == header)
-    let shieldPoint = NSPoint(x: header.midX, y: header.minY + 2)
-    #expect(glass.hitTest(glass.superview!.convert(shieldPoint, from: nil)) === glass)
+    #expect(glass.convert(glass.bounds, to: nil) == rect)
+    let shieldPoint = NSPoint(x: rect.midX, y: rect.minY + 5)
+    let frame = try #require(window.contentView?.superview)
+    #expect(frame.hitTest(frame.convert(shieldPoint, from: nil)) === glass)
+    let input = try #require(descendants(host, of: ChatComposerTextView.self).first)
+    let inputPoint = input.convert(NSPoint(x: 15, y: 15), to: nil)
+    #expect(frame.hitTest(frame.convert(inputPoint, from: nil)) === input)
     if let path = ProcessInfo.processInfo.environment["BEND_CHAT_SPACING_CAPTURE"], !onLeft,
        let frame = window.contentView?.superview, let bitmap = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) {
         frame.cacheDisplay(in: frame.bounds, to: bitmap)
         try bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
     }
+}
+
+private typealias ComposerState<Value> = SwiftUI.State<Value>
+private struct ChatHistoryAppearanceFixture: View {
+    @ComposerState private var text = ""
+    let prompts: [String]
+    var body: some View {
+        ChatComposerInput(text: $text, focused: .constant(true), canSend: true, prompts: prompts, send: {})
+            .frame(width: 280).padding(10)
+    }
+}
+
+// @lat: [[lat.md/tests/ai-tests#Recalled prompt appearance]]
+@Test @MainActor func chatHistoryAppearance() async throws {
+    _ = NSApplication.shared
+    let prompts = ["Summarize the comment thread. Any insightful retorts?", "First line\nSecond line\nThird line\nFourth line"]
+    let host = NSHostingView(rootView: ChatHistoryAppearanceFixture(prompts: prompts))
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 300, height: 180),
+                          styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.appearance = NSAppearance(named: .darkAqua)
+    window.contentView = host
+    window.orderFront(nil)
+    defer { window.close() }
+    func settle() async throws {
+        for _ in 0..<5 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(20)) }
+    }
+    func editor(_ view: NSView) -> ChatComposerTextView? {
+        (view as? ChatComposerTextView) ?? view.subviews.lazy.compactMap(editor).first
+    }
+    try await settle()
+    let input = try #require(editor(host))
+    window.makeFirstResponder(input)
+    func replace(_ text: String) {
+        input.insertText(text, replacementRange: NSRange(location: 0, length: (input.string as NSString).length))
+    }
+    func key(_ code: UInt16) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: code))
+    }
+    var attributes: [NSAttributedString] = []
+    var heights: [CGFloat] = []
+    for prompt in prompts {
+        replace(prompt)
+        input.selectAll(nil)
+        try await settle()
+        attributes.append(NSAttributedString(attributedString: try #require(input.textStorage)))
+        heights.append(try #require(input.enclosingScrollView).frame.height)
+    }
+    replace("")
+    try await settle()
+    for (code, index) in [(UInt16(126), 1), (126, 0), (125, 1)] {
+        input.keyDown(with: try key(code))
+        try await settle()
+        #expect(input.string == prompts[index])
+        #expect(input.attributedString().isEqual(to: attributes[index]))
+        #expect(input.selectedRange() == NSRange(location: 0, length: (prompts[index] as NSString).length))
+        #expect(input.enclosingScrollView?.frame.height == heights[index])
+    }
+    input.keyDown(with: try key(53))
+    input.insertText("Typed after recall", replacementRange: input.selectedRange())
+    try await settle()
+    let actual = input.attributedString().attributes(at: 0, effectiveRange: nil)
+    #expect(NSDictionary(dictionary: actual).isEqual(to: attributes[0].attributes(at: 0, effectiveRange: nil)))
 }
 
 // @lat: [[lat.md/tests/ai-tests#Expanded tool card layout]]

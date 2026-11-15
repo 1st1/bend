@@ -86,9 +86,8 @@ final class ChatComposerTextView: NSTextView {
         guard !hasMarkedText(), let index = historyIndex, prompts.indices.contains(index),
               string == prompts[index], selectedRange() == NSRange(location: 0, length: (string as NSString).length) else { return false }
         let range = NSRange(location: 0, length: (string as NSString).length)
-        guard shouldChangeText(in: range, replacementString: "") else { return false }
-        textStorage?.replaceCharacters(in: range, with: "")
-        didChangeText()
+        insertText("", replacementRange: range)
+        guard string.isEmpty else { return false }
         historyIndex = nil
         setSelectedRange(NSRange(location: 0, length: 0))
         return true
@@ -113,9 +112,8 @@ final class ChatComposerTextView: NSTextView {
                 let index = max(0, min(next, prompts.count))
                 let value = index == prompts.count ? "" : prompts[index]
                 let range = NSRange(location: 0, length: (string as NSString).length)
-                if shouldChangeText(in: range, replacementString: value) {
-                    textStorage?.replaceCharacters(in: range, with: value)
-                    didChangeText()
+                insertText(value, replacementRange: range)
+                if string == value {
                     historyIndex = index == prompts.count ? nil : index
                     setSelectedRange(NSRange(location: 0, length: (value as NSString).length))
                     scrollRangeToVisible(selectedRange())
