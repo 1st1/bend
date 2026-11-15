@@ -8,13 +8,13 @@ struct SidebarScrollStatus: Equatable {
     init() {}
 
     // @lat: [[lat.md/architecture/sidebar#Sidebar overflow indicators]]
-    init(visibleRect: CGRect, tabCount: Int, topInset: CGFloat) {
+    init(visibleRect: CGRect, tabCount: Int, topInset: CGFloat, bottomOcclusion: CGFloat = 0) {
         guard visibleRect.height > 0, tabCount > 0 else { return }
         topFadeHeight = min(Chrome.sidebarScrollFadeHeight, max(0, visibleRect.minY))
         let stride = Chrome.sidebarTabHeight + Chrome.sidebarTabSpacing
         // Count only fully hidden rows; a partially visible tab remains in view.
         above = min(tabCount, max(0, Int(floor((visibleRect.minY - topInset - Chrome.sidebarTabHeight) / stride)) + 1))
-        below = min(tabCount, max(0, tabCount - Int(ceil((visibleRect.maxY - topInset) / stride))))
+        below = min(tabCount, max(0, tabCount - Int(ceil((max(visibleRect.minY, visibleRect.maxY - bottomOcclusion) - topInset) / stride))))
     }
 }
 

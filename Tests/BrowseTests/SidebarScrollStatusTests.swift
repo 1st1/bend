@@ -28,6 +28,10 @@ import Testing
     #expect(status(-20, 250).above == 0)
     #expect(status(-20, 250).below == 0)
     #expect(status(250, 350).above == 5)
+    // Tabs behind the floating media player count as hidden.
+    let covered = SidebarScrollStatus(visibleRect: CGRect(x: 0, y: 0, width: 240, height: 250),
+        tabCount: 5, topInset: 6, bottomOcclusion: 128)
+    #expect(covered.below == 2 && covered.above == 0)
     #expect(status(0, 0) == SidebarScrollStatus())
     #expect(status(0, 100, count: 0) == SidebarScrollStatus())
 }

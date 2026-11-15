@@ -85,3 +85,9 @@ A later known short duration removes an already qualified source, while a durati
 [MediaPlayerTests.swift](../../Tests/BrowseTests/MediaPlayerTests.swift) optionally loads `BEND_MEDIA_SMOKE_URL` in an ephemeral WebKit store, attempts muted playback, matches the sidebar title to Media Session metadata, and tests pause/resume with default playback policy.
 
 This opt-in check uses no saved sign-in and depends on the site's availability, consent flow, and playback policies. Local fixtures cover the deterministic bridge behavior. `BEND_MEDIA_SNAPSHOT` optionally renders the card with multiple players, a long title, and favicon at narrow, default, and wide sidebar widths, plus the full browser window, during the ownership fixture to inspect centered metadata, the compact favicon picker beside transport controls (with a separate row at minimum width), truncation, glass chrome, and pane spacing.
+
+## Floating media player
+
+[[Tests/BrowseTests/MediaPlayerTests.swift#floatingMediaPlayer]] checks both sidebar sides in docked and floating modes, verifying that tabs scroll beneath a fixed frosted player and the final row can scroll fully above it.
+
+The native background blocks clicks through empty player space while the seek slider remains interactive. Dismissal removes the player and its extra scroll clearance.

@@ -122,13 +122,12 @@ import AI
     func descendants<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
         (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, of: type) }
     }
-    let glass = try #require(descendants(host, of: ChatComposerGlassView.self).first)
+    let glass = try #require(descendants(host, of: FloatingPanelGlassView.self).first)
     #expect(glass.style == .regular)
     #expect(glass.convert(glass.bounds, to: nil) == rect)
     let transcript = try #require(descendants(host, of: NSScrollView.self).max { $0.bounds.height < $1.bounds.height })
     let viewport = transcript.convert(transcript.bounds, to: nil)
-    #expect(viewport.maxY >= bounds.maxY - ChatHeader.height(onLeft: onLeft, panelWidth: panelWidth) - 1)
-    #expect(viewport.maxY <= bounds.maxY + 1)
+    #expect(abs(viewport.maxY - bounds.maxY) <= 1)
     #expect(abs(viewport.minY - bounds.minY) <= 1)
     let messages = descendants(host, of: NSTextView.self).filter { !$0.isEditable }
     #expect(!messages.isEmpty)

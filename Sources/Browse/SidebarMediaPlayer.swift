@@ -6,6 +6,7 @@ private typealias MediaViewState<Value> = SwiftUI.State<Value>
 struct SidebarMediaPlayer: View {
     @ObservedObject var coordinator: WindowMediaCoordinator
     @ObservedObject var store: BrowserStore
+    var floating = false
     @MediaViewState<Bool> private var hovered = false
     @MediaViewState private var sourceMenu = MediaSourceMenu()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -35,10 +36,6 @@ struct SidebarMediaPlayer: View {
                 }
                 .padding(.horizontal, store.sidebarWidth < 140 ? 6 : 12)
                 .frame(height: Chrome.paneHeaderHeight)
-                .background(PaneChromeBackground(cornerRadius: 12, roundsBottomCorners: false,
-                                                topRimClipping: store.paneHeaderTopRimClipping,
-                                                bottomRimClipping: store.paneHeaderBottomRimClipping,
-                                                appearance: store.paneHeaderGlass))
                 VStack(alignment: .leading, spacing: 7) {
                     Text(source.state.artist.isEmpty ? source.state.site : "\(source.state.artist) · \(source.state.site)")
                         .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
@@ -65,15 +62,17 @@ struct SidebarMediaPlayer: View {
                 }
                 .padding(store.sidebarWidth < 140 ? 6 : 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(PaneBodyBackground(cornerRadius: 12))
+
             }
+            .background { FloatingPanelBackground() }
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())
             .onHover { hovered = $0 }
             .onDisappear { hovered = false }
             .background(WindowDragArea(excluded: true))
-            // The pane canvas supplies the six-point gap on the right.
+            // The docked canvas supplies the inner gap; floating cards inset both edges.
             .padding(store.sidebarSide == .left ? .leading : .trailing, PaneGeometry.gap)
+            .padding(store.sidebarSide == .left ? .trailing : .leading, floating ? PaneGeometry.gap : 0)
             .padding(.vertical, PaneGeometry.gap)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Now playing")

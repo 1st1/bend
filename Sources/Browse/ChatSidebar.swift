@@ -19,10 +19,7 @@ struct ChatSidebar: View {
         _settings = ObservedObject(wrappedValue: aiSettings)
     }
     var body: some View {
-        VStack(spacing: 0) {
-            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: !chat.running && !chat.bubbles.isEmpty,
-                       newChat: { chat.clear() }, close: close)
-                .zIndex(1)
+        ZStack(alignment: .top) {
             if !settings.connected && chat.bubbles.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 32)).foregroundStyle(.secondary)
@@ -30,7 +27,8 @@ struct ChatSidebar: View {
                     Text("Log in to an AI account to ask questions and work across all panes in this tab.")
                         .foregroundStyle(.secondary).multilineTextAlignment(.center)
                     Button("Connect in Settings…", action: settingsAction).buttonStyle(.borderedProminent)
-                }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }.padding(24).padding(.top, headerHeight)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ZStack(alignment: .bottom) {
                     transcript
@@ -38,6 +36,8 @@ struct ChatSidebar: View {
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { composerHeight = $0 }
                 }.clipped()
             }
+            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: !chat.running && !chat.bubbles.isEmpty,
+                       newChat: { chat.clear() }, close: close)
         }
         .frame(maxHeight: .infinity)
         .environment(\.openURL, OpenURLAction { url in
@@ -65,6 +65,8 @@ struct ChatSidebar: View {
                 .padding(.bottom, 4)
         }
     }
+
+    private var headerHeight: CGFloat { ChatHeader.height(onLeft: onLeft, panelWidth: panelWidth) }
 
     private var transcript: some View {
         ScrollViewReader { proxy in
@@ -114,11 +116,24 @@ struct ChatSidebar: View {
                     // and streaming keep the final message above the composer.
                     Color.clear.frame(height: composerHeight).id("bottom")
                 }.padding(16)
+                    .padding(.top, headerHeight)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
                         if scrollFollow.shouldFollow { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
             }
             .clipped()
+            .mask {
+                VStack(spacing: 0) {
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .clear, location: 0.35),
+                        .init(color: .black, location: 1)
+                    ], startPoint: .top, endPoint: .bottom)
+                        .frame(height: headerHeight + 16)
+                    Color.black
+                }
+            }
+            .contentMargins(.top, headerHeight, for: .scrollIndicators)
             .contentMargins(.bottom, composerHeight, for: .scrollIndicators)
             .contentShape(Rectangle())
             .onScrollGeometryChange(for: Bool.self) { geometry in
@@ -187,13 +202,7 @@ struct ChatSidebar: View {
             }.controlSize(.small)
         }
         .padding(10)
-        .background {
-            ChatComposerGlass()
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.45))
-                        .allowsHitTesting(false)
-                }
-        }
+        .background { FloatingPanelBackground() }
         .background(WindowDragArea(excluded: true))
         // The adjacent pane canvas supplies the inner gap.
         .padding(EdgeInsets(top: 0, leading: onLeft ? Chrome.paneInset : 0,

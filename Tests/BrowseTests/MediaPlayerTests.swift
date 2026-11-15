@@ -163,6 +163,67 @@ private let mediaSessionFixture = #"""
     }
 }
 
+// @lat: [[lat.md/tests/media-tests#Floating media player]]
+@Test(arguments: [false, true], SidebarSide.allCases) @MainActor
+func floatingMediaPlayer(floating: Bool, side: SidebarSide) async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("FloatingMedia-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    let browser = try #require(owner.active)
+    let store = browser.store
+    store.onAddressRequested = nil
+    defer { owner.prepareToQuit(); browser.window.close() }
+    store.sidebarSide = side
+    store.sidebarVisible = !floating
+    store.sidebarFloating = floating
+    let page = store.controller(for: store.selectedTab.pages[0])
+    page.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://floating.example"))
+    try await mediaWait { store.mediaCoordinator.selected != nil }
+    for _ in 0..<30 { store.newTab(inBackground: true) }
+    let host = try #require(browser.window.contentView)
+    func descendants<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, of: type) }
+    }
+    func settle() async throws {
+        for _ in 0..<10 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(30)) }
+    }
+    try await settle()
+    let glass = try #require(descendants(host, of: FloatingPanelGlassView.self).first)
+    let playerRect = glass.convert(glass.bounds, to: nil)
+    #expect(glass.style == .regular)
+    let scroll = try #require(descendants(host, of: NSScrollView.self).first {
+        let rect = $0.convert($0.bounds, to: nil)
+        return abs(rect.width - store.sidebarWidth) < 1 && rect.height > playerRect.height
+    })
+    let viewport = scroll.convert(scroll.bounds, to: nil)
+    #expect(viewport.minY < playerRect.minY)
+    #expect(viewport.maxY > playerRect.maxY)
+    scroll.contentView.scroll(to: NSPoint(x: 0, y: 300))
+    scroll.reflectScrolledClipView(scroll.contentView)
+    try await settle()
+    #expect(glass.convert(glass.bounds, to: nil) == playerRect)
+    let frame = try #require(host.superview)
+    let emptyPoint = NSPoint(x: playerRect.midX, y: playerRect.minY + 3)
+    #expect(frame.hitTest(frame.convert(emptyPoint, from: nil)) === glass)
+    let slider = try #require(descendants(glass.superview!, of: NSSlider.self).first ?? descendants(host, of: NSSlider.self).first)
+    let sliderPoint = slider.convert(NSPoint(x: slider.bounds.midX, y: slider.bounds.midY), to: nil)
+    let hit = frame.hitTest(frame.convert(sliderPoint, from: nil))
+    #expect(hit === slider || hit?.isDescendant(of: slider) == true)
+    let document = try #require(scroll.documentView)
+    scroll.contentView.scroll(to: NSPoint(x: 0, y: document.bounds.height - scroll.contentView.bounds.height))
+    scroll.reflectScrolledClipView(scroll.contentView)
+    let lastRowBottom = (store.favorites.isEmpty ? CGFloat(6) : 16)
+        + CGFloat(store.sidebarTabs.count) * (Chrome.sidebarTabHeight + Chrome.sidebarTabSpacing) - Chrome.sidebarTabSpacing
+    let clearance = playerRect.maxY - viewport.minY + PaneGeometry.gap
+    #expect(scroll.contentView.bounds.maxY - clearance >= lastRowBottom)
+    store.mediaCoordinator.dismiss()
+    try await settle()
+    #expect(descendants(host, of: FloatingPanelGlassView.self).isEmpty)
+    #expect(document.bounds.height < lastRowBottom + 2 * Chrome.sidebarScrollFadeHeight)
+}
+
 // @lat: [[lat.md/tests/media-tests#Media slider interaction]]
 @Test @MainActor func mediaSliderInteraction() async throws {
     _ = NSApplication.shared

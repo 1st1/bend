@@ -25,6 +25,7 @@ enum Chrome {
 struct BrowserView: View {
     @ObservedObject var store: BrowserStore
     @ViewState<SidebarScrollStatus> private var sidebarScrollStatus = .init()
+    @ViewState private var mediaPlayerHeight: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -140,11 +141,11 @@ struct BrowserView: View {
 
                 }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
                     .padding(.top, store.favorites.isEmpty ? 6 : 16)
-                    .padding(.bottom, Chrome.sidebarScrollFadeHeight)
+                    .padding(.bottom, Chrome.sidebarScrollFadeHeight + mediaPlayerHeight)
             }
             .onScrollGeometryChange(for: SidebarScrollStatus.self) { geometry in
                 SidebarScrollStatus(visibleRect: geometry.visibleRect, tabCount: store.sidebarTabs.count,
-                                    topInset: store.favorites.isEmpty ? 6 : 16)
+                                    topInset: store.favorites.isEmpty ? 6 : 16, bottomOcclusion: mediaPlayerHeight)
             } action: { _, status in
                 sidebarScrollStatus = status
             }
@@ -165,11 +166,15 @@ struct BrowserView: View {
             }
             .overlay(alignment: .bottom) {
                 if sidebarScrollStatus.below > 0 {
-                    SidebarOverflowPill(count: sidebarScrollStatus.below, above: false).padding(.bottom, 6)
+                    SidebarOverflowPill(count: sidebarScrollStatus.below, above: false).padding(.bottom, 6 + mediaPlayerHeight)
                 }
             }
             .contentShape(Rectangle())
-            SidebarMediaPlayer(coordinator: store.mediaCoordinator, store: store)
+            .contentMargins(.bottom, mediaPlayerHeight, for: .scrollIndicators)
+            .overlay(alignment: .bottom) {
+                SidebarMediaPlayer(coordinator: store.mediaCoordinator, store: store, floating: floating)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { mediaPlayerHeight = $0 }
+            }
             AppUpdateButton()
                 .padding(.leading, leadingInset).padding(.trailing, trailingInset)
             if let error = store.persistenceError {
