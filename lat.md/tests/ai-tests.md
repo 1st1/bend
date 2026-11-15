@@ -180,7 +180,7 @@ Denied, cancelled, disabled, and stale-source actions leave the layout unchanged
 
 [[Tests/BrowseTests/ChatComposerTests.swift#chatComposerWindowSpacing]] checks equal bottom and outside composer gaps on both window edges across supported panel widths, plus a transcript viewport extending beneath the floating composer.
 
-The viewport also spans the toolbar, where messages progressively fade; the header has no overlay material. Scrolling keeps the frosted-glass composer fixed; its native background blocks underlying links while the input remains clickable. Assistant text respects the 90% width cap, and the last message scrolls above the composer. An optional snapshot supports visual inspection.
+The viewport also spans the toolbar, where messages progressively fade; the header has no overlay material. Scrolling keeps the frosted-glass composer fixed; its native background blocks underlying links while the input remains clickable. Assistant text respects the 90% width cap, and the last message scrolls above the composer. An optional snapshot supports visual inspection. API-key and OAuth credential stores are both injected, so layout checks never access saved accounts.
 
 ## Recalled prompt appearance
 
@@ -193,3 +193,9 @@ Clearing recalled text and typing again must retain the same editor styling.
 [[Tests/BrowseTests/AIOAuthBrowserTests.swift#aiOAuthModalBrowser]] exercises real WebKit authentication panels above a native modal anchor with an isolated website data store and local HTTP callbacks.
 
 The shared [[Tests/BrowseTests/AIOAuthBrowserTests.swift#checkOAuthBrowser|fixture]] checks modal input eligibility, parent-child window attachment, shared view lifecycle, HTTPS and exact-loopback navigation policy, invalid-state callback persistence, and successful WebKit callback navigation. It also covers popup and task cancellation, Settings closure, invalid initial URLs, WebKit process failure, and provider-created window opening, closing, and cleanup. Existing OAuth validation tests cover PKCE, state, callback identity, and signed identity claims. Separate test functions let the native test runner isolate each window lifecycle in its own process. [[lat.md/tests/settings-tests#Modal settings lifecycle]] separately covers the blocking Settings modal loop.
+
+## Test credential isolation
+
+[[Tests/BrowseTests/AIOAuthTests.swift#aiTestCredentialIsolation]] verifies process-local credential sharing by service, service separation, deletion, and restoring default AI settings without real credentials.
+
+[[scripts/test.sh]] defines BEND_TESTING so [[Sources/Browse/TestCredential.swift#GatewayCredential]] uses in-memory storage even when native views reach shared default settings. Test binaries cannot read or mutate Keychain items. Combining test storage with the production compilation flag is rejected.

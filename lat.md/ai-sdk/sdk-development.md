@@ -15,7 +15,7 @@ python3 scripts/test-ai-http.py
 lat check
 ```
 
-The ordinary test run executes the offline cases and skips the HTTP suite unless its fixture environment variable is set. The Python runner starts the fixture, supplies that variable, runs only the HTTP suite, and shuts down the server. Offline and loopback tests use no model credentials. Separate live smoke tests remain skipped unless their explicit environment opt-ins and credentials are provided. Bend’s full test runner includes AITests as one non-AppKit group.
+The ordinary test run executes the offline cases and skips the HTTP suite unless its fixture environment variable is set. The Python runner starts the fixture, supplies that variable, runs only the HTTP suite, and shuts down the server. Offline and loopback tests use no model credentials. Functional Gateway and OpenAI account tests use scripted HTTP transports and synthetic credentials; no tests make paid model calls. Bend’s full test runner includes AITests as one non-AppKit group.
 
 ## Test infrastructure
 

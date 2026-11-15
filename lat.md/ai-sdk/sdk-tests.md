@@ -156,9 +156,9 @@ Cancelling a live stream must fail its result with CancellationError and close t
 
 [[Tests/AITests/NativeProviderTests.swift#nativeStreamCompletion]] rejects missing terminal events and provider errors, and verifies paused server turns continue within the bounded agent loop.
 
-## Live native Gateway search
+## Mocked native Gateway search
 
-[[Tests/AITests/NativeGatewaySmokeTests.swift#liveNativeGatewaySearch]] uses explicit opt-in environment variables to verify public web search, sources, a no-op local tool and history replay through both Gateway interfaces. It is skipped by default.
+[[Tests/AITests/NativeAgentIntegrationTests.swift]] uses scripted, fragmented HTTP streams to verify search activity, sources, a local tool round-trip, and history replay through both real Gateway adapters. It runs by default with synthetic keys and never contacts a provider.
 
 ## Thinking summary options
 
@@ -168,9 +168,9 @@ Cancelling a live stream must fail its result with CancellationError and close t
 
 [[Tests/AITests/NativeProviderTests.swift]] verifies tool and message items survive an empty terminal snapshot, repeated snapshots do not duplicate calls, and interrupted streams never execute completed items.
 
-## Live OpenAI account tools
+## Mocked OpenAI account tools
 
-[[Tests/AITests/NativeGatewaySmokeTests.swift#liveOpenAIAccountTools]] optionally checks a synthetic local tool round-trip and a nonempty answer through OpenAI's public Responses endpoint with an account access token. It sends no browsing data.
+[[Tests/AITests/NativeAgentIntegrationTests.swift#mockedOpenAIAccountTools]] checks a local tool round-trip through the real Responses adapter using scripted HTTP, a synthetic account token, and no network. It verifies endpoint selection, authorization headers, tool-result replay, and the final answer.
 
 ## Untrusted usage counters
 

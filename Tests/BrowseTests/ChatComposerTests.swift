@@ -87,7 +87,8 @@ import AI
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
     let domain = "ChatSpacing-\(UUID())"
     let defaults = UserDefaults(suiteName: domain)!
-    let settings = AISettings(credential: EmptyChatCredential(), defaults: defaults, directCredentials: [:])
+    let settings = AISettings(credential: EmptyChatCredential(), defaults: defaults,
+                              accounts: AIOAuthAccounts(storage: EmptyChatCredential(), defaults: defaults), directCredentials: [:])
     let chat = TabChat(store: store, tabID: store.selectedTab.id, settings: settings)
     chat.bubbles = [ChatBubble(isUser: true, text: "Test message")] + (0..<15).map {
         ChatBubble(isUser: false, text: "Response \($0): [A reference](https://example.com). " + String(repeating: "Scrollable transcript content. ", count: 5))

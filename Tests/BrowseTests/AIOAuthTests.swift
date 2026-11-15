@@ -243,3 +243,28 @@ private struct OAuthFixture: HTTPTransport {
     #expect(settings.activeConnection == "gateway")
     #expect(settings.modelID == "openai/gpt-6-astra")
 }
+
+// @lat: [[lat.md/tests/ai-tests#Test credential isolation]]
+@Test @MainActor func aiTestCredentialIsolation() async throws {
+    #if BEND_TESTING
+    let service = "BendCredentialFixture-\(UUID())"
+    let first = GatewayCredential(service: service)
+    let same = GatewayCredential(service: service)
+    let other = GatewayCredential(service: service + ".other")
+    defer { try? first.delete(); try? other.delete() }
+    #expect(try await first.readAsync() == nil)
+    try first.save("synthetic-key")
+    #expect(try same.read() == "synthetic-key")
+    #expect(try await other.readAsync() == nil)
+    try same.delete()
+    #expect(try first.read() == nil)
+    let domain = "AIDefaultCredentialFixture-\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: domain))
+    defer { defaults.removePersistentDomain(forName: domain) }
+    let settings = AISettings(defaults: defaults)
+    await settings.restore()
+    #expect(!settings.connected && settings.error == nil)
+    #else
+    Issue.record("Run native tests through scripts/test.sh to isolate Keychain access.")
+    #endif
+}
