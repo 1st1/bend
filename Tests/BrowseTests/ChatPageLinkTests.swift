@@ -59,4 +59,49 @@ import Markdown
     #expect(store.selectedTab.pages.count == 3)
     #expect(store.selectedTab.pages.last?.address == "https://external.example/source")
     #expect(store.session.workspaces[0].tabs[1].pages.count == 1)
+
+    // A stale reference has an unambiguous destination when only one pane remains.
+    let sole = store.controller(for: other)
+    let webView = sole.webView
+    let destination = "https://example.com/source?q=a+b#details"
+    let stale = try #require(URL(string: ChatPageLinks.citation(pane: UUID(), address: destination)))
+    try await ChatPageLinks.open(stale, tabID: otherTab.id, store: store)
+    #expect(store.selectedTab.id == otherTab.id && store.selectedTab.focusedPane == other.id)
+    #expect(store.selectedTab.pages.count == 1 && sole.webView === webView)
+    #expect(sole.address == destination)
+    #expect(store.session.workspaces[0].tabs[0].pages.count == 3)
+
+    let external = URL(string: "https://external.example/another-source")!
+    try await ChatPageLinks.open(external, tabID: otherTab.id, store: store)
+    #expect(sole.address == external.absoluteString && store.selectedTab.pages.count == 1)
+    #expect(sole.webView === webView)
+
+    // Falling back changes only the destination pane, not the allowed URL formats.
+    for address in ["file:///etc/passwd", "javascript:alert(1)", "https://user:secret@example.com/"] {
+        let unsafe = try #require(URL(string: ChatPageLinks.citation(pane: UUID(), address: address)))
+        await #expect(throws: Error.self) { try await ChatPageLinks.open(unsafe, tabID: otherTab.id, store: store) }
+    }
+    var legacy = try #require(URLComponents(url: stale, resolvingAgainstBaseURL: false))
+    legacy.queryItems?.append(URLQueryItem(name: "selector", value: "#details"))
+    await #expect(throws: Error.self) { try await ChatPageLinks.open(try #require(legacy.url), tabID: otherTab.id, store: store) }
+    #expect(sole.address == external.absoluteString && store.selectedTab.pages.count == 1)
+
+    // A designated link pane also provides an explicit fallback in a split tab.
+    store.session.workspaces[0].tabs[0].commandClickPaneID = second.id
+    let designatedWebView = controller.webView
+    let untouched = store.controller(for: first).address
+    try await ChatPageLinks.open(stale, tabID: tab.id, store: store)
+    #expect(store.selectedTab.id == tab.id && store.selectedTab.focusedPane == second.id)
+    #expect(controller.address == destination && controller.webView === designatedWebView)
+    try await ChatPageLinks.open(external, tabID: tab.id, store: store)
+    #expect(controller.address == external.absoluteString && store.selectedTab.pages.count == 3)
+    #expect(store.selectedTab.commandClickPaneID == second.id)
+    #expect(store.controller(for: first).address == untouched)
+    #expect(sole.address == external.absoluteString)
+
+    // A citation whose original pane still exists keeps its exact target.
+    let exact = try #require(URL(string: ChatPageLinks.citation(pane: first.id, address: destination)))
+    try await ChatPageLinks.open(exact, tabID: tab.id, store: store)
+    #expect(store.selectedTab.focusedPane == first.id)
+    #expect(store.controller(for: first).address == destination && controller.address == external.absoluteString)
 }

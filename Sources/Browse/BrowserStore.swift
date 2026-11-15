@@ -141,6 +141,14 @@ final class BrowserStore: ObservableObject {
            let restored = try? JSONDecoder().decode(BrowserSession.self, from: data), restored.isValid {
             session = restored
         } else { session = BrowserSession() }
+        for wi in session.workspaces.indices {
+            for ti in session.workspaces[wi].tabs.indices where session.workspaces[wi].tabs[ti].title == "New tab" {
+                if let address = session.workspaces[wi].tabs[ti].pages.first?.address,
+                   address != "bend://start", let title = AddressResolver.nativePageTitle(address) {
+                    session.workspaces[wi].tabs[ti].title = title
+                }
+            }
+        }
         if let favorites = session.favorites { session.favorites = SidebarFavorite.validated(favorites) }
         // Google account numbers in visited URLs depend on sign-in order. Restore
         // account-specific favorites through their saved email hint instead.
@@ -572,7 +580,8 @@ final class BrowserStore: ObservableObject {
         let previousTabID = session.selectedTab, previousZoom = zoomedPane
         let index = session.workspaces.firstIndex { $0.id == workspace }
             ?? session.workspaces.firstIndex { $0.tabs.contains { $0.id == session.selectedTab } } ?? 0
-        var tab = BrowserTab(title: address == "bend://history" ? "History" : "New tab", pages: [Page(address: address)])
+        let title = address == "bend://start" ? "New tab" : AddressResolver.nativePageTitle(address) ?? "New tab"
+        var tab = BrowserTab(title: title, pages: [Page(address: address)])
         if let source = originPageID ?? linkOpener {
             tab.originTabID = session.workspaces.flatMap(\.tabs).first { $0.pages.contains { $0.id == source } }?.id
         }

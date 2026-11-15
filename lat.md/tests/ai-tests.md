@@ -38,7 +38,9 @@ Tests exercise [[lat.md/architecture/ai|native chat]] with scripted model provid
 
 ## Page citation routing
 
-[[Tests/BrowseTests/ChatPageLinkTests.swift#chatPageCitationRouting]] verifies Markdown references navigate the exact pane to real anchor URLs, preserve URL plus signs, reject foreign panes and legacy selectors, and open external sources in the same tab.
+[[Tests/BrowseTests/ChatPageLinkTests.swift#chatPageCitationRouting]] verifies exact citation targets, anchor URLs, and fallback to a sole or designated link pane without touching other tabs.
+
+Stale citations remain unavailable in split tabs without a designated link pane. Ordinary external links reuse the same fallback destinations or open an adjacent pane. Reuse preserves pane count and WebView identity; URL plus signs survive, and legacy selectors, unsafe schemes, and embedded credentials remain rejected.
 
 ## Chat interaction
 
@@ -113,6 +115,8 @@ The connection-test fixture in [[Tests/BrowseTests/AIChatTests.swift]] verifies 
 ## Saved conversations and restoration
 
 [[Tests/BrowseTests/ChatHistoryTests.swift#savedChatRestoration]] verifies messages, drafts, panel visibility, and layout survive closing and reopening, and history restoration creates independent panes with remapped citations and retained split fractions.
+
+Opening or reusing chat history gives its sidebar tab the AI Chat History title. Restoring an older session with the generic New tab label repairs that title before the page mounts.
 
 ## Deleting saved conversations
 

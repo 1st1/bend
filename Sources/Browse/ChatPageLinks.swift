@@ -26,23 +26,27 @@ import WebKit
         guard let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }) else {
             throw LinkError.unavailable
         }
+        let fallback = tab.pages.first(where: { $0.id == tab.commandClickPaneID })
+            ?? (tab.pages.count == 1 ? tab.pages.first : nil)
         if url.scheme == "bend-pane" {
             guard let id = url.host.flatMap(UUID.init(uuidString:)),
-                  let page = tab.pages.first(where: { $0.id == id }),
                   let components = citationComponents(url),
                   let address = components.queryItems?.first(where: { $0.name == "url" })?.value,
                   let source = URL(string: address), ["http", "https"].contains(source.scheme?.lowercased() ?? ""),
                   source.host != nil, source.user == nil, source.password == nil else { throw LinkError.unavailable }
-            let controller = store.controller(for: page)
             guard components.queryItems?.contains(where: { $0.name == "selector" }) != true else {
                 throw LinkError.legacyCitation
             }
-            controller.navigate(source.absoluteString)
-            AIDiagnostics.shared.record("citation.anchorNavigation", tab: tabID, fields: ["pane": id.uuidString, "hasFragment": String(source.fragment != nil)])
-            guard store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID })?.pages.contains(where: { $0.id == id }) == true else {
+            guard let page = tab.pages.first(where: { $0.id == id }) ?? fallback else {
                 throw LinkError.unavailable
             }
-            store.select(tabID); store.focus(id)
+            let controller = store.controller(for: page)
+            controller.navigate(source.absoluteString)
+            AIDiagnostics.shared.record("citation.anchorNavigation", tab: tabID, fields: ["pane": page.id.uuidString, "hasFragment": String(source.fragment != nil)])
+            guard store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID })?.pages.contains(where: { $0.id == page.id }) == true else {
+                throw LinkError.unavailable
+            }
+            store.select(tabID); store.focus(page.id)
             return
         }
         guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil,
@@ -54,6 +58,9 @@ import WebKit
         if let page = matches.first(where: { $0.id == tab.focusedPane }) ?? matches.first {
             store.focus(page.id)
             if url.fragment != nil { store.controller(for: page).navigate(url.absoluteString) }
+        } else if let page = fallback {
+            store.focus(page.id)
+            store.controller(for: page).navigate(url.absoluteString)
         } else {
             store.openPane(address: url.absoluteString, toRightOf: tab.focusedPane)
         }

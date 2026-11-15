@@ -39,9 +39,19 @@ import AI
     let saved = try #require(next.chatHistory.records.first)
     next.showChatHistory()
     #expect(next.selectedTab.pages[0].address == "bend://chats")
+    #expect(next.selectedTab.title == "AI Chat History")
+    var legacy = next.session
+    let historyIndex = try #require(legacy.workspaces[0].tabs.firstIndex { $0.id == next.selectedTab.id })
+    legacy.workspaces[0].tabs[historyIndex].title = "New tab"
+    let legacyFile = root.appendingPathComponent("legacy-session.json")
+    try JSONEncoder().encode(legacy).write(to: legacyFile)
+    let reopened = BrowserStore(sessionFile: legacyFile, persistentExtensions: false)
+    defer { reopened.stopWindow() }
+    #expect(reopened.selectedTab.title == "AI Chat History")
     let count = next.session.workspaces[0].tabs.count
     next.showChatHistory()
     #expect(next.session.workspaces[0].tabs.count == count)
+    #expect(next.selectedTab.title == "AI Chat History")
     next.restoreChat(saved)
     let restored = next.selectedTab
     #expect(restored.id != tab.id)
