@@ -4,6 +4,7 @@ import SwiftUI
 struct ToolbarScrollFade: View {
     static let contentInset: CGFloat = 32
     var height: CGFloat
+    var contentPadding: CGFloat = Self.contentInset
     var clearHeight: CGFloat = 0
     var bottomFadeHeight: CGFloat = 0
 
@@ -14,7 +15,7 @@ struct ToolbarScrollFade: View {
         return VStack(spacing: 0) {
             Color.clear.frame(height: hiddenHeight)
             LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                .frame(height: max(0, height - hiddenHeight) + Self.contentInset)
+                .frame(height: max(0, height - hiddenHeight) + contentPadding)
             Color.black
             if bottomFadeHeight > 0 {
                 LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)

@@ -30,6 +30,14 @@ The script enables Hardened Runtime and verifies the signature before reporting 
 
 Packaging creates a separate bundle in a temporary directory under `dist`, then signs and verifies it before replacing the installed bundle by rename. It does not overwrite the executable mapped by a running Bend process. Signing or verification failure leaves the previous build intact; publication failure restores the previous bundle. The script leaves Bend running and asks for a restart to use the new build. Extension packages, enablement, grants, and WebKit data remain outside the app bundle.
 
+## Camera and microphone access
+
+Packaged Bend apps declare camera, microphone, and location usage descriptions and sign with [[scripts/Bend.entitlements]] so WebKit can expose media capture to websites.
+
+[[scripts/build-app.sh]] includes both usage descriptions for debug and production. Hardened Runtime allows camera and audio input through the shared entitlements file; [[scripts/build-prod.sh]] reapplies it when timestamp-signing the notarization payload.
+
+Website capture requests retain WebKit’s default permission prompt, in addition to macOS privacy authorization. Bend does not automatically grant website access or bypass secure-context requirements. Unpackaged SwiftPM runs do not supply this bundle metadata; use a signed app to test camera and microphone access. [[lat.md/tests/build-tests#Build bundle publication]] covers the packaging contract.
+
 ## Application icon
 
 The app uses the supplied painted Bend artwork, with the untouched 2048×2048 source preserved in [BendIcon-original.jpg](../../Assets/BendIcon-original.jpg).

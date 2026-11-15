@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Bend browser capability checks</title>
+<style>
+body{font:15px system-ui;max-width:850px;margin:30px auto;padding:0 20px;color-scheme:light dark}
+button,input{margin:6px;padding:8px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#8882;padding:16px}
+video{max-width:100%;max-height:260px;background:#111} section{margin:18px 0}
+</style>
+<h1>Browser capability checks</h1>
+<p>Nothing is captured until you choose a test and approve access. Captured media stays in this window and is not uploaded or recorded. Screen sharing may expose other windows in the preview.</p>
+<section>
+<button id="camera">Camera</button><button id="microphone">Microphone</button>
+<button id="both">Camera + microphone</button><button id="screen">Share screen/window with audio</button>
+<button id="stop">Stop all capture</button>
+<video id="preview" muted autoplay playsinline></video>
+</section>
+<section><button id="location">Location</button><button id="notification">Notification permission</button>
+<button id="fullscreen">Fullscreen preview</button><button id="clipboard">Copy test text</button>
+<button id="paste">Read clipboard</button></section>
+<section><label>Single file<input type="file"></label><br>
+<label>Multiple files<input type="file" multiple></label><br>
+<label>Folder<input type="file" webkitdirectory></label></section>
+<pre id="log"></pre>
+<script>
+const output = document.querySelector('#log'), preview = document.querySelector('#preview');
+const streams = new Set();
+function log(message) { output.textContent += message + '\n'; }
+function action(id, operation) {
+  document.getElementById(id).onclick = async () => {
+    try { await operation(); } catch (e) { log(id + ': ' + e.name + ': ' + e.message); }
+  };
+}
+async function capture(promise) {
+  const stream = await promise; streams.add(stream); preview.srcObject = stream;
+  for (const track of stream.getTracks()) {
+    log('Started ' + track.kind + ': ' + track.label);
+    track.onended = () => log('Ended ' + track.kind);
+  }
+  log('Tracks: ' + stream.getTracks().map(t => t.kind).join(', '));
+}
+function stop() { for (const stream of streams) for (const track of stream.getTracks()) track.stop(); streams.clear(); preview.srcObject = null; log('Stopped all tracks'); }
+action('camera', () => capture(navigator.mediaDevices.getUserMedia({video:true})));
+action('microphone', () => capture(navigator.mediaDevices.getUserMedia({audio:true})));
+action('both', () => capture(navigator.mediaDevices.getUserMedia({audio:true,video:true})));
+action('screen', () => capture(navigator.mediaDevices.getDisplayMedia({video:true,audio:true})));
+action('stop', stop);
+action('location', () => new Promise((resolve,reject) => navigator.geolocation.getCurrentPosition(
+  position => { log('Location succeeded; accuracy ' + position.coords.accuracy + ' meters (coordinates omitted)'); resolve(); },
+  reject, {timeout:15000})));
+action('notification', async () => log('Notification permission: ' + await Notification.requestPermission()));
+action('fullscreen', () => preview.requestFullscreen());
+action('clipboard', async () => { await navigator.clipboard.writeText('Bend clipboard check'); log('Copied test text'); });
+action('paste', async () => { const text = await navigator.clipboard.readText(); log('Read clipboard: ' + text.length + ' characters (contents omitted)'); });
+for (const input of document.querySelectorAll('input')) input.onchange = () => log('Selected ' + input.files.length + ' file(s)');
+addEventListener('pagehide', stop);
+log(JSON.stringify({
+  secureContext:isSecureContext,
+  mediaDevices:typeof navigator.mediaDevices,
+  getUserMedia:typeof navigator.mediaDevices?.getUserMedia,
+  getDisplayMedia:typeof navigator.mediaDevices?.getDisplayMedia,
+  geolocation:typeof navigator.geolocation,
+  notifications:typeof Notification,
+  pushManager:typeof PushManager,
+  serviceWorker:typeof navigator.serviceWorker,
+  clipboard:typeof navigator.clipboard,
+  publicKeyCredential:typeof PublicKeyCredential,
+  fullscreen:document.fullscreenEnabled
+}, null, 2));
+if (typeof PublicKeyCredential !== 'undefined') PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+  .then(value => log('Platform authenticator available: ' + value)).catch(e => log(e.message));
+</script>

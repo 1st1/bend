@@ -27,3 +27,29 @@ See [[lat.md/architecture/web-pages|Architecture and behavior]].
 ## Page printing
 
 [[Tests/BrowseTests/PrintingTests.swift#pagePrinting]] dispatches Command-P and File → Print through native menus, verifies the focused pane supplies the job, cancels real print sheets, and checks disabled states without sending anything to a printer.
+
+## Website permission isolation
+
+[[Tests/BrowseTests/WebsitePermissionTests.swift#websitePermissionIsolation]] verifies default prompts, saved grants, Ask resets, combined-request denial, frame isolation, distinct ports, non-web denial, and temporary private settings.
+
+## Website upload lifecycle
+
+[[Tests/BrowseTests/WebsitePermissionTests.swift#websiteUploadLifecycle]] verifies directory and multiple-selection configuration, concurrent-request rejection, cancellation exactly once, ignored late acceptance, and hidden-page rejection.
+
+It also verifies Objective-C selector visibility and a real WebKit file input opening a native panel, then cancels it.
+
+## Remembered permission prompts
+
+[[Tests/BrowseTests/WebsitePermissionTests.swift#websitePermissionRememberPrompt]] verifies explicit remembered Allow/Block responses, cancellation without saving, ignored late callbacks, and no remember option for third-party frames.
+
+## Removing saved website permissions
+
+[[Tests/BrowseTests/WebsitePermissionTests.swift#websitePermissionRemoval]] verifies that removing a site persists Ask for every permission, preserves another port’s permissions, and leaves hostname zoom unchanged.
+
+## Certificate site identity
+
+[[Tests/BrowseTests/WebsitePermissionTests.swift#certificateSiteIdentity]] verifies same-origin path, query, and fragment changes retain certificate access while different hosts, ports, schemes, and missing URLs do not.
+
+## Site domain labels
+
+[[Tests/BrowseCoreTests/SiteDisplayDomainTests.swift#siteDisplayDomainLabels]] verifies ordinary and multi-part suffixes, private hosting, wildcard exceptions, international names, trailing dots, unknown suffixes, IP addresses, and localhost.

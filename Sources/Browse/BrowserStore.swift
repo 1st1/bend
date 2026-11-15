@@ -1058,6 +1058,10 @@ final class BrowserStore: ObservableObject {
     private func removeController(_ id: UUID) {
         mediaCoordinator.unregister(id)
         let controller = browsers.removeValue(forKey: id)
+        controller?.permissionPrompt.cancel()
+        controller?.certificates.cancel()
+        controller?.fileUpload.cancel()
+        controller?.stopCapture()
         controller?.webView.closeInspector()
         controller?.media.detach()
         controller?.webView.pauseAllMediaPlayback(completionHandler: nil)
@@ -1181,6 +1185,10 @@ final class BrowserStore: ObservableObject {
         chats.removeAll(); openChats.removeAll()
         pendingSave?.cancel(); pendingSave = nil
         for page in browsers.values {
+            page.permissionPrompt.cancel()
+            page.certificates.cancel()
+            page.fileUpload.cancel()
+            page.stopCapture()
             page.webView.closeInspector()
             page.media.detach()
             page.webView.pauseAllMediaPlayback(completionHandler: nil)
@@ -1419,7 +1427,15 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     private var lastReportedTitle = ""
     var customSearchEngine: () -> CustomSearchEngine?
     var searchEngine: () -> SearchEngine
-    private let websiteSettings: WebsiteSettingsStore?
+    let fileUpload = WebsiteFileUpload()
+    let certificates = WebsiteCertificates()
+    @Published var committedSiteURL: URL?
+    let permissionPrompt = WebsitePermissionPrompt()
+    @Published var cameraCaptureState: WKMediaCaptureState = .none
+    @Published var microphoneCaptureState: WKMediaCaptureState = .none
+    var captureRequestOrigins: [WebsitePermission: Set<String>] = [:]
+    var lastPermissionBlocks: [String: Set<WebsitePermission>] = [:]
+    let websiteSettings: WebsiteSettingsStore?
     private var websiteSettingsObservation: AnyCancellable?
     private var zoomURL: URL?
     private var localDocumentDirectory: URL?
@@ -1462,6 +1478,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         websiteSettingsObservation = websiteSettings?.$values.sink { [weak self] values in
             guard let self else { return }
             self.applyWebsiteSecurity(values)
+            self.applyCaptureRestrictions()
             guard let url = self.zoomURL, WebsiteSettings.hostname(for: url) != nil else { return }
             self.webView.pageZoom = CGFloat(values.zoom(for: url))
         }
@@ -1501,8 +1518,16 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         webView.onDialogInvalidated = { [weak self] in
             guard let self else { return }
             self.javaScriptDialogs.cancel(for: self.webView)
+            self.permissionPrompt.cancel()
+            self.certificates.cancel()
+            self.fileUpload.cancel()
         }
+        refreshCaptureState()
         observations = [
+            webView.observe(\.serverTrust) { [weak self] _, _ in Task { @MainActor in self?.objectWillChange.send() } },
+            webView.observe(\.hasOnlySecureContent) { [weak self] _, _ in Task { @MainActor in self?.objectWillChange.send() } },
+            webView.observe(\.cameraCaptureState) { [weak self] _, _ in Task { @MainActor in self?.refreshCaptureState() } },
+            webView.observe(\.microphoneCaptureState) { [weak self] _, _ in Task { @MainActor in self?.refreshCaptureState() } },
             webView.observe(\.estimatedProgress) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
             webView.observe(\.isLoading) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
             webView.observe(\.title) { [weak self] _, _ in Task { @MainActor in self?.refresh() } },
@@ -1514,7 +1539,12 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
 
     private func replaceWebView(configuration: WKWebViewConfiguration) {
         InputDiagnostics.transition(.webReplacement, .started, view: webView)
+        stopCapture()
+        captureRequestOrigins.removeAll()
         javaScriptDialogs.cancel(for: webView)
+        permissionPrompt.cancel()
+        certificates.cancel()
+        fileUpload.cancel()
         webView.closeInspector()
         webView.onDialogInvalidated = nil
         observations.removeAll()
@@ -1567,6 +1597,9 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     private func load(_ url: URL) {
         aiNavigationRevision = UUID()
         javaScriptDialogs.cancel(for: webView)
+        permissionPrompt.cancel()
+        certificates.cancel()
+        fileUpload.cancel()
         webView.clearURLPreview()
         InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "bend"])
         resetFavicon(for: url)
@@ -1578,6 +1611,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         // Only a fresh view (or native internal page) can take the target zoom now.
         if isStartPage || webView.url == nil { applyWebsiteZoom(for: url) }
         if isStartPage {
+            stopCapture()
             webView.closeInspector()
             webView.stopLoading()
             if webView.url != nil {
@@ -1634,6 +1668,9 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         aiNavigationRevision = UUID()
         javaScriptDialogs.cancel(for: webView)
+        permissionPrompt.cancel()
+        certificates.cancel()
+        fileUpload.cancel()
         (webView as? FocusWebView)?.clearURLPreview()
         (webView.superview as? WebSurfaceHost)?.hideFindBar(restoreFocus: false)
         InputDiagnostics.transition(.webLoad, .started, view: webView)
@@ -1648,7 +1685,9 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         aiNavigationRevision = UUID()
         onInitialDownload = nil
         discardFavicon(ifLeaving: webView.url)
+        committedSiteURL = webView.url
         javaScriptDialogs.didCommitNavigation(in: webView)
+        captureRequestOrigins.removeAll()
         if webView.url?.isFileURL != true { localDocumentDirectory = nil }
         // The committed URL covers redirects, normal links, and back/forward.
         // Subframe navigation never changes the top-level website's preference.
@@ -1717,6 +1756,9 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         media.reset()
         javaScriptDialogs.cancel(for: webView)
+        permissionPrompt.cancel()
+        certificates.cancel()
+        fileUpload.cancel()
         InputDiagnostics.transition(.webProcessExit, .finished, view: webView)
         error = "This page stopped responding. Reload to continue."
     }

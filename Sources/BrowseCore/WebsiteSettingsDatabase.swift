@@ -22,7 +22,7 @@ public final class WebsiteSettingsDatabase {
         do {
             sqlite3_busy_timeout(connection, 1_000)
             let version = try rows("PRAGMA user_version").first?.first
-            guard version == "0" || version == "1" || version == "2" || version == "3" else {
+            guard version == "0" || version == "1" || version == "2" || version == "3" || version == "4" || version == "5" else {
                 throw DatabaseError(message: "Website settings database version is not supported.")
             }
             if version == "0" {
@@ -66,7 +66,7 @@ public final class WebsiteSettingsDatabase {
                         """)
                 }
             }
-            if version != "3" {
+            if ["0", "1", "2"].contains(version ?? "") {
                 try transaction {
                     try execute("""
                         ALTER TABLE defaults ADD COLUMN prevent_tracking INTEGER NOT NULL DEFAULT 1 CHECK(prevent_tracking IN (0,1));
@@ -74,6 +74,34 @@ public final class WebsiteSettingsDatabase {
                         ALTER TABLE defaults ADD COLUMN private_click_measurement INTEGER NOT NULL DEFAULT 0 CHECK(private_click_measurement IN (0,1));
                         PRAGMA user_version = 3;
                         """)
+                }
+            }
+            if ["0", "1", "2", "3"].contains(version ?? "") {
+                try transaction {
+                    try execute("""
+                        CREATE TABLE website_permissions (
+                            origin TEXT NOT NULL,
+                            permission TEXT NOT NULL,
+                            PRIMARY KEY(origin, permission)
+                        );
+                        PRAGMA user_version = 4;
+                        """)
+                }
+            }
+            if version != "5" {
+                try transaction {
+                    try execute("ALTER TABLE website_permissions ADD COLUMN decision TEXT NOT NULL DEFAULT 'block' CHECK(decision IN ('allow', 'block')); PRAGMA user_version = 5;")
+                }
+            }
+            for row in try rows("SELECT origin, permission, decision FROM website_permissions") {
+                guard let permission = WebsitePermission(rawValue: row[1]),
+                      URL(string: row[0]).flatMap(WebsitePermission.origin) == row[0] else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                switch row[2] {
+                case "allow": saved.allowedPermissions[row[0], default: []].insert(permission)
+                case "block": saved.blockedPermissions[row[0], default: []].insert(permission)
+                default: throw CocoaError(.fileReadCorruptFile)
                 }
             }
             let security = try rows("SELECT warn_fraud, javascript, warn_http, block_cookies, prevent_tracking, apple_pay_disclosure, private_click_measurement FROM defaults WHERE id = 1")
@@ -104,6 +132,17 @@ public final class WebsiteSettingsDatabase {
         guard settings.isValid else { throw DatabaseError(message: "Invalid website zoom settings.") }
         guard settings != saved else { return }
         try transaction {
+            if settings.blockedPermissions != saved.blockedPermissions || settings.allowedPermissions != saved.allowedPermissions {
+                try execute("DELETE FROM website_permissions")
+                for origin in settings.permissionOrigins {
+                    for permission in WebsitePermission.allCases {
+                        let choice = settings.permission(permission, for: origin)
+                        guard choice != .ask else { continue }
+                        try run("INSERT INTO website_permissions(origin, permission, decision) VALUES (?, ?, ?)",
+                                [.text(origin), .text(permission.rawValue), .text(choice.rawValue)])
+                    }
+                }
+            }
             try run("UPDATE defaults SET warn_fraud = ?, javascript = ?, warn_http = ?, block_cookies = ?, prevent_tracking = ?, apple_pay_disclosure = ?, private_click_measurement = ? WHERE id = 1",
                     [settings.warnFraudulentSites, settings.javaScriptEnabled, settings.warnHTTP, settings.blockAllCookies,
                      settings.preventCrossSiteTracking, settings.applePayDisclosureAllowed, settings.privateClickMeasurementEnabled]

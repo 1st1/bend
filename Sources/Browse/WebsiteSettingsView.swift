@@ -26,6 +26,14 @@ struct WebsiteSettingsView: View {
                     Button("Retry") { settings.reload() }
                 }
             }
+            BrowserPasskeySettings()
+            Section("Website permissions") {
+                Text("Choose Ask, Allow, or Block for each website. Choices are remembered for this exact site; subdomains and different ports stay separate.")
+                    .font(.caption).foregroundStyle(.secondary)
+                WebsitePermissionsTable(settings: settings)
+                Text("Changing Location to Block takes effect on the next request. Reload an open page to end an existing location watch.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Security") {
                 Toggle("Warn when visiting a fraudulent website", isOn: preference(\.warnFraudulentSites))
                 Text("Uses macOS WebKit’s built-in fraudulent website warnings.")

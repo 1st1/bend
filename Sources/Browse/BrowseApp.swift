@@ -19,6 +19,10 @@ enum BrowseApp {
                let output = String(data: data, encoding: .utf8) { print(output) }
             return
         }
+        if CommandLine.arguments.dropFirst().elementsEqual(["--diagnose-web-capabilities"]) {
+            WebCapabilityProbe.run()
+            return
+        }
         if CommandLine.arguments.dropFirst().elementsEqual(["--diagnose-1password"]) {
             OnePasswordConnectionProbe.run()
             return

@@ -18,6 +18,7 @@ enum Chrome {
     static let sidebarControlSpacing: CGFloat = 2
     static let sidebarHorizontalInset: CGFloat = 10
     static let sidebarScrollFadeHeight: CGFloat = 24
+    static let sidebarTopPadding: CGFloat = 20
     static let accent = Color(red: 0.66, green: 0.81, blue: 0.73)
     static let muted = Color.white.opacity(0.42)
 }
@@ -120,12 +121,12 @@ struct BrowserView: View {
                     }
 
                 }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
-                    .padding(.top, sidebarHeaderHeight + ToolbarScrollFade.contentInset)
+                    .padding(.top, sidebarHeaderHeight + Chrome.sidebarTopPadding)
                     .padding(.bottom, Chrome.sidebarScrollFadeHeight + mediaPlayerHeight)
             }
             .onScrollGeometryChange(for: SidebarScrollStatus.self) { geometry in
                 SidebarScrollStatus(visibleRect: geometry.visibleRect, tabCount: store.sidebarTabs.count,
-                                    topInset: sidebarHeaderHeight + ToolbarScrollFade.contentInset, bottomOcclusion: mediaPlayerHeight,
+                                    topInset: sidebarHeaderHeight + Chrome.sidebarTopPadding, bottomOcclusion: mediaPlayerHeight,
                                     topOcclusion: sidebarHeaderHeight)
             } action: { _, status in
                 sidebarScrollStatus = status
@@ -133,6 +134,7 @@ struct BrowserView: View {
             .clipped()
             .mask {
                 ToolbarScrollFade(height: sidebarHeaderHeight,
+                    contentPadding: Chrome.sidebarTopPadding,
                     clearHeight: store.favorites.isEmpty && !store.isPrivate ? 0 : max(0, sidebarHeaderHeight - Chrome.sidebarScrollFadeHeight),
                     bottomFadeHeight: Chrome.sidebarScrollFadeHeight)
             }
@@ -181,7 +183,7 @@ struct BrowserView: View {
                 if !store.favorites.isEmpty {
                     SidebarFavorites(store: store)
                         .padding(.leading, leadingInset).padding(.trailing, trailingInset)
-                        .padding(.top, 6)
+                        .padding(.top, 6 / 1.6)
                 }
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sidebarHeaderHeight = $0 }
@@ -635,11 +637,6 @@ private struct BrowserPane: View {
                         else if !controller.isStartPage { controller.webView.reload() }
                     }.disabled(controller.isStartPage)
                     HStack(spacing: 0) {
-                        if #available(macOS 15.4, *) {
-                            PaneExtensionsMenu(manager: store.extensions, pageID: pageID) {
-                                store.focus(pageID); store.onSettingsRequested?(.extensions)
-                            }
-                        }
                         if tab.pages.count > 1 {
                             iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
                         }
@@ -658,6 +655,17 @@ private struct BrowserPane: View {
                     }
                     .help("Return to Pinned URL: \(address)")
                     .background(WindowDragArea(excluded: true))
+                }
+                WebsitePermissionMenu(page: controller, settings: store.websiteSettings,
+                                      extensions: store.extensions, pageID: pageID) {
+                    store.focus(pageID); store.onSettingsRequested?(.extensions)
+                }
+                .opacity(focused || paneHovered ? 1 : 0)
+                .allowsHitTesting(focused || paneHovered)
+                .accessibilityHidden(!focused && !paneHovered)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused || paneHovered)
+                .background {
+                    if focused || paneHovered { WindowDragArea(excluded: true) }
                 }
                 PinCloseButton(pinned: pinned, setPinned: { store.setPanePinned(pageID, pinned: $0) },
                                close: { store.closePane(pageID) })

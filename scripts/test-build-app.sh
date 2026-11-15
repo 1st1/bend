@@ -5,6 +5,9 @@ root="$(mktemp -d "${TMPDIR:-/tmp}/browse-build-test.XXXXXX")"
 trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/scripts" "$root/bin" "$root/dist/Bend Debug.app/Contents/MacOS"
 cp "$(dirname "$0")/build-app.sh" "$root/scripts/build-app.sh"
+mkdir -p "$root/scripts/fixtures"
+cp "$(dirname "$0")/fixtures/browser-capabilities.html" "$root/scripts/fixtures/"
+cp "$(dirname "$0")/Bend.entitlements" "$root/scripts/"
 cp "$(dirname "$0")/version.sh" "$root/scripts/version.sh"
 cp "$(dirname "$0")/embed-sparkle.sh" "$root/scripts/embed-sparkle.sh"
 framework="$root/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
@@ -33,6 +36,10 @@ if [[ "${BROWSE_BUILD_TEST_FAIL:-}" == "$1" ]]; then exit 1; fi
 if [[ "$1" == "--force" ]]; then
   [[ "$*" == *"--options runtime"* ]] || exit 2
   printf '%s\n' "$@" > "$BROWSE_BUILD_TEST_ROOT/signing-arguments"
+  if [[ "${!#}" == *'/Bend.app' || "${!#}" == *'/Bend Debug.app' ]]; then
+    [[ "$6" == --entitlements && -f "$7" ]] || exit 3
+    cp "$7" "$BROWSE_BUILD_TEST_ROOT/signed-entitlements.plist"
+  fi
 fi
 SH
 cat > "$root/bin/otool" <<'SH'
@@ -63,7 +70,24 @@ bash "$root/scripts/build-app.sh"
 [[ "$(stat -f %i "$root/dist/Bend Debug.app/Contents/MacOS/Bend")" != "$original_inode" ]]
 [[ "$(cat <&9)" == 'previous executable' ]]
 exec 9<&-
+assert_media_capture() {
+  python3 - "$1" "$root/signed-entitlements.plist" <<'PYMEDIA'
+import plistlib
+import sys
+with open(sys.argv[1], "rb") as f:
+    info = plistlib.load(f)
+for key in ("NSCameraUsageDescription", "NSMicrophoneUsageDescription", "NSLocationUsageDescription"):
+    assert isinstance(info.get(key), str) and info[key].strip(), key
+with open(sys.argv[2], "rb") as f:
+    entitlements = plistlib.load(f)
+assert entitlements == {
+    "com.apple.security.device.camera": True,
+    "com.apple.security.device.audio-input": True,
+}, entitlements
+PYMEDIA
+}
 plist="$root/dist/Bend Debug.app/Contents/Info.plist"
+assert_media_capture "$plist"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == 2.3.4 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" == 42 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist")" == 26.0 ]]
@@ -100,6 +124,7 @@ debug_inode="$(stat -f %i "$root/dist/Bend Debug.app/Contents/MacOS/Bend")"
 bash "$root/scripts/build-app.sh" --production --output "$root/release/Bend.app"
 [[ "$(stat -f %i "$root/dist/Bend Debug.app/Contents/MacOS/Bend")" == "$debug_inode" ]]
 plist="$root/release/Bend.app/Contents/Info.plist"
+assert_media_capture "$plist"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == 2.3.4 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" == 42 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist")" == 26.0 ]]

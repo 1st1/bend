@@ -70,6 +70,7 @@ cleanup() {
 trap cleanup EXIT
 candidate="$staging/$app_name.app"
 mkdir -p "$candidate/Contents/MacOS" "$candidate/Contents/Resources"
+cp "$PWD/scripts/fixtures/browser-capabilities.html" "$candidate/Contents/Resources/BrowserCapabilities.html"
 cp "$PWD/Assets/AppIcon.icns" "$candidate/Contents/Resources/AppIcon.icns"
 mkdir -p "$candidate/Contents/Resources/Licenses/AI"
 cp "$PWD/LICENSES/ai-swift/LICENSE" "$PWD/LICENSES/ai-swift/NOTICE" "$candidate/Contents/Resources/Licenses/AI/"
@@ -110,12 +111,15 @@ cat > "$candidate/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$build_number</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSLocationUsageDescription</key><string>Allow websites you approve to use your location for maps, local searches, and nearby services.</string>
+  <key>NSCameraUsageDescription</key><string>Allow websites you approve to use your camera for video calls and other camera features.</string>
+  <key>NSMicrophoneUsageDescription</key><string>Allow websites you approve to use your microphone for calls and other audio features.</string>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoadsInWebContent</key><true/></dict>
 </dict></plist>
 PLIST
 # @lat: [[lat.md/architecture/build#Development signing]]
 ./scripts/embed-sparkle.sh "$candidate" "${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}"
-codesign --force --options runtime --sign "${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}" "$candidate"
+codesign --force --options runtime --sign "${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}" --entitlements scripts/Bend.entitlements "$candidate"
 codesign --verify --strict "$candidate"
 # Never overwrite or re-sign files mapped by a running Bend process.
 # Publish only after signing succeeds; keep the old bundle for rollback.

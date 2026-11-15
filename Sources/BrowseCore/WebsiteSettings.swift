@@ -10,6 +10,8 @@ public enum PageZoom {
 
 // @lat: [[lat.md/architecture/settings#Website settings]]
 public struct WebsiteSettings: Equatable, Sendable {
+    public var allowedPermissions: [String: Set<WebsitePermission>] = [:]
+    public var blockedPermissions: [String: Set<WebsitePermission>] = [:]
     public var defaultZoom: Double = 1
     public var zoomByHost: [String: Double] = [:]
     public var warnFraudulentSites = true
@@ -21,6 +23,17 @@ public struct WebsiteSettings: Equatable, Sendable {
     public var privateClickMeasurementEnabled = false
 
     public init() {}
+
+    public func permission(_ permission: WebsitePermission, for origin: String) -> WebsitePermissionChoice {
+        if blockedPermissions[origin]?.contains(permission) == true { return .block }
+        if allowedPermissions[origin]?.contains(permission) == true { return .allow }
+        return .ask
+    }
+
+    public var permissionOrigins: [String] {
+        Set(blockedPermissions.keys).union(allowedPermissions.keys).sorted()
+    }
+
 
     // Zoom is shared across paths, schemes, and ports, but not subdomains.
     public static func hostname(for url: URL) -> String? {
@@ -39,7 +52,7 @@ public struct WebsiteSettings: Equatable, Sendable {
     }
 
     public var isValid: Bool {
-        PageZoom.isValid(defaultZoom) && zoomByHost.allSatisfy { host, zoom in
+        allowedPermissions.keys.allSatisfy { URL(string: $0).flatMap(WebsitePermission.origin) == $0 } && blockedPermissions.keys.allSatisfy { URL(string: $0).flatMap(WebsitePermission.origin) == $0 } && PageZoom.isValid(defaultZoom) && zoomByHost.allSatisfy { host, zoom in
             guard let url = URL(string: "https://\(host)/") else { return false }
             return Self.hostname(for: url) == host && PageZoom.isValid(zoom)
         }
