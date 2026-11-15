@@ -123,7 +123,7 @@ import AI
         (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, of: type) }
     }
     let glass = try #require(descendants(host, of: ChatComposerGlassView.self).first)
-    #expect(glass.style == .clear)
+    #expect(glass.style == .regular)
     #expect(glass.convert(glass.bounds, to: nil) == rect)
     let transcript = try #require(descendants(host, of: NSScrollView.self).max { $0.bounds.height < $1.bounds.height })
     let viewport = transcript.convert(transcript.bounds, to: nil)

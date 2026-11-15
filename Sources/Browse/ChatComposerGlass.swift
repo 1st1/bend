@@ -11,7 +11,7 @@ final class ChatComposerGlassView: NSGlassEffectView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         cornerRadius = 12
-        style = .clear
+        style = .regular
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override var mouseDownCanMoveWindow: Bool { false }

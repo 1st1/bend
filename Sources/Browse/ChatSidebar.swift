@@ -187,7 +187,13 @@ struct ChatSidebar: View {
             }.controlSize(.small)
         }
         .padding(10)
-        .background(ChatComposerGlass())
+        .background {
+            ChatComposerGlass()
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.55))
+                        .allowsHitTesting(false)
+                }
+        }
         .background(WindowDragArea(excluded: true))
         // The adjacent pane canvas supplies the inner gap.
         .padding(EdgeInsets(top: 0, leading: onLeft ? Chrome.paneInset : 0,

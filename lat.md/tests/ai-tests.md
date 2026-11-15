@@ -180,7 +180,7 @@ Denied, cancelled, disabled, and stale-source actions leave the layout unchanged
 
 [[Tests/BrowseTests/ChatComposerTests.swift#chatComposerWindowSpacing]] checks equal bottom and outside composer gaps on both window edges across supported panel widths, plus a transcript viewport extending beneath the floating composer.
 
-The header has no overlay material. Scrolling keeps the clear-glass composer fixed; its native background blocks underlying links while the input remains clickable. Assistant text respects the 90% width cap, and the last message scrolls above the composer. An optional snapshot supports visual inspection.
+The header has no overlay material. Scrolling keeps the frosted-glass composer fixed; its native background blocks underlying links while the input remains clickable. Assistant text respects the 90% width cap, and the last message scrolls above the composer. An optional snapshot supports visual inspection.
 
 ## Recalled prompt appearance
 
