@@ -50,9 +50,9 @@ Background drag gestures cross the native titlebar drag threshold before asserti
 
 ## Pane transfer round trips
 
-[PaneTransferTests.swift](../../Tests/BrowseTests/PaneTransferTests.swift) moves the same live pane between two surviving tabs 24 times per layout, using normal and scrolling layouts to check the third drag and later round trips.
+[PaneTransferTests.swift](../../Tests/BrowseTests/PaneTransferTests.swift) moves the same live pane between two surviving tabs 24 times per layout, using roomy and overflowing layouts to check the third drag and later round trips.
 
-The first twenty transfers in each layout hover to select the destination before dropping onto a pane; the remainder drop directly onto the tab row. Each press must reach exactly one visible handle with current tab ownership. AppKit must receive every mouse event through the same window-owned target across transfers, and the window must return to idle after release. Synthetic window events verify retained page controllers, document tokens, unsaved form contents, and unique model ownership while both tab trees remain mounted. Document tokens are injected after navigation and must survive every move; wall-clock-derived performance timestamps are not identity checks.
+The first twenty transfers in each layout hover to select the destination before dropping onto a pane; the remainder drop directly onto the tab row. The crowded case checks that an overflowed pane rejects input, then widens the window before dragging its restored handle. Each press must reach exactly one visible handle with current tab ownership. AppKit must receive every mouse event through the same window-owned target across transfers, and the window must return to idle after release. Synthetic window events verify retained page controllers, document tokens, unsaved form contents, and unique model ownership while both tab trees remain mounted. Document tokens are injected after navigation and must survive every move; wall-clock-derived performance timestamps are not identity checks.
 
 ## Joining tab layouts
 

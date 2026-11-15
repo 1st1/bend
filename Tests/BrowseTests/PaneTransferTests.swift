@@ -404,6 +404,22 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     _ = try await web.evaluateJavaScript("window.roundTripToken='retained'; document.body.innerHTML='<input id=draft value=unsaved>'")
     window.makeFirstResponder(web)
     for index in 0..<24 {
+        if crowded {
+            if index > 0 && index.isMultiple(of: 2) {
+                // Returning to the three-pane tab overflows its rightmost pane.
+                // The recovery placeholder deliberately excludes that handle from input.
+                let hidden = try #require(descendants(PaneDragSourceView.self, content).first {
+                    $0.pageID == moving.id && $0.onHover != nil && !$0.isHiddenOrHasHiddenAncestor
+                })
+                let frame = try #require(window.contentView?.superview)
+                let needsRecovery = frame.hitTest(frame.convert(center(hidden), from: nil)) !== hidden
+                if index == 2 { #expect(needsRecovery, "The first return overflows the moving pane") }
+                if needsRecovery { window.setContentSize(NSSize(width: 1400, height: 850)) }
+            } else {
+                window.setContentSize(NSSize(width: 1100, height: 850))
+            }
+            try await settle()
+        }
         let destination = index.isMultiple(of: 2) ? second.id : first.id
         let anchor = index.isMultiple(of: 2) ? anchorB.id : anchorA.id
         let handles = descendants(PaneDragSourceView.self, content).filter {
