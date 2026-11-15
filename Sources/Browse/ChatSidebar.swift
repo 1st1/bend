@@ -190,7 +190,7 @@ struct ChatSidebar: View {
         .background {
             ChatComposerGlass()
                 .overlay {
-                    RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.55))
+                    RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.45))
                         .allowsHitTesting(false)
                 }
         }
