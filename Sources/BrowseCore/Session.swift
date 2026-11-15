@@ -169,6 +169,7 @@ public struct BrowserTab: Codable, Identifiable, Sendable {
     public var pages: [Page]
     public var focusedPane: UUID
     public var commandClickPaneID: UUID?
+    public var originTabID: UUID?
     public var isPinned: Bool { pages.contains { $0.isPinned } }
 
     public init(title: String = "New tab", pages: [Page] = [Page()]) {

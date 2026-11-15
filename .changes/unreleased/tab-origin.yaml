@@ -1,0 +1,3 @@
+kind: Fixed
+body: Return to the originating tab when closing a link-created tab, if its origin is still open.
+time: 2026-11-14T16:40:00-08:00

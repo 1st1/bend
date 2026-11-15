@@ -566,13 +566,16 @@ final class BrowserStore: ObservableObject {
         focus(id); zoomedPane = zoomedPane == id ? nil : id
     }
 
-    func newTab(in workspace: UUID? = nil, address: String = "bend://start", linkOpener: UUID? = nil,
+    func newTab(in workspace: UUID? = nil, address: String = "bend://start", linkOpener: UUID? = nil, originPageID: UUID? = nil,
                 closeIfDownload: Bool = false, afterCurrent: Bool = false, inBackground: Bool = false) {
         let address = AddressResolver.canonicalAddress(address)
         let previousTabID = session.selectedTab, previousZoom = zoomedPane
         let index = session.workspaces.firstIndex { $0.id == workspace }
             ?? session.workspaces.firstIndex { $0.tabs.contains { $0.id == session.selectedTab } } ?? 0
-        let tab = BrowserTab(title: address == "bend://history" ? "History" : "New tab", pages: [Page(address: address)])
+        var tab = BrowserTab(title: address == "bend://history" ? "History" : "New tab", pages: [Page(address: address)])
+        if let source = originPageID ?? linkOpener {
+            tab.originTabID = session.workspaces.flatMap(\.tabs).first { $0.pages.contains { $0.id == source } }?.id
+        }
         if let linkOpener { linkOpeners[tab.pages[0].id] = linkOpener }
         let insertion = afterCurrent ? session.workspaces[index].tabs.firstIndex { $0.id == previousTabID }.map { $0 + 1 } : nil
         session.workspaces[index].tabs.insert(tab, at: insertion ?? session.workspaces[index].tabs.count)
@@ -814,7 +817,12 @@ final class BrowserStore: ObservableObject {
             if needsReplacement { session.workspaces[wi].tabs.append(BrowserTab()) }
             rememberClosed(.init(tab: closed, workspaceID: session.workspaces[wi].id, tabIndex: ti, paneID: nil,
                 replacementID: needsReplacement ? session.workspaces[wi].tabs[0].id : nil))
-            if session.selectedTab == id { select(session.workspaces[wi].tabs[min(ti, session.workspaces[wi].tabs.count - 1)].id) }
+            if session.selectedTab == id {
+                let origin = closed.originTabID.flatMap { origin in
+                    session.workspaces.flatMap(\.tabs).first { $0.id == origin }?.id
+                }
+                select(origin ?? session.workspaces[wi].tabs[min(ti, session.workspaces[wi].tabs.count - 1)].id)
+            }
             if needsReplacement && session.selectedTab == session.workspaces[wi].tabs[0].id { requestAddress() }
             saveSoon(); return
         }
@@ -961,14 +969,14 @@ final class BrowserStore: ObservableObject {
                 }
             }
         }
-        controller.onNewTab = { [weak self] address in self?.newTab(address: address, afterCurrent: true) }
+        controller.onNewTab = { [weak self] address in self?.newTab(address: address, originPageID: page.id, afterCurrent: true) }
         controller.onNewPane = { [weak self] address in self?.openPane(address: address, toRightOf: page.id) }
         controller.onNewLink = { [weak self] address, adjacent, mainFrame in
             guard let self else { return }
             switch adjacent ? self.commandClickDestination : .newTab {
             case .newPane: self.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame)
             case .dedicatedPane: self.openInDedicatedPane(address: address, from: page.id, fromMainFrame: mainFrame)
-            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, closeIfDownload: true, afterCurrent: true)
+            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, originPageID: page.id, closeIfDownload: true, afterCurrent: true)
             }
         }
         controller.onCommandShiftLink = { [weak self] address, mainFrame in
@@ -996,7 +1004,7 @@ final class BrowserStore: ObservableObject {
                           inBackground: Bool = false) {
         switch destination {
         case .newTab:
-            newTab(address: address, linkOpener: mainFrame ? pageID : nil, closeIfDownload: true, afterCurrent: true,
+            newTab(address: address, linkOpener: mainFrame ? pageID : nil, originPageID: pageID, closeIfDownload: true, afterCurrent: true,
                    inBackground: inBackground)
         case .newPane:
             openPane(address: address, toRightOf: pageID, fromMainFrame: mainFrame)

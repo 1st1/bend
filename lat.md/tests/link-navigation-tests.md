@@ -81,3 +81,7 @@ Open Link in New Tab is first, followed by New Pane and New Window. URLs retain 
 [[Tests/BrowseTests/LinkNavigationTests.swift#dedicatedPaneWindowRestoration]] verifies duplicated tabs retain their reusable Command-click destination through full window shutdown and restoration in both main and secondary windows.
 
 The copied destination has a fresh pane identity. After restoring, the next Command-click reuses that pane without increasing the pane count, and the shared dedicated-pane preference remains active.
+
+## Return to origin tab
+
+[[Tests/BrowseTests/TabOriginTests.swift#closingLinkTabReturnsToOrigin]] verifies iframe context-menu origins, nested link tabs, persisted origin metadata, background closure, and fallback after the origin closes.
