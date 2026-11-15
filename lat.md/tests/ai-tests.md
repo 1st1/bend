@@ -133,3 +133,23 @@ The connection-test fixture in [[Tests/BrowseTests/AIChatTests.swift]] verifies 
 ## Chat panel resizing
 
 [[Tests/BrowseTests/ChatHistoryTests.swift#chatPanelResizing]] verifies mirrored native drag tracking, repeated pointer positions, bounds, independent sidebar width, saved-width restoration, and invalid-width handling on both sides.
+
+## Action approval boundaries
+
+[[Tests/BrowseTests/AISecurityTests.swift#aiActionApprovalBoundaries]] verifies denied navigation, clicking, and filling have no side effects, and unobserved attribute probes fail identically before DOM lookup. Changed elements, permissions, navigation revisions, and pane membership invalidate approval.
+
+## Native action confirmation
+
+[[Tests/BrowseTests/AISecurityTests.swift#aiNativeActionConfirmation]] verifies Cancel is the default native response, Allow Once releases a request, and cancellation or window closure rejects it despite late UI responses.
+
+## Page read field privacy
+
+[[Tests/BrowseTests/AISecurityTests.swift#aiPageReadFieldPrivacy]] excludes password values, textarea drafts, editable content, and select contents from page text and ancestor labels without modifying the live page.
+
+## Untrusted read cursor presentation
+
+[[Tests/BrowseTests/AISecurityTests.swift#aiUntrustedReadCursorPresentation]] verifies extreme, negative, and malformed model-supplied cursor indices cannot crash transcript rendering before tool validation.
+
+## Malformed loopback connections
+
+[[Tests/BrowseTests/AIOAuthTests.swift#aiOAuthMalformedConnections]] verifies repeated oversized requests cannot exhaust OAuth callback connection slots and prevent a subsequent legitimate sign-in callback.

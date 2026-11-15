@@ -299,6 +299,7 @@ enum OAuthIdentity {
     private var redirect: URL?
     private var state = ""
     private var connections: [NWConnection] = []
+    private var connectionTimeouts: [ObjectIdentifier: Task<Void, Never>] = [:]
     func start(port: UInt16, state: String) async throws -> URL {
         self.state = state
         let parameters = NWParameters.tcp
@@ -322,6 +323,10 @@ enum OAuthIdentity {
             Task { @MainActor in
                 guard let self, self.connections.count < 8 else { connection.cancel(); return }
                 self.connections.append(connection)
+                self.connectionTimeouts[ObjectIdentifier(connection)] = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                    self?.close(connection)
+                }
                 connection.start(queue: .main)
                 self.receive(connection, data: Data())
             }
@@ -345,9 +350,9 @@ enum OAuthIdentity {
             Task { @MainActor in
                 guard let self else { return }
                 let buffer = data + (chunk ?? Data())
-                guard buffer.count <= 16_384, error == nil else { connection.cancel(); return }
+                guard buffer.count <= 16_384, error == nil else { self.close(connection); return }
                 guard let text = String(data: buffer, encoding: .utf8), text.contains("\r\n\r\n") else {
-                    if !complete { self.receive(connection, data: buffer) } else { connection.cancel() }
+                    if !complete { self.receive(connection, data: buffer) } else { self.close(connection) }
                     return
                 }
                 let line = text.components(separatedBy: "\r\n").first?.split(separator: " ") ?? []
@@ -362,19 +367,23 @@ enum OAuthIdentity {
                 let response = "HTTP/1.1 \(validURL == nil ? "400 Bad Request" : "200 OK")\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
                 let accepted = validURL
                 connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
-                    connection.cancel()
                     Task { @MainActor in
-                        self.connections.removeAll { $0 === connection }
+                        self.close(connection)
                         if let accepted { self.finish(.success(accepted)) }
                     }
                 })
             }
         }
     }
+    private func close(_ connection: NWConnection) {
+        connectionTimeouts.removeValue(forKey: ObjectIdentifier(connection))?.cancel()
+        connections.removeAll { $0 === connection }
+        connection.cancel()
+    }
     private func finish(_ value: Result<URL, Error>) {
         guard outcome == nil else { return }
         outcome = value; listener?.cancel(); listener = nil; timeout?.cancel(); timeout = nil
-        connections.forEach { $0.cancel() }; connections = []
+        for connection in connections { close(connection) }
         if let ready { ready.resume(with: value); self.ready = nil }
         if let result { result.resume(with: value); self.result = nil }
     }

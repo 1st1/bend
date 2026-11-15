@@ -87,16 +87,22 @@ public struct Usage: Codable, Sendable, Equatable {
   public var totalTokens: Int
 
   public init(inputTokens: Int = 0, outputTokens: Int = 0, totalTokens: Int? = nil) {
-    self.inputTokens = inputTokens
-    self.outputTokens = outputTokens
-    self.totalTokens = totalTokens ?? inputTokens + outputTokens
+    self.inputTokens = max(0, inputTokens)
+    self.outputTokens = max(0, outputTokens)
+    self.totalTokens = totalTokens.map { max(0, $0) } ?? Self.sum(inputTokens, outputTokens)
   }
 
   public static func + (lhs: Self, rhs: Self) -> Self {
     .init(
-      inputTokens: lhs.inputTokens + rhs.inputTokens,
-      outputTokens: lhs.outputTokens + rhs.outputTokens,
-      totalTokens: lhs.totalTokens + rhs.totalTokens)
+      inputTokens: sum(lhs.inputTokens, rhs.inputTokens),
+      outputTokens: sum(lhs.outputTokens, rhs.outputTokens),
+      totalTokens: sum(lhs.totalTokens, rhs.totalTokens))
+  }
+
+  // Provider counters are untrusted; accounting must never trap the host process.
+  private static func sum(_ lhs: Int, _ rhs: Int) -> Int {
+    let (value, overflow) = max(0, lhs).addingReportingOverflow(max(0, rhs))
+    return overflow ? Int.max : value
   }
 }
 

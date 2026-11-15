@@ -216,7 +216,7 @@ struct ChatBubble: Identifiable, Codable {
             bubbles[bubbles.count - 1].argumentFields = argumentFields(call.arguments)
             if call.name == "read_pane" {
                 let args = try? JSONDecoder().decode(PaneChatTools.Input.self, from: Data(call.arguments.utf8))
-                let chunk = args?.cursor?.split(separator: ":").last.flatMap { Int($0) }.map { $0 + 1 } ?? 1
+                let chunk = Self.readPart(args?.cursor) ?? 1
                 bubbles[bubbles.count - 1].argumentSummary = "part \(chunk)"
             }
             status = "Using \(call.name)…"
@@ -260,8 +260,8 @@ struct ChatBubble: Identifiable, Codable {
                 return ChatArgumentField(label: "Page", value: title.isEmpty ? (page?.address ?? "Unavailable page") : title)
             }
             if key == "cursor" {
-                let part = (value as? String)?.split(separator: ":").last.flatMap { Int($0) }
-                return ChatArgumentField(label: "Read", value: part.map { "Part \($0 + 1)" } ?? "Next part")
+                let part = Self.readPart(value as? String)
+                return ChatArgumentField(label: "Read", value: part.map { "Part \($0)" } ?? "Next part")
             }
             let labels = ["url": "URL", "query": "Search", "selector": "Element", "text": "Text"]
             let text: String
@@ -271,6 +271,13 @@ struct ChatBubble: Identifiable, Codable {
             else { text = String(describing: value) }
             return ChatArgumentField(label: labels[key] ?? key.capitalized, value: text)
         }
+    }
+
+    static func readPart(_ cursor: String?) -> Int? {
+        guard let parts = cursor?.split(separator: ":", omittingEmptySubsequences: false), parts.count == 2,
+              UUID(uuidString: String(parts[0])) != nil, let index = Int(parts[1]),
+              index >= 0, index < Int.max else { return nil }
+        return index + 1
     }
 
     private func schedulePersistence() {
@@ -319,11 +326,14 @@ struct ChatBubble: Identifiable, Codable {
 
 // @lat: [[lat.md/architecture/ai#Pane tools]]
 @MainActor final class PaneChatTools {
+    typealias Approval = @MainActor (String, WKWebView) async -> Bool
     weak var store: BrowserStore?
     let tabID: UUID
     private let settings: AISettings
-    init(store: BrowserStore?, tabID: UUID, settings: AISettings = .shared) {
-        self.store = store; self.tabID = tabID; self.settings = settings
+    private let approve: Approval
+    init(store: BrowserStore?, tabID: UUID, settings: AISettings = .shared,
+         approve: @escaping Approval = AIActionApproval.confirm) {
+        self.store = store; self.tabID = tabID; self.settings = settings; self.approve = approve
     }
 
     func paneContext() -> JSONValue {
@@ -388,10 +398,32 @@ struct ChatBubble: Identifiable, Codable {
             throw AIError.configuration("Pane is no longer in this chat's tab. Use the current pane context in the system prompt.")
         }
         let controller = store.controller(for: page)
+        let revision = controller.aiNavigationRevision
+        let source = controller.webView.url
+        func revalidate() throws {
+            try Task.checkCancellation()
+            guard !store.isPrivate, settings.isToolEnabled(name),
+                  store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID })?.pages.contains(where: { $0.id == id }) == true,
+                  store.existingController(for: id) === controller,
+                  controller.aiNavigationRevision == revision, controller.webView.url == source else {
+                throw AIError.configuration("The pane or its permissions changed. Read it again before retrying.")
+            }
+        }
+        func confirm(_ details: [String: String]) async throws {
+            // JSON escaping keeps untrusted newlines and labels separate from the native dialog's instructions.
+            let data = try JSONSerialization.data(withJSONObject: details, options: [.prettyPrinted, .sortedKeys])
+            guard await approve(String(decoding: data, as: UTF8.self), controller.webView) else {
+                throw AIError.configuration("The browser action was not approved. Do not retry unless the user asks.")
+            }
+            try revalidate()
+        }
         if name == "navigate_pane" {
             guard let address = input.url, let url = URL(string: address),
+                  address.count <= 8192,
                   ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil,
                   url.user == nil, url.password == nil else { throw AIError.configuration("Use an HTTP(S) URL without credentials.") }
+            try await confirm(["action": "Navigate", "current_page": source?.absoluteString ?? page.address,
+                               "destination": address])
             controller.navigate(address)
             return .string("Navigation started. Read the pane to check the loaded page.")
         }
@@ -400,7 +432,7 @@ struct ChatBubble: Identifiable, Codable {
         }
         guard !controller.webView.isLoading else { throw AIError.configuration("Page is loading. Try again shortly.") }
         let script: String
-        var arguments: [String: Any] = [:]
+        var arguments: [String: Any] = ["expectedURL": url.absoluteString]
         switch name {
         case "read_pane":
             script = Self.readScript
@@ -409,8 +441,16 @@ struct ChatBubble: Identifiable, Codable {
             arguments["snapshotID"] = UUID().uuidString
         case "click_element", "fill_element":
             guard let selector = input.selector, !selector.isEmpty, selector.count <= 2000 else { throw AIError.configuration("A CSS selector is required.") }
-            arguments = ["selector": selector, "text": input.text ?? "", "fill": name == "fill_element"]
+            guard (input.text?.count ?? 0) <= 8192 else { throw AIError.configuration("Text is too long for one browser action.") }
+            arguments.merge(["selector": selector, "text": input.text ?? "", "fill": name == "fill_element",
+                             "actionID": UUID().uuidString, "prepare": true]) { _, value in value }
             script = Self.actionScript
+            let target = try await controller.webView.callAsyncJavaScript(script, arguments: arguments, in: nil, contentWorld: .defaultClient)
+            try revalidate()
+            try await confirm(["action": name == "fill_element" ? "Fill field" : "Click element",
+                               "current_page": url.absoluteString, "selector": selector,
+                               "target": target as? String ?? "", "text": input.text ?? ""])
+            arguments["prepare"] = false
         default: throw AIError.configuration("Unknown pane tool.")
         }
         let result = try await controller.webView.callAsyncJavaScript(script, arguments: arguments, in: nil, contentWorld: .defaultClient)
@@ -418,10 +458,14 @@ struct ChatBubble: Identifiable, Codable {
         guard store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID })?.pages.contains(where: { $0.id == id }) == true else {
             throw AIError.configuration("Pane moved out of this tab.")
         }
+        // Clicks may themselves navigate, but reads must not return a different document's data.
+        if name == "read_pane" { try revalidate() }
         return .string(result as? String ?? "Done")
     }
 
     static let readScript = #"""
+    if (!['http:', 'https:'].includes(location.protocol) || location.href !== expectedURL)
+      throw new Error('Page changed. Read the pane again.');
     const output = (snapshot, index) => {
       const count = Math.max(1, snapshot.chunks.length, Math.ceil(snapshot.elements.length/100), Math.ceil(snapshot.references.length/100));
       if (!Number.isSafeInteger(index) || index < 0 || index >= count) throw new Error('Invalid read cursor. Read again without a cursor.');
@@ -442,6 +486,21 @@ struct ChatBubble: Identifiable, Codable {
       return output(snapshot, Number(parts[1]));
     }
     const visible = e => !!(e.getClientRects().length) && getComputedStyle(e).visibility !== 'hidden';
+    // innerText includes textarea defaults and editable drafts, including through
+    // ancestor labels. Exclude those subtrees from every text-bearing output.
+    const omitted = 'input,textarea,select,[contenteditable]:not([contenteditable="false"]),script,style,noscript,template';
+    const safeText = e => {
+      if (!e || e.matches(omitted) || e.isContentEditable) return '';
+      const style = getComputedStyle(e);
+      if (style.display === 'none' || style.visibility !== 'visible') return '';
+      if (!e.querySelector(omitted)) return e.innerText || '';
+      return [...e.childNodes].map(n => {
+        if (n.nodeType === Node.TEXT_NODE) return n.textContent;
+        if (n.nodeType !== Node.ELEMENT_NODE) return '';
+        const text = safeText(n);
+        return text && !getComputedStyle(n).display.startsWith('inline') ? '\n' + text + '\n' : text;
+      }).join('');
+    };
     const selector = e => {
       if (e.id) return '#' + CSS.escape(e.id);
       const parts = [];
@@ -452,9 +511,9 @@ struct ChatBubble: Identifiable, Codable {
       }
       return 'html > ' + parts.join(' > ');
     };
-    const elements = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"]')]
-      .filter(visible).map(e => ({selector: selector(e), tag:e.tagName.toLowerCase(),
-        label:(e.getAttribute('aria-label') || e.innerText || e.getAttribute('placeholder') || '').slice(0,180),
+    const controls = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"]')].filter(visible);
+    const elements = controls.map(e => ({selector: selector(e), tag:e.tagName.toLowerCase(),
+        label:(e.getAttribute('aria-label') || safeText(e) || e.getAttribute('placeholder') || '').slice(0,180),
         type:e.getAttribute('type'), href:e.tagName === 'A' ? e.href : undefined}));
     const citation = target => {
       const destination = new URL(location.href);
@@ -462,25 +521,45 @@ struct ChatBubble: Identifiable, Codable {
       return 'bend-pane://' + pane + '?url=' + encodeURIComponent(destination.href);
     };
     const references = [...document.querySelectorAll('[id],a[name]')]
-      .filter(e => visible(e) && e.innerText?.trim())
-      .map(e => ({label:e.innerText.trim().slice(0,180),citation:citation(e)}));
-    const text = document.body?.innerText || '';
-    const snapshot = {id:snapshotID,url:location.href,title:document.title,
+      .filter(visible)
+      .map(e => ({label:safeText(e).trim().slice(0,180),citation:citation(e)})).filter(e => e.label);
+    const text = safeText(document.body);
+    const snapshot = {id:snapshotID,url:location.href,title:document.title,targets:new Map(controls.map(e => [selector(e), e])),
       chunks:text.match(/[\s\S]{1,24000}/gu) || [],elements,references,citation:citation(null)};
     globalThis.__bendReadSnapshot = snapshot;
     return output(snapshot, 0);
     """#
     static let actionScript = #"""
+    if (!['http:', 'https:'].includes(location.protocol) || location.href !== expectedURL)
+      throw new Error('Page changed. Read the pane again.');
+    // Never evaluate arbitrary model-supplied selectors: success/error differences
+    // could otherwise probe sensitive attributes before the approval dialog.
+    const snapshot = globalThis.__bendReadSnapshot;
+    if (!snapshot || snapshot.url !== location.href || !snapshot.targets.has(selector))
+      throw new Error('Read the pane and use an element selector from that read.');
     const matches = document.querySelectorAll(selector);
     if(matches.length !== 1) throw new Error('Selector must match exactly one element. Read the pane again.');
     const e = matches[0];
-    if(!e.getClientRects().length || e.disabled) throw new Error('Element is hidden or disabled.');
+    if (snapshot.targets.get(selector) !== e) throw new Error('The observed element changed. Read the pane again.');
+    if(!e.getClientRects().length || getComputedStyle(e).visibility !== 'visible' || e.disabled)
+      throw new Error('Element is hidden or disabled.');
     if(fill) {
       if(!['INPUT','TEXTAREA'].includes(e.tagName)) throw new Error('Only text fields can be filled.');
       const type = (e.getAttribute('type') || 'text').toLowerCase();
       const hint = [e.name,e.id,e.autocomplete,e.getAttribute('aria-label')].join(' ');
       if(!['text','search','email','url','tel'].includes(type) || /password|credit|card|cc-|cvc|cvv|otp|one-time|token/i.test(hint))
         throw new Error('Sensitive or unsupported field.');
+    }
+    if (prepare) {
+      globalThis.__bendPendingAction = {id:actionID, element:e, html:e.outerHTML, url:location.href};
+      return JSON.stringify({tag:e.tagName, label:(e.getAttribute('aria-label') || e.innerText || e.getAttribute('placeholder') || '').slice(0,300),
+        href:e.tagName === 'A' ? e.href : undefined, type:e.getAttribute('type')});
+    }
+    const pending = globalThis.__bendPendingAction;
+    delete globalThis.__bendPendingAction;
+    if (!pending || pending.id !== actionID || pending.element !== e || pending.html !== e.outerHTML || pending.url !== location.href)
+      throw new Error('The approved element changed. Read the pane again.');
+    if(fill) {
       const prototype = e.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
       Object.getOwnPropertyDescriptor(prototype,'value').set.call(e,text);
       e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));

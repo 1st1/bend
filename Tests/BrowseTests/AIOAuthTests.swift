@@ -169,6 +169,26 @@ private struct OAuthFixture: HTTPTransport {
     await #expect(throws: CancellationError.self) { try await cancelled.wait() }
 }
 
+// @lat: [[lat.md/tests/ai-tests#Malformed loopback connections]]
+@Test @MainActor func aiOAuthMalformedConnections() async throws {
+    let listener = OAuthLoopback()
+    let redirect = try await listener.start(port: 0, state: "expected")
+    defer { listener.cancel() }
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest = 2
+    let session = URLSession(configuration: configuration)
+    defer { session.invalidateAndCancel() }
+    for _ in 0..<12 {
+        var request = URLRequest(url: redirect)
+        request.setValue(String(repeating: "x", count: 20000), forHTTPHeaderField: "X-Oversized")
+        _ = try? await session.data(for: request)
+    }
+    let valid = URL(string: redirect.absoluteString + "?state=expected&code=x&client_id=issued")!
+    let (_, response) = try await session.data(from: valid)
+    #expect((response as? HTTPURLResponse)?.statusCode == 200)
+    #expect(try await listener.wait() == valid)
+}
+
 // @lat: [[lat.md/tests/ai-tests#Account request routing]]
 @Test func aiOAuthRouting() async throws {
     let requests = OAuthRequests()

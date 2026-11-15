@@ -308,7 +308,7 @@ struct NativeAccumulator {
       guard !call.id.isEmpty, !call.name.isEmpty, ids.insert(call.id).inserted else { throw AIError.invalidResponse("Invalid tool identity") }
       emit(.toolCall(call))
     }
-    usage.totalTokens = usage.inputTokens + usage.outputTokens
+    usage = Usage(inputTokens: usage.inputTokens, outputTokens: usage.outputTokens)
     return ModelResponse(message: message, usage: usage, finishReason: reason)
   }
   func source(_ item: JSONValue) -> SearchSource? {

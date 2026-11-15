@@ -26,6 +26,8 @@ Successful completion finishes event delivery and makes the aggregate available;
 
 The built-in provider requires a complete wire response before returning [[Sources/AI/Types.swift#ModelResponse]]. Receiving text alone is insufficient; see [[lat.md/ai-sdk/sdk-provider#Chat Completions provider#Completion integrity]].
 
+[[Sources/AI/Types.swift#Usage]] normalizes negative token counts to zero and saturates sums at the platform integer limit. Malformed provider accounting cannot crash response parsing or multi-turn accumulation. [[lat.md/ai-sdk/sdk-tests#Untrusted usage counters]] covers all three wire formats.
+
 ## Cancellation propagation
 
 Cancellation flows from a run to its model request, child agents, and cooperative local tools, preventing cancellation from becoming a recoverable tool result.

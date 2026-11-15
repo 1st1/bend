@@ -82,7 +82,7 @@ private struct WaitingChatProvider: Provider {
     let otherTab = BrowserTab(title: "Other", pages: [other])
     store.session.workspaces = [Workspace(name: "Tabs", tabs: [tab, otherTab])]
     store.session.selectedTab = tab.id
-    let tools = PaneChatTools(store: store, tabID: tab.id)
+    let tools = PaneChatTools(store: store, tabID: tab.id, approve: { _, _ in true })
     let list = tools.paneContext()
     #expect(try list.jsonString().contains(page.id.uuidString))
     #expect(try !list.jsonString().contains(other.id.uuidString))

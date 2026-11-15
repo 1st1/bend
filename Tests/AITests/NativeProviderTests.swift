@@ -137,3 +137,28 @@ private func nativeFixture(_ events: [String]) -> FixtureTransport {
   let interrupted = try OpenAIResponsesProvider(apiKey: "test", transport: nativeFixture([done]))
   await #expect(throws: AIError.incompleteResponse) { try await drain(stream(Model("test", provider: interrupted), messages: [])) }
 }
+
+// @lat: [[lat.md/ai-sdk/sdk-tests#Untrusted usage counters]]
+@Test func untrustedUsageCounters() async throws {
+  let large = Usage(inputTokens: Int.max, outputTokens: 1)
+  #expect(large.totalTokens == Int.max)
+  #expect((large + large).inputTokens == Int.max)
+  #expect((large + large).outputTokens == 2)
+  #expect((large + large).totalTokens == Int.max)
+  #expect(Usage(inputTokens: Int.min, outputTokens: -1) == Usage())
+  let completion = try fixtureProvider("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":\(Int.max),\"completion_tokens\":1}}\n\ndata: [DONE]\n\n")
+  let (result, _) = try await drain(stream(Model("test", provider: completion), messages: []))
+  #expect(result.usage == large)
+  let openai = try OpenAIResponsesProvider(apiKey: "fixture", transport: nativeFixture([
+    "{\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":\(Int.max),\"output_tokens\":1}}}"
+  ]))
+  let (openaiResult, _) = try await drain(stream(Model("test", provider: openai), messages: []))
+  #expect(openaiResult.usage == large)
+  let anthropic = try AnthropicMessagesProvider(apiKey: "fixture", transport: nativeFixture([
+    "{\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":\(Int.max)}}}",
+    #"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}"#,
+    #"{"type":"message_stop"}"#
+  ]))
+  let (anthropicResult, _) = try await drain(stream(Model("test", provider: anthropic), messages: []))
+  #expect(anthropicResult.usage == large)
+}

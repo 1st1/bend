@@ -171,3 +171,7 @@ Cancelling a live stream must fail its result with CancellationError and close t
 ## Live OpenAI account tools
 
 [[Tests/AITests/NativeGatewaySmokeTests.swift#liveOpenAIAccountTools]] optionally checks a synthetic local tool round-trip and a nonempty answer through OpenAI's public Responses endpoint with an account access token. It sends no browsing data.
+
+## Untrusted usage counters
+
+The extreme-counter regression in [[Tests/AITests/NativeProviderTests.swift]] verifies extreme provider counters cannot overflow individual responses or accumulated usage across Chat Completions, Responses, and Messages adapters.

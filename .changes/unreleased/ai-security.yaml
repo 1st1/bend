@@ -1,0 +1,3 @@
+kind: Security
+body: Require native approval for AI browser actions, exclude editable drafts from page reads, prevent malformed AI counters from crashing the browser, and release malformed OAuth callback connections.
+time: 2026-11-14T16:30:00-08:00

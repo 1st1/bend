@@ -1344,6 +1344,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     let downloads: BrowserDownloads
     let media = PageMediaController()
     @Published private(set) var webView: FocusWebView
+    private(set) var aiNavigationRevision = UUID()
     var configure: (WKWebViewConfiguration) -> Void
     private var extensionOrigin: URL?
     @Published var address: String
@@ -1523,6 +1524,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     private func load(_ url: URL) {
+        aiNavigationRevision = UUID()
         javaScriptDialogs.cancel(for: webView)
         webView.clearURLPreview()
         InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "bend"])
@@ -1589,6 +1591,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        aiNavigationRevision = UUID()
         javaScriptDialogs.cancel(for: webView)
         (webView as? FocusWebView)?.clearURLPreview()
         (webView.superview as? WebSurfaceHost)?.hideFindBar(restoreFocus: false)
@@ -1601,6 +1604,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         resetFavicon(for: webView.url)
     }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        aiNavigationRevision = UUID()
         onInitialDownload = nil
         discardFavicon(ifLeaving: webView.url)
         javaScriptDialogs.didCommitNavigation(in: webView)
