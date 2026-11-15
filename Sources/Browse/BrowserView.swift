@@ -647,14 +647,14 @@ private struct BrowserPane: View {
                 .accessibilityHidden(!focused && !paneHovered)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused || paneHovered)
                 .background {
-                    if focused || paneHovered { WindowDragArea(excluded: true) }
+                    if focused || paneHovered { WindowDragArea(excluded: true, identifier: "paneNavigationControls") }
                 }
                 if let address = store.pinnedReturnAddress(pageID) {
                     iconButton("arrow.uturn.backward", "Return to Pinned URL") {
                         store.returnToPinnedURL(pageID)
                     }
                     .help("Return to Pinned URL: \(address)")
-                    .background(WindowDragArea(excluded: true))
+                    .background(WindowDragArea(excluded: true, identifier: "pinnedReturnControl"))
                 }
                 WebsitePermissionMenu(page: controller, settings: store.websiteSettings,
                                       extensions: store.extensions, pageID: pageID) {

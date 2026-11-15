@@ -53,7 +53,7 @@ import Testing
     }
     func controlsArea(_ pane: ClippedPaneHost) -> WindowDragAreaView? {
         descendants(WindowDragAreaView.self, in: pane).first {
-            $0.excluded && $0.bounds.width >= 144 && abs($0.bounds.height - 24) < 0.5
+            $0.excluded && $0.identifier?.rawValue == "paneNavigationControls"
         }
     }
     try await wait { first.title == "First" && second.title == "First" && !first.isLoading && !second.isLoading }

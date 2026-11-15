@@ -34,6 +34,8 @@ Tab pinning sets all pane pins; individual unpinning keeps the tab protected whi
 
 [[Tests/BrowseTests/PinningTests.swift#nativePinControls]] exercises native Option-clicks on pane controls and sidebar rows, checks the live modifier preview, returns an inactive pane to its pinned URL, and unpins an inactive pane and an unselected tab through their always-visible pin buttons.
 
+Native navigation and return-control hit regions have stable identifiers so these tests exercise real mouse dispatch without assuming toolbar widths or offsets.
+
 ## Pinned URL return
 
 [[Tests/BrowseTests/PinningTests.swift#pinnedURLReturn]] verifies pin-time URL capture, away-state detection, same-controller return, tab pin preservation, repinning, session restoration, and migration of older pins. The command popup test exercises the return action.
