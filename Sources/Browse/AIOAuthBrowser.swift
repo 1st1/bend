@@ -11,15 +11,13 @@ extension ASWebAuthenticationSession: OAuthBrowserSession {}
 
 // @lat: [[lat.md/architecture/ai#Account sign-in]]
 @MainActor final class AIOAuthBrowser: NSObject, ASWebAuthenticationPresentationContextProviding {
-    typealias SessionFactory = (URL, @escaping ASWebAuthenticationSession.CompletionHandler) -> any OAuthBrowserSession
+    typealias SessionFactory = (URL, ASWebAuthenticationSession.Callback, @escaping ASWebAuthenticationSession.CompletionHandler) -> any OAuthBrowserSession
     let anchor: NSWindow
     private let makeSession: SessionFactory
     private var active = false
 
-    init(anchor: NSWindow, makeSession: @escaping SessionFactory = { url, completion in
-        // OpenAI requires an HTTP loopback redirect. Let the existing listener
-        // receive it, then cancel the system session to dismiss its browser.
-        ASWebAuthenticationSession(url: url, callbackURLScheme: nil, completionHandler: completion)
+    init(anchor: NSWindow, makeSession: @escaping SessionFactory = { url, callback, completion in
+        ASWebAuthenticationSession(url: url, callback: callback, completionHandler: completion)
     }) {
         self.anchor = anchor
         self.makeSession = makeSession
@@ -31,7 +29,11 @@ extension ASWebAuthenticationSession: OAuthBrowserSession {}
         try Task.checkCancellation()
         guard anchor.isVisible else { throw CancellationError() }
         active = true
-        let session = makeSession(url) { [weak self] _, error in
+        // A nil callback scheme can complete on an ordinary HTTPS redirect.
+        // Reserve a unique, unused scheme so only the validated HTTP loopback
+        // listener completes sign-in; cancel the browser after that result.
+        let browserCallback = ASWebAuthenticationSession.Callback.customScheme("bend-auth-" + UUID().uuidString.lowercased())
+        let session = makeSession(url, browserCallback) { [weak self] _, error in
             Task { @MainActor in
                 guard self?.active == true else { return }
                 let failure = error as NSError?

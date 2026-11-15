@@ -50,8 +50,12 @@ func aiOAuthModalBrowser(outcome: String) async throws {
     let stub = OAuthBrowserStub()
     stub.canStart = outcome != "start failure"
     let url = URL(string: "https://auth.openai.com/api/accounts/authorize")!
-    let browser = AIOAuthBrowser(anchor: settings.window) { requestedURL, completion in
+    let browser = AIOAuthBrowser(anchor: settings.window) { requestedURL, browserCallback, completion in
         #expect(requestedURL == url)
+        // Ordinary provider redirects must remain in the browser, and the HTTP
+        // loopback must reach our listener instead of being intercepted by macOS.
+        #expect(!browserCallback.matchesURL(URL(string: "https://auth.openai.com/log-in")!))
+        #expect(!browserCallback.matchesURL(redirect))
         stub.completion = completion
         return stub
     }
