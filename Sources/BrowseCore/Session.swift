@@ -231,6 +231,8 @@ public struct BrowserSession: Codable, Sendable {
     public var inactivePaneDimAmount: Double?
     public var windowGlass: GlassAppearance?
     public var paneHeaderGlass: GlassAppearance?
+    public var floatingPanelGlass: GlassAppearance?
+    // Legacy separate panel settings are read when the shared preference is absent.
     public var mediaPlayerGlass: GlassAppearance?
     public var chatComposerGlass: GlassAppearance?
     public var paneHeaderTopRimClipping: Double?

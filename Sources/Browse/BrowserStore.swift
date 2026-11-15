@@ -352,14 +352,21 @@ final class BrowserStore: ObservableObject {
         set { if let sharedStore { sharedStore.paneHeaderGlass = newValue; return }; session.paneHeaderGlass = newValue.normalized(defaultDarkening: 0.5); saveSoon() }
     }
 
-    var mediaPlayerGlass: GlassAppearance {
-        get { if let sharedStore { return sharedStore.mediaPlayerGlass }; return (session.mediaPlayerGlass ?? .floatingPanelDefault).normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening) }
-        set { if let sharedStore { sharedStore.mediaPlayerGlass = newValue; return }; session.mediaPlayerGlass = newValue.normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening); saveSoon() }
-    }
-
-    var chatComposerGlass: GlassAppearance {
-        get { if let sharedStore { return sharedStore.chatComposerGlass }; return (session.chatComposerGlass ?? .floatingPanelDefault).normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening) }
-        set { if let sharedStore { sharedStore.chatComposerGlass = newValue; return }; session.chatComposerGlass = newValue.normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening); saveSoon() }
+    var floatingPanelGlass: GlassAppearance {
+        get {
+            if let sharedStore { return sharedStore.floatingPanelGlass }
+            return (session.floatingPanelGlass ?? session.chatComposerGlass ?? session.mediaPlayerGlass ?? .floatingPanelDefault)
+                .normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening)
+        }
+        set {
+            if let sharedStore { sharedStore.floatingPanelGlass = newValue; return }
+            var updated = session
+            updated.floatingPanelGlass = newValue.normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening)
+            updated.chatComposerGlass = nil
+            updated.mediaPlayerGlass = nil
+            session = updated
+            saveSoon()
+        }
     }
 
     static let defaultHeaderTopRimClipping: Double = 0.5

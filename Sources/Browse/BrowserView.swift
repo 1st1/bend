@@ -81,7 +81,7 @@ struct BrowserView: View {
     @ViewBuilder private var chatSidebar: some View {
         if !store.isPrivate, store.openChats.contains(store.selectedTab.id), let chat = store.chats[store.selectedTab.id] {
             ChatSidebar(chat: chat, panelWidth: store.chatWidth, onLeft: store.sidebarSide == .right,
-                composerAppearance: store.chatComposerGlass,
+                composerAppearance: store.floatingPanelGlass,
                 close: { store.openChats.remove(chat.tabID) },
                 settings: { store.onSettingsRequested?(.ai) })
                 .id(chat.tabID)
@@ -120,12 +120,12 @@ struct BrowserView: View {
                     }
 
                 }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
-                    .padding(.top, sidebarHeaderHeight + 16)
+                    .padding(.top, sidebarHeaderHeight + ToolbarScrollFade.contentInset)
                     .padding(.bottom, Chrome.sidebarScrollFadeHeight + mediaPlayerHeight)
             }
             .onScrollGeometryChange(for: SidebarScrollStatus.self) { geometry in
                 SidebarScrollStatus(visibleRect: geometry.visibleRect, tabCount: store.sidebarTabs.count,
-                                    topInset: sidebarHeaderHeight + 16, bottomOcclusion: mediaPlayerHeight,
+                                    topInset: sidebarHeaderHeight + ToolbarScrollFade.contentInset, bottomOcclusion: mediaPlayerHeight,
                                     topOcclusion: sidebarHeaderHeight)
             } action: { _, status in
                 sidebarScrollStatus = status

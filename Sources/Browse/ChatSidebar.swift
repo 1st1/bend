@@ -118,8 +118,8 @@ struct ChatSidebar: View {
                     // The scroll target includes the overlay clearance, so Latest
                     // and streaming keep the final message above the composer.
                     Color.clear.frame(height: composerHeight).id("bottom")
-                }.padding(16)
-                    .padding(.top, headerHeight)
+                }.padding(.horizontal, 16).padding(.bottom, 16)
+                    .padding(.top, headerHeight + ToolbarScrollFade.contentInset)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
                         if scrollFollow.shouldFollow { proxy.scrollTo("bottom", anchor: .bottom) }
                     }

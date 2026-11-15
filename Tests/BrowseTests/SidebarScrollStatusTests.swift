@@ -67,7 +67,7 @@ func sidebarToolbarFade(floating: Bool, side: SidebarSide) async throws {
     #expect(viewport.maxY >= top - 1 && viewport.maxY <= top + (floating ? FloatingSidebarTrackingView.inset : 0) + 1)
     let first = try #require(descendants(host, of: TabDragSourceView.self).first { $0.tabID == store.sidebarTabs.first?.id })
     let headerHeight = 2 * (Chrome.headerCenterY - (floating ? FloatingSidebarTrackingView.inset : 0))
-    #expect(abs(top - first.convert(first.bounds, to: nil).maxY - headerHeight - 16) <= 1)
+    #expect(abs(top - first.convert(first.bounds, to: nil).maxY - headerHeight - ToolbarScrollFade.contentInset) <= 1)
     scroll.contentView.scroll(to: NSPoint(x: 0, y: 50))
     scroll.reflectScrolledClipView(scroll.contentView)
     try await settle()
@@ -80,6 +80,6 @@ func sidebarToolbarFade(floating: Bool, side: SidebarSide) async throws {
     try await settle()
     let next = try #require(descendants(host, of: TabDragSourceView.self).first { $0.tabID == store.sidebarTabs.first?.id })
     #expect(scroll.convert(scroll.bounds, to: nil) == viewport)
-    #expect(viewport.maxY - next.convert(next.bounds, to: nil).maxY >= headerHeight + 44 + 16)
+    #expect(viewport.maxY - next.convert(next.bounds, to: nil).maxY >= headerHeight + 44 + ToolbarScrollFade.contentInset)
     store.removeFavorite(favorite)
 }

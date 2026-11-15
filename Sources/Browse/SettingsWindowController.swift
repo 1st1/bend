@@ -510,8 +510,7 @@ private struct UISettingsView: View {
                 GlassSettingsSection(title: "Pane headers", appearance: $store.paneHeaderGlass, defaults: .headerDefault, allowsSolid: true,
                                      topRimClipping: $store.paneHeaderTopRimClipping,
                                      bottomRimClipping: $store.paneHeaderBottomRimClipping)
-                GlassSettingsSection(title: "Media player", appearance: $store.mediaPlayerGlass, defaults: .floatingPanelDefault)
-                GlassSettingsSection(title: "AI chat input", appearance: $store.chatComposerGlass, defaults: .floatingPanelDefault)
+                GlassSettingsSection(title: "Media player & AI chat input", appearance: $store.floatingPanelGlass, defaults: .floatingPanelDefault)
             }
         }.formStyle(.grouped)
     }

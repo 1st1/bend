@@ -64,7 +64,7 @@ struct SidebarMediaPlayer: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             }
-            .background { FloatingPanelBackground(appearance: store.mediaPlayerGlass) }
+            .background { FloatingPanelBackground(appearance: store.floatingPanelGlass) }
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())
             .onHover { hovered = $0 }
