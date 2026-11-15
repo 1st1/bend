@@ -18,6 +18,8 @@ See [[lat.md/tests/session-tests|Test coverage]].
 
 Unvisited tabs stay lazy. Inactive content remains natively hidden while its pane and WebKit parent views stay attached. The tab hosting view explicitly returns no hit when it or an ancestor is hidden, before entering SwiftUI hit testing: a hidden SwiftUI root can otherwise claim events intended for the visible page. Hidden containers retain their last viewport; selection applies the current size. Closed tabs release their containers, and closed panes are removed from retained trees. Focus moves out of a hidden canvas without taking focus from unrelated controls.
 
+Tab switches apply chat visibility and the resulting canvas width immediately, without resize animation. Chat visibility changes within the selected tab still animate opening and closing unless Reduce Motion is enabled.
+
 Tab and pane hosting views disable inherited safe-area regions: the window shell supplies their margins, so the unified titlebar must not insert extra space above nested content.
 
 [BrowserView.swift](../../Sources/Browse/BrowserView.swift) renders each retained canvas from its own tab model. Pane focus and window controls belong to that tab, and another tab's zoom cannot replace its layout. A cross-tab pane transfer reattaches the existing web view to the destination host without navigating or replacing its controller. Retention avoids reparenting and zero-sized WebKit layout during ordinary tab switches; it does not prevent WebKit process termination or pages' own background behavior. [[lat.md/tests/session-tests#Mounted tab switching]] verifies native parent identity and document state.

@@ -969,14 +969,14 @@ final class BrowserStore: ObservableObject {
                 }
             }
         }
-        controller.onNewTab = { [weak self] address in self?.newTab(address: address, originPageID: page.id, afterCurrent: true) }
+        controller.onNewTab = { [weak self] address in self?.newTab(address: address, originPageID: page.id, afterCurrent: true, inBackground: true) }
         controller.onNewPane = { [weak self] address in self?.openPane(address: address, toRightOf: page.id) }
         controller.onNewLink = { [weak self] address, adjacent, mainFrame in
             guard let self else { return }
             switch adjacent ? self.commandClickDestination : .newTab {
             case .newPane: self.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame)
             case .dedicatedPane: self.openInDedicatedPane(address: address, from: page.id, fromMainFrame: mainFrame)
-            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, originPageID: page.id, closeIfDownload: true, afterCurrent: true)
+            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, originPageID: page.id, closeIfDownload: true, afterCurrent: true, inBackground: true)
             }
         }
         controller.onCommandShiftLink = { [weak self] address, mainFrame in
@@ -988,7 +988,7 @@ final class BrowserStore: ObservableObject {
             self.openLink(address, from: page.id, mainFrame: mainFrame, destination: self.optionClickDestination)
         }
         controller.onOpenLink = { [weak self] address, mainFrame, destination in
-            self?.openLink(address, from: page.id, mainFrame: mainFrame, destination: destination, inBackground: true)
+            self?.openLink(address, from: page.id, mainFrame: mainFrame, destination: destination)
         }
         controller.onFocus = { [weak self] in self?.focus(page.id) }
         controller.onVisit = { [weak self] url, title in self?.recordVisit(url: url, title: title) }
@@ -1000,12 +1000,11 @@ final class BrowserStore: ObservableObject {
         }
     }
 
-    private func openLink(_ address: String, from pageID: UUID, mainFrame: Bool, destination: LinkOpenDestination,
-                          inBackground: Bool = false) {
+    private func openLink(_ address: String, from pageID: UUID, mainFrame: Bool, destination: LinkOpenDestination) {
         switch destination {
         case .newTab:
             newTab(address: address, linkOpener: mainFrame ? pageID : nil, originPageID: pageID, closeIfDownload: true, afterCurrent: true,
-                   inBackground: inBackground)
+                   inBackground: true)
         case .newPane:
             openPane(address: address, toRightOf: pageID, fromMainFrame: mainFrame)
         case .newWindow:

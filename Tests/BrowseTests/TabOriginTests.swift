@@ -21,7 +21,9 @@ import Testing
     #expect(store.selectedTab.id == origin.id)
     store.select(child.id)
     store.controller(for: child.pages[0]).onNewTab?("bend://history")
-    let grandchild = store.selectedTab.id
+    #expect(store.selectedTab.id == child.id)
+    let grandchild = try #require(store.session.workspaces.flatMap(\.tabs).first { $0.originTabID == child.id }).id
+    store.select(grandchild)
     store.closeTab(grandchild)
     #expect(store.selectedTab.id == child.id)
     // Persist origin metadata along with the session.
@@ -30,13 +32,16 @@ import Testing
     store.closeTab(child.id)
     #expect(store.selectedTab.id == origin.id)
     controller.onNewLink?("bend://history", false, false)
-    let second = store.selectedTab.id
+    #expect(store.selectedTab.id == origin.id)
+    let second = try #require(store.session.workspaces.flatMap(\.tabs).first { $0.originTabID == origin.id }).id
     store.select(unrelated)
     store.closeTab(second)
     #expect(store.selectedTab.id == unrelated)
     store.select(origin.id)
     controller.onNewTab?("bend://history")
-    let orphan = store.selectedTab.id
+    #expect(store.selectedTab.id == origin.id)
+    let orphan = try #require(store.session.workspaces.flatMap(\.tabs).first { $0.originTabID == origin.id }).id
+    store.select(orphan)
     store.closeTab(origin.id)
     #expect(store.selectedTab.id == orphan)
     store.closeTab(orphan)

@@ -323,7 +323,9 @@ import WebKit
 
     // A new-window page that committed a document is a normal tab thereafter.
     source.onNewLink?(server.url("/page").absoluteString, false, true)
-    let regularTab = store.selectedTab
+    #expect(store.selectedTab.id == selectedElsewhere)
+    let regularTab = try #require(store.session.workspaces.flatMap(\.tabs).first { $0.pages.first?.address == server.url("/page").absoluteString && $0.id != original.id })
+    store.select(regularTab.id)
     let regular = store.controller(for: regularTab.pages[0])
     try await downloadWait { regular.webView.title == "Download fixture" && !regular.webView.isLoading }
     _ = try await regular.webView.evaluateJavaScript("document.getElementById('attachment').click(); void 0")

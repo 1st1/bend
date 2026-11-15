@@ -41,7 +41,7 @@ struct BrowserView: View {
             if store.sidebarVisible && store.sidebarSide == .right { dockedSidebar }
             if store.sidebarSide == .left { chatSidebar }
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.openChats.contains(store.selectedTab.id))
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.openChats)
         .onChange(of: store.sidebarSide) { _, _ in store.sidebarFloating = false }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.sidebarVisible)
         .overlay(alignment: store.sidebarSide == .left ? .topLeading : .topTrailing) {
@@ -59,6 +59,10 @@ struct BrowserView: View {
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: store.sidebarFloating)
+        .transaction(value: store.session.selectedTab) { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
         .overlay { FloatingSidebarTracking(store: store).accessibilityHidden(true) }
         .background(PaneShadowPlane(store: store).allowsHitTesting(false).accessibilityHidden(true))
         .background {

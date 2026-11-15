@@ -1,0 +1,3 @@
+kind: Fixed
+body: Keep the current tab selected when links open new tabs, including modified clicks and new-window links.
+time: 2026-11-14T17:00:00-08:00

@@ -125,21 +125,22 @@ private final class LinkAction: WKNavigationAction {
     // The same existing controller must use the new preference immediately.
     store.commandClickDestination = .newTab
     controller.onNewLink?("https://example.com/tab", true, true)
-    #expect(store.selectedTab.id != originalTab.id)
-    #expect(store.selectedTab.pages.count == 1)
-    #expect(store.selectedTab.pages[0].address == "https://example.com/tab")
-    let linkTab = store.selectedTab.id
+    #expect(store.selectedTab.id == originalTab.id)
+    let created = try #require(store.session.workspaces[0].tabs.first { $0.pages.first?.address == "https://example.com/tab" })
+    #expect(created.pages.count == 1)
+    let linkTab = created.id
     let originalIndex = try #require(store.session.workspaces[0].tabs.firstIndex { $0.id == originalTab.id })
     #expect(store.session.workspaces[0].tabs[originalIndex + 1].id == linkTab)
     #expect(store.session.workspaces[0].tabs.last?.id == trailingTab)
-    #expect(store.linkOpeners[store.selectedTab.focusedPane] == source.id)
+    #expect(store.linkOpeners[created.focusedPane] == source.id)
     #expect(store.session.workspaces[0].tabs.first { $0.id == originalTab.id }?.pages.count == initialCount + 1)
 
     store.commandClickDestination = .newPane
     controller.onNewLink?("https://example.com/window", false, false)
-    #expect(store.selectedTab.id != originalTab.id)
-    #expect(store.linkOpeners[store.selectedTab.focusedPane] == nil)
-    #expect(store.session.workspaces[0].tabs[originalIndex + 2].id == store.selectedTab.id)
+    #expect(store.selectedTab.id == originalTab.id)
+    let popup = store.session.workspaces[0].tabs[originalIndex + 1]
+    #expect(popup.pages.first?.address == "https://example.com/window")
+    #expect(store.linkOpeners[popup.focusedPane] == nil)
     #expect(store.session.workspaces[0].tabs.last?.id == trailingTab)
     controller.onNewLink?("https://example.com/adjacent-again", true, false)
     #expect(store.selectedTab.id == originalTab.id)
@@ -323,10 +324,11 @@ private final class LinkAction: WKNavigationAction {
         }
     }
     click(popup: false)
-    #expect(store.selectedTab.id != original.id)
-    #expect(store.selectedTab.pages.map(\.address) == [action.destination.absoluteString])
-    #expect(store.session.workspaces[0].tabs.map(\.id) == [original.id, store.selectedTab.id, trailing])
-    #expect(store.linkOpeners[store.selectedTab.focusedPane] == page.id)
+    #expect(store.selectedTab.id == original.id)
+    let background = store.session.workspaces[0].tabs[1]
+    #expect(background.pages.map(\.address) == [action.destination.absoluteString])
+    #expect(store.session.workspaces[0].tabs.map(\.id) == [original.id, background.id, trailing])
+    #expect(store.linkOpeners[background.focusedPane] == page.id)
     #expect(controller.address == page.address)
     #expect(store.session.workspaces[0].tabs[0].commandClickPaneID == nil)
 
@@ -371,8 +373,8 @@ private final class LinkAction: WKNavigationAction {
     secondary[keyPath: preference] = .newTab
     #expect(store[keyPath: preference] == .newTab)
     click(popup: true)
-    #expect(store.selectedTab.pages.count == 1)
-    #expect(store.selectedTab.pages[0].address == action.destination.absoluteString)
+    #expect(store.selectedTab.id == original.id)
+    #expect(store.session.workspaces[0].tabs[1].pages.map(\.address) == [action.destination.absoluteString])
     #expect(owner.windows.count == 3)
     for choice in [LinkOpenDestination.newTab, .newPane, .newWindow] {
         secondary[keyPath: preference] = choice
