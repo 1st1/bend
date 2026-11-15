@@ -170,6 +170,8 @@ private struct GatewayFixtureTransport: HTTPTransport {
     let defaults = try #require(UserDefaults(suiteName: domain))
     defer { defaults.removePersistentDomain(forName: domain) }
     let settings = AISettings(transport: GatewayFixtureTransport(), credential: MemoryGatewayCredential(), defaults: defaults)
+    #expect(!settings.transparentBubbles)
+    settings.transparentBubbles = true
     settings.modelID = "preferred/model"
     await settings.refreshModels()
     #expect(settings.modelID == "preferred/model") // Catalog refresh must not overwrite a preference.
@@ -199,6 +201,9 @@ private struct GatewayFixtureTransport: HTTPTransport {
     #expect(tools.tools().isEmpty)
     let restored = AISettings(transport: GatewayFixtureTransport(), credential: MemoryGatewayCredential(), defaults: defaults)
     #expect(restored.modelID == "preferred/new")
+    #expect(restored.transparentBubbles)
+    settings.transparentBubbles = false
+    #expect(!defaults.bool(forKey: "ai.transparentBubbles"))
     #expect(restored.disabledTools == Set(AIPaneTool.allCases.map(\.rawValue)))
     settings.setToolEnabled("read_pane", enabled: true)
     #expect(try tools.paneContext().jsonString().contains(store.selectedTab.focusedPane.uuidString))

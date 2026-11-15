@@ -94,7 +94,7 @@ struct ChatSidebar: View {
                             }
                                 .padding(.horizontal, bubble.kind == .text ? 12 : 4)
                                 .padding(.vertical, bubble.kind == .text ? 12 : 2)
-                                .background(bubble.kind != .text ? Color.clear : bubble.isUser ? Color.accentColor.opacity(0.22) : Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                                .background(bubble.kind != .text ? Color.clear : bubble.isUser ? Color.accentColor.opacity(0.22) : Color.white.opacity(settings.transparentBubbles ? 0 : 0.06), in: RoundedRectangle(cornerRadius: 14))
                                 .frame(maxWidth: bubble.kind == .text ? max(0, panelWidth - 32) * 0.9 : nil,
                                        alignment: bubble.isUser ? .trailing : .leading)
                             if !bubble.isUser { Spacer(minLength: 4) }
