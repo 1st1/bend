@@ -164,3 +164,121 @@ import BrowseCore
     #expect(!WebsiteCertificates.matchesSite(URL(string: "http://www.youtube.com/"), committed: committed))
     #expect(!WebsiteCertificates.matchesSite(nil, committed: committed))
 }
+
+@MainActor private final class PermissionFrameProbe: NSObject, WKScriptMessageHandler {
+    var frame: WKFrameInfo?
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        frame = message.frameInfo
+    }
+}
+
+@MainActor private func permissionFrame(origin: String?) async throws -> WKFrameInfo {
+    let configuration = WKWebViewConfiguration()
+    configuration.websiteDataStore = .nonPersistent()
+    let probe = PermissionFrameProbe()
+    configuration.userContentController.add(probe, name: "frame")
+    let web = WKWebView(frame: .zero, configuration: configuration)
+    defer { web.stopLoading(); configuration.userContentController.removeScriptMessageHandler(forName: "frame") }
+    web.loadHTMLString("<iframe srcdoc=\"<script>webkit.messageHandlers.frame.postMessage('ready')</script>\"></iframe>",
+                       baseURL: origin.flatMap(URL.init(string:)))
+    for _ in 0..<100 where probe.frame == nil { try await Task.sleep(for: .milliseconds(20)) }
+    let frame = try #require(probe.frame)
+    #expect(!frame.isMainFrame)
+    return frame
+}
+
+// @lat: [[lat.md/tests/web-pages-tests#Permission delegate frame identity]]
+@Test @MainActor func websitePermissionDelegateFrameIdentity() async throws {
+    _ = NSApplication.shared
+    let settings = WebsiteSettingsStore(temporary: WebsiteSettings())
+    let page = PageController(address: "bend://start", websiteSettings: settings) { $0.websiteDataStore = .nonPersistent() }
+    defer { page.stopCapture(); page.media.detach(); page.webView.stopLoading() }
+    let top = "https://top.example:443"
+    let child = "https://child.example:8443"
+    page.webView.loadHTMLString("<title>Permissions</title>", baseURL: URL(string: top))
+    for _ in 0..<100 where page.webView.title != "Permissions" { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(page.permissionOrigin == top)
+    let sameOriginFrame = try await permissionFrame(origin: top)
+    let childFrame = try await permissionFrame(origin: child)
+    let opaqueFrame = try await permissionFrame(origin: nil)
+    #expect(childFrame.securityOrigin.host == "child.example")
+
+    func check(_ frame: WKFrameInfo, expected: WKPermissionDecision) {
+        var replies: [WKPermissionDecision] = []
+        for type in [WKMediaCaptureType.camera, .microphone, .cameraAndMicrophone] {
+            page.webView(page.webView, requestMediaCapturePermissionFor: sameOriginFrame.securityOrigin,
+                         initiatedByFrame: frame, type: type) { replies.append($0) }
+        }
+        page.webView(page.webView, requestGeolocationPermissionFor: sameOriginFrame.securityOrigin,
+                     initiatedByFrame: frame) { replies.append($0) }
+        page.legacyGeolocation(page.webView, origin: sameOriginFrame.securityOrigin,
+                               frame: frame) { replies.append($0) }
+        #expect(replies.count == 5)
+        #expect(replies.allSatisfy { $0 == expected })
+    }
+
+    settings.setPermissions(.allow, permissions: WebsitePermission.allCases, origin: top)
+    check(sameOriginFrame, expected: .grant)
+    settings.setPermissions(.block, permissions: WebsitePermission.allCases, origin: child)
+    check(childFrame, expected: .deny)
+    settings.setPermissions(.allow, permissions: WebsitePermission.allCases, origin: child)
+    // A cross-origin request still requires a prompt; this hidden page cannot show one.
+    check(childFrame, expected: .deny)
+    #expect(page.captureRequestOrigins[.camera]?.contains(child) == true)
+    #expect(page.captureRequestOrigins[.location]?.contains(child) == true)
+    check(opaqueFrame, expected: .deny)
+    settings.setPermissions(.block, permissions: WebsitePermission.allCases, origin: top)
+    check(sameOriginFrame, expected: .deny)
+    check(childFrame, expected: .deny)
+}
+
+@MainActor private final class CaptureStopProbe: FocusWebView {
+    var cameraStops = 0
+    var microphoneStops = 0
+
+    override func setCameraCaptureState(_ state: WKMediaCaptureState, completionHandler: (@MainActor @Sendable () -> Void)? = nil) {
+        if state == .none { cameraStops += 1 }
+        completionHandler?()
+    }
+
+    override func setMicrophoneCaptureState(_ state: WKMediaCaptureState, completionHandler: (@MainActor @Sendable () -> Void)? = nil) {
+        if state == .none { microphoneStops += 1 }
+        completionHandler?()
+    }
+}
+
+// @lat: [[lat.md/tests/web-pages-tests#Immediate capture revocation]]
+@Test @MainActor func websitePermissionImmediateRevocation() {
+    _ = NSApplication.shared
+    let settings = WebsiteSettingsStore(temporary: WebsiteSettings())
+    let origin = "https://capture.example:443"
+    var pages: [PageController] = []
+    var views: [CaptureStopProbe] = []
+    for _ in 0..<3 {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let web = CaptureStopProbe(frame: .zero, configuration: configuration)
+        let page = PageController(address: "bend://start", webView: web, websiteSettings: settings)
+        pages.append(page); views.append(web)
+        web.cameraStops = 0; web.microphoneStops = 0
+    }
+    defer { for page in pages { page.media.detach(); page.webView.stopLoading() } }
+    for page in pages.prefix(2) {
+        page.captureRequestOrigins[.camera] = [origin]
+        page.captureRequestOrigins[.microphone] = [origin]
+    }
+    pages[2].captureRequestOrigins[.camera] = ["https://unrelated.example:443"]
+
+    settings.setPermission(.block, permission: .camera, origin: origin)
+    #expect(views.map(\.cameraStops) == [1, 1, 0])
+    #expect(views.map(\.microphoneStops) == [0, 0, 0])
+    settings.setDefaultZoom(1.25)
+    #expect(views.map(\.cameraStops) == [1, 1, 0])
+    settings.setPermission(.block, permission: .microphone, origin: origin)
+    #expect(views.map(\.microphoneStops) == [1, 1, 0])
+    settings.setPermission(.ask, permission: .camera, origin: origin)
+    #expect(views.map(\.cameraStops) == [1, 1, 0])
+    settings.setPermission(.block, permission: .camera, origin: origin)
+    #expect(views.map(\.cameraStops) == [2, 2, 0])
+}

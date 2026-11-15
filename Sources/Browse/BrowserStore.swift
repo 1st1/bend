@@ -1478,7 +1478,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         websiteSettingsObservation = websiteSettings?.$values.sink { [weak self] values in
             guard let self else { return }
             self.applyWebsiteSecurity(values)
-            self.applyCaptureRestrictions()
+            self.applyCaptureRestrictions(values)
             guard let url = self.zoomURL, WebsiteSettings.hostname(for: url) != nil else { return }
             self.webView.pageZoom = CGFloat(values.zoom(for: url))
         }

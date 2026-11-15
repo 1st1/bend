@@ -25,9 +25,11 @@ extension PageController {
         return allowed && origin == top ? .grant : .prompt
     }
 
-    func requestPermission(_ permissions: [WebsitePermission], origin: WKSecurityOrigin,
+    func requestPermission(_ permissions: [WebsitePermission], initiatedBy frame: WKFrameInfo,
                            completion: @escaping @MainActor @Sendable (WKPermissionDecision) -> Void) {
-        let url = URL(string: JavaScriptDialogs.originLabel(origin))
+        // WebKit's delegate origin argument is the top-level origin, even for
+        // cross-origin requests. The initiating frame identifies the requester.
+        let url = URL(string: JavaScriptDialogs.originLabel(frame.securityOrigin))
         let decision = permissionDecision(permissions, requesting: url)
         guard decision == .prompt, let requesting = url.flatMap(WebsitePermission.origin),
               let top = permissionOrigin else { completion(decision); return }
@@ -57,8 +59,9 @@ extension PageController {
         webView.setMicrophoneCaptureState(.none) {}
     }
 
-    func applyCaptureRestrictions() {
-        let blocks = websiteSettings?.values.blockedPermissions ?? [:]
+    func applyCaptureRestrictions(_ values: WebsiteSettings) {
+        // @Published emits before storing: use the incoming snapshot, not the store.
+        let blocks = values.blockedPermissions
         for permission in [WebsitePermission.camera, .microphone] {
             let revoked = blocks.contains { origin, permissions in
                 permissions.contains(permission)
@@ -84,7 +87,7 @@ extension PageController {
         case .cameraAndMicrophone: permissions = [.camera, .microphone]
         @unknown default: decisionHandler(.deny); return
         }
-        requestPermission(permissions, origin: origin, completion: decisionHandler)
+        requestPermission(permissions, initiatedBy: frame, completion: decisionHandler)
     }
 
     // Explicit selectors keep the macOS 27 public callback buildable with
@@ -92,13 +95,13 @@ extension PageController {
     @objc(webView:requestGeolocationPermissionForOrigin:initiatedByFrame:decisionHandler:)
     func webView(_ webView: WKWebView, requestGeolocationPermissionFor origin: WKSecurityOrigin,
                  initiatedByFrame frame: WKFrameInfo, decisionHandler: @escaping @MainActor @Sendable (WKPermissionDecision) -> Void) {
-        requestPermission([.location], origin: origin, completion: decisionHandler)
+        requestPermission([.location], initiatedBy: frame, completion: decisionHandler)
     }
 
     @objc(_webView:requestGeolocationPermissionForOrigin:initiatedByFrame:decisionHandler:)
     func legacyGeolocation(_ webView: WKWebView, origin: WKSecurityOrigin,
                            frame: WKFrameInfo, decisionHandler: @escaping @MainActor @Sendable (WKPermissionDecision) -> Void) {
-        requestPermission([.location], origin: origin, completion: decisionHandler)
+        requestPermission([.location], initiatedBy: frame, completion: decisionHandler)
     }
 
     @objc(webView:runOpenPanelWithParameters:initiatedByFrame:completionHandler:)

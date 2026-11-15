@@ -38,6 +38,18 @@ See [[lat.md/architecture/web-pages|Architecture and behavior]].
 
 It also verifies Objective-C selector visibility and a real WebKit file input opening a native panel, then cancels it.
 
+## Permission delegate frame identity
+
+[[Tests/BrowseTests/WebsitePermissionTests.swift#websitePermissionDelegateFrameIdentity]] exercises media and both geolocation callbacks with real frame origins to reject inherited grants, honor child blocks, and deny opaque callers.
+
+Same-origin grants remain usable. A child with its own saved Allow still needs a prompt, and blocking the top-level site denies requests from both origins.
+
+## Immediate capture revocation
+
+[[Tests/BrowseTests/WebsitePermissionTests.swift#websitePermissionImmediateRevocation]] verifies that blocking camera or microphone immediately sends stop commands to every matching pane, without stopping unrelated panes or the other device.
+
+Unrelated settings updates do not repeat stops, and resetting a choice to Ask permits a later Block to revoke again. The test intercepts WebKit capture commands without accessing real devices.
+
 ## Remembered permission prompts
 
 [[Tests/BrowseTests/WebsitePermissionTests.swift#websitePermissionRememberPrompt]] verifies explicit remembered Allow/Block responses, cancellation without saving, ignored late callbacks, and no remember option for third-party frames.

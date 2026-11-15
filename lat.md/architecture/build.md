@@ -36,7 +36,7 @@ Packaged Bend apps declare camera, microphone, and location usage descriptions a
 
 [[scripts/build-app.sh]] includes both usage descriptions for debug and production. Hardened Runtime allows camera and audio input through the shared entitlements file; [[scripts/build-prod.sh]] reapplies it when timestamp-signing the notarization payload.
 
-Website capture requests retain WebKit’s default permission prompt, in addition to macOS privacy authorization. Bend does not automatically grant website access or bypass secure-context requirements. Unpackaged SwiftPM runs do not supply this bundle metadata; use a signed app to test camera and microphone access. [[lat.md/tests/build-tests#Build bundle publication]] covers the packaging contract.
+Website capture requests use [[web-pages#Website permissions|origin-scoped prompts and saved choices]], in addition to macOS privacy authorization. Saved grants do not bypass secure-context requirements or operating-system authorization. Unpackaged SwiftPM runs do not supply this bundle metadata; use a signed app to test camera and microphone access. [[lat.md/tests/build-tests#Build bundle publication]] covers the packaging contract.
 
 ## Application icon
 
