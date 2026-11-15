@@ -75,3 +75,7 @@ Live settings changes during the delay affect the visible source document; the d
 ## Website settings failure recovery
 
 [WebsiteSettingsTests.swift](../../Tests/BrowseTests/WebsiteSettingsTests.swift) verifies unreadable settings surface an error without overwriting the file, and retry restores persistence after storage is repaired.
+
+## Modal settings lifecycle
+
+[[Tests/BrowseTests/BrowserWindowTests.swift#settingsModalLifecycle]] verifies native application modality, async responsiveness, section changes, Command-W and Escape dismissal, reopening, and cancellation before presentation starts.

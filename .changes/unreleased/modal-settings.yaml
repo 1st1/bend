@@ -1,0 +1,3 @@
+kind: Changed
+body: Present Settings as a modal window, with Escape and Command-W dismissal while keeping asynchronous settings operations responsive.
+time: 2026-11-14T18:00:00-08:00

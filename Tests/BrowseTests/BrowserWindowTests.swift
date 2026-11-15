@@ -36,7 +36,9 @@ import BrowseCore
     }
     let content = try #require(settings.window.contentView)
     let sidebar = try #require(table(in: content))
-    for (index, title) in ["UI", "Search", "Websites", "Privacy", "Extensions", "Development"].enumerated() {
+    for section in SettingsSection.allCases where section != .ai {
+        let index = try #require(SettingsSection.allCases.firstIndex(of: section))
+        let title = section.rawValue
         sidebar.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
         try await Task.sleep(for: .milliseconds(200))
         #expect(settings.window.title == title)
@@ -90,23 +92,68 @@ import BrowseCore
     settings.show(section: .extensions)
     try await Task.sleep(for: .milliseconds(200))
     #expect(settings.window.title == "Extensions")
-    #expect(sidebar.selectedRow == 4)
+    let extensionsRow = try #require(SettingsSection.allCases.firstIndex(of: .extensions))
+    #expect(sidebar.selectedRow == extensionsRow)
     settings.show()
     try await Task.sleep(for: .milliseconds(100))
-    #expect(sidebar.selectedRow == 4)
+    #expect(sidebar.selectedRow == extensionsRow)
     sidebar.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
     try await Task.sleep(for: .milliseconds(100))
     settings.window.close()
+    try await Task.sleep(for: .milliseconds(30))
     settings.show(section: .extensions)
     try await Task.sleep(for: .milliseconds(200))
     #expect(settings.window.title == "Extensions")
-    #expect(sidebar.selectedRow == 4)
+    #expect(sidebar.selectedRow == extensionsRow)
+    settings.window.close()
+    try await Task.sleep(for: .milliseconds(30))
     let fresh = SettingsWindowController(store: store)
     defer { fresh.window.close() }
     fresh.show(section: .extensions)
     try await Task.sleep(for: .milliseconds(200))
     #expect(fresh.window.title == "Extensions")
-    #expect(table(in: try #require(fresh.window.contentView))?.selectedRow == 4)
+    #expect(table(in: try #require(fresh.window.contentView))?.selectedRow == extensionsRow)
+}
+
+// @lat: [[lat.md/tests/settings-tests#Modal settings lifecycle]]
+@Test @MainActor func settingsModalLifecycle() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendModalSettings-\(UUID())")
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let settings = SettingsWindowController(store: store)
+    // A modal-loop timer can escape even if a regression starves main-actor jobs.
+    var timedOut = false
+    let watchdog = Timer(timeInterval: 10, repeats: false) { _ in
+        MainActor.assumeIsolated { timedOut = true; settings.window.close() }
+    }
+    RunLoop.main.add(watchdog, forMode: .modalPanel)
+    RunLoop.main.add(watchdog, forMode: .common)
+    defer { watchdog.invalidate(); settings.window.close(); store.stopWindow(); try? FileManager.default.removeItem(at: root) }
+    settings.show()
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(!timedOut)
+    #expect(NSApp.modalWindow === settings.window)
+    // Async UI tasks and repeated presentations remain usable within the modal loop.
+    settings.show(section: .search)
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(settings.window.title == "Search")
+    #expect(NSApp.modalWindow === settings.window)
+    let close = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: settings.window.windowNumber,
+        context: nil, characters: "w", charactersIgnoringModifiers: "w", isARepeat: false, keyCode: 13))
+    #expect(settings.window.performKeyEquivalent(with: close))
+    try await Task.sleep(for: .milliseconds(30))
+    #expect(NSApp.modalWindow == nil && !settings.window.isVisible)
+    settings.show()
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(NSApp.modalWindow === settings.window)
+    settings.window.cancelOperation(nil)
+    try await Task.sleep(for: .milliseconds(30))
+    #expect(NSApp.modalWindow == nil && !settings.window.isVisible)
+    settings.show()
+    settings.window.close() // Close before deferred modal presentation begins.
+    try await Task.sleep(for: .milliseconds(30))
+    #expect(NSApp.modalWindow == nil && !settings.window.isVisible)
 }
 
 // @lat: [[lat.md/tests/settings-tests#Settings close shortcut]]

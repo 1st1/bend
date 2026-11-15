@@ -7,12 +7,16 @@ private typealias ViewState<Value> = SwiftUI.State<Value>
 
 // @lat: [[lat.md/architecture/extensions/catalog#Extension settings]]
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     let window: NSWindow
     private let navigation = SettingsNavigation()
+    private var modalStart: Timer?
+    private var presentingModally = false
     init(store: BrowserStore) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 880, height: 680),
+        window = SettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 880, height: 680),
             styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        super.init()
+        window.delegate = self
         window.title = "\(AppProfile.current.name) Settings"
         window.titleVisibility = .hidden
         if #available(macOS 15.0, *) {
@@ -42,6 +46,7 @@ final class SettingsWindowController {
         window.maxSize = NSSize(width: 880, height: window.maxSize.height)
     }
     func show(section: SettingsSection? = nil, centeredOn screen: NSScreen? = nil) {
+        guard NSApp.modalWindow == nil || NSApp.modalWindow === window else { return }
         if let section { navigation.selection = section }
         let screen = screen ?? NSApp.keyWindow?.screen ?? NSScreen.main
         window.makeKeyAndOrderFront(nil)
@@ -54,6 +59,28 @@ final class SettingsWindowController {
             self.window.contentView?.layoutSubtreeIfNeeded()
             self.center(on: screen)
         }
+        guard !presentingModally, modalStart == nil else { return }
+        // Enter from a run-loop callback rather than a main-queue/actor job:
+        // the modal loop must remain able to service SwiftUI and async settings work.
+        let timer = Timer(timeInterval: 0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.modalStart = nil
+                guard self.window.isVisible, NSApp.modalWindow == nil else { return }
+                self.presentingModally = true
+                NSApp.runModal(for: self.window)
+                self.presentingModally = false
+                self.window.orderOut(nil)
+            }
+        }
+        modalStart = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        modalStart?.invalidate()
+        modalStart = nil
+        if NSApp.modalWindow === window { NSApp.stopModal() }
     }
 
     private func center(on screen: NSScreen?) {
@@ -64,6 +91,23 @@ final class SettingsWindowController {
         frame.origin = NSPoint(x: (available.midX - frame.width / 2).rounded(),
             y: (available.midY - frame.height / 2).rounded())
         window.setFrame(frame, display: false)
+    }
+}
+
+private final class SettingsWindow: NSWindow {
+    override func cancelOperation(_ sender: Any?) {
+        guard attachedSheet == nil else { return }
+        performClose(sender)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if attachedSheet == nil,
+           event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers?.lowercased() == "w" {
+            performClose(nil)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }
 
