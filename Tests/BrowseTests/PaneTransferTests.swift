@@ -358,7 +358,16 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
 }
 
 // @lat: [[lat.md/tests/pane-transfers-tests#Pane transfer round trips]]
-@Test(.serialized, arguments: [false, true]) @MainActor func paneTransferRoundTrips(crowded: Bool) async throws {
+@Test @MainActor func paneTransferRoundTrips() async throws {
+    try await checkPaneTransferRoundTrips(crowded: false)
+}
+
+// @lat: [[lat.md/tests/pane-transfers-tests#Crowded pane transfer round trips]]
+@Test @MainActor func crowdedPaneTransferRoundTrips() async throws {
+    try await checkPaneTransferRoundTrips(crowded: true)
+}
+
+@MainActor private func checkPaneTransferRoundTrips(crowded: Bool) async throws {
     guard #available(macOS 15.4, *) else { return }
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseRoundTrip-\(UUID())")
