@@ -184,7 +184,7 @@ struct BrowserSettingsView: View {
                 case .search:
                     SearchSettingsView(store: store)
                 case .ai:
-                    AISettingsView()
+                    AISettingsView(store: store)
                 case .websites:
                     WebsiteSettingsView(settings: store.websiteSettings)
                 case .privacy:
@@ -504,21 +504,6 @@ private struct UISettingsView: View {
                     && store.inactivePaneDimAmount == BrowserStore.defaultInactivePaneDimAmount)
             } header: {
                 Text("Panes")
-            }
-            Section("AI chat bubbles") {
-                VStack(spacing: 10) {
-                    HStack {
-                        Text("Bubble transparency")
-                        Spacer()
-                        Text(store.aiBubbleTransparency, format: .percent.precision(.fractionLength(0)))
-                            .monospacedDigit().foregroundStyle(.secondary)
-                    }
-                    Slider(value: $store.aiBubbleTransparency, in: 0...1) {
-                        Text("AI bubble transparency")
-                    }.labelsHidden()
-                }
-                Button("Reset to Default") { store.aiBubbleTransparency = BrowserStore.defaultAIBubbleTransparency }
-                    .disabled(store.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
             }
             if #available(macOS 26.0, *) {
                 GlassSettingsSection(title: "Browser window", appearance: $store.windowGlass, defaults: .windowDefault)
