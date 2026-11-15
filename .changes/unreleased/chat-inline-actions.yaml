@@ -1,0 +1,3 @@
+kind: Changed
+body: Use Enter for chat newlines and Command-Enter to send, keep expanded tool details inside scrollable cards, and approve browser actions with buttons in chat instead of dialogs.
+time: 2026-11-14T21:30:00-08:00

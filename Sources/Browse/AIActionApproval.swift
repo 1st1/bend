@@ -1,75 +1,71 @@
-import AppKit
-import WebKit
+import Foundation
+import Combine
 
 // @lat: [[lat.md/architecture/ai#Action approval]]
-@MainActor final class AIActionApproval {
-    typealias Presenter = (NSAlert, NSWindow, @escaping (NSApplication.ModalResponse) -> Void) -> Void
-    private let present: Presenter
-    private var continuation: CheckedContinuation<Bool, Never>?
-    private var alert: NSAlert?
-    private var observers: [NSObjectProtocol] = []
-
-    init(present: @escaping Presenter = { alert, window, completion in
-        alert.beginSheetModal(for: window, completionHandler: completion)
-    }) { self.present = present }
-
-    static func confirm(_ details: String, in web: WKWebView) async -> Bool {
-        await AIActionApproval().request(details, in: web)
-    }
-
-    func request(_ details: String, in web: WKWebView) async -> Bool {
-        guard !Task.isCancelled, continuation == nil, let window = web.window,
-              window.isKeyWindow, window.isVisible, !window.isMiniaturized,
-              !web.isHiddenOrHasHiddenAncestor, !web.visibleRect.isEmpty,
-              window.attachedSheet == nil else { return false }
-        let alert = NSAlert()
-        alert.messageText = "Allow this AI browser action?"
-        alert.informativeText = "Review the page and exact action below. Clicking or filling can submit data or change your account through the website’s scripts."
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Allow Once")
-        alert.buttons[0].keyEquivalent = "\r"
-        alert.buttons[1].keyEquivalent = ""
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 480, height: 220))
-        scroll.hasVerticalScroller = true
-        let text = NSTextView(frame: scroll.bounds)
-        text.isEditable = false
-        text.isRichText = false
-        text.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        text.string = details
-        text.autoresizingMask = [.width]
-        text.textContainer?.widthTracksTextView = true
-        scroll.documentView = text
-        alert.accessoryView = scroll
-        self.alert = alert
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                self.continuation = continuation
-                guard !Task.isCancelled else { finish(false); return }
-                for name in [NSWindow.willCloseNotification, NSWindow.didMiniaturizeNotification] {
-                    observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                        MainActor.assumeIsolated { self?.finish(false) }
-                    })
-                }
-                present(alert, window) { [weak self, weak web, weak window] response in
-                    let visible = web.map { web in
-                        window.map { web.window === $0 && $0.isVisible && !$0.isMiniaturized
-                            && !web.isHiddenOrHasHiddenAncestor && !web.visibleRect.isEmpty } ?? false
-                    } ?? false
-                    self?.finish(visible && response == .alertSecondButtonReturn)
-                }
+@MainActor final class AIActionApproval: ObservableObject {
+    enum Action: String {
+        case navigate = "navigate_pane", click = "click_element", fill = "fill_element"
+        var buttonTitle: String {
+            switch self {
+            case .navigate: "Open page"
+            case .click: "Click element"
+            case .fill: "Fill field"
             }
-        } onCancel: {
-            Task { @MainActor in self.finish(false) }
+        }
+    }
+    struct Target: Decodable {
+        var tag: String
+        var label: String
+        var href: String?
+        var type: String?
+    }
+    struct Request: Identifiable {
+        let id = UUID()
+        let callID: String
+        let action: Action
+        let page: String
+        var destination: String?
+        var selector: String?
+        var text: String?
+        var target: Target?
+
+        var fields: [ChatArgumentField] {
+            var result = [ChatArgumentField(label: "Current page", value: page)]
+            if let destination { result.append(.init(label: "Open", value: destination)) }
+            if let target {
+                result.append(.init(label: "Element", value: target.label.isEmpty ? target.tag.lowercased() : target.label))
+                if let href = target.href { result.append(.init(label: "Link", value: href)) }
+            }
+            if let selector { result.append(.init(label: "Selector", value: selector)) }
+            if let text { result.append(.init(label: "Text", value: text)) }
+            return result
         }
     }
 
-    private func finish(_ accepted: Bool) {
-        guard let continuation else { return }
+    @Published private(set) var pending: Request?
+    private var continuation: CheckedContinuation<Bool, Never>?
+
+    func request(_ request: Request) async -> Bool {
+        guard !Task.isCancelled, pending == nil else { return false }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else { continuation.resume(returning: false); return }
+                self.continuation = continuation
+                pending = request
+            }
+        } onCancel: {
+            Task { @MainActor in self.resolve(request.id, approved: false) }
+        }
+    }
+
+    func resolve(_ id: UUID, approved: Bool) {
+        guard pending?.id == id, let continuation else { return }
         self.continuation = nil
-        for observer in observers { NotificationCenter.default.removeObserver(observer) }
-        observers = []
-        if let alert, let parent = alert.window.sheetParent { parent.endSheet(alert.window, returnCode: .cancel) }
-        alert = nil
-        continuation.resume(returning: accepted)
+        pending = nil
+        continuation.resume(returning: approved)
+    }
+
+    func cancel() {
+        if let pending { resolve(pending.id, approved: false) }
     }
 }

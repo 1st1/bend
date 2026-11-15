@@ -39,13 +39,13 @@ import WebKit
     let fixture = SecurityFixture(); defer { fixture.clean() }
     try await fixture.load("<body><input id='field'><input id='secret' type='password' value='hidden-secret'><button id='send' onclick='this.textContent=\"Submitted\"'>Send</button></body>")
     var allow = false
-    var proposals: [String] = []
+    var proposals: [AIActionApproval.Request] = []
     var duringApproval: (() async throws -> Void)?
     let domain = "AISecurity-\(UUID())"
     let defaults = UserDefaults(suiteName: domain)!
     defer { defaults.removePersistentDomain(forName: domain) }
     let settings = AISettings(defaults: defaults)
-    let tools = PaneChatTools(store: fixture.store, tabID: fixture.tab.id, settings: settings, approve: { details, _ in
+    let tools = PaneChatTools(store: fixture.store, tabID: fixture.tab.id, settings: settings, approve: { details in
         proposals.append(details)
         try? await duringApproval?()
         return allow
@@ -70,7 +70,7 @@ import WebKit
         await #expect(throws: Error.self) { try await tools.execute(name, input: input) }
     }
     #expect(proposals.count == 3)
-    #expect(proposals[0].contains("attacker.invalid") && proposals[2].contains("secret"))
+    #expect(proposals[0].destination?.contains("attacker.invalid") == true && proposals[2].text == "secret")
     #expect(fixture.controller.webView.url?.host == "example.com")
     #expect(try await fixture.controller.webView.evaluateJavaScript("document.querySelector('#field').value") as? String == "")
     #expect(try await fixture.controller.webView.evaluateJavaScript("document.querySelector('#send').textContent") as? String == "Send")
@@ -85,52 +85,118 @@ import WebKit
     duringApproval = { fixture.controller.webView(fixture.controller.webView, didStartProvisionalNavigation: nil) }
     await #expect(throws: Error.self) { try await tools.execute("fill_element", input: .init(pane: id, selector: "#field", text: "stale")) }
     duringApproval = nil
-    // Production approval cannot silently allow actions without a visible native window.
+    // Tools without a chat approval handler cannot silently allow actions.
     let unattended = PaneChatTools(store: fixture.store, tabID: fixture.tab.id, settings: settings)
     await #expect(throws: Error.self) { try await unattended.execute("click_element", input: .init(pane: id, selector: "#field")) }
     duringApproval = { fixture.store.session.workspaces[0].tabs[0].pages = [Page()] }
     await #expect(throws: Error.self) { try await tools.execute("navigate_pane", input: .init(pane: id, url: "https://attacker.invalid")) }
 }
 
-@MainActor private final class ApprovalWindow: NSWindow {
-    override var isKeyWindow: Bool { true }
+// @lat: [[lat.md/tests/ai-tests#Inline action confirmation]]
+@Test @MainActor func aiInlineActionConfirmation() async throws {
+    let fixture = SecurityFixture(); defer { fixture.clean() }
+    try await fixture.load("<body><input id='field'></body>")
+    let approval = AIActionApproval()
+    let tools = PaneChatTools(store: fixture.store, tabID: fixture.tab.id, approve: approval.request)
+    let pane = fixture.page.id.uuidString
+    _ = try await tools.execute("read_pane", input: .init(pane: pane))
+    func fill() async throws -> JSONValue {
+        try await tools.execute("fill_element", input: .init(pane: pane, selector: "#field", text: "approved"), callID: "fill")
+    }
+    func pending() async throws -> AIActionApproval.Request {
+        for _ in 0..<200 where approval.pending == nil { try await Task.sleep(for: .milliseconds(10)) }
+        return try #require(approval.pending)
+    }
+    let accepted = Task { try await fill() }
+    let first = try await pending()
+    #expect(first.callID == "fill" && first.action.buttonTitle == "Fill field" && first.text == "approved")
+    #expect(try await fixture.controller.webView.evaluateJavaScript("document.querySelector('#field').value") as? String == "")
+    approval.resolve(UUID(), approved: true)
+    #expect(approval.pending?.id == first.id)
+    approval.resolve(first.id, approved: true)
+    _ = try await accepted.value
+    #expect(approval.pending == nil)
+    #expect(try await fixture.controller.webView.evaluateJavaScript("document.querySelector('#field').value") as? String == "approved")
+    approval.resolve(first.id, approved: true) // A double click cannot replay the action.
+    _ = try await fixture.controller.webView.evaluateJavaScript("document.querySelector('#field').value='unchanged'")
+    let denied = Task { try await fill() }
+    let second = try await pending()
+    approval.resolve(first.id, approved: true) // A stale button cannot approve a new request.
+    #expect(approval.pending?.id == second.id)
+    approval.resolve(second.id, approved: false)
+    await #expect(throws: Error.self) { try await denied.value }
+    let cancelled = Task { try await fill() }
+    let third = try await pending()
+    cancelled.cancel()
+    await #expect(throws: Error.self) { try await cancelled.value }
+    #expect(approval.pending == nil)
+    approval.resolve(third.id, approved: true)
+    #expect(try await fixture.controller.webView.evaluateJavaScript("document.querySelector('#field').value") as? String == "unchanged")
 }
 
-// @lat: [[lat.md/tests/ai-tests#Native action confirmation]]
-@Test @MainActor func aiNativeActionConfirmation() async throws {
-    _ = NSApplication.shared
-    let window = ApprovalWindow(contentRect: NSRect(x: -10000, y: -10000, width: 600, height: 400),
-                                styleMask: [.titled, .closable], backing: .buffered, defer: false)
-    window.isReleasedWhenClosed = false
-    defer { window.close() }
-    let web = WKWebView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
-    window.contentView = web
-    window.orderFront(nil)
-    var completion: ((NSApplication.ModalResponse) -> Void)?
-    var alert: NSAlert?
-    let approval = AIActionApproval(present: { shown, _, callback in alert = shown; completion = callback })
-    let denied = Task { await approval.request("Exact action", in: web) }
-    for _ in 0..<100 where completion == nil { try await Task.sleep(for: .milliseconds(10)) }
-    #expect(alert?.buttons.map(\.title) == ["Cancel", "Allow Once"])
-    #expect(alert?.buttons.first?.keyEquivalent == "\r")
-    completion?(.alertFirstButtonReturn)
-    #expect(await denied.value == false)
-    completion = nil
-    let accepted = Task { await approval.request("Exact action", in: web) }
-    for _ in 0..<100 where completion == nil { try await Task.sleep(for: .milliseconds(10)) }
-    completion?(.alertSecondButtonReturn)
-    #expect(await accepted.value)
-    completion = nil
-    let cancelled = Task { await approval.request("Exact action", in: web) }
-    for _ in 0..<100 where completion == nil { try await Task.sleep(for: .milliseconds(10)) }
-    cancelled.cancel()
-    #expect(await cancelled.value == false)
-    completion?(.alertSecondButtonReturn) // A late UI response cannot resume a cancelled tool.
-    completion = nil
-    let closed = Task { await approval.request("Exact action", in: web) }
-    for _ in 0..<100 where completion == nil { try await Task.sleep(for: .milliseconds(10)) }
-    window.close()
-    #expect(await closed.value == false)
+private struct ApprovalChatProvider: Provider {
+    let pane: UUID
+    func stream(_ request: ModelRequest) -> AI.Stream<ModelResponse> {
+        AI.Stream { emit in
+            let call: ToolCall
+            switch request.messages.last?.toolResults.first?.name {
+            case "read_pane":
+                call = ToolCall(id: "fill", name: "fill_element", arguments: try JSONValue.object([
+                    "pane": .string(pane.uuidString), "selector": .string("#field"), "text": .string("approved")
+                ]).jsonString())
+            case "fill_element":
+                emit(.textDelta("Done"))
+                return ModelResponse(message: .assistant("Done"))
+            default:
+                call = ToolCall(id: "read", name: "read_pane", arguments: try JSONValue.object(["pane": .string(pane.uuidString)]).jsonString())
+            }
+            emit(.toolCall(call))
+            return ModelResponse(message: .assistant("", toolCalls: [call]), finishReason: "tool_calls")
+        }
+    }
+}
+
+// @lat: [[lat.md/tests/ai-tests#Chat approval lifecycle]]
+@Test @MainActor func aiChatApprovalLifecycle() async throws {
+    let fixture = SecurityFixture(); defer { fixture.clean() }
+    try await fixture.load("<body><input id='field'></body>")
+    let domain = "ChatApproval-\(UUID())"
+    let defaults = UserDefaults(suiteName: domain)!
+    defer { defaults.removePersistentDomain(forName: domain) }
+    let settings = AISettings(defaults: defaults)
+    let chat = TabChat(store: fixture.store, tabID: fixture.tab.id, settings: settings)
+    fixture.store.chats[fixture.tab.id] = chat
+    fixture.store.openChats.insert(fixture.tab.id)
+    func send() async throws -> AIActionApproval.Request {
+        chat.input = "Fill the field"
+        chat.send(model: Model("test", provider: ApprovalChatProvider(pane: fixture.page.id)))
+        for _ in 0..<200 where chat.actionApproval.pending == nil { try await Task.sleep(for: .milliseconds(10)) }
+        return try #require(chat.actionApproval.pending)
+    }
+    let request = try await send()
+    #expect(chat.running && chat.bubbles.filter { $0.toolID == "fill" }.count == 1)
+    #expect(chat.bubbles.first(where: { $0.id == chat.approvalBubbleID })?.toolID == "fill")
+    fixture.store.openChats.remove(fixture.tab.id)
+    chat.approveAction(request.id)
+    #expect(chat.actionApproval.pending?.id == request.id)
+    fixture.store.openChats.insert(fixture.tab.id)
+    chat.approveAction(request.id)
+    for _ in 0..<200 where chat.running { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(!chat.running && chat.bubbles.last?.text == "Done")
+    #expect(try await fixture.controller.webView.evaluateJavaScript("document.querySelector('#field').value") as? String == "approved")
+    _ = try await fixture.controller.webView.evaluateJavaScript("document.querySelector('#field').value='unchanged'")
+    let stopped = try await send()
+    chat.persist()
+    let saved = try #require(fixture.store.chatHistory.records.first { $0.id == chat.conversationID })
+    let restored = TabChat(store: fixture.store, tabID: fixture.tab.id, settings: settings)
+    restored.restore(saved)
+    #expect(restored.actionApproval.pending == nil && !restored.running)
+    restored.approveAction(stopped.id)
+    chat.stop()
+    chat.approveAction(stopped.id)
+    for _ in 0..<200 where chat.running { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(chat.actionApproval.pending == nil && !chat.running)
+    #expect(try await fixture.controller.webView.evaluateJavaScript("document.querySelector('#field').value") as? String == "unchanged")
 }
 
 // @lat: [[lat.md/tests/ai-tests#Page read field privacy]]

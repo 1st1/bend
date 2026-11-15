@@ -9,7 +9,7 @@ struct ChatSidebar: View {
     var onLeft = false
     var close: () -> Void
     var settingsAction: () -> Void
-    @FocusState private var inputFocused: Bool
+    @ViewState private var inputFocused = false
     @ViewState private var scrollFollow = ChatScrollFollow()
 
     init(chat: TabChat, panelWidth: CGFloat = BrowserStore.defaultChatWidth, onLeft: Bool = false, close: @escaping () -> Void, settings: @escaping () -> Void) {
@@ -72,7 +72,9 @@ struct ChatSidebar: View {
                             if bubble.isUser { Spacer(minLength: 24) }
                             Group {
                                 if bubble.kind != .text {
-                                    ChatActivityRow(bubble: bubble, streaming: chat.running)
+                                    ChatActivityRow(bubble: bubble, streaming: chat.running,
+                                        approval: chat.approvalBubbleID == bubble.id ? chat.actionApproval.pending : nil,
+                                        approve: { chat.approveAction($0) }, decline: { chat.declineAction($0) })
                                 } else if bubble.isUser {
                                     Text(bubble.text).textSelection(.enabled).font(.system(size: 13))
                                 } else {
@@ -90,8 +92,10 @@ struct ChatSidebar: View {
                     }
                     if chat.running {
                         HStack(spacing: 8) {
-                            ProgressView().controlSize(.mini)
-                            Text(chat.status).font(.caption).foregroundStyle(.secondary)
+                            if chat.actionApproval.pending == nil { ProgressView().controlSize(.mini) }
+                            else { Image(systemName: "hand.tap").foregroundStyle(.secondary) }
+                            Text(chat.actionApproval.pending == nil ? chat.status : "Waiting for your approval")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                         .padding(.leading, 4)
                         .padding(.top, 10)
@@ -100,6 +104,9 @@ struct ChatSidebar: View {
                     if let error = chat.error { Text(error).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
                     Color.clear.frame(height: 1).id("bottom")
                 }.padding(16)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                        if scrollFollow.shouldFollow { proxy.scrollTo("bottom", anchor: .bottom) }
+                    }
             }
             .clipped()
             .contentShape(Rectangle())
@@ -127,6 +134,9 @@ struct ChatSidebar: View {
             .onChange(of: chat.running) { _, _ in
                 if scrollFollow.shouldFollow { proxy.scrollTo("bottom", anchor: .bottom) }
             }
+            .onChange(of: chat.actionApproval.pending?.id) { _, _ in
+                if scrollFollow.shouldFollow { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
             .overlay(alignment: .bottomTrailing) {
                 if !scrollFollow.following {
                     Button("Latest", systemImage: "arrow.down") {
@@ -137,13 +147,12 @@ struct ChatSidebar: View {
             }
         }
     }
+    private var canSend: Bool {
+        !chat.running && !chat.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !chat.modelID.isEmpty
+    }
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextField("Ask about this tab…", text: $chat.input, axis: .vertical)
-                .lineLimit(2...7).textFieldStyle(.plain).focused($inputFocused)
-                .onSubmit { chat.send() }
-                .padding(.horizontal, 4)
-                .padding(.top, 4)
+            ChatComposerInput(text: $chat.input, focused: $inputFocused, canSend: canSend) { chat.send() }
             HStack {
                 AIModelPicker(models: settings.models, selection: $chat.modelID)
                     .disabled(chat.running)
@@ -153,8 +162,8 @@ struct ChatSidebar: View {
                     Button("Stop", systemImage: "stop.fill") { chat.stop() }
                 } else {
                     Button("Send", systemImage: "arrow.up") { chat.send() }
-                        .keyboardShortcut(.return, modifiers: .command)
-                        .disabled(chat.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || chat.modelID.isEmpty)
+                        .disabled(!canSend)
+                        .help("Send message (⌘Return)")
                 }
             }.controlSize(.small)
         }
@@ -197,108 +206,127 @@ struct ChatHeader: View {
     }
 }
 
-private struct ChatActivityRow: View {
+struct ChatActivityRow: View {
+    static let maximumDetailsHeight: CGFloat = 260
     let bubble: ChatBubble
     var streaming = false
+    var approval: AIActionApproval.Request? = nil
+    var approve: (UUID) -> Void = { _ in }
+    var decline: (UUID) -> Void = { _ in }
+    @ViewState var expanded = false
+    @ViewState private var detailsHeight: CGFloat = 1
+
     var body: some View {
-        DisclosureGroup {
-            if bubble.kind == .reasoning {
-                ChatMarkdown(source: bubble.text, streaming: streaming)
-            } else if bubble.kind == .serverTool {
-                VStack(alignment: .leading, spacing: 8) {
-                    if !bubble.text.isEmpty { Text(bubble.text).font(.callout).textSelection(.enabled) }
-                    ForEach(bubble.sources, id: \.url) { source in
-                        if let url = URL(string: source.url), ["http", "https"].contains(url.scheme ?? "") {
-                            Link(destination: url) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(source.title).lineLimit(2)
-                                    Text(url.host ?? source.url).font(.caption).foregroundStyle(.secondary)
-                                }
-                            }.font(.callout)
+        VStack(alignment: .leading, spacing: 0) {
+            Button { expanded.toggle() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 8, weight: .semibold)).frame(width: 8)
+                    Text(bubble.title).lineLimit(1).layoutPriority(1)
+                    if !bubble.argumentSummary.isEmpty {
+                        Text(bubble.argumentSummary).lineLimit(1).truncationMode(.tail)
+                            .foregroundStyle(.tertiary).help(bubble.argumentSummary)
+                    }
+                    if bubble.kind == .tool || bubble.kind == .serverTool {
+                        if approval != nil {
+                            Image(systemName: "hand.tap").help("Waiting for approval")
+                        } else if bubble.state == "Running" {
+                            ProgressView().controlSize(.mini).scaleEffect(0.7).frame(width: 12, height: 12)
+                        } else {
+                            Image(systemName: bubble.state == "Completed" ? "checkmark" : bubble.state == "Error" ? "exclamationmark.circle" : "stop.circle")
+                                .font(.system(size: 9))
+                                .foregroundStyle(bubble.state == "Error" ? Color.orange : Color.secondary)
+                                .help(bubble.state).accessibilityLabel(bubble.state)
                         }
                     }
-                    if !bubble.detail.isEmpty { Text(bubble.detail).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
-                    if bubble.state == "Completed" && bubble.sources.isEmpty && bubble.detail.isEmpty {
-                        Text("No source details returned.").font(.caption).foregroundStyle(.secondary)
-                    }
                 }
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    if bubble.argumentFields.isEmpty {
-                        Text("No arguments").font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 8) {
-                            ForEach(bubble.argumentFields.indices, id: \.self) { index in
-                                GridRow {
-                                    Text(bubble.argumentFields[index].label)
-                                        .foregroundStyle(.secondary)
-                                    Text(bubble.argumentFields[index].value)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .frame(maxWidth: expanded || approval != nil ? .infinity : nil, alignment: .leading)
+                .padding(.horizontal, 9).padding(.vertical, 5)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(bubble.title)
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            if expanded {
+                Divider().padding(.horizontal, 9)
+                ScrollView(.vertical) {
+                    details
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { detailsHeight = $0 }
+                }
+                .frame(height: min(detailsHeight, Self.maximumDetailsHeight))
+                .clipped()
+            }
+            if let approval {
+                Divider().padding(.horizontal, 9)
+                HStack(spacing: 10) {
+                    Button(approval.action.buttonTitle) { approve(approval.id) }
+                        .buttonStyle(.borderedProminent)
+                    Button("Skip") { decline(approval.id) }.buttonStyle(.bordered)
+                    Spacer(minLength: 0)
+                }
+                .controlSize(.small)
+                .padding(10)
+            }
+        }
+        .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: expanded || approval != nil ? 14 : 12))
+        .overlay { RoundedRectangle(cornerRadius: expanded || approval != nil ? 14 : 12).strokeBorder(.primary.opacity(0.08), lineWidth: 0.5) }
+        .clipShape(RoundedRectangle(cornerRadius: expanded || approval != nil ? 14 : 12))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { if approval != nil { expanded = true } }
+        .onChange(of: approval?.id) { _, id in if id != nil { expanded = true } }
+    }
+
+    @ViewBuilder private var details: some View {
+        if let approval {
+            argumentFields(approval.fields)
+        } else if bubble.kind == .reasoning {
+            ChatMarkdown(source: bubble.text, streaming: streaming)
+        } else if bubble.kind == .serverTool {
+            VStack(alignment: .leading, spacing: 10) {
+                if !bubble.text.isEmpty { Text(bubble.text).font(.callout).textSelection(.enabled) }
+                ForEach(bubble.sources, id: \.url) { source in
+                    if let url = URL(string: source.url), ["http", "https"].contains(url.scheme ?? "") {
+                        Link(destination: url) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(source.title).lineLimit(2)
+                                if source.title != url.host {
+                                    Text(url.host ?? source.url).font(.caption).foregroundStyle(.secondary)
                                 }
                             }
                         }.font(.callout)
                     }
-                    if !bubble.detail.isEmpty {
-                        Text(bubble.detailTruncated ? "Result preview — model received the full chunk" : "Result").font(.caption).foregroundStyle(.secondary)
-                        Text(bubble.detail).font(.system(size: 11, design: .monospaced))
-                    }
-                }.textSelection(.enabled)
+                }
+                if !bubble.detail.isEmpty { Text(bubble.detail).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+                if bubble.state == "Completed" && bubble.sources.isEmpty && bubble.detail.isEmpty {
+                    Text("No source details returned.").font(.caption).foregroundStyle(.secondary)
+                }
             }
-        } label: {
-            HStack(spacing: 6) {
-                Text(bubble.title).lineLimit(1).layoutPriority(1)
-                if !bubble.argumentSummary.isEmpty {
-                    Text(bubble.argumentSummary).lineLimit(1).truncationMode(.tail)
-                        .foregroundStyle(.tertiary).help(bubble.argumentSummary)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                if bubble.argumentFields.isEmpty {
+                    Text("No arguments").font(.caption).foregroundStyle(.secondary)
+                } else { argumentFields(bubble.argumentFields) }
+                if !bubble.detail.isEmpty {
+                    Text(bubble.detailTruncated ? "Result preview — model received the full chunk" : "Result").font(.caption).foregroundStyle(.secondary)
+                    Text(bubble.detail).font(.system(size: 11, design: .monospaced))
                 }
-                if bubble.kind == .tool || bubble.kind == .serverTool {
-                    if bubble.state == "Running" {
-                        ProgressView().controlSize(.mini).scaleEffect(0.7).frame(width: 12, height: 12)
-                    } else {
-                        Image(systemName: bubble.state == "Completed" ? "checkmark" : bubble.state == "Error" ? "exclamationmark.circle" : "stop.circle")
-                            .font(.system(size: 9))
-                            .foregroundStyle(bubble.state == "Error" ? Color.orange : Color.secondary)
-                            .help(bubble.state).accessibilityLabel(bubble.state)
-                    }
-                }
-            }.font(.system(size: 11)).foregroundStyle(.secondary)
-
-        }.disclosureGroupStyle(ChatActivityDisclosureStyle(isTool: bubble.kind != .reasoning))
+            }.textSelection(.enabled)
+        }
     }
-}
 
-private struct ChatActivityDisclosureStyle: DisclosureGroupStyle {
-    var isTool: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button {
-                configuration.isExpanded.toggle()
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
-                        .frame(width: 8)
-                    configuration.label
+    private func argumentFields(_ fields: [ChatArgumentField]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(fields.indices, id: \.self) { index in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(fields[index].label).font(.caption).foregroundStyle(.secondary)
+                    Text(fields[index].value).font(.callout)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, isTool ? 9 : 0)
-                .padding(.vertical, isTool ? 5 : 2)
-                .background {
-                    if isTool { Capsule().fill(.primary.opacity(0.06)) }
-                }
-                .overlay {
-                    if isTool { Capsule().strokeBorder(.primary.opacity(0.08), lineWidth: 0.5) }
-                }
-                .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
-            .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
-            if configuration.isExpanded {
-                configuration.content
-                    .padding(.leading, 13)
-                    .padding(.bottom, 4)
-            }
-        }.frame(maxWidth: .infinity, alignment: .leading)
+        }.textSelection(.enabled)
     }
 }

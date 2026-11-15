@@ -59,7 +59,7 @@ import Testing
     chat.consume(.toolResult(.init(callID: "read", name: "read_pane", value: .string("{\"text_start\":24001,\"text_end\":48000,\"chunk\":2}"))))
     #expect(chat.bubbles.last?.argumentSummary == "Page text · characters \(24001.formatted())–\(48000.formatted())")
     let pane = store.selectedTab.pages[0]
-    let args = "{\"pane\":\"\(pane.id)\",\"cursor\":\"snapshot:2\",\"selector\":\"#comment\"}"
+    let args = "{\"pane\":\"\(pane.id)\",\"cursor\":\"\(UUID()):2\",\"selector\":\"#comment\"}"
     chat.consume(.toolCall(.init(id: "fields", name: "read_pane", arguments: args)))
     let fields = try #require(chat.bubbles.last?.argumentFields)
     #expect(fields.map(\.label) == ["Page", "Read", "Element"])

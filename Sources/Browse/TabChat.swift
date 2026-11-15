@@ -52,10 +52,14 @@ struct ChatBubble: Identifiable, Codable {
     private var accountObservation: AnyCancellable?
     private var task: Task<Void, Never>?
     private var run: AI.Stream<AgentResult>?
+    let actionApproval = AIActionApproval()
+    private var approvalObservation: AnyCancellable?
+    private(set) var approvalBubbleID: UUID?
 
     init(store: BrowserStore, tabID: UUID, settings: AISettings = .shared) {
         self.store = store; self.tabID = tabID
         self.settings = settings
+        approvalObservation = actionApproval.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         modelID = settings.modelID
         savedTab = store.session.workspaces.flatMap(\.tabs).first { $0.id == tabID }
         clearObservation = store.chatHistory.clearRequests.sink { [weak self] cutoff in
@@ -96,12 +100,25 @@ struct ChatBubble: Identifiable, Codable {
         do {
             AIDiagnostics.shared.record("run.started", tab: tabID, fields: ["model": modelID])
             let baseModel = try override ?? settings.model(modelID)
-            let paneTools = PaneChatTools(store: store, tabID: tabID, settings: settings)
+            let paneTools = PaneChatTools(store: store, tabID: tabID, settings: settings, approve: { [weak self] request in
+                guard let self, self.running else { return false }
+                if let bubble = self.bubbles.last(where: { $0.toolID == request.callID && $0.state == "Running" }) {
+                    self.approvalBubbleID = bubble.id
+                } else {
+                    // Tool execution can reach the main actor before its buffered UI event.
+                    let bubble = ChatBubble(isUser: false, text: "", kind: .tool, toolID: request.callID,
+                        title: AIPaneTool(rawValue: request.action.rawValue)?.title ?? request.action.buttonTitle,
+                        argumentFields: request.fields)
+                    self.bubbles.append(bubble)
+                    self.approvalBubbleID = bubble.id
+                }
+                return await self.actionApproval.request(request)
+            })
             let template = settings.systemPrompt
             let model = Model(baseModel.id, provider: PaneContextProvider(base: baseModel.provider) {
                 await paneTools.renderPrompt(template)
             })
-            let agent = try Agent(tools: PaneChatTools(store: store, tabID: tabID, settings: settings).tools(), maxSteps: 12, maxConcurrentTools: 1)
+            let agent = try Agent(tools: paneTools.tools(), maxSteps: 12, maxConcurrentTools: 1)
             input = ""; error = nil; running = true; status = "Thinking…"
             thinkingText = ""; thinkingSummary = ""; thinkingSummaryBeforeBubbleID = nil
             bubbles.append(ChatBubble(isUser: true, text: prompt))
@@ -211,13 +228,19 @@ struct ChatBubble: Identifiable, Codable {
                 kind: .serverTool, title: "Web search", detail: String(((try? usage.jsonString()) ?? "").prefix(12000)), state: "Completed"))
             AIDiagnostics.shared.record("search.completed", tab: tabID)
         case .toolCall(let call):
-            bubbles.append(ChatBubble(isUser: false, text: call.arguments, kind: .tool, toolID: call.id,
-                                      title: AIPaneTool(rawValue: call.name)?.title ?? call.name))
-            bubbles[bubbles.count - 1].argumentFields = argumentFields(call.arguments)
+            let index: Int
+            if let existing = bubbles.lastIndex(where: { $0.toolID == call.id && $0.state == "Running" }) { index = existing }
+            else {
+                bubbles.append(ChatBubble(isUser: false, text: call.arguments, kind: .tool, toolID: call.id,
+                                          title: AIPaneTool(rawValue: call.name)?.title ?? call.name))
+                index = bubbles.count - 1
+            }
+            bubbles[index].text = call.arguments
+            bubbles[index].argumentFields = argumentFields(call.arguments)
             if call.name == "read_pane" {
                 let args = try? JSONDecoder().decode(PaneChatTools.Input.self, from: Data(call.arguments.utf8))
                 let chunk = Self.readPart(args?.cursor) ?? 1
-                bubbles[bubbles.count - 1].argumentSummary = "part \(chunk)"
+                bubbles[index].argumentSummary = "part \(chunk)"
             }
             status = "Using \(call.name)…"
             AIDiagnostics.shared.record("tool.called", tab: tabID, fields: ["name": call.name, "call": call.id])
@@ -311,9 +334,18 @@ struct ChatBubble: Identifiable, Codable {
         history = bubbles.filter { $0.kind == .text }.map { $0.isUser ? .user($0.text) : .assistant($0.text) }
     }
 
-    func stop() { run?.cancel(); task?.cancel(); persist() }
+    func approveAction(_ id: UUID) {
+        guard running, let store, !store.isPrivate, store.selectedTab.id == tabID,
+              store.openChats.contains(tabID) else { return }
+        actionApproval.resolve(id, approved: true)
+    }
+
+    func declineAction(_ id: UUID) { actionApproval.resolve(id, approved: false) }
+
+    func stop() { run?.cancel(); task?.cancel(); actionApproval.cancel(); persist() }
     private func resetConversation() {
         generation = UUID(); run?.cancel(); task?.cancel(); pendingPersistence?.cancel(); pendingPersistence = nil
+        actionApproval.cancel(); approvalBubbleID = nil
         run = nil; task = nil; running = false; status = ""
         conversationID = UUID(); createdAt = Date(); updatedAt = createdAt
         history = []; bubbles = []; input = ""; thinkingText = ""; thinkingSummary = ""
@@ -326,13 +358,13 @@ struct ChatBubble: Identifiable, Codable {
 
 // @lat: [[lat.md/architecture/ai#Pane tools]]
 @MainActor final class PaneChatTools {
-    typealias Approval = @MainActor (String, WKWebView) async -> Bool
+    typealias Approval = @MainActor (AIActionApproval.Request) async -> Bool
     weak var store: BrowserStore?
     let tabID: UUID
     private let settings: AISettings
     private let approve: Approval
     init(store: BrowserStore?, tabID: UUID, settings: AISettings = .shared,
-         approve: @escaping Approval = AIActionApproval.confirm) {
+         approve: @escaping Approval = { _ in false }) {
         self.store = store; self.tabID = tabID; self.settings = settings; self.approve = approve
     }
 
@@ -375,9 +407,9 @@ struct ChatBubble: Identifiable, Codable {
             "properties": .object(properties),
             "required": .array(fields.map { .string($0) }), "additionalProperties": .bool(false)
         ])
-        return Tool(name: name, description: description, parameters: schema, arguments: Input.self) { [self] input, _ in
+        return Tool(name: name, description: description, parameters: schema, arguments: Input.self) { [self] input, context in
             do {
-                let result = try await execute(name, input: input)
+                let result = try await execute(name, input: input, callID: context.call.id)
                 await AIDiagnostics.shared.record("tool.finished", tab: tabID, fields: ["name": name, "pane": input.pane ?? ""])
                 return result
             } catch {
@@ -386,7 +418,7 @@ struct ChatBubble: Identifiable, Codable {
             }
         }
     }
-    func execute(_ name: String, input: Input) async throws -> JSONValue {
+    func execute(_ name: String, input: Input, callID: String = UUID().uuidString) async throws -> JSONValue {
         try Task.checkCancellation()
         guard store?.isPrivate == false else { throw AIError.configuration("AI is unavailable in private windows.") }
         guard settings.isToolEnabled(name) else { throw AIError.configuration("This tool is disabled in Settings → AI.") }
@@ -409,10 +441,8 @@ struct ChatBubble: Identifiable, Codable {
                 throw AIError.configuration("The pane or its permissions changed. Read it again before retrying.")
             }
         }
-        func confirm(_ details: [String: String]) async throws {
-            // JSON escaping keeps untrusted newlines and labels separate from the native dialog's instructions.
-            let data = try JSONSerialization.data(withJSONObject: details, options: [.prettyPrinted, .sortedKeys])
-            guard await approve(String(decoding: data, as: UTF8.self), controller.webView) else {
+        func confirm(_ request: AIActionApproval.Request) async throws {
+            guard await approve(request) else {
                 throw AIError.configuration("The browser action was not approved. Do not retry unless the user asks.")
             }
             try revalidate()
@@ -422,8 +452,8 @@ struct ChatBubble: Identifiable, Codable {
                   address.count <= 8192,
                   ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil,
                   url.user == nil, url.password == nil else { throw AIError.configuration("Use an HTTP(S) URL without credentials.") }
-            try await confirm(["action": "Navigate", "current_page": source?.absoluteString ?? page.address,
-                               "destination": address])
+            try await confirm(.init(callID: callID, action: .navigate, page: source?.absoluteString ?? page.address,
+                                    destination: address))
             controller.navigate(address)
             return .string("Navigation started. Read the pane to check the loaded page.")
         }
@@ -447,9 +477,10 @@ struct ChatBubble: Identifiable, Codable {
             script = Self.actionScript
             let target = try await controller.webView.callAsyncJavaScript(script, arguments: arguments, in: nil, contentWorld: .defaultClient)
             try revalidate()
-            try await confirm(["action": name == "fill_element" ? "Fill field" : "Click element",
-                               "current_page": url.absoluteString, "selector": selector,
-                               "target": target as? String ?? "", "text": input.text ?? ""])
+            let observed = try JSONDecoder().decode(AIActionApproval.Target.self, from: Data((target as? String ?? "").utf8))
+            try await confirm(.init(callID: callID, action: name == "fill_element" ? .fill : .click,
+                                    page: url.absoluteString, selector: selector,
+                                    text: name == "fill_element" ? input.text ?? "" : nil, target: observed))
             arguments["prepare"] = false
         default: throw AIError.configuration("Unknown pane tool.")
         }
@@ -533,7 +564,7 @@ struct ChatBubble: Identifiable, Codable {
     if (!['http:', 'https:'].includes(location.protocol) || location.href !== expectedURL)
       throw new Error('Page changed. Read the pane again.');
     // Never evaluate arbitrary model-supplied selectors: success/error differences
-    // could otherwise probe sensitive attributes before the approval dialog.
+    // could otherwise probe sensitive attributes before approval.
     const snapshot = globalThis.__bendReadSnapshot;
     if (!snapshot || snapshot.url !== location.href || !snapshot.targets.has(selector))
       throw new Error('Read the pane and use an element selector from that read.');

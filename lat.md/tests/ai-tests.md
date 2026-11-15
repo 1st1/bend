@@ -138,9 +138,9 @@ The connection-test fixture in [[Tests/BrowseTests/AIChatTests.swift]] verifies 
 
 [[Tests/BrowseTests/AISecurityTests.swift#aiActionApprovalBoundaries]] verifies denied navigation, clicking, and filling have no side effects, and unobserved attribute probes fail identically before DOM lookup. Changed elements, permissions, navigation revisions, and pane membership invalidate approval.
 
-## Native action confirmation
+## Inline action confirmation
 
-[[Tests/BrowseTests/AISecurityTests.swift#aiNativeActionConfirmation]] verifies Cancel is the default native response, Allow Once releases a request, and cancellation or window closure rejects it despite late UI responses.
+[[Tests/BrowseTests/AISecurityTests.swift#aiInlineActionConfirmation]] verifies actions wait for explicit approval, Skip and cancellation leave the page unchanged, and duplicate or stale request IDs cannot release another action.
 
 ## Page read field privacy
 
@@ -153,3 +153,15 @@ The connection-test fixture in [[Tests/BrowseTests/AIChatTests.swift]] verifies 
 ## Malformed loopback connections
 
 [[Tests/BrowseTests/AIOAuthTests.swift#aiOAuthMalformedConnections]] verifies repeated oversized requests cannot exhaust OAuth callback connection slots and prevent a subsequent legitimate sign-in callback.
+
+## Chat approval lifecycle
+
+[[Tests/BrowseTests/AISecurityTests.swift#aiChatApprovalLifecycle]] verifies a real agent turn pauses at its tool bubble, only an open active chat can approve it, and stopping or restoring a conversation cannot revive pending actions.
+
+## Composer keyboard controls
+
+[[Tests/BrowseTests/ChatComposerTests.swift#chatComposerKeyboard]] exercises native Enter and Shift-Enter insertion at the cursor, Command-Enter submission, disabled sending, and protection of active input-method composition.
+
+## Expanded tool card layout
+
+[[Tests/BrowseTests/ChatComposerTests.swift#chatExpandedToolLayout]] verifies long expanded tool contents scroll inside a bounded viewport while approval controls and the composer remain outside it. An opt-in capture supports visual inspection.
