@@ -187,3 +187,9 @@ The viewport also spans the toolbar, where messages progressively fade; the head
 [[Tests/BrowseTests/ChatComposerTests.swift#chatHistoryAppearance]] compares single-line and multiline prompts inserted normally versus recalled with Up/Down, including attributes, full selection, and native editor height.
 
 Clearing recalled text and typing again must retain the same editor styling.
+
+## Modal account sign-in popup
+
+[[Tests/BrowseTests/AIOAuthBrowserTests.swift#aiOAuthModalBrowser]] exercises the authentication-session lifecycle with Settings in an AppKit modal session and a local loopback callback, substituting the system browser to avoid real account login.
+
+It checks the Settings presentation anchor, successful callback cleanup, popup and task cancellation, Settings closure, start failure, and session errors. Dismissing a completed browser must not replace an accepted callback with cancellation. The existing validation tests cover PKCE, state, callback identity, and signed identity claims. [[lat.md/tests/settings-tests#Modal settings lifecycle]] separately covers the blocking Settings modal loop.

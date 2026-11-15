@@ -1,0 +1,3 @@
+kind: Fixed
+body: OpenAI sign-in opens a system authentication popup that remains usable while Settings is modal.
+time: 2026-11-14T22:29:41.352825-08:00

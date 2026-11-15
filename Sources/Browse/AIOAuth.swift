@@ -121,15 +121,18 @@ extension Data {
         let generation = generations[provider, default: 0]
         let previous = session(provider)
         let attempt = try AIOAuthAttempt()
+        guard let anchor = NSApp.modalWindow ?? NSApp.keyWindow ?? NSApp.mainWindow else {
+            throw AIOAuthError.invalid("Open Settings to sign in.")
+        }
         let callback = OAuthLoopback()
         let redirect = try await callback.start(port: provider == .vercel ? 17849 : 0, state: attempt.state)
         defer { callback.cancel() }
         let hostID = defaults.string(forKey: "ai.openai.host") ?? "urn:uuid:" + UUID().uuidString.lowercased()
         defaults.set(hostID, forKey: "ai.openai.host")
-        guard NSWorkspace.shared.open(attempt.authorizationURL(provider: provider, clientID: clientID, redirect: redirect, hostID: hostID)) else {
-            throw AIOAuthError.invalid("Could not open the browser for sign-in.")
-        }
-        let result = try attempt.callback(await callback.wait(), redirect: redirect, clientID: clientID)
+        let browser = AIOAuthBrowser(anchor: anchor)
+        let authorizationURL = attempt.authorizationURL(provider: provider, clientID: clientID, redirect: redirect, hostID: hostID)
+        let response = try await browser.authenticate(url: authorizationURL, callback: callback)
+        let result = try attempt.callback(response, redirect: redirect, clientID: clientID)
         try Task.checkCancellation()
         guard generations[provider, default: 0] == generation else { throw CancellationError() }
         // Keep a new registration even if its one-time code expires.
@@ -344,7 +347,7 @@ enum OAuthIdentity {
             return try await withCheckedThrowingContinuation { result = $0 }
         } onCancel: { Task { @MainActor in self.cancel() } }
     }
-    func cancel() { finish(.failure(CancellationError())) }
+    func cancel(with error: Error = CancellationError()) { finish(.failure(error)) }
     private func receive(_ connection: NWConnection, data: Data) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] chunk, _, complete, error in
             Task { @MainActor in
