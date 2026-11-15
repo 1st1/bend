@@ -524,7 +524,6 @@ struct GatewayCredential: AICredentialStore {
 }
 
 struct AISettingsView: View {
-    @ObservedObject var store: BrowserStore
     @ObservedObject private var settings = AISettings.shared
     @ViewState private var key = ""
     var body: some View {
@@ -643,21 +642,6 @@ struct AISettingsView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             if let error = settings.error { Text(error).foregroundStyle(.orange) }
-            Section("AI chat bubbles") {
-                VStack(spacing: 10) {
-                    HStack {
-                        Text("Bubble transparency")
-                        Spacer()
-                        Text(store.aiBubbleTransparency, format: .percent.precision(.fractionLength(0)))
-                            .monospacedDigit().foregroundStyle(.secondary)
-                    }
-                    Slider(value: $store.aiBubbleTransparency, in: 0...1) {
-                        Text("AI bubble transparency")
-                    }.labelsHidden()
-                }
-                Button("Reset to Default") { store.aiBubbleTransparency = BrowserStore.defaultAIBubbleTransparency }
-                    .disabled(store.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
-            }
         }.formStyle(.grouped).task {
             await settings.restore()
             if settings.models.isEmpty { await settings.refreshModels() }

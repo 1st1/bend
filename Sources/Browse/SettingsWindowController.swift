@@ -184,7 +184,7 @@ struct BrowserSettingsView: View {
                 case .search:
                     SearchSettingsView(store: store)
                 case .ai:
-                    AISettingsView(store: store)
+                    AISettingsView()
                 case .websites:
                     WebsiteSettingsView(settings: store.websiteSettings)
                 case .privacy:
@@ -511,6 +511,21 @@ private struct UISettingsView: View {
                                      topRimClipping: $store.paneHeaderTopRimClipping,
                                      bottomRimClipping: $store.paneHeaderBottomRimClipping)
                 GlassSettingsSection(title: "Media player & AI chat input", appearance: $store.floatingPanelGlass, defaults: .floatingPanelDefault)
+            }
+            Section("AI chat bubbles") {
+                VStack(spacing: 10) {
+                    HStack {
+                        Text("Bubble transparency")
+                        Spacer()
+                        Text(store.aiBubbleTransparency, format: .percent.precision(.fractionLength(0)))
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    Slider(value: $store.aiBubbleTransparency, in: 0...1) {
+                        Text("AI bubble transparency")
+                    }.labelsHidden()
+                }
+                Button("Reset to Default") { store.aiBubbleTransparency = BrowserStore.defaultAIBubbleTransparency }
+                    .disabled(store.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
             }
         }.formStyle(.grouped)
     }
