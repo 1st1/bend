@@ -12,7 +12,9 @@ See [[lat.md/architecture/settings|Architecture and behavior]].
 
 [AddressRequestTests.swift](../../Tests/BrowseTests/AddressRequestTests.swift) verifies legacy session defaults, preference persistence across store recreation, preserved tab identity, and numeric bounds and nonfinite-value handling.
 
-Window/header appearances persist independently, including the solid header color and style, preserve legacy defaults, and support resetting both appearances. Top- and bottom-rim clipping default independently for legacy sessions, persist fractional values, delegate through secondary windows, and clamp invalid input. Sessions containing retired custom separator settings still load without affecting the clipping defaults or tabs.
+The AI bubble transparency slider preserves its default and saved values across restart and secondary windows, clamps out-of-range edits, ignores nonfinite edits, and supports reset.
+
+Window, header, and shared media/chat-input appearances persist independently, including the solid header color and style, preserve legacy defaults, and support resetting each appearance. The shared media/chat-input preference also delegates through secondary windows and normalizes invalid values; migration prefers the saved chat appearance over the saved media appearance and clears both old fields on edit. Top- and bottom-rim clipping default independently for legacy sessions, persist fractional values, delegate through secondary windows, and clamp invalid input. Sessions containing retired custom separator settings still load without affecting the clipping defaults or tabs.
 
 Highlight settings preserve separate colors, outline gap and width, intensity, spread, and mode across restart, including None mode and retained title-tint color and intensity; absent highlight settings use None. Older records without an outline gap receive the default gap. Older records without spread decode with their previous intensity-derived radius; records without title-tint fields receive the default color and intensity. Invalid colors and nonfinite numeric values normalize to defaults, and out-of-range values are bounded.
 
@@ -30,7 +32,7 @@ Changing page zoom preserves an injected document marker and edited form content
 
 [BrowserWindowTests.swift](../../Tests/BrowseTests/BrowserWindowTests.swift) verifies Command-W closes the focused Settings window without changing browser panes, still closes a focused browser pane, and cancels a new tab from its address popup.
 
-The test dispatches real menu key equivalents with an explicit focused-window provider, avoiding dependence on desktop activation in a headless test host. The native Settings window hides the centered window title and keeps full-size content, with a transparent titlebar before content scrolls beneath the section heading.
+The test dispatches real menu key equivalents with an explicit focused-window provider, avoiding dependence on desktop activation in a headless test host. The test also checks that only the Close traffic-light button remains visible and fullscreen is disabled. The native Settings window hides the centered window title and keeps full-size content, with a transparent titlebar before content scrolls beneath the section heading.
 
 ## Settings section toolbar
 
@@ -75,3 +77,13 @@ Live settings changes during the delay affect the visible source document; the d
 ## Website settings failure recovery
 
 [WebsiteSettingsTests.swift](../../Tests/BrowseTests/WebsiteSettingsTests.swift) verifies unreadable settings surface an error without overwriting the file, and retry restores persistence after storage is repaired.
+
+## Modal settings lifecycle
+
+[[Tests/BrowseTests/BrowserWindowTests.swift#settingsModalLifecycle]] verifies native application modality, async responsiveness, section changes, Command-W and Escape dismissal, reopening, and cancellation before presentation starts.
+
+## Live floating panel glass preferences
+
+[[Tests/BrowseTests/AddressRequestTests.swift#floatingPanelGlassPreferences]] changes the shared media-player and chat-input glass through the root store, checking native style and tint in a secondary window’s view.
+
+Both surfaces update together; reset restores regular untinted glass on the same native surfaces. The persistence test covers shared saved values, migration from separate settings, older-session defaults, bounds, invalid values, and resets.

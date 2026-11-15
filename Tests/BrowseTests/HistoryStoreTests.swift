@@ -66,7 +66,7 @@ private final class HistoryWebView: FocusWebView {
     let config = WKWebViewConfiguration()
     config.websiteDataStore = .nonPersistent()
     let web = HistoryWebView(frame: .zero, configuration: config)
-    let controller = PageController(address: "browse://start", webView: web)
+    let controller = PageController(address: "bend://start", webView: web)
     var visits: [String] = []
     var titles: [String] = []
     controller.onVisit = { url, _ in visits.append(url) }
@@ -91,7 +91,7 @@ private final class HistoryWebView: FocusWebView {
     web.currentURL = URL(string: "https://example.com/failed")
     controller.webView(web, didFailProvisionalNavigation: nil, withError: URLError(.cannotConnectToHost))
     #expect(visits.count == 2)
-    controller.navigate("browse://history")
+    controller.navigate("bend://history")
     controller.webView(web, didFinish: nil)
     #expect(visits.count == 2)
 }
@@ -125,5 +125,5 @@ private final class HistoryWebView: FocusWebView {
     #expect(store.history.visits.isEmpty)
     #expect(store.history.suggestions(for: "example").isEmpty)
     #expect(BrowserStore(sessionFile: file, persistentExtensions: false).history == store.history)
-    #expect(store.selectedTab.pages[0].address == "browse://start")
+    #expect(store.selectedTab.pages[0].address == "bend://start")
 }

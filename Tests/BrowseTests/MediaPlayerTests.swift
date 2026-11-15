@@ -31,7 +31,7 @@ private let mediaSessionFixture = #"""
 // @lat: [[lat.md/tests/media-tests#Media session commands and metadata]]
 @Test @MainActor func mediaSessionCommandsAndMetadata() async throws {
     _ = NSApplication.shared
-    let controller = PageController(address: "browse://start")
+    let controller = PageController(address: "bend://start")
     let web = controller.webView
     defer { controller.media.reset(); web.stopLoading() }
     web.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://media.example"))
@@ -75,7 +75,7 @@ private let mediaSessionFixture = #"""
 // @lat: [[lat.md/tests/media-tests#Media playback progress]]
 @Test @MainActor func mediaPlaybackProgress() async throws {
     _ = NSApplication.shared
-    let page = PageController(address: "browse://start")
+    let page = PageController(address: "bend://start")
     defer { page.media.detach(); page.webView.stopLoading() }
     page.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://progress.example"))
     try await mediaWait { !page.media.sessions.isEmpty }
@@ -163,6 +163,67 @@ private let mediaSessionFixture = #"""
     }
 }
 
+// @lat: [[lat.md/tests/media-tests#Floating media player]]
+@Test(arguments: [false, true], SidebarSide.allCases) @MainActor
+func floatingMediaPlayer(floating: Bool, side: SidebarSide) async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("FloatingMedia-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    let browser = try #require(owner.active)
+    let store = browser.store
+    store.onAddressRequested = nil
+    defer { owner.prepareToQuit(); browser.window.close() }
+    store.sidebarSide = side
+    store.sidebarVisible = !floating
+    store.sidebarFloating = floating
+    let page = store.controller(for: store.selectedTab.pages[0])
+    page.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://floating.example"))
+    try await mediaWait { store.mediaCoordinator.selected != nil }
+    for _ in 0..<30 { store.newTab(inBackground: true) }
+    let host = try #require(browser.window.contentView)
+    func descendants<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, of: type) }
+    }
+    func settle() async throws {
+        for _ in 0..<10 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(30)) }
+    }
+    try await settle()
+    let glass = try #require(descendants(host, of: FloatingPanelGlassView.self).first)
+    let playerRect = glass.convert(glass.bounds, to: nil)
+    #expect(glass.style == .regular)
+    let scroll = try #require(descendants(host, of: NSScrollView.self).first {
+        let rect = $0.convert($0.bounds, to: nil)
+        return abs(rect.width - store.sidebarWidth) < 1 && rect.height > playerRect.height
+    })
+    let viewport = scroll.convert(scroll.bounds, to: nil)
+    #expect(viewport.minY < playerRect.minY)
+    #expect(viewport.maxY > playerRect.maxY)
+    scroll.contentView.scroll(to: NSPoint(x: 0, y: 300))
+    scroll.reflectScrolledClipView(scroll.contentView)
+    try await settle()
+    #expect(glass.convert(glass.bounds, to: nil) == playerRect)
+    let frame = try #require(host.superview)
+    let emptyPoint = NSPoint(x: playerRect.midX, y: playerRect.minY + 3)
+    #expect(frame.hitTest(frame.convert(emptyPoint, from: nil)) === glass)
+    let slider = try #require(descendants(glass.superview!, of: NSSlider.self).first ?? descendants(host, of: NSSlider.self).first)
+    let sliderPoint = slider.convert(NSPoint(x: slider.bounds.midX, y: slider.bounds.midY), to: nil)
+    let hit = frame.hitTest(frame.convert(sliderPoint, from: nil))
+    #expect(hit === slider || hit?.isDescendant(of: slider) == true)
+    let document = try #require(scroll.documentView)
+    scroll.contentView.scroll(to: NSPoint(x: 0, y: document.bounds.height - scroll.contentView.bounds.height))
+    scroll.reflectScrolledClipView(scroll.contentView)
+    let lastRow = try #require(descendants(host, of: TabDragSourceView.self).first { $0.tabID == store.sidebarTabs.last?.id })
+    #expect(lastRow.convert(lastRow.bounds, to: nil).minY >= playerRect.maxY)
+    let contentHeight = document.bounds.height
+    store.mediaCoordinator.dismiss()
+    try await settle()
+    #expect(descendants(host, of: FloatingPanelGlassView.self).isEmpty)
+    #expect(abs(contentHeight - document.bounds.height - playerRect.height - 2 * PaneGeometry.gap) <= 1)
+
+}
+
 // @lat: [[lat.md/tests/media-tests#Media slider interaction]]
 @Test @MainActor func mediaSliderInteraction() async throws {
     _ = NSApplication.shared
@@ -209,7 +270,7 @@ private let mediaSessionFixture = #"""
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = shared
         configuration.websiteDataStore = .nonPersistent()
-        return PageController(address: "browse://start", webView: FocusWebView(frame: .zero, configuration: configuration))
+        return PageController(address: "bend://start", webView: FocusWebView(frame: .zero, configuration: configuration))
     }
     let first = make(), second = make()
     defer { first.media.reset(); second.media.reset(); first.webView.stopLoading(); second.webView.stopLoading() }
@@ -242,7 +303,7 @@ private let mediaSessionFixture = #"""
     configuration.websiteDataStore = .nonPersistent()
     configuration.mediaTypesRequiringUserActionForPlayback = []
     let web = FocusWebView(frame: NSRect(x: 0, y: 0, width: 500, height: 400), configuration: configuration)
-    let controller = PageController(address: "browse://start", webView: web)
+    let controller = PageController(address: "bend://start", webView: web)
     let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 500, height: 400),
                           styleMask: [.titled], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
@@ -284,7 +345,7 @@ private let mediaSessionFixture = #"""
     try await mediaWait { controller.media.sessions.first?.playing == true }
     let focus = MediaPlaybackFocus()
     focus.register(controller.media)
-    let other = PageController(address: "browse://start")
+    let other = PageController(address: "bend://start")
     focus.register(other.media)
     defer { other.media.detach(); other.webView.stopLoading() }
     other.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://interrupt.example"))
@@ -351,7 +412,7 @@ private let mediaSessionFixture = #"""
     pageController.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://music.example"))
     try await mediaWait { first.store.mediaCoordinator.selected?.state.title == "First track" }
     if let path = ProcessInfo.processInfo.environment["BEND_MEDIA_SNAPSHOT"] {
-        let alternate = PageController(address: "browse://start")
+        let alternate = PageController(address: "bend://start")
         let alternateID = UUID()
         alternate.webView.loadHTMLString(mediaSessionFixture, baseURL: URL(string: "https://second.example"))
         try await mediaWait { !alternate.media.sessions.isEmpty }
@@ -419,7 +480,7 @@ private let mediaSessionFixture = #"""
 // @lat: [[lat.md/tests/media-tests#Media track transitions]]
 @Test @MainActor func mediaTrackTransitions() async throws {
     _ = NSApplication.shared
-    let first = PageController(address: "browse://start"), second = PageController(address: "browse://start")
+    let first = PageController(address: "bend://start"), second = PageController(address: "bend://start")
     let coordinator = WindowMediaCoordinator()
     let firstID = UUID(), secondID = UUID()
     coordinator.register(firstID, controller: first.media)
@@ -457,7 +518,7 @@ private let mediaSessionFixture = #"""
     try await mediaWait { coordinator.selected?.paneID == secondID }
     _ = try await second.webView.evaluateJavaScript(clear)
     try await mediaWait { coordinator.selected?.state.actions.isEmpty == true }
-    second.navigate("browse://start")
+    second.navigate("bend://start")
     #expect(coordinator.selected?.paneID == firstID)
     #expect(second.media.sessions.isEmpty)
 }
@@ -495,7 +556,7 @@ private let mediaSessionFixture = #"""
 // @lat: [[lat.md/tests/media-tests#Media source selection]]
 @Test @MainActor func mediaSourceSelection() async throws {
     _ = NSApplication.shared
-    let first = PageController(address: "browse://start"), second = PageController(address: "browse://start")
+    let first = PageController(address: "bend://start"), second = PageController(address: "bend://start")
     let coordinator = WindowMediaCoordinator()
     let firstID = UUID(), secondID = UUID()
     coordinator.register(firstID, controller: first.media)
@@ -535,7 +596,7 @@ private let mediaSessionFixture = #"""
     #expect(await first.media.send("play", to: firstSource.state))
     try await mediaWait { coordinator.selected?.paneID == firstID }
     #expect(coordinator.sources.count == 2)
-    first.navigate("browse://start")
+    first.navigate("bend://start")
     #expect(first.media.sessions.isEmpty)
     #expect(coordinator.selected?.paneID == secondID)
     coordinator.unregister(secondID)

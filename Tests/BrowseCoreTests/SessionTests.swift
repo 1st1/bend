@@ -33,7 +33,7 @@ import Testing
     let opened = tab.focusedPane
     #expect(tab.layout.paneIDs == [source, opened, bottom])
     #expect(tab.pages.first { $0.id == opened }?.address == destination)
-    #expect(tab.pages.first { $0.id == source }?.address == "browse://start")
+    #expect(tab.pages.first { $0.id == source }?.address == "bend://start")
     guard case .split(_, .vertical, _, let top, let lower, _) = tab.layout,
           case .split(_, .horizontal, _, let left, let right, _) = top else {
         Issue.record("Link must split its source pane to the right, preserving the other branch")
@@ -82,11 +82,18 @@ import Testing
 
 // @lat: [[lat.md/tests/address-entry-tests#Address resolution]]
 @Test func addresses() {
+    for name in ["start", "guide", "history"] {
+        #expect(AddressResolver.resolve("browse://\(name)")?.absoluteString == "bend://\(name)")
+        #expect(Page(address: "browse://\(name)").address == "bend://\(name)")
+    }
+    #expect(AddressResolver.resolve("browse://unknown") == nil)
+    #expect(AddressResolver.resolve("bend://unknown") == nil)
+
     #expect(AddressResolver.resolve(" example.com/path ")?.absoluteString == "https://example.com/path")
     #expect(AddressResolver.resolve("localhost:8080")?.absoluteString == "http://localhost:8080")
     #expect(AddressResolver.resolve("https://swift.org")?.host == "swift.org")
-    #expect(AddressResolver.resolve("browse://start")?.scheme == "browse")
-    #expect(AddressResolver.resolve("browse://history")?.absoluteString == "browse://history")
+    #expect(AddressResolver.resolve("bend://start")?.scheme == "bend")
+    #expect(AddressResolver.resolve("bend://history")?.absoluteString == "bend://history")
     #expect(AddressResolver.resolve("file:///etc/passwd") == nil)
     #expect(AddressResolver.resolve("javascript://alert(1)") == nil)
     #expect(AddressResolver.resolve("   ") == nil)
@@ -100,7 +107,7 @@ import Testing
         #expect(!url.absoluteString.contains("+"))
         #expect(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems == [URLQueryItem(name: "q", value: text)])
         #expect(AddressResolver.resolve("example.com/path", searchEngine: engine)?.absoluteString == "https://example.com/path")
-        #expect(AddressResolver.resolve("browse://start", searchEngine: engine)?.absoluteString == "browse://start")
+        #expect(AddressResolver.resolve("bend://start", searchEngine: engine)?.absoluteString == "bend://start")
     }
     let query = AddressResolver.resolve("swift ui & webkit")!
     #expect(URLComponents(url: query, resolvingAgainstBaseURL: false)?.queryItems?.first?.value == "swift ui & webkit")
@@ -129,4 +136,19 @@ import Testing
     #expect(AddressResolver.resolve(query, searchEngine: .custom, customSearchEngine: engine) == url)
     #expect(AddressResolver.resolve(query, searchEngine: .custom) == nil)
     #expect(AddressResolver.resolve("example.com", searchEngine: .custom)?.host == "example.com")
+}
+
+
+// @lat: [[lat.md/tests/address-entry-tests#Legacy internal addresses]]
+@Test func legacyInternalAddresses() throws {
+    for name in ["start", "guide", "history"] {
+        let original = Page(address: "bend://\(name)", isPinned: true)
+        let data = try JSONEncoder().encode(original)
+        let legacy = String(decoding: data, as: UTF8.self).replacingOccurrences(of: "bend:", with: "browse:")
+        let restored = try JSONDecoder().decode(Page.self, from: Data(legacy.utf8))
+        #expect(restored.id == original.id)
+        #expect(restored.address == "bend://\(name)")
+        #expect(restored.pinnedAddress == restored.address)
+        #expect(!String(decoding: try JSONEncoder().encode(restored), as: UTF8.self).contains("browse:"))
+    }
 }

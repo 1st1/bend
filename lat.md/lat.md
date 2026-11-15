@@ -5,6 +5,7 @@ This directory defines the high-level concepts, business logic, and architecture
 Bend is a SwiftUI and WebKit macOS browser prototype with Rex-inspired vertical tabs and tiled browsing panes.
 
 - [[architecture]] describes the native shell, tiling model, WebKit ownership, web extensions and settings, session persistence, private windows, browsing history, and address suggestions.
+- [[ai-sdk|AI SDK]] describes the owned model providers, streaming transport, tools, and agent loop.
 - [[tests]] describes model and store regression coverage.
 - [[releases]] describes version metadata, changelog fragments, and release preparation.
 

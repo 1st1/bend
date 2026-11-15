@@ -178,7 +178,7 @@ final class InputDiagnostics {
 // File work is confined to one serial queue. The semaphore bounds pending data
 // without blocking input delivery when the disk cannot keep up.
 final class InputTraceFile: @unchecked Sendable {
-    enum Stream: String { case events, panes }
+    enum Stream: String { case events, panes, ai }
     let stream: Stream
     let root: URL
     let maximumBytes: Int

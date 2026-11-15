@@ -60,9 +60,12 @@ import BrowseCore
     #expect(store.inactivePaneDimAmount == 0.08)
     #expect(store.windowGlass == .windowDefault)
     #expect(store.paneHeaderGlass == .headerDefault)
+    #expect(store.floatingPanelGlass == .floatingPanelDefault)
+    #expect(store.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
     #expect(store.paneHeaderTopRimClipping == BrowserStore.defaultHeaderTopRimClipping)
     #expect(store.paneHighlight == PaneHighlight())
     #expect(store.paneHighlight.style == .none)
+    store.aiBubbleTransparency = 0.73
     store.commandClickDestination = .newTab
     store.inactivePaneDimAmount = 0.35
     store.windowGlass = GlassAppearance(clear: true, tint: .init(red: 0.2, green: 0.4, blue: 0.8), darkening: 0.15)
@@ -83,17 +86,40 @@ import BrowseCore
     highlight.titleTintColor = .init(red: 0.8, green: 0.3, blue: 0.6)
     highlight.titleTintIntensity = 0.42
     store.paneHighlight = highlight
+    store.session.mediaPlayerGlass = GlassAppearance(darkening: 0.2)
+    #expect(store.floatingPanelGlass.darkening == 0.2)
+    store.session.chatComposerGlass = GlassAppearance(darkening: 0.7)
+    #expect(store.floatingPanelGlass.darkening == 0.7)
+    store.floatingPanelGlass = GlassAppearance(clear: true, tint: .init(red: 0.2, green: 0.4, blue: 0.8), darkening: 0.2)
+    #expect(store.session.mediaPlayerGlass == nil && store.session.chatComposerGlass == nil)
     store.save()
     #expect(store.persistenceError == nil)
     let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(restored.aiBubbleTransparency == 0.73)
     #expect(restored.commandClickDestination == .newTab)
     #expect(restored.inactivePaneDimAmount == 0.35)
     #expect(restored.windowGlass == store.windowGlass)
     #expect(restored.paneHeaderGlass == store.paneHeaderGlass)
+    #expect(restored.floatingPanelGlass == store.floatingPanelGlass)
     #expect(restored.paneHeaderTopRimClipping == 2.5)
     #expect(restored.paneHeaderBottomRimClipping == 1.25)
     let secondary = BrowserStore(sessionFile: directory.appendingPathComponent("secondary.json"),
                                  persistentExtensions: false, sharedStore: store)
+    #expect(secondary.aiBubbleTransparency == 0.73)
+    secondary.aiBubbleTransparency = 2
+    #expect(store.aiBubbleTransparency == 1)
+    secondary.aiBubbleTransparency = -1
+    #expect(store.aiBubbleTransparency == 0)
+    secondary.aiBubbleTransparency = .nan
+    #expect(store.aiBubbleTransparency == 0)
+    store.session.aiBubbleTransparency = .infinity
+    #expect(store.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
+    store.aiBubbleTransparency = BrowserStore.defaultAIBubbleTransparency
+    #expect(secondary.floatingPanelGlass == store.floatingPanelGlass)
+    secondary.floatingPanelGlass.darkening = 2
+    #expect(store.floatingPanelGlass.darkening == 1)
+    secondary.floatingPanelGlass = GlassAppearance(tint: .init(red: .nan, green: 0, blue: 0), darkening: .infinity)
+    #expect(store.floatingPanelGlass == .floatingPanelDefault)
     #expect(secondary.paneHeaderTopRimClipping == 2.5)
     secondary.paneHeaderTopRimClipping = 4
     #expect(store.paneHeaderTopRimClipping == 4)
@@ -154,12 +180,15 @@ import BrowseCore
     #expect(store.paneHeaderGlass == .headerDefault)
     store.windowGlass = .windowDefault
     store.paneHeaderGlass = .headerDefault
+    store.floatingPanelGlass = .floatingPanelDefault
     store.inactivePaneDimAmount = 0.08
     store.save()
     #expect(store.persistenceError == nil)
     let reset = BrowserStore(sessionFile: file, persistentExtensions: false)
+    #expect(reset.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
     #expect(reset.windowGlass == .windowDefault)
     #expect(reset.paneHeaderGlass == .headerDefault)
+    #expect(reset.floatingPanelGlass == .floatingPanelDefault)
     highlight.style = .outline
     highlight.outlineWidth = .infinity
     highlight.outlineGap = .nan
@@ -270,7 +299,7 @@ import BrowseCore
     #expect(!store.cancelInitialAddressEntry(for: split))
     #expect(store.selectedTab.pages.count == 2)
     let newPane = store.selectedTab.focusedPane
-    store.controller(for: store.selectedTab.pages.last!).navigate("browse://guide")
+    store.controller(for: store.selectedTab.pages.last!).navigate("bend://guide")
     #expect(!store.cancelInitialAddressEntry(for: newPane))
     store.newTab(address: "https://example.com")
     #expect(!store.cancelInitialAddressEntry(for: store.selectedTab.focusedPane))
@@ -382,10 +411,10 @@ import BrowseCore
     let panel = try popup()
     let content = try #require(panel.contentView)
     let input = try #require(fields(content).first { $0.isEditable })
-    input.stringValue = "browse://guide"
+    input.stringValue = "bend://guide"
     #expect(input.sendAction(try #require(input.action), to: input.target))
     #expect(!panel.isVisible)
-    #expect(store.controller(for: store.selectedTab.pages[0]).address == "browse://guide")
+    #expect(store.controller(for: store.selectedTab.pages[0]).address == "bend://guide")
     try command("Open Location…")
     try escape(try popup())
     #expect(store.session.selectedTab == submitted && store.session.workspaces[0].tabs.count == 3)
@@ -558,4 +587,49 @@ import BrowseCore
     let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
     #expect(restored.searchEngine == .duckDuckGo)
     #expect(restored.selectedTab.id == store.selectedTab.id)
+}
+
+private struct FloatingGlassPreferenceFixture: View {
+    @ObservedObject var store: BrowserStore
+    var body: some View {
+        HStack {
+            FloatingPanelBackground(appearance: store.floatingPanelGlass)
+            FloatingPanelBackground(appearance: store.floatingPanelGlass)
+        }.frame(width: 400, height: 100)
+    }
+}
+
+// @lat: [[lat.md/tests/settings-tests#Live floating panel glass preferences]]
+@Test @MainActor func floatingPanelGlassPreferences() async throws {
+    _ = NSApplication.shared
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("FloatingGlass-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let root = BrowserStore(sessionFile: directory.appendingPathComponent("root.json"), persistentExtensions: false)
+    let secondary = BrowserStore(sessionFile: directory.appendingPathComponent("secondary.json"), persistentExtensions: false, sharedStore: root)
+    let host = NSHostingView(rootView: FloatingGlassPreferenceFixture(store: secondary))
+    host.frame = NSRect(x: 0, y: 0, width: 400, height: 100)
+    func views(_ view: NSView) -> [FloatingPanelGlassView] {
+        (view as? FloatingPanelGlassView).map { [$0] } ?? view.subviews.flatMap(views)
+    }
+    func settle() async throws {
+        for _ in 0..<5 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(20)) }
+    }
+    try await settle()
+    let panels = views(host).sorted { $0.convert($0.bounds, to: host).minX < $1.convert($1.bounds, to: host).minX }
+    try #require(panels.count == 2)
+    let media = panels[0], chat = panels[1]
+    #expect(media.style == .regular && chat.style == .regular)
+    root.floatingPanelGlass = GlassAppearance(clear: true, tint: .init(red: 1, green: 0, blue: 0), darkening: 0.2)
+    try await settle()
+    #expect(media.style == .clear && media.tintColor == root.floatingPanelGlass.tint?.nsColor)
+    #expect(chat.style == .clear && chat.tintColor == root.floatingPanelGlass.tint?.nsColor)
+    root.floatingPanelGlass = GlassAppearance(clear: true, tint: .init(red: 0, green: 0, blue: 1), darkening: 0.8)
+    try await settle()
+    #expect(chat.style == .clear && chat.tintColor == root.floatingPanelGlass.tint?.nsColor)
+    #expect(media.style == .clear && media.tintColor == chat.tintColor)
+    root.floatingPanelGlass = .floatingPanelDefault
+    try await settle()
+    #expect(views(host).contains { $0 === media } && views(host).contains { $0 === chat })
+    #expect(media.style == .regular && media.tintColor == nil)
+    #expect(chat.style == .regular && chat.tintColor == nil)
 }

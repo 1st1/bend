@@ -13,7 +13,7 @@ import WebKit
     windows.restore(show: false)
     let context = try #require(windows.active)
     let store = context.store
-    let tab = BrowserTab(pages: [Page(address: "browse://start"), Page(address: "browse://start")])
+    let tab = BrowserTab(pages: [Page(address: "bend://start"), Page(address: "bend://start")])
     store.session.workspaces = [Workspace(name: "Test", tabs: [tab])]
     store.session.selectedTab = tab.id
     let pages = tab.pages.map { store.controller(for: $0) }
@@ -185,6 +185,6 @@ import WebKit
     store.closePage(tab.pages[0].id)
     try await wait { firstFrontend.window == nil }
     context.window.makeKeyAndOrderFront(nil)
-    pages[1].navigate("browse://start")
+    pages[1].navigate("bend://start")
     #expect(!delegate.validateMenuItem(console))
 }

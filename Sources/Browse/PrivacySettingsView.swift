@@ -7,6 +7,7 @@ private typealias ViewState<Value> = SwiftUI.State<Value>
 struct PrivacySettingsView: View {
     @ObservedObject var settings: WebsiteSettingsStore
     let dataStore: WKWebsiteDataStore
+    let store: BrowserStore
     @ViewState private var showsWebsiteData = false
 
     var body: some View {
@@ -51,6 +52,7 @@ struct PrivacySettingsView: View {
                 Text("Controls WebKit’s Private Click Measurement. Turning this off does not block advertisements.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            ClearBrowserStateView(store: store)
             Section("Website data") {
                 Toggle("Block all cookies", isOn: preference(\.blockAllCookies))
                 Text("Websites may not work or let you sign in. Existing cookies are retained until you remove website data.")

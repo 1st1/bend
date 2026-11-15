@@ -135,11 +135,11 @@ import BrowseCore
     }
     let content = try #require(panel.contentView)
     let input = try #require(fields(content).first { $0.isEditable })
-    input.stringValue = "browse://guide"
+    input.stringValue = "bend://guide"
     #expect(input.sendAction(try #require(input.action), to: input.target))
     #expect(!panel.isVisible)
     #expect(store.selectedTab.id != original.id)
-    #expect(store.selectedTab.pages[0].address == "browse://guide")
+    #expect(store.selectedTab.pages[0].address == "bend://guide")
     #expect(store.selectedTab.pages[0].favoriteID == nil)
     #expect(store.favorites.count == 1)
     #expect(source.address == "http://127.0.0.1:9/inbox")

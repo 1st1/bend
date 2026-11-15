@@ -7,7 +7,7 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
 // @lat: [[lat.md/tests/history-tests#History recording]]
 @Test func historyRecording() throws {
     var history = BrowsingHistory()
-    let internalPage = history.record(url: "browse://history", title: "History")
+    let internalPage = history.record(url: "bend://history", title: "History")
     let localFile = history.record(url: "file:///tmp/private", title: "File")
     #expect(!internalPage)
     #expect(!localFile)

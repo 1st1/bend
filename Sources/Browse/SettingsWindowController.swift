@@ -7,12 +7,16 @@ private typealias ViewState<Value> = SwiftUI.State<Value>
 
 // @lat: [[lat.md/architecture/extensions/catalog#Extension settings]]
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     let window: NSWindow
     private let navigation = SettingsNavigation()
+    private var modalStart: Timer?
+    private var presentingModally = false
     init(store: BrowserStore) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 880, height: 680),
+        window = SettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 880, height: 680),
             styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        super.init()
+        window.delegate = self
         window.title = "\(AppProfile.current.name) Settings"
         window.titleVisibility = .hidden
         if #available(macOS 15.0, *) {
@@ -20,6 +24,9 @@ final class SettingsWindowController {
             window.titlebarSeparatorStyle = .none
         }
         window.isReleasedWhenClosed = false
+        window.collectionBehavior.insert(.fullScreenNone)
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
         window.toolbarStyle = .unified
         window.toolbar = NSToolbar(identifier: "BendSettingsTitlebar")
         window.setFrameAutosaveName(AppProfile.current.frameName("BrowseSettings"))
@@ -39,6 +46,7 @@ final class SettingsWindowController {
         window.maxSize = NSSize(width: 880, height: window.maxSize.height)
     }
     func show(section: SettingsSection? = nil, centeredOn screen: NSScreen? = nil) {
+        guard NSApp.modalWindow == nil || NSApp.modalWindow === window else { return }
         if let section { navigation.selection = section }
         let screen = screen ?? NSApp.keyWindow?.screen ?? NSScreen.main
         window.makeKeyAndOrderFront(nil)
@@ -51,6 +59,28 @@ final class SettingsWindowController {
             self.window.contentView?.layoutSubtreeIfNeeded()
             self.center(on: screen)
         }
+        guard !presentingModally, modalStart == nil else { return }
+        // Enter from a run-loop callback rather than a main-queue/actor job:
+        // the modal loop must remain able to service SwiftUI and async settings work.
+        let timer = Timer(timeInterval: 0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.modalStart = nil
+                guard self.window.isVisible, NSApp.modalWindow == nil else { return }
+                self.presentingModally = true
+                NSApp.runModal(for: self.window)
+                self.presentingModally = false
+                self.window.orderOut(nil)
+            }
+        }
+        modalStart = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        modalStart?.invalidate()
+        modalStart = nil
+        if NSApp.modalWindow === window { NSApp.stopModal() }
     }
 
     private func center(on screen: NSScreen?) {
@@ -64,9 +94,27 @@ final class SettingsWindowController {
     }
 }
 
+private final class SettingsWindow: NSWindow {
+    override func cancelOperation(_ sender: Any?) {
+        guard attachedSheet == nil else { return }
+        performClose(sender)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if attachedSheet == nil,
+           event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers?.lowercased() == "w" {
+            performClose(nil)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
 enum SettingsSection: String, CaseIterable, Identifiable {
     case ui = "UI"
     case search = "Search"
+    case ai = "AI"
     case websites = "Websites"
     case privacy = "Privacy"
     case extensions = "Extensions"
@@ -77,6 +125,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .ui: "slider.horizontal.3"
         case .search: "magnifyingglass"
+        case .ai: "sparkles"
         case .websites: "globe"
         case .privacy: "hand.raised.fill"
         case .extensions: "puzzlepiece.extension.fill"
@@ -87,6 +136,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .ui: .blue
         case .search: .orange
+        case .ai: .indigo
         case .websites: .teal
         case .privacy: .green
         case .extensions: .purple
@@ -133,10 +183,12 @@ struct BrowserSettingsView: View {
                     UISettingsView(store: store)
                 case .search:
                     SearchSettingsView(store: store)
+                case .ai:
+                    AISettingsView()
                 case .websites:
                     WebsiteSettingsView(settings: store.websiteSettings)
                 case .privacy:
-                    PrivacySettingsView(settings: store.websiteSettings, dataStore: store.websiteDataStore)
+                    PrivacySettingsView(settings: store.websiteSettings, dataStore: store.websiteDataStore, store: store)
                 case .extensions:
                     if #available(macOS 15.4, *) {
                         ExtensionSettingsView(manager: store.extensions)
@@ -274,6 +326,7 @@ private struct SettingsScrollEdge: ViewModifier {
 }
 
 private struct DevelopmentSettingsView: View {
+    @ObservedObject private var aiDebugging = AIDiagnostics.shared
     @AppStorage(InputDiagnostics.enabledPreferenceKey) private var loggingEnabled = false
 
     var body: some View {
@@ -284,6 +337,16 @@ private struct DevelopmentSettingsView: View {
                 Text("Diagnostics")
             } footer: {
                 Text("Records mouse event routing and pane activity in separate logs, each rotating at 500 KiB. Typed text and page content are excluded.")
+            }
+            Section {
+                Toggle("AI debugging", isOn: $aiDebugging.enabled)
+                HStack {
+                    Button("Show Logs in Finder") { aiDebugging.reveal() }
+                    Button("Clear AI Logs") { aiDebugging.clear() }
+                }
+                if let error = aiDebugging.error { Text(error).foregroundStyle(.orange) }
+            } footer: {
+                Text("Records local AI run, tool, and citation-routing events, including page URL paths and selectors. URL query values, credentials, prompts, and page text are excluded. Two rotating files retain up to 1 MiB. Nothing is uploaded. Enable, reproduce the issue, then open the logs.")
             }
         }
         .formStyle(.grouped)
@@ -447,6 +510,22 @@ private struct UISettingsView: View {
                 GlassSettingsSection(title: "Pane headers", appearance: $store.paneHeaderGlass, defaults: .headerDefault, allowsSolid: true,
                                      topRimClipping: $store.paneHeaderTopRimClipping,
                                      bottomRimClipping: $store.paneHeaderBottomRimClipping)
+                GlassSettingsSection(title: "Media player & AI chat input", appearance: $store.floatingPanelGlass, defaults: .floatingPanelDefault)
+            }
+            Section("AI chat bubbles") {
+                VStack(spacing: 10) {
+                    HStack {
+                        Text("Bubble transparency")
+                        Spacer()
+                        Text(store.aiBubbleTransparency, format: .percent.precision(.fractionLength(0)))
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    Slider(value: $store.aiBubbleTransparency, in: 0...1) {
+                        Text("AI bubble transparency")
+                    }.labelsHidden()
+                }
+                Button("Reset to Default") { store.aiBubbleTransparency = BrowserStore.defaultAIBubbleTransparency }
+                    .disabled(store.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
             }
         }.formStyle(.grouped)
     }
@@ -512,7 +591,7 @@ private struct GlassSettingsSection: View {
                 if let topRimClipping { rimClippingSlider("Top rim clipping", value: topRimClipping) }
                 if let bottomRimClipping { rimClippingSlider("Bottom rim clipping", value: bottomRimClipping) }
                 if topRimClipping != nil || bottomRimClipping != nil {
-                    Text("Higher values hide more of each glass rim. Zero restores it. Applies to pane and mini-player headers.")
+                    Text("Higher values hide more of each glass rim. Zero restores it. Applies to pane headers.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

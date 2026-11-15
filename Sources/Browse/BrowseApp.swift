@@ -244,6 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let tab = store.selectedTab
         let favorite = store.favorite(for: tab)
         return [
+            PopupCommand(id: "chat", title: "Chat", detail: store.isPrivate ? "Unavailable in private windows" : "Chat with the panes in this tab", icon: "bubble.left.and.bubble.right", isEnabled: !store.isPrivate) { store.showChat() },
             PopupCommand(id: "favorite", title: favorite == nil ? "Add Tab to Favorites" : "Remove Tab from Favorites",
                 detail: "Save the active pane’s website", icon: "star", isEnabled: favorite != nil || store.canFavorite(tab)) {
                     if let favorite { store.removeFavorite(favorite.id) } else { store.requestFavorite(tab.id) }
@@ -271,6 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             PopupCommand(id: "print", title: "Print…", detail: "Print the active page · ⌘P", icon: "printer",
                 isEnabled: printablePage != nil) { [weak self] in self?.printPage() },
             PopupCommand(id: "history", title: "View History", detail: "Browse visited pages · ⌘Y", icon: "clock") { [weak self] in self?.showHistory() },
+            PopupCommand(id: "chat-history", title: "Show AI Chat History", detail: "Restore conversations and their pane layouts", icon: "clock.arrow.circlepath", isEnabled: !store.isPrivate) { store.showChatHistory() },
             PopupCommand(id: "devTools", title: findSurface?.isDeveloperToolsVisible == true ? "Hide Developer Tools" : "Show Developer Tools",
                 detail: "Toggle dev tools / Web Inspector · ⇧⌘I", icon: "hammer", isEnabled: activeWebPage != nil) { [weak self] in self?.showWebInspector() }
         ]

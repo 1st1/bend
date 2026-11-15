@@ -50,9 +50,15 @@ Background drag gestures cross the native titlebar drag threshold before asserti
 
 ## Pane transfer round trips
 
-[PaneTransferTests.swift](../../Tests/BrowseTests/PaneTransferTests.swift) moves the same live pane between two surviving tabs 24 times per layout, using normal and scrolling layouts to check the third drag and later round trips.
+[[Tests/BrowseTests/PaneTransferTests.swift#paneTransferRoundTrips]] moves the same live pane between two surviving tabs 24 times in a roomy layout, checking the third drag and later round trips.
 
-The first twenty transfers in each layout hover to select the destination before dropping onto a pane; the remainder drop directly onto the tab row. Each press must reach exactly one visible handle with current tab ownership. AppKit must receive every mouse event through the same window-owned target across transfers, and the window must return to idle after release. Synthetic window events verify retained page controllers, document tokens, unsaved form contents, and unique model ownership while both tab trees remain mounted. Document tokens are injected after navigation and must survive every move; wall-clock-derived performance timestamps are not identity checks.
+The first twenty transfers hover to select the destination before dropping onto a pane; the remainder drop directly onto the tab row. Each press must reach exactly one visible handle with current tab ownership. AppKit must receive every mouse event through the same window-owned target across transfers, and the window must return to idle after release. Synthetic window events verify retained page controllers, document tokens, unsaved form contents, and unique model ownership while both tab trees remain mounted. Document tokens are injected after navigation and must survive every move; wall-clock-derived performance timestamps are not identity checks.
+
+## Crowded pane transfer round trips
+
+[[Tests/BrowseTests/PaneTransferTests.swift#crowdedPaneTransferRoundTrips]] repeats the 24-transfer lifecycle in an overflowing layout, verifying hidden handles reject input and become draggable after widening the window.
+
+Both layouts use [[Tests/BrowseTests/PaneTransferTests.swift#checkPaneTransferRoundTrips]] and retain the same document, ownership, hit-testing, and event-routing assertions. Separate test functions give each layout a fresh AppKit process and its own timeout in [[scripts/test-all.py]], avoiding accumulated animation state and a combined stress-test time budget.
 
 ## Joining tab layouts
 

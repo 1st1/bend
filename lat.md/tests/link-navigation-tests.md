@@ -24,7 +24,7 @@ Opening a link splits its source pane to the right even when another pane is foc
 
 [LinkNavigationTests.swift](../../Tests/BrowseTests/LinkNavigationTests.swift) verifies live Command-click destination changes on an existing controller, adjacent placement, source preservation, ordinary new-window behavior, and main-frame opener tracking.
 
-Link-created tabs insert immediately after the active tab, ahead of existing later tabs, for both Command-click and ordinary new-window links.
+Link-created tabs insert immediately after the active tab, ahead of existing later tabs, for both Command-click and ordinary new-window links, without changing selection.
 
 ## Dedicated Command-click pane
 
@@ -81,3 +81,7 @@ Open Link in New Tab is first, followed by New Pane and New Window. URLs retain 
 [[Tests/BrowseTests/LinkNavigationTests.swift#dedicatedPaneWindowRestoration]] verifies duplicated tabs retain their reusable Command-click destination through full window shutdown and restoration in both main and secondary windows.
 
 The copied destination has a fresh pane identity. After restoring, the next Command-click reuses that pane without increasing the pane count, and the shared dedicated-pane preference remains active.
+
+## Return to origin tab
+
+[[Tests/BrowseTests/TabOriginTests.swift#closingLinkTabReturnsToOrigin]] verifies iframe context-menu origins, nested link tabs, persisted origin metadata, background opening and closure, and fallback after the origin closes.

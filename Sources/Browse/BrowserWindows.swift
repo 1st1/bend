@@ -16,6 +16,7 @@ final class BrowserWindows {
         self.root = root ?? AppProfile.current.supportDirectory
         sharedStore = BrowserStore(sessionFile: self.root.appendingPathComponent("session.json"),
                                    persistentExtensions: persistentExtensions)
+        sharedStore.onCloseAllWindows = { [weak self] in try self?.closeAllForPrivacy() }
     }
 
     var active: BrowserWindowSession? {
@@ -48,7 +49,7 @@ final class BrowserWindows {
         return result
     }
 
-    private func create(id: String, fresh: Bool, show: Bool, isPrivate: Bool = false, address: String = "browse://start") -> BrowserWindowSession {
+    private func create(id: String, fresh: Bool, show: Bool, isPrivate: Bool = false, address: String = "bend://start") -> BrowserWindowSession {
         let store = id == "main" ? sharedStore : BrowserStore(
             sessionFile: root.appendingPathComponent("Windows/\(id).json"), sharedStore: sharedStore, isPrivate: isPrivate)
         if fresh {
@@ -130,6 +131,22 @@ final class BrowserWindows {
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             try JSONEncoder().encode(restorable.map(\.id)).write(to: root.appendingPathComponent("windows.json"), options: .atomic)
         } catch { sharedStore.persistenceError = "Open windows could not be saved: \(error.localizedDescription)" }
+    }
+
+    // @lat: [[lat.md/architecture/privacy#Closing all browsing windows]]
+    func closeAllForPrivacy() throws {
+        let closing = windows
+        for context in closing {
+            context.addressPanel.dismiss(restoreFocus: false)
+            context.store.clearOpenTabsForPrivacy()
+            context.window.close()
+        }
+        // The retained root may belong to a window closed earlier. Clear its fallback
+        // session too, otherwise an empty window manifest would restore those old tabs.
+        sharedStore.clearOpenTabsForPrivacy()
+        if let error = sharedStore.persistenceError { throw NSError(domain: "BendPrivacy", code: 1, userInfo: [NSLocalizedDescriptionKey: error]) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try JSONEncoder().encode(["main"]).write(to: root.appendingPathComponent("windows.json"), options: .atomic)
     }
 
     func prepareToQuit() { terminating = true; sharedStore.downloads.shutdown(); save() }

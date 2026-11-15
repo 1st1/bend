@@ -1159,7 +1159,7 @@ private struct WasmRestartProfile: Codable {
         try await Task.sleep(for: .milliseconds(50))
     }
     #expect(store.session.workspaces.flatMap(\.tabs).count == tabCount + 1)
-    #expect(store.selectedTab.pages[0].address == "browse://start")
+    #expect(store.selectedTab.pages[0].address == "bend://start")
     #expect(context.errors.isEmpty, "\(context.errors.map(\.localizedDescription))")
     try await manager.enable(false, id: id) { _, _ in true }
 }

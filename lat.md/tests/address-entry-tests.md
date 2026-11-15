@@ -45,3 +45,7 @@ The native-view regression covers separate left/right targets, result growth and
 ## Custom search templates
 
 [[Tests/BrowseCoreTests/SessionTests.swift#customSearchTemplates]] verifies template validation, path/query substitution, preserved fixed parameters, Unicode and punctuation encoding, and rejection of invalid configurations without sending searches to another engine.
+
+## Legacy internal addresses
+
+[[Tests/BrowseCoreTests/SessionTests.swift#legacyInternalAddresses]] verifies saved native page addresses and pinned destinations migrate from browse to bend while preserving identity and re-encoding canonical URLs.

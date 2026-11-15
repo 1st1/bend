@@ -26,3 +26,6 @@ Bend is a native macOS prototype combining SwiftUI browser chrome, AppKit window
 - [[commands|Command panel]] — Command discovery, validation, and execution in the command popup.
 - [[link-navigation|Link navigation]] — Modified clicks, link context menus, and destination previews.
 - [[extensions|Extensions]] — Lifecycle, compatibility, catalog, diagnostics, and updates.
+- [[ai|Native AI chat]] — Tab-scoped conversations, Gateway authentication, and pane tools.
+
+The [[lat.md/ai-sdk/ai-sdk|AI SDK]] covers owned provider protocols, streaming, tool execution, and agent orchestration.

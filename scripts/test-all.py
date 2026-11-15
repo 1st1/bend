@@ -33,22 +33,23 @@ def main(command):
         return listing.returncode
     names = [line.strip() for line in listing.stdout.splitlines() if line.strip()]
     if not names or len(set(names)) != len(names) or any(
-            not re.fullmatch(r"Browse(?:Core)?Tests[./].+\(.*\)", name) for name in names):
+            not re.fullmatch(r"(?:Browse(?:Core)?Tests|AITests)[./].+\(.*\)", name) for name in names):
         sys.stderr.write("Unrecognized or empty test inventory:\n" + listing.stdout)
         return 1
     core = [name for name in names if name.startswith(("BrowseCoreTests.", "BrowseCoreTests/"))]
+    sdk = [name for name in names if name.startswith(("AITests.", "AITests/"))]
     native = [name for name in names if name.startswith(("BrowseTests.", "BrowseTests/"))]
     # SwiftPM's execution filters omit the module prefix shown by `list`.
     # Match function boundaries, and reject ambiguous inventory names.
     functions = {name: name.rsplit("/", 1)[-1].rsplit(".", 1)[-1].split("(", 1)[0] for name in names}
-    if len(set(functions.values())) != len(names) or len(core) + len(native) != len(names):
+    if len(set(functions.values())) != len(names) or len(core) + len(sdk) + len(native) != len(names):
         sys.stderr.write("Ambiguous test inventory; cannot guarantee complete isolated execution.\n")
         return 1
-    groups = ([core] if core else []) + [[name] for name in native]
+    groups = ([core] if core else []) + ([sdk] if sdk else []) + [[name] for name in native]
     failures = []
     print(f"Discovered {len(names)} tests; running {len(native)} native tests in separate processes.", flush=True)
     for index, group in enumerate(groups, 1):
-        label = group[0] if len(group) == 1 else f"{len(group)} core tests"
+        label = group[0] if len(group) == 1 else f"{len(group)} model/SDK tests"
         print(f"\n[{index}/{len(groups)}] {label}", flush=True)
         pattern = r"(^|[./])(?:" + "|".join(re.escape(functions[name]) for name in group) + r")(\(|$)"
         code, output = run(command + ["--skip-build", "--filter", pattern])

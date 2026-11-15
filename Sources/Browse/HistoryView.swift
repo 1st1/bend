@@ -40,6 +40,7 @@ struct HistoryView: View {
             if days.isEmpty {
                 ContentUnavailableView(query.isEmpty ? "No history yet" : "No matching pages", systemImage: "clock",
                     description: Text(query.isEmpty ? "Pages you visit will appear here." : "Try a page title or part of its address."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {

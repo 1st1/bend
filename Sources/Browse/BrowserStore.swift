@@ -6,7 +6,29 @@ import WebKitFindSupport
 
 @MainActor
 final class BrowserStore: ObservableObject {
-    @Published var session: BrowserSession
+    @Published var session: BrowserSession {
+        didSet { pruneChats() }
+    }
+    @Published var chats: [UUID: TabChat] = [:]
+    // Session observers can prune chats midway through a tab mutation. Only queue
+    // persistence here; extension synchronization requires the completed layout.
+    @Published var openChats: Set<UUID> = [] { didSet { if !windowStopped { scheduleSessionSave() } } }
+    let chatHistory: ChatHistoryStore
+
+    func showChat() {
+        guard !isPrivate else { return }
+        let id = selectedTab.id
+        if chats[id] == nil { chats[id] = TabChat(store: self, tabID: id) }
+        openChats.insert(id)
+    }
+
+    private func pruneChats() {
+        let ids = Set(session.workspaces.flatMap(\.tabs).map(\.id))
+        for id in Array(chats.keys) where !ids.contains(id) {
+            chats.removeValue(forKey: id)?.stop()
+            openChats.remove(id)
+        }
+    }
     @Published var favoriteCustomization: FavoriteCustomizationRequest?
     @Published var sidebarVisible = true {
         didSet { if sidebarVisible { sidebarFloating = false } }
@@ -19,6 +41,7 @@ final class BrowserStore: ObservableObject {
     let downloads: BrowserDownloads
     @Published private(set) var paneMoveRevision = 0
     var onAddressRequested: ((UUID) -> Void)?
+    var onCloseAllWindows: (() throws -> Void)?
     var onSettingsRequested: ((SettingsSection) -> Void)?
     var onEmptiedByTransfer: ((BrowserStore) -> Void)?
     var onNewWindowDrop: ((UUID, UUID?, NSPoint) -> Bool)?
@@ -100,6 +123,7 @@ final class BrowserStore: ObservableObject {
         self.persistentExtensions = sharedStore?.persistentExtensions ?? persistentExtensions
         let root = AppProfile.current.supportDirectory
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
+        chatHistory = isPrivate ? ChatHistoryStore(directory: nil) : (sharedStore?.chatHistory ?? ChatHistoryStore(directory: self.sessionFile.deletingLastPathComponent().appendingPathComponent("AIChats")))
         faviconCache = isPrivate ? nil : (sharedStore?.faviconCache ?? FaviconCache(
             file: self.sessionFile.deletingLastPathComponent().appendingPathComponent("Favicons.json")))
         if isPrivate {
@@ -117,6 +141,14 @@ final class BrowserStore: ObservableObject {
            let restored = try? JSONDecoder().decode(BrowserSession.self, from: data), restored.isValid {
             session = restored
         } else { session = BrowserSession() }
+        for wi in session.workspaces.indices {
+            for ti in session.workspaces[wi].tabs.indices where session.workspaces[wi].tabs[ti].title == "New tab" {
+                if let address = session.workspaces[wi].tabs[ti].pages.first?.address,
+                   address != "bend://start", let title = AddressResolver.nativePageTitle(address) {
+                    session.workspaces[wi].tabs[ti].title = title
+                }
+            }
+        }
         if let favorites = session.favorites { session.favorites = SidebarFavorite.validated(favorites) }
         // Google account numbers in visited URLs depend on sign-in order. Restore
         // account-specific favorites through their saved email hint instead.
@@ -151,6 +183,18 @@ final class BrowserStore: ObservableObject {
             } catch {
                 historyWritable = false
                 historyError = "Saved history could not be read. Clear history to reset it."
+            }
+        }
+        if !isPrivate {
+            for tab in session.workspaces.flatMap(\.tabs) {
+                if let id = session.activeChatIDs?[tab.id], let record = chatHistory.records.first(where: { $0.id == id }) {
+                    let chat = TabChat(store: self, tabID: tab.id)
+                    chat.restore(record); chats[tab.id] = chat
+                }
+                if session.openChatTabs?.contains(tab.id) == true {
+                    if chats[tab.id] == nil { chats[tab.id] = TabChat(store: self, tabID: tab.id) }
+                    openChats.insert(tab.id)
+                }
             }
         }
         if sharedStore == nil { downloads.directory = downloadDirectory }
@@ -279,6 +323,20 @@ final class BrowserStore: ObservableObject {
     static let defaultSidebarWidth: CGFloat = 250
     static let sidebarWidthRange: ClosedRange<CGFloat> = 200...400
 
+    static let defaultChatWidth: CGFloat = 360
+    static let chatWidthRange = sidebarWidthRange.lowerBound...(sidebarWidthRange.upperBound * 1.5)
+    var chatWidth: CGFloat {
+        let width = session.chatWidth.map { CGFloat($0) } ?? Self.defaultChatWidth
+        return width.isFinite ? min(Self.chatWidthRange.upperBound, max(Self.chatWidthRange.lowerBound, width)) : Self.defaultChatWidth
+    }
+    func resizeChat(to width: CGFloat) {
+        guard width.isFinite else { return }
+        let clamped = min(Self.chatWidthRange.upperBound, max(Self.chatWidthRange.lowerBound, width))
+        guard clamped != chatWidth else { return }
+        session.chatWidth = clamped
+        scheduleSessionSave()
+    }
+
     var sidebarWidth: CGFloat {
         let width = session.sidebarWidth.map { CGFloat($0) } ?? Self.defaultSidebarWidth
         return width.isFinite ? min(Self.sidebarWidthRange.upperBound, max(Self.sidebarWidthRange.lowerBound, width)) : Self.defaultSidebarWidth
@@ -292,6 +350,38 @@ final class BrowserStore: ObservableObject {
     var paneHeaderGlass: GlassAppearance {
         get { if let sharedStore { return sharedStore.paneHeaderGlass }; return (session.paneHeaderGlass ?? .headerDefault).normalized(defaultDarkening: 0.5) }
         set { if let sharedStore { sharedStore.paneHeaderGlass = newValue; return }; session.paneHeaderGlass = newValue.normalized(defaultDarkening: 0.5); saveSoon() }
+    }
+
+    static let defaultAIBubbleTransparency = 0.94
+    var aiBubbleTransparency: Double {
+        get {
+            if let sharedStore { return sharedStore.aiBubbleTransparency }
+            let value = session.aiBubbleTransparency ?? Self.defaultAIBubbleTransparency
+            return value.isFinite ? min(1, max(0, value)) : Self.defaultAIBubbleTransparency
+        }
+        set {
+            guard newValue.isFinite else { return }
+            if let sharedStore { sharedStore.aiBubbleTransparency = newValue; return }
+            session.aiBubbleTransparency = min(1, max(0, newValue))
+            saveSoon()
+        }
+    }
+
+    var floatingPanelGlass: GlassAppearance {
+        get {
+            if let sharedStore { return sharedStore.floatingPanelGlass }
+            return (session.floatingPanelGlass ?? session.chatComposerGlass ?? session.mediaPlayerGlass ?? .floatingPanelDefault)
+                .normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening)
+        }
+        set {
+            if let sharedStore { sharedStore.floatingPanelGlass = newValue; return }
+            var updated = session
+            updated.floatingPanelGlass = newValue.normalized(defaultDarkening: GlassAppearance.floatingPanelDefault.darkening)
+            updated.chatComposerGlass = nil
+            updated.mediaPlayerGlass = nil
+            session = updated
+            saveSoon()
+        }
     }
 
     static let defaultHeaderTopRimClipping: Double = 0.5
@@ -434,6 +524,25 @@ final class BrowserStore: ObservableObject {
         return true
     }
 
+    func separatePanes(_ ids: [UUID], from tabID: UUID) {
+        guard let workspace = session.workspaces.first(where: { $0.tabs.contains { $0.id == tabID } }) else { return }
+        var next = session
+        var firstDestination: UUID?
+        for id in ids {
+            let title = browsers[id]?.title ?? "New tab"
+            if let destination = next.detachPane(id, from: tabID, into: workspace.id, title: title) {
+                if firstDestination == nil { firstDestination = destination }
+            }
+        }
+        guard let firstDestination else { return }
+        next.selectedTab = firstDestination
+        refreshTransferredTitles(&next)
+        zoomedPane = nil
+        session = next
+        paneMoveRevision += 1
+        saveSoon()
+    }
+
     @discardableResult
     func detachPane(_ source: UUID, from sourceTabID: UUID, into workspaceID: UUID) -> Bool {
         var next = session
@@ -497,12 +606,17 @@ final class BrowserStore: ObservableObject {
         focus(id); zoomedPane = zoomedPane == id ? nil : id
     }
 
-    func newTab(in workspace: UUID? = nil, address: String = "browse://start", linkOpener: UUID? = nil,
+    func newTab(in workspace: UUID? = nil, address: String = "bend://start", linkOpener: UUID? = nil, originPageID: UUID? = nil,
                 closeIfDownload: Bool = false, afterCurrent: Bool = false, inBackground: Bool = false) {
+        let address = AddressResolver.canonicalAddress(address)
         let previousTabID = session.selectedTab, previousZoom = zoomedPane
         let index = session.workspaces.firstIndex { $0.id == workspace }
             ?? session.workspaces.firstIndex { $0.tabs.contains { $0.id == session.selectedTab } } ?? 0
-        let tab = BrowserTab(title: address == "browse://history" ? "History" : "New tab", pages: [Page(address: address)])
+        let title = address == "bend://start" ? "New tab" : AddressResolver.nativePageTitle(address) ?? "New tab"
+        var tab = BrowserTab(title: title, pages: [Page(address: address)])
+        if let source = originPageID ?? linkOpener {
+            tab.originTabID = session.workspaces.flatMap(\.tabs).first { $0.pages.contains { $0.id == source } }?.id
+        }
         if let linkOpener { linkOpeners[tab.pages[0].id] = linkOpener }
         let insertion = afterCurrent ? session.workspaces[index].tabs.firstIndex { $0.id == previousTabID }.map { $0 + 1 } : nil
         session.workspaces[index].tabs.insert(tab, at: insertion ?? session.workspaces[index].tabs.count)
@@ -510,9 +624,9 @@ final class BrowserStore: ObservableObject {
             saveSoon()
         } else {
             select(tab.id)
-            pendingAddressEntry = address == "browse://start" ? PendingAddressEntry(tabID: tab.id, paneID: tab.pages[0].id,
+            pendingAddressEntry = address == "bend://start" ? PendingAddressEntry(tabID: tab.id, paneID: tab.pages[0].id,
                 kind: .tab(previousTabID: previousTabID), previousZoom: previousZoom) : nil
-            if address == "browse://start" { requestAddress() }
+            if address == "bend://start" { requestAddress() }
         }
         // Background tabs have no mounted view yet, but should start loading now.
         if inBackground { _ = controller(for: tab.pages[0]) }
@@ -575,8 +689,8 @@ final class BrowserStore: ObservableObject {
               let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == pending.tabID } }),
               let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == pending.tabID }) else { return false }
         let tab = session.workspaces[wi].tabs[ti]
-        guard let page = tab.pages.first(where: { $0.id == paneID }), !page.isPinned, page.address == "browse://start",
-              (browsers[paneID]?.address ?? "browse://start") == "browse://start" else { return false }
+        guard let page = tab.pages.first(where: { $0.id == paneID }), !page.isPinned, page.address == "bend://start",
+              (browsers[paneID]?.address ?? "bend://start") == "bend://start" else { return false }
         switch pending.kind {
         case .tab:
             guard tab.pages.count == 1, session.workspaces[wi].tabs.count > 1 else { return false }
@@ -606,12 +720,12 @@ final class BrowserStore: ObservableObject {
 
     func showHistory() {
         for workspace in session.workspaces {
-            if let tab = workspace.tabs.first(where: { $0.pages.contains { $0.address == "browse://history" } }),
-               let page = tab.pages.first(where: { $0.address == "browse://history" }) {
+            if let tab = workspace.tabs.first(where: { $0.pages.contains { $0.address == "bend://history" } }),
+               let page = tab.pages.first(where: { $0.address == "bend://history" }) {
                 select(tab.id); focus(page.id); return
             }
         }
-        newTab(address: "browse://history")
+        newTab(address: "bend://history")
     }
 
     func recordVisit(url: String, title: String, at date: Date = Date()) {
@@ -632,6 +746,14 @@ final class BrowserStore: ObservableObject {
         history.remove(url: url)
         historyDirty = true
         saveHistory()
+    }
+
+    func clearHistory(since cutoff: Date) {
+        if historyOwner !== self { historyOwner.clearHistory(since: cutoff); return }
+        if cutoff == .distantPast { clearHistory(); return }
+        guard historyWritable else { historyError = "Saved history cannot be read. Choose All to reset it."; return }
+        history.clear(since: cutoff)
+        historyDirty = true; saveHistory()
     }
 
     func clearHistory() {
@@ -736,7 +858,12 @@ final class BrowserStore: ObservableObject {
             if needsReplacement { session.workspaces[wi].tabs.append(BrowserTab()) }
             rememberClosed(.init(tab: closed, workspaceID: session.workspaces[wi].id, tabIndex: ti, paneID: nil,
                 replacementID: needsReplacement ? session.workspaces[wi].tabs[0].id : nil))
-            if session.selectedTab == id { select(session.workspaces[wi].tabs[min(ti, session.workspaces[wi].tabs.count - 1)].id) }
+            if session.selectedTab == id {
+                let origin = closed.originTabID.flatMap { origin in
+                    session.workspaces.flatMap(\.tabs).first { $0.id == origin }?.id
+                }
+                select(origin ?? session.workspaces[wi].tabs[min(ti, session.workspaces[wi].tabs.count - 1)].id)
+            }
             if needsReplacement && session.selectedTab == session.workspaces[wi].tabs[0].id { requestAddress() }
             saveSoon(); return
         }
@@ -747,7 +874,7 @@ final class BrowserStore: ObservableObject {
         closePage(id)
     }
 
-    private func snapshot(_ tab: BrowserTab) -> BrowserTab {
+    func snapshot(_ tab: BrowserTab) -> BrowserTab {
         var result = tab
         for index in result.pages.indices {
             if let controller = browsers[result.pages[index].id] { result.pages[index].address = controller.address }
@@ -784,8 +911,8 @@ final class BrowserStore: ObservableObject {
             if let replacementID = item.replacementID,
                let index = session.workspaces[wi].tabs.firstIndex(where: { $0.id == replacementID }) {
                 let replacement = session.workspaces[wi].tabs[index]
-                if !replacement.isPinned, replacement.pages.count == 1, replacement.pages[0].address == "browse://start",
-                   (browsers[replacement.pages[0].id]?.address ?? "browse://start") == "browse://start" {
+                if !replacement.isPinned, replacement.pages.count == 1, replacement.pages[0].address == "bend://start",
+                   (browsers[replacement.pages[0].id]?.address ?? "bend://start") == "bend://start" {
                     removeController(replacement.pages[0].id)
                     session.workspaces[wi].tabs.remove(at: index)
                 }
@@ -823,7 +950,7 @@ final class BrowserStore: ObservableObject {
         let extensionURL = URL(string: page.address).flatMap {
             ["webkit-extension", "safari-web-extension"].contains($0.scheme ?? "") ? $0 : nil
         }
-        let controller = PageController(address: extensionURL == nil ? page.address : "browse://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, downloads: downloads, searchEngine: searchEngine, customSearchEngine: customSearchEngine, configure: { [weak self] configuration in
+        let controller = PageController(address: extensionURL == nil ? page.address : "bend://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, downloads: downloads, searchEngine: searchEngine, customSearchEngine: customSearchEngine, configure: { [weak self] configuration in
             self?.configureWebView(configuration)
         })
         bindController(controller, to: page)
@@ -837,7 +964,7 @@ final class BrowserStore: ObservableObject {
             Task { [weak controller] in
                 await manager.restorationTask?.value
                 guard let controller, manager.store(for: page.id)?.existingController(for: page.id) === controller,
-                      controller.address == "browse://start" else { return }
+                      controller.address == "bend://start" else { return }
                 let extensionURL = manager.restoredExtensionURL(extensionURL)
                 guard let context = manager.controller.extensionContext(for: extensionURL), context.isLoaded,
                       let configuration = manager.store(for: page.id)?.extensionConfiguration(for: context) else {
@@ -883,14 +1010,14 @@ final class BrowserStore: ObservableObject {
                 }
             }
         }
-        controller.onNewTab = { [weak self] address in self?.newTab(address: address, afterCurrent: true) }
+        controller.onNewTab = { [weak self] address in self?.newTab(address: address, originPageID: page.id, afterCurrent: true, inBackground: true) }
         controller.onNewPane = { [weak self] address in self?.openPane(address: address, toRightOf: page.id) }
         controller.onNewLink = { [weak self] address, adjacent, mainFrame in
             guard let self else { return }
             switch adjacent ? self.commandClickDestination : .newTab {
             case .newPane: self.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame)
             case .dedicatedPane: self.openInDedicatedPane(address: address, from: page.id, fromMainFrame: mainFrame)
-            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, closeIfDownload: true, afterCurrent: true)
+            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, originPageID: page.id, closeIfDownload: true, afterCurrent: true, inBackground: true)
             }
         }
         controller.onCommandShiftLink = { [weak self] address, mainFrame in
@@ -902,7 +1029,7 @@ final class BrowserStore: ObservableObject {
             self.openLink(address, from: page.id, mainFrame: mainFrame, destination: self.optionClickDestination)
         }
         controller.onOpenLink = { [weak self] address, mainFrame, destination in
-            self?.openLink(address, from: page.id, mainFrame: mainFrame, destination: destination, inBackground: true)
+            self?.openLink(address, from: page.id, mainFrame: mainFrame, destination: destination)
         }
         controller.onFocus = { [weak self] in self?.focus(page.id) }
         controller.onVisit = { [weak self] url, title in self?.recordVisit(url: url, title: title) }
@@ -914,12 +1041,11 @@ final class BrowserStore: ObservableObject {
         }
     }
 
-    private func openLink(_ address: String, from pageID: UUID, mainFrame: Bool, destination: LinkOpenDestination,
-                          inBackground: Bool = false) {
+    private func openLink(_ address: String, from pageID: UUID, mainFrame: Bool, destination: LinkOpenDestination) {
         switch destination {
         case .newTab:
-            newTab(address: address, linkOpener: mainFrame ? pageID : nil, closeIfDownload: true, afterCurrent: true,
-                   inBackground: inBackground)
+            newTab(address: address, linkOpener: mainFrame ? pageID : nil, originPageID: pageID, closeIfDownload: true, afterCurrent: true,
+                   inBackground: true)
         case .newPane:
             openPane(address: address, toRightOf: pageID, fromMainFrame: mainFrame)
         case .newWindow:
@@ -969,8 +1095,8 @@ final class BrowserStore: ObservableObject {
         case .emptyWindow:
             guard nextDestination.workspaces.count == 1, nextDestination.workspaces[0].tabs.count == 1,
                   let blank = nextDestination.workspaces[0].tabs.first, !blank.isPinned,
-                  blank.pages.count == 1, blank.pages[0].address == "browse://start",
-                  (destination.browsers[blank.pages[0].id]?.address ?? "browse://start") == "browse://start" else { return false }
+                  blank.pages.count == 1, blank.pages[0].address == "bend://start",
+                  (destination.browsers[blank.pages[0].id]?.address ?? "bend://start") == "bend://start" else { return false }
             replacedPages = blank.pages.map(\.id)
             nextDestination.workspaces[0].tabs = [incoming]
             nextDestination.selectedTab = incoming.id
@@ -1033,10 +1159,26 @@ final class BrowserStore: ObservableObject {
         return true
     }
 
+    func clearOpenTabsForPrivacy() {
+        // Explicit privacy clearing includes pinned panes and must not populate Reopen Closed Tab.
+        for chat in chats.values { chat.stop() }
+        chats.removeAll(); openChats.removeAll()
+        let tab = BrowserTab()
+        var cleared = session
+        cleared.workspaces = [Workspace(name: "Tabs", tabs: [tab])]
+        cleared.selectedTab = tab.id
+        cleared.openChatTabs = []; cleared.activeChatIDs = [:]
+        session = cleared
+        closedItems.removeAll(); pendingAddressEntry = nil; linkOpeners.removeAll(); zoomedPane = nil
+        save()
+    }
+
     func stopWindow() {
-        windowStopped = true
+        for chat in chats.values { chat.stop() }
         mediaCoordinator.removeAll()
         save()
+        windowStopped = true
+        chats.removeAll(); openChats.removeAll()
         pendingSave?.cancel(); pendingSave = nil
         for page in browsers.values {
             page.webView.closeInspector()
@@ -1095,6 +1237,10 @@ final class BrowserStore: ObservableObject {
         let pageIDs = Set(session.workspaces.flatMap(\.tabs).flatMap(\.pages).map(\.id))
         linkOpeners = linkOpeners.filter { pageIDs.contains($0.key) && pageIDs.contains($0.value) }
         if #available(macOS 15.4, *), let manager = extensionStorage as? ExtensionManager { manager.synchronizeTabs() }
+        scheduleSessionSave()
+    }
+
+    private func scheduleSessionSave() {
         guard !isPrivate else { return }
         pendingSave?.cancel()
         pendingSave = Task { [weak self] in
@@ -1108,7 +1254,14 @@ final class BrowserStore: ObservableObject {
         faviconCache?.flush()
         do {
             try FileManager.default.createDirectory(at: sessionFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(session).write(to: sessionFile, options: .atomic)
+            for chat in chats.values { chat.persist() }
+            var saved = session
+            if !windowStopped {
+                saved.openChatTabs = Array(openChats)
+                saved.activeChatIDs = chats.mapValues(\.conversationID)
+                session = saved
+            }
+            try JSONEncoder().encode(saved).write(to: sessionFile, options: .atomic)
             persistenceError = nil
         } catch { persistenceError = "Session could not be saved: \(error.localizedDescription)" }
         saveHistory()
@@ -1232,6 +1385,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     let downloads: BrowserDownloads
     let media = PageMediaController()
     @Published private(set) var webView: FocusWebView
+    private(set) var aiNavigationRevision = UUID()
     var configure: (WKWebViewConfiguration) -> Void
     private var extensionOrigin: URL?
     @Published var address: String
@@ -1390,7 +1544,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
 
     func unloadExtension(at origin: URL) {
         guard extensionOrigin?.scheme == origin.scheme, extensionOrigin?.host == origin.host else { return }
-        navigate("browse://start")
+        navigate("bend://start")
         error = "This extension page is unavailable. Enable its extension in Settings."
     }
 
@@ -1411,13 +1565,14 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     private func load(_ url: URL) {
+        aiNavigationRevision = UUID()
         javaScriptDialogs.cancel(for: webView)
         webView.clearURLPreview()
-        InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "browse"])
+        InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "bend"])
         resetFavicon(for: url)
         error = nil; address = url.absoluteString
         completedAddress = nil
-        isStartPage = url.scheme == "browse"
+        isStartPage = url.scheme == "bend"
         localDocumentDirectory = url.isFileURL ? url.deletingLastPathComponent() : nil
         // A reused view still displays the outgoing document until commit.
         // Only a fresh view (or native internal page) can take the target zoom now.
@@ -1429,7 +1584,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
                 media.detach()
                 webView.pauseAllMediaPlayback(completionHandler: nil)
             }
-            title = address == "browse://history" ? "History" : (address == "browse://guide" ? "Tiling guide" : "New tab")
+            title = address == "bend://chats" ? "AI Chat History" : address == "bend://history" ? "History" : (address == "bend://guide" ? "Tiling guide" : "New tab")
             reportNavigation()
         } else {
             if webView.mediaController == nil { media.attach(to: webView) }
@@ -1477,6 +1632,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        aiNavigationRevision = UUID()
         javaScriptDialogs.cancel(for: webView)
         (webView as? FocusWebView)?.clearURLPreview()
         (webView.superview as? WebSurfaceHost)?.hideFindBar(restoreFocus: false)
@@ -1489,6 +1645,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         resetFavicon(for: webView.url)
     }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        aiNavigationRevision = UUID()
         onInitialDownload = nil
         discardFavicon(ifLeaving: webView.url)
         javaScriptDialogs.didCommitNavigation(in: webView)

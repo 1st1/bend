@@ -40,4 +40,10 @@ Both sidebar positions are covered. Disabling animations applies the final layou
 
 [[Tests/BrowseTests/SidebarScrollStatusTests.swift#sidebarOverflowCounts]] verifies counts of fully hidden tabs above and below the sidebar viewport, excluding partially visible rows even at fractional scroll positions.
 
-Coverage includes exact row boundaries, the favorites inset, resizing, insertion and removal, overscroll, empty lists, and unmeasured viewports. The top fade remains absent at the start and reaches its maximum after scrolling.
+Coverage includes exact row boundaries, the favorites inset, resizing, insertion and removal, overscroll, empty lists, and unmeasured viewports. Counts account for the fixed toolbar and floating media player covering the scroll viewport.
+
+## Sidebar toolbar fade
+
+[[Tests/BrowseTests/SidebarScrollStatusTests.swift#sidebarToolbarFade]] checks that the tab viewport extends beneath the toolbar on both sides in docked and floating modes, with initial clearance keeping the first row below the fade.
+
+Scrolling moves rows through the toolbar area. Adding favorites preserves the viewport and increases the first-row clearance for the fixed grid. Existing floating-sidebar interaction tests cover toolbar and tab click routing.

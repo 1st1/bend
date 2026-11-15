@@ -249,7 +249,7 @@ import WebKit
     for (index, visible) in [true, false, false, false, true].enumerated() {
         store.sidebarVisible = visible
         if index == 2 { store.toggleZoom(store.selectedTab.pages.last!.id) }
-        if index == 3 { store.newTab(address: "browse://guide") }
+        if index == 3 { store.newTab(address: "bend://guide") }
         for _ in 0..<6 {
             context.window.contentView?.layoutSubtreeIfNeeded()
             try await Task.sleep(for: .milliseconds(40))
@@ -315,7 +315,7 @@ import WebKit
     }
     // A later selection must not be stolen when the download tab disappears.
     source.onNewLink?(server.url("/slow").absoluteString, false, true)
-    store.newTab(address: "browse://guide")
+    store.newTab(address: "bend://guide")
     let selectedElsewhere = store.selectedTab.id
     try await downloadWait { store.downloads.items.count == 3 }
     #expect(store.selectedTab.id == selectedElsewhere)
@@ -323,7 +323,9 @@ import WebKit
 
     // A new-window page that committed a document is a normal tab thereafter.
     source.onNewLink?(server.url("/page").absoluteString, false, true)
-    let regularTab = store.selectedTab
+    #expect(store.selectedTab.id == selectedElsewhere)
+    let regularTab = try #require(store.session.workspaces.flatMap(\.tabs).first { $0.pages.first?.address == server.url("/page").absoluteString && $0.id != original.id })
+    store.select(regularTab.id)
     let regular = store.controller(for: regularTab.pages[0])
     try await downloadWait { regular.webView.title == "Download fixture" && !regular.webView.isLoading }
     _ = try await regular.webView.evaluateJavaScript("document.getElementById('attachment').click(); void 0")

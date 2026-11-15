@@ -18,7 +18,7 @@ import BrowseCore
         "https://example.com/brand.png", "https://cdn.example.com/icon.ico", "https://example.com/favicon.ico"
     ])
     #expect(FaviconLoader.candidates(links: [], pageURL: page).last?.path == "/favicon.ico")
-    #expect(FaviconLoader.candidates(links: [], pageURL: URL(string: "browse://history")!).isEmpty)
+    #expect(FaviconLoader.candidates(links: [], pageURL: URL(string: "bend://history")!).isEmpty)
 
     _ = NSApplication.shared
     let config = WKWebViewConfiguration()
@@ -153,7 +153,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     #expect(controller.favicon === beforeBlocked)
     try await waitUntil { web.url == target.url("/page") && !controller.isLoading && controller.favicon != nil }
     #expect(cleared)
-    controller.navigate("browse://guide")
+    controller.navigate("bend://guide")
     #expect(controller.favicon == nil)
 
     // A late result from the old document cannot restore its icon on another site.
@@ -314,7 +314,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     store.closePane(thirdPage.id)
     try await settle { icon.paneCount == 1 && icon.backIcon.isHidden }
     let rendered = icon.frontIcon.image
-    controller.navigate("browse://start")
+    controller.navigate("bend://start")
     try await settle { find(context.window.contentView!)?.frontIcon.image !== rendered }
     #expect(find(context.window.contentView!)?.frontIcon.image != nil)
 }
@@ -404,7 +404,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     let live = restored.controller(for: page)
     let seeded = try #require(live.favicon)
     try await waitUntil { live.favicon != nil && live.favicon !== seeded }
-    live.navigate("browse://start")
+    live.navigate("bend://start")
     #expect(live.favicon == nil)
     restored.save()
     let beforePrivate = try Data(contentsOf: cacheFile)
@@ -451,7 +451,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     #expect(abs(color.greenComponent - expected.greenComponent) < 0.02)
     #expect(abs(color.blueComponent - expected.blueComponent) < 0.02)
     #expect(color.alphaComponent > 0.99)
-    for different in ["http://example.com/", "https://example.com:444/", "https://other.example.com/", "browse://start"] {
+    for different in ["http://example.com/", "https://example.com:444/", "https://other.example.com/", "bend://start"] {
         #expect(loaded.image(for: URL(string: different)) == nil)
     }
     cache.record(image, for: URL(string: "https://b.example/")!)

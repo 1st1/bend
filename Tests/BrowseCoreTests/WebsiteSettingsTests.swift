@@ -14,7 +14,7 @@ import Testing
     for address in ["https://www.example.com/", "https://news.example.com/", "https://other.test/"] {
         #expect(settings.zoom(for: try #require(URL(string: address))) == 1.1)
     }
-    for address in ["browse://start", "about:blank", "file:///tmp/test", "webkit-extension://example.com/"] {
+    for address in ["bend://start", "about:blank", "file:///tmp/test", "webkit-extension://example.com/"] {
         let url = try #require(URL(string: address))
         #expect(WebsiteSettings.hostname(for: url) == nil)
         #expect(settings.zoom(for: url) == 1)

@@ -25,10 +25,13 @@ enum Chrome {
 struct BrowserView: View {
     @ObservedObject var store: BrowserStore
     @ViewState<SidebarScrollStatus> private var sidebarScrollStatus = .init()
+    @ViewState private var mediaPlayerHeight: CGFloat = 0
+    @ViewState private var sidebarHeaderHeight: CGFloat = 52
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 0) {
+            if store.sidebarSide == .right { chatSidebar }
             if store.sidebarVisible && store.sidebarSide == .left { dockedSidebar }
             MountedTabContent(store: store)
             .padding(Chrome.paneInset)
@@ -38,7 +41,9 @@ struct BrowserView: View {
                 }
             }
             if store.sidebarVisible && store.sidebarSide == .right { dockedSidebar }
+            if store.sidebarSide == .left { chatSidebar }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.openChats)
         .onChange(of: store.sidebarSide) { _, _ in store.sidebarFloating = false }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.sidebarVisible)
         .overlay(alignment: store.sidebarSide == .left ? .topLeading : .topTrailing) {
@@ -56,6 +61,10 @@ struct BrowserView: View {
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: store.sidebarFloating)
+        .transaction(value: store.session.selectedTab) { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
         .overlay { FloatingSidebarTracking(store: store).accessibilityHidden(true) }
         .background(PaneShadowPlane(store: store).allowsHitTesting(false).accessibilityHidden(true))
         .background {
@@ -66,6 +75,25 @@ struct BrowserView: View {
         .preferredColorScheme(.dark)
         .sheet(item: $store.favoriteCustomization) { request in
             FavoriteCustomizationView(store: store, request: request)
+        }
+    }
+
+    @ViewBuilder private var chatSidebar: some View {
+        if !store.isPrivate, store.openChats.contains(store.selectedTab.id), let chat = store.chats[store.selectedTab.id] {
+            ChatSidebar(chat: chat, panelWidth: store.chatWidth, onLeft: store.sidebarSide == .right,
+                composerAppearance: store.floatingPanelGlass, bubbleTransparency: store.aiBubbleTransparency,
+                close: { store.openChats.remove(chat.tabID) },
+                settings: { store.onSettingsRequested?(.ai) })
+                .id(chat.tabID)
+                .frame(width: store.chatWidth)
+                .overlay(alignment: store.sidebarSide == .right ? .trailing : .leading) {
+                    SidebarResizeHandle(store: store, isChat: true).frame(width: 8)
+                        .background(WindowDragArea(excluded: true))
+                        .offset(x: store.sidebarSide == .right ? 4 : -4)
+                }
+                .zIndex(1)
+                .background(WindowDragArea(excluded: true))
+                .transition(.move(edge: store.sidebarSide == .right ? .leading : .trailing).combined(with: .opacity))
         }
     }
 
@@ -85,28 +113,6 @@ struct BrowserView: View {
         let leadingInset = Chrome.sidebarHorizontalInset - (!floating && store.sidebarSide == .right ? Chrome.paneInset : 0)
         let trailingInset = Chrome.sidebarHorizontalInset - (!floating && store.sidebarSide == .left ? Chrome.paneInset : 0)
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: Chrome.sidebarControlSpacing) {
-                if floating && store.sidebarSide == .left && !store.isFullScreen { Color.clear.frame(width: 66) }
-                Spacer(minLength: 0)
-                DownloadsButton(downloads: store.downloads)
-                iconButton(store.sidebarSide == .left ? "sidebar.left" : "sidebar.right", floating ? "Keep sidebar open · ⌘⇧S" : "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
-                    .background(WindowDragArea(excluded: true))
-            }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
-                .frame(height: 2 * (Chrome.headerCenterY - (floating ? FloatingSidebarTrackingView.inset : 0)))
-                .padding(.top, !floating && store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
-                .zIndex(1)
-
-            if store.isPrivate {
-                Label("Private Browsing", systemImage: "eye.slash")
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 20).padding(.vertical, 8)
-            }
-            if !store.favorites.isEmpty {
-                SidebarFavorites(store: store)
-                    .padding(.leading, leadingInset).padding(.trailing, trailingInset)
-                    .padding(.top, 6)
-            }
-
             ScrollView {
                 VStack(alignment: .leading, spacing: Chrome.sidebarTabSpacing) {
                     ForEach(store.sidebarTabs) { tab in
@@ -114,43 +120,71 @@ struct BrowserView: View {
                     }
 
                 }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
-                    .padding(.top, store.favorites.isEmpty ? 6 : 16)
-                    .padding(.bottom, Chrome.sidebarScrollFadeHeight)
+                    .padding(.top, sidebarHeaderHeight + ToolbarScrollFade.contentInset)
+                    .padding(.bottom, Chrome.sidebarScrollFadeHeight + mediaPlayerHeight)
             }
             .onScrollGeometryChange(for: SidebarScrollStatus.self) { geometry in
                 SidebarScrollStatus(visibleRect: geometry.visibleRect, tabCount: store.sidebarTabs.count,
-                                    topInset: store.favorites.isEmpty ? 6 : 16)
+                                    topInset: sidebarHeaderHeight + ToolbarScrollFade.contentInset, bottomOcclusion: mediaPlayerHeight,
+                                    topOcclusion: sidebarHeaderHeight)
             } action: { _, status in
                 sidebarScrollStatus = status
             }
             .clipped()
             .mask {
-                VStack(spacing: 0) {
-                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                        .frame(height: sidebarScrollStatus.topFadeHeight)
-                    Color.black
-                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                        .frame(height: Chrome.sidebarScrollFadeHeight)
-                }
+                ToolbarScrollFade(height: sidebarHeaderHeight,
+                    clearHeight: store.favorites.isEmpty && !store.isPrivate ? 0 : max(0, sidebarHeaderHeight - Chrome.sidebarScrollFadeHeight),
+                    bottomFadeHeight: Chrome.sidebarScrollFadeHeight)
             }
             .overlay(alignment: .top) {
                 if sidebarScrollStatus.above > 0 {
-                    SidebarOverflowPill(count: sidebarScrollStatus.above, above: true).padding(.top, 2)
+                    SidebarOverflowPill(count: sidebarScrollStatus.above, above: true).padding(.top, sidebarHeaderHeight + 2)
                 }
             }
             .overlay(alignment: .bottom) {
                 if sidebarScrollStatus.below > 0 {
-                    SidebarOverflowPill(count: sidebarScrollStatus.below, above: false).padding(.bottom, 6)
+                    SidebarOverflowPill(count: sidebarScrollStatus.below, above: false).padding(.bottom, 6 + mediaPlayerHeight)
                 }
             }
             .contentShape(Rectangle())
-            SidebarMediaPlayer(coordinator: store.mediaCoordinator, store: store)
+            .contentMargins(.top, sidebarHeaderHeight, for: .scrollIndicators)
+            .contentMargins(.bottom, mediaPlayerHeight, for: .scrollIndicators)
+            .overlay(alignment: .bottom) {
+                SidebarMediaPlayer(coordinator: store.mediaCoordinator, store: store, floating: floating)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { mediaPlayerHeight = $0 }
+            }
             AppUpdateButton()
                 .padding(.leading, leadingInset).padding(.trailing, trailingInset)
             if let error = store.persistenceError {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.system(size: 10)).foregroundStyle(.orange).padding(20)
             }
+        }
+        .overlay(alignment: .top) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: Chrome.sidebarControlSpacing) {
+                    if floating && store.sidebarSide == .left && !store.isFullScreen { Color.clear.frame(width: 66) }
+                    Spacer(minLength: 0)
+                    DownloadsButton(downloads: store.downloads)
+                    iconButton(store.sidebarSide == .left ? "sidebar.left" : "sidebar.right", floating ? "Keep sidebar open · ⌘⇧S" : "Toggle sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible.toggle() }
+                        .background(WindowDragArea(excluded: true))
+                }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
+                    .frame(height: 2 * (Chrome.headerCenterY - (floating ? FloatingSidebarTrackingView.inset : 0)))
+                    .padding(.top, !floating && store.sidebarWidth < 180 && !store.isFullScreen ? 33 : 0)
+                    .zIndex(1)
+
+                if store.isPrivate {
+                    Label("Private Browsing", systemImage: "eye.slash")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 20).padding(.vertical, 8)
+                }
+                if !store.favorites.isEmpty {
+                    SidebarFavorites(store: store)
+                        .padding(.leading, leadingInset).padding(.trailing, trailingInset)
+                        .padding(.top, 6)
+                }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sidebarHeaderHeight = $0 }
         }
         .overlay(WindowDragArea())
         .background(PaneSidebarTarget(store: store, destination: .workspace(
@@ -281,19 +315,27 @@ private struct PaneCanvas: View {
         let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
         let layout = zoomed.map(PaneLayout.pane) ?? tab.layout
         let geometry = PaneGeometry(layout: layout, viewport: viewport)
+        let clipped = geometry.clippedPaneIDs(in: viewport)
+        let regions = geometry.overflowRegions(layout: layout, in: viewport)
         let livePages = Set(store.session.workspaces.flatMap(\.tabs).first { $0.id == tab.id }?.pages.map(\.id) ?? [])
         ScrollViewReader { proxy in
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
                     ForEach(geometry.panes) { placement in
                         if livePages.contains(placement.id), let page = tab.pages.first(where: { $0.id == placement.id }) {
+                            let hidden = clipped.contains(page.id)
+                            let visibleFrame = placement.frame.intersection(CGRect(origin: .zero, size: viewport))
+                            let frame = hidden ? placement.frame : visibleFrame
                             BrowserPane(store: store, controller: store.controller(for: page), tab: tab, pageID: page.id)
-                                .frame(width: placement.frame.width, height: placement.frame.height)
+                                .frame(width: frame.width, height: frame.height)
+                                .opacity(hidden ? 0 : 1)
+                                .allowsHitTesting(!hidden)
+                                .accessibilityHidden(hidden)
                                 .transition(reduceMotion ? .identity : .asymmetric(
                                     insertion: .modifier(active: PaneReveal(progress: 0, axis: placement.insertionAxis),
                                                          identity: PaneReveal(progress: 1, axis: placement.insertionAxis)),
                                     removal: .identity))
-                                .position(x: placement.frame.midX, y: placement.frame.midY)
+                                .position(x: frame.midX, y: frame.midY)
                                 .id(page.id)
                         }
                     }
@@ -308,13 +350,67 @@ private struct PaneCanvas: View {
                 .animation(animation, value: store.paneMoveRevision)
             }
             .scrollIndicators(.hidden)
+            .scrollDisabled(!clipped.isEmpty)
+            .overlay(alignment: .topLeading) {
+                ForEach(regions) { region in
+                    PaneSpacePlaceholder(count: region.paneIDs.count, canSeparate: tab.pages.count > 1) {
+                        store.separatePanes(region.paneIDs, from: tab.id)
+                    }
+                    .frame(width: region.frame.width, height: region.frame.height)
+                    .clipped()
+                    .position(x: region.frame.midX, y: region.frame.midY)
+                }
+            }
+            .onChange(of: clipped) { _, ids in
+                guard !ids.isEmpty else { return }
+                for page in tab.pages where ids.contains(page.id) {
+                    guard let web = store.existingController(for: page.id)?.webView,
+                          let responder = web.window?.firstResponder as? NSView,
+                          responder === web || responder.isDescendant(of: web) else { continue }
+                    web.window?.makeFirstResponder(nil)
+                }
+            }
             .onChange(of: tab.pages.map(\.id)) { previous, current in
-                guard current.count > previous.count,
+                guard clipped.isEmpty, current.count > previous.count,
                       let added = current.first(where: { !previous.contains($0) }) else { return }
                 InputDiagnostics.transition(.canvasScroll, .requested, paneID: added, tabID: tab.id)
                 withAnimation(animation) { proxy.scrollTo(added, anchor: .bottomTrailing) }
             }
         }
+    }
+}
+
+// @lat: [[lat.md/architecture/pane-layout#Layouts that do not fit]]
+struct PaneSpacePlaceholder: View {
+    let count: Int
+    let canSeparate: Bool
+    let separate: () -> Void
+
+    private var message: AttributedString {
+        var text = AttributedString(count == 1 ? "1 pane doesn’t fit. " : "\(count) panes don’t fit. ")
+        if canSeparate {
+            var link = AttributedString("Open in separate tabs")
+            link.link = URL(string: "bend-action://separate-panes")
+            text.append(link)
+        } else {
+            text.append(AttributedString("Widen the window to show it."))
+        }
+        return text
+    }
+
+    var body: some View {
+        Text(message)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .tint(.blue)
+            .multilineTextAlignment(.center)
+            .environment(\.openURL, OpenURLAction { _ in
+                separate()
+                return .handled
+            })
+            .padding(8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(WindowDragArea(excluded: true))
     }
 }
 
@@ -595,7 +691,7 @@ private struct BrowserPane: View {
     @ViewBuilder
     private var pageIcon: some View {
         if controller.isStartPage {
-            Image(systemName: controller.address == "browse://history" ? "clock" : "square.grid.2x2")
+            Image(systemName: controller.address == "bend://history" ? "clock" : "square.grid.2x2")
                 .font(.system(size: 11)).foregroundStyle(Chrome.muted)
         } else if let favicon = controller.favicon {
             Image(nsImage: favicon).resizable().scaledToFit()
@@ -618,7 +714,9 @@ private struct BrowserPane: View {
                 Text(error).font(.system(size: 12)).foregroundStyle(Chrome.muted).multilineTextAlignment(.center)
                 Button("Try again") { controller.navigate(controller.address) }.buttonStyle(.bordered)
             }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if controller.address == "browse://history" {
+        } else if controller.address == "bend://chats" {
+                    ChatHistoryView(store: store, history: store.chatHistory)
+                } else if controller.address == "bend://history" {
             HistoryView(store: store, navigate: controller.navigate)
         } else if controller.isStartPage {
             StartPage()

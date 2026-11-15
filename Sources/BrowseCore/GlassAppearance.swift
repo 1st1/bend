@@ -51,6 +51,7 @@ public struct GlassAppearance: Codable, Equatable, Sendable {
 
     public static let windowDefault = GlassAppearance(darkening: 0.4)
     public static let headerDefault = GlassAppearance(darkening: 0.5)
+    public static let floatingPanelDefault = GlassAppearance(darkening: 0.45)
 
     public func normalized(defaultDarkening: Double) -> Self {
         func unit(_ value: Double) -> Double { min(1, max(0, value)) }

@@ -102,6 +102,12 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
         choices.removeAll { $0.url == url }
     }
 
+    public mutating func clear(since cutoff: Date) {
+        visits.removeAll { $0.date >= cutoff }
+        let retained = Set(visits.map(\.url))
+        choices.removeAll { $0.date >= cutoff || !retained.contains($0.url) }
+    }
+
     public mutating func clear() { visits.removeAll(); choices.removeAll() }
 
     public func matching(_ query: String) -> [HistoryVisit] {

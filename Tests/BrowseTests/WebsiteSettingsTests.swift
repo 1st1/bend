@@ -126,7 +126,7 @@ import WebKit
     #expect(page.webView.pageZoom == 1.25)
     #expect(other.webView.pageZoom == 1.25)
     #expect(WebsiteSettingsStore(file: root.appendingPathComponent("WebsiteSettings.db")).values == settings.values)
-    page.navigate("browse://start")
+    page.navigate("bend://start")
     #expect(page.webView.pageZoom == 1)
     settings.setDefaultZoom(1.5)
     #expect(page.webView.pageZoom == 1)

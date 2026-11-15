@@ -145,7 +145,8 @@ public struct Page: Codable, Identifiable, Sendable {
     public var isPinned: Bool
     public var pinnedAddress: String?
     public var favoriteID: UUID?
-    public init(address: String = "browse://start", isPinned: Bool = false) {
+    public init(address: String = "bend://start", isPinned: Bool = false) {
+        let address = AddressResolver.canonicalAddress(address)
         id = UUID(); self.address = address; self.isPinned = isPinned
         pinnedAddress = isPinned ? address : nil
     }
@@ -154,10 +155,10 @@ public struct Page: Codable, Identifiable, Sendable {
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
-        address = try values.decode(String.self, forKey: .address)
+        address = AddressResolver.canonicalAddress(try values.decode(String.self, forKey: .address))
         isPinned = try values.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
         favoriteID = try values.decodeIfPresent(UUID.self, forKey: .favoriteID)
-        pinnedAddress = isPinned ? (try values.decodeIfPresent(String.self, forKey: .pinnedAddress) ?? address) : nil
+        pinnedAddress = isPinned ? AddressResolver.canonicalAddress(try values.decodeIfPresent(String.self, forKey: .pinnedAddress) ?? address) : nil
     }
 }
 
@@ -168,6 +169,7 @@ public struct BrowserTab: Codable, Identifiable, Sendable {
     public var pages: [Page]
     public var focusedPane: UUID
     public var commandClickPaneID: UUID?
+    public var originTabID: UUID?
     public var isPinned: Bool { pages.contains { $0.isPinned } }
 
     public init(title: String = "New tab", pages: [Page] = [Page()]) {
@@ -178,7 +180,7 @@ public struct BrowserTab: Codable, Identifiable, Sendable {
         }
     }
 
-    public mutating func split(axis: SplitAxis, after source: UUID? = nil, address: String = "browse://start") {
+    public mutating func split(axis: SplitAxis, after source: UUID? = nil, address: String = "bend://start") {
         let source = source ?? focusedPane
         guard pages.contains(where: { $0.id == source }) else { return }
         let page = Page(address: address)
@@ -218,6 +220,7 @@ public struct BrowserSession: Codable, Sendable {
     public var workspaces: [Workspace]
     public var selectedTab: UUID
     public var sidebarWidth: Double?
+    public var chatWidth: Double?
     public var sidebarSide: SidebarSide?
     public var searchEngine: SearchEngine?
     public var customSearchEngine: CustomSearchEngine?
@@ -228,14 +231,21 @@ public struct BrowserSession: Codable, Sendable {
     public var inactivePaneDimAmount: Double?
     public var windowGlass: GlassAppearance?
     public var paneHeaderGlass: GlassAppearance?
+    public var floatingPanelGlass: GlassAppearance?
+    public var aiBubbleTransparency: Double?
+    // Legacy separate panel settings are read when the shared preference is absent.
+    public var mediaPlayerGlass: GlassAppearance?
+    public var chatComposerGlass: GlassAppearance?
     public var paneHeaderTopRimClipping: Double?
     public var paneHeaderBottomRimClipping: Double?
     public var paneHighlight: PaneHighlight?
     public var downloadDirectory: String?
     public var favorites: [SidebarFavorite]?
+    public var openChatTabs: [UUID]?
+    public var activeChatIDs: [UUID: UUID]?
 
     public init() {
-        let initial = BrowserTab(title: "Start here", pages: [Page(), Page(address: "browse://guide")])
+        let initial = BrowserTab(title: "Start here", pages: [Page(), Page(address: "bend://guide")])
         workspaces = [Workspace(name: "Tabs", tabs: [initial])]
         selectedTab = initial.id
     }
@@ -331,10 +341,30 @@ public struct BrowserSession: Codable, Sendable {
 
 // @lat: [[lat.md/architecture/address-entry#Address handling]]
 public enum AddressResolver {
+    /// Migrate recognized native pages without rewriting web URLs or unknown schemes.
+    public static func canonicalAddress(_ address: String) -> String {
+        switch address {
+        case "browse://start": return "bend://start"
+        case "browse://guide": return "bend://guide"
+        case "browse://history": return "bend://history"
+        default: return address
+        }
+    }
+
+    public static func nativePageTitle(_ address: String) -> String? {
+        switch canonicalAddress(address) {
+        case "bend://start": return "Start page"
+        case "bend://guide": return "Tiling guide"
+        case "bend://history": return "History"
+        case "bend://chats": return "AI Chat History"
+        default: return nil
+        }
+    }
+
     public static func resolve(_ input: String, searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil) -> URL? {
-        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = canonicalAddress(input.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty else { return nil }
-        if ["browse://start", "browse://guide", "browse://history"].contains(text) { return URL(string: text) }
+        if ["bend://start", "bend://guide", "bend://history", "bend://chats"].contains(text) { return URL(string: text) }
         if text.contains("://") {
             guard let url = URL(string: text), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
                   let host = url.host, !host.isEmpty else { return nil }

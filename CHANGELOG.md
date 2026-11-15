@@ -5,6 +5,33 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.6.0
+### Added
+- Chat with AI about the current tab's panes in a resizable sidebar, with streaming Markdown, clickable citations, web search, and expandable tool details.
+- Sign in with an OpenAI account to use your ChatGPT plan, or connect with an OpenAI, Anthropic, or Vercel AI Gateway API key. Choose models, test connections, and customize the system prompt in Settings.
+- Let AI read pages, open and navigate panes, click controls, and fill ordinary fields, with individual tool switches and action approval buttons in chat.
+- Search saved AI conversations and restore their messages and pane layouts. Chat visibility and panel width persist across restarts.
+- Selectively clear browsing history, AI chats, download records, cache, and site data from Privacy settings.
+- Choose Google, DuckDuckGo, Kagi, or a custom search URL as the default search engine.
+- Return panes to their original pinned URL from the pane header or command popup.
+- Configure shared glass style, tint, and darkening for the media player and AI chat input, plus transparency for both user and assistant bubbles, in UI settings.
+### Changed
+- Use Enter for a chat newline and Command-Enter to send. Escape stops a response; Up and Down recall previous prompts when the input is empty, and Escape clears a recalled prompt.
+- Float the frosted chat input and media controls over scrolling content, fade messages and tabs beneath their toolbars, and center a compact glass Latest button in chat.
+- Keep both chat bubble types within 90% of the transcript width, use dark-grey assistant bubbles, and preserve native text styling when recalling prompts.
+- Present Settings as a modal window with Escape and Command-W dismissal. Account sign-in opens in an interactive Bend WebKit popup above Settings.
+- Hide the pane zoom button in single-pane tabs.
+### Fixed
+- Keep fitting panes visible when space runs out and offer to move overflowing panes into separate tabs without reloading them.
+- Open link-created tabs in the background and return to their surviving origin when closed.
+- Open chat links in the tab's designated link pane or sole remaining pane when a cited pane no longer exists, and label AI Chat History tabs correctly.
+- Keep chat controls and input spacing aligned on either sidebar side, focus chat immediately, and switch instantly between tabs with and without chat.
+- Prevent a crash when closing a tab with active AI chat and extensions.
+- Use bend URLs and friendly names for native pages while preserving compatibility with legacy browse URLs.
+### Security
+- Keep AI unavailable in private windows, require explicit approval for browser actions, and exclude editable drafts and sensitive fields from page reads and filling.
+- Bound untrusted AI counters and outputs, validate OAuth callbacks and signed identity claims, and release malformed or stalled loopback connections.
+
 ## v0.5.0
 ### Added
 - Use Command-Shift-P to search tab and pane actions, and duplicate complete tabs from the command popup or tab context menu.

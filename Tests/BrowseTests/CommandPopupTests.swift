@@ -19,7 +19,7 @@ import Testing
         for window in owner.windows { window.window.close() }
         try? FileManager.default.removeItem(at: root)
     }
-    let pages = [Page(address: "https://example.com"), Page(address: "browse://guide")]
+    let pages = [Page(address: "https://example.com"), Page(address: "bend://guide")]
     var original = BrowserTab(title: "Split", pages: pages)
     original.focusedPane = pages[0].id
     original.layout = .split(id: UUID(), axis: .vertical, fraction: 0.35,
@@ -29,7 +29,10 @@ import Testing
     func command(_ id: String) throws -> PopupCommand {
         try #require(delegate.popupCommands().first { $0.id == id })
     }
-    #expect(delegate.popupCommands().count == 11)
+    let commands = delegate.popupCommands()
+    #expect(commands.count == 13)
+    let historyIndex = try #require(commands.firstIndex { $0.id == "history" })
+    #expect(commands[historyIndex + 1].id == "chat-history")
     try command("favorite").perform()
     #expect(store.favorite(for: store.selectedTab) != nil)
     #expect(try command("favorite").title == "Remove Tab from Favorites")
@@ -38,7 +41,7 @@ import Testing
     #expect(try command("pinTab").title == "Unpin Tab")
     #expect(try !command("returnPinned").isEnabled)
     let pinnedController = store.controller(for: store.selectedTab.pages[0])
-    pinnedController.navigate("browse://history")
+    pinnedController.navigate("bend://history")
     #expect(try command("returnPinned").isEnabled)
     try command("returnPinned").perform()
     #expect(pinnedController.address == pages[0].address)
@@ -72,7 +75,7 @@ import Testing
     let content = try #require(panel.contentView)
     let input = try #require(descendants(NSTextField.self, content).first { $0.isEditable })
     let table = try #require(descendants(NSTableView.self, content).first)
-    #expect(table.numberOfRows == 11 && input.stringValue.isEmpty)
+    #expect(table.numberOfRows == commands.count && input.stringValue.isEmpty)
     input.stringValue = "sidebar"
     context.addressPanel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: input))
     #expect(table.numberOfRows == 1)

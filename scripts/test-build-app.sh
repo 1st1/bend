@@ -16,7 +16,8 @@ ln -s B "$framework/Versions/Current"
 ln -s Versions/Current/Sparkle "$framework/Sparkle"
 printf '2.3.4\n' > "$root/VERSION"
 export BEND_BUILD_NUMBER=42
-mkdir -p "$root/Assets"
+mkdir -p "$root/Assets" "$root/LICENSES/ai-swift"
+cp "$(dirname "$0")/../LICENSES/ai-swift/LICENSE" "$(dirname "$0")/../LICENSES/ai-swift/NOTICE" "$root/LICENSES/ai-swift/"
 printf "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n" > "$root/Assets/SparklePublicKey.txt"
 cp "$(dirname "$0")/../Assets/AppIcon.icns" "$root/Assets/AppIcon.icns"
 export BROWSE_BUILD_TEST_ROOT="$root"
@@ -82,6 +83,9 @@ for index in 0 1; do
   [[ "$(/usr/libexec/PlistBuddy -c "Print :CFBundleDocumentTypes:$index:LSHandlerRank" "$plist")" == Alternate ]]
 done
 cmp "$root/Assets/AppIcon.icns" "$root/dist/Bend Debug.app/Contents/Resources/AppIcon.icns"
+for resource in LICENSE NOTICE; do
+  cmp "$root/LICENSES/ai-swift/$resource" "$root/dist/Bend Debug.app/Contents/Resources/Licenses/AI/$resource"
+done
 BEND_SIGNING_IDENTITY='Bend test signer' BROWSE_SIGNING_IDENTITY='Legacy test signer' bash "$root/scripts/build-app.sh"
 [[ "$(sed -n '5p' "$root/signing-arguments")" == 'Bend test signer' ]]
 env -u BEND_SIGNING_IDENTITY BROWSE_SIGNING_IDENTITY='Legacy test signer' bash "$root/scripts/build-app.sh"
@@ -108,6 +112,9 @@ grep -q -- '-c release --disable-sandbox -Xswiftc -DBEND_PRODUCTION' "$root/swif
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUScheduledCheckInterval' "$plist")" == 3600 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUVerifyUpdateBeforeExtraction' "$plist")" == true ]]
 [[ -f "$root/release/Bend.app/Contents/Resources/Sparkle-LICENSE" ]]
+for resource in LICENSE NOTICE; do
+  cmp "$root/LICENSES/ai-swift/$resource" "$root/release/Bend.app/Contents/Resources/Licenses/AI/$resource"
+done
 [[ -L "$root/release/Bend.app/Contents/Frameworks/Sparkle.framework/Versions/Current" ]]
 [[ -f "$root/release/Bend.app/Contents/Frameworks/Sparkle.framework/Sparkle" ]]
 if /usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$root/dist/Bend Debug.app/Contents/Info.plist" >/dev/null 2>&1; then exit 1; fi
