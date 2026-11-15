@@ -184,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         add("Split Right", #selector(splitRight), "d", to: view)
         add("Split Below", #selector(splitBelow), "d", modifiers: [.command, .shift], to: view)
         add("Zoom Pane", #selector(zoomPane), "\r", modifiers: [.command, .shift], to: view)
+        add("Show Chat", #selector(toggleChat), "c", modifiers: [.command, .shift], to: view)
         add("Toggle Sidebar", #selector(toggleSidebar), "s", modifiers: [.command, .shift], to: view)
         view.addItem(.separator())
         add("Reload Page", #selector(reload), "r", to: view)
@@ -380,6 +381,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         window?.makeKeyAndOrderFront(nil)
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleChat) {
+            guard let context = browserWindows.active else { return false }
+            menuItem.title = context.store.openChats.contains(context.store.selectedTab.id) ? "Hide Chat" : "Show Chat"
+            return !context.store.isPrivate
+        }
         if menuItem.action == #selector(printPage) { return printablePage != nil }
         if menuItem.action == #selector(showWebInspector) || menuItem.action == #selector(showJavaScriptConsole) {
             if menuItem.action == #selector(showWebInspector) {
@@ -402,6 +408,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func splitRight() { store.split(.horizontal) }
     @objc private func splitBelow() { store.split(.vertical) }
     @objc private func zoomPane() { store.toggleZoom(store.selectedTab.focusedPane) }
+    @objc func toggleChat() {
+        guard let context = browserWindows.active, !context.store.isPrivate else { return }
+        let store = context.store
+        if store.openChats.contains(store.selectedTab.id) { store.openChats.remove(store.selectedTab.id) }
+        else { store.showChat() }
+    }
     @objc private func toggleSidebar() { store.sidebarVisible.toggle() }
     @objc private func reload() { if !focused.isStartPage { focused.webView.reload() } }
     @objc private func back() { focused.webView.goBack() }
