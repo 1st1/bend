@@ -1444,6 +1444,11 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         components.host = space.host
         components.port = space.port
         if webView === self.webView, space.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let trust = space.serverTrust, let url = components.url {
+            certificates.record(trust, for: url)
+            objectWillChange.send()
+        }
+        if webView === self.webView, space.authenticationMethod == NSURLAuthenticationMethodServerTrust,
            let trust = space.serverTrust, let url = components.url,
            let exception = CertificateException(url: url, trust: trust),
            certificateExceptions.contains(exception) {
@@ -1479,6 +1484,16 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     var searchEngine: () -> SearchEngine
     let fileUpload = WebsiteFileUpload()
     let certificates = WebsiteCertificates()
+    var certificateTrust: SecTrust? {
+        guard !isStartPage, !isLoading, error == nil else { return nil }
+        return certificates.trust(for: webView, committedURL: committedSiteURL)
+    }
+
+    func showCertificates() {
+        guard let trust = certificateTrust else { return }
+        certificates.show(trust, for: webView)
+    }
+
     @Published var committedSiteURL: URL?
     let permissionPrompt = WebsitePermissionPrompt()
     @Published var cameraCaptureState: WKMediaCaptureState = .none
@@ -1590,6 +1605,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     private func replaceWebView(configuration: WKWebViewConfiguration) {
+        certificates.reset()
         InputDiagnostics.transition(.webReplacement, .started, view: webView)
         stopCapture()
         captureRequestOrigins.removeAll()

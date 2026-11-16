@@ -51,6 +51,16 @@ struct HistoryView: View {
                                 HStack(spacing: 12) {
                                     Text(visit.date.formatted(date: .omitted, time: .shortened))
                                         .font(.system(size: 10)).foregroundStyle(.secondary).frame(width: 62, alignment: .leading)
+                                    Group {
+                                        if let icon = store.faviconCache?.image(for: URL(string: visit.url)) {
+                                            Image(nsImage: icon).resizable().scaledToFit()
+                                        } else {
+                                            Image(systemName: "globe").foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    .frame(width: 16, height: 16)
+                                    .clipShape(RoundedRectangle(cornerRadius: Chrome.faviconCornerRadius))
+                                    .accessibilityHidden(true)
                                     Button { navigate(visit.url) } label: {
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text(visit.title).font(.system(size: 13, weight: .medium)).lineLimit(1)

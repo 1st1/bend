@@ -19,9 +19,30 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
         #expect(results.first?.isFuzzyMatch == true)
         #expect(results.first?.completion(for: query) == nil)
     }
+    let suffix = "https://github.com/1st1/jit-lat"
+    for index in 0..<22 {
+        history.record(url: suffix, title: "1st1/jit-lat", at: historyNow.addingTimeInterval(Double(-index * 60)))
+    }
+    #expect(history.suggestions(for: "gh/jit", now: historyNow).first?.url == jit)
+    #expect(history.suggestions(for: "gh/jit-l", now: historyNow).first?.url == suffix)
+    #expect(try #require(FuzzyMatch.score("gh/jit", in: "github.com/1st1/jit"))
+        > #require(FuzzyMatch.score("gh/jit", in: "github.com/1st1/jit-lat")))
     #expect(history.suggestions(for: "github/jit", now: historyNow).contains { $0.url == loose })
     #expect(history.suggestions(for: "github/zzzz", now: historyNow).isEmpty)
     #expect(history.suggestions(for: "tij/buhtig", now: historyNow).isEmpty)
+    var noise = BrowsingHistory()
+    let election = "https://www.nytimes.com/interactive/2026/11/03/us/elections/results-alaska-us-senate.html"
+    noise.record(url: election, title: "Alaska U.S. Senate 2026: Live Midterm Election Results, Sullivan vs. Peltola - The New York Times", at: historyNow)
+    for query in ["karpathy mini ll", "karpathy mini", "mini ll"] {
+        #expect(noise.suggestions(for: query, now: historyNow).isEmpty)
+    }
+    // A literal word must not rescue another word's weak subsequence.
+    noise.record(url: "https://example.com/", title: "Karpathy mxxxxixxxxnxxxxi", at: historyNow)
+    #expect(noise.suggestions(for: "karpathy mini", now: historyNow).isEmpty)
+    noise.record(url: "https://example.com/karpathy/mini-llm", title: "Karpathy mini LLM", at: historyNow)
+    #expect(noise.suggestions(for: "karpathy mini ll", now: historyNow).first?.url == "https://example.com/karpathy/mini-llm")
+    noise.record(url: "https://example.com/errors", title: "NullPointerException", at: historyNow)
+    #expect(noise.suggestions(for: "npe", now: historyNow).contains { $0.title == "NullPointerException" })
     let literal = "https://example.com/github/jit"
     history.record(url: literal, title: "Literal", at: historyNow.addingTimeInterval(-86400 * 60))
     #expect(history.suggestions(for: "github/jit", now: historyNow).first?.url == literal)

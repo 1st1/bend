@@ -97,3 +97,5 @@ Both surfaces update together; reset restores regular untinted glass on the same
 [[Tests/BrowseTests/CertificateExceptionTests.swift#certificateExceptions]] runs a local self-signed HTTPS server to verify rejection, ordinary retry rejection, explicit acceptance, pane isolation, and clearing pending approval on navigation. Non-certificate errors cannot offer an exception.
 
 The committed page reports its accepted exception for the red Not Secure domain menu; unaccepted and internal pages do not.
+
+The test also suppresses WebKit’s server-trust property after a real TLS challenge and opens and dismisses the actual native certificate sheet using the observed trust. Origin mismatches, loading, navigation errors, and clearing the cache disable that fallback; native trust remains available after the cache clears.

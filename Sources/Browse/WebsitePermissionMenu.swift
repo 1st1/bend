@@ -21,8 +21,8 @@ struct WebsitePermissionMenu: View {
                 } else {
                     Text(url.scheme == "https" ? (page.webView.hasOnlySecureContent ? "HTTPS connection" : "Some content is not secure") : "Connection is not encrypted")
                 }
-                Button("View HTTPS Certificates…") { page.certificates.show(for: page.webView) }
-                    .disabled(page.isLoading || !WebsiteCertificates.matchesSite(page.webView.url, committed: url) || url.scheme != "https" || page.webView.serverTrust == nil)
+                Button("View HTTPS Certificates…") { page.showCertificates() }
+                    .disabled(page.certificateTrust == nil)
                 Divider()
                 ForEach(WebsitePermission.allCases, id: \.self) { permission in
                     Picker(permission.title, selection: Binding(

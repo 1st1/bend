@@ -72,9 +72,11 @@ Unentitled builds omit the Passkeys section entirely and do not invoke the crede
 
 ## Website certificates
 
-[[Sources/Browse/WebsiteCertificates.swift#WebsiteCertificates]] displays the committed HTTPS page’s WebKit server trust in a native certificate sheet with trust editing disabled.
+[[Sources/Browse/WebsiteCertificates.swift#WebsiteCertificates]] displays the committed HTTPS page’s certificate in a native sheet with trust editing disabled.
 
-The site menu uses the shared toolbar button style and displays the committed site’s registrable domain, with the complete origin in its menu and tooltip. Certificate inspection is unavailable during loading, across an origin change, or without HTTPS server trust. Same-origin path, query, and fragment changes retain access; WebKit trust and secure-content changes refresh the menu. Navigation, page hiding, replacement, and closure dismiss the sheet. Inspection makes no independent network request and cannot grant a certificate exception.
+The site menu uses the shared toolbar button style and displays the committed site’s registrable domain, with the complete origin in its menu and tooltip. Certificate inspection is unavailable during loading, after navigation errors, across an origin change, or without observed HTTPS trust. Same-origin path, query, and fragment changes retain access; WebKit trust and secure-content changes refresh the menu. Navigation, page hiding, replacement, and closure dismiss the actual sheet created by SecurityInterface through its Done action; trust editing is disabled on that displayed panel. Inspection makes no independent network request and cannot grant a certificate exception.
+
+[[Sources/Browse/BrowserStore.swift#PageController#certificateTrust]] supplies both menu availability and the action. Native WebKit server trust takes precedence. When WebKit omits it, [[Sources/Browse/WebsiteCertificates.swift#WebsiteCertificates#trust]] uses the latest TLS challenge trust observed by that pane for the exact HTTPS origin, including port. This inspection-only cache survives same-view revisits but clears on WebView replacement; it neither changes authentication handling nor authorizes certificate exceptions.
 
 ## Site domain labels
 

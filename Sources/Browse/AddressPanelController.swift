@@ -22,6 +22,7 @@ private final class AddressResultCell: NSTableCellView {
     let detail = NSTextField(labelWithString: "")
     let remove = NSButton()
     let shortcut = NSTextField(labelWithString: "")
+    var hasFavicon = false
     var titleMatches: [NSRange] = []
     var detailMatches: [NSRange] = []
 
@@ -30,7 +31,7 @@ private final class AddressResultCell: NSTableCellView {
         let secondary = selected ? NSColor.alternateSelectedControlTextColor : .secondaryLabelColor
         detail.textColor = secondary
         shortcut.textColor = secondary
-        icon.contentTintColor = secondary
+        icon.contentTintColor = hasFavicon ? nil : secondary
         remove.contentTintColor = secondary
         highlight(title, ranges: titleMatches, color: title.textColor!, selected: selected)
         highlight(detail, ranges: detailMatches, color: secondary, selected: selected)
@@ -100,6 +101,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     private var suppressAutofill = false
     private var showingFrequent = false
     private var historyObservation: AnyCancellable?
+    private var faviconObservation: AnyCancellable?
     private var isLayingOut = false
     private var topInsetFromWindow: CGFloat?
 
@@ -243,6 +245,11 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         historyObservation = store.historyPublisher.dropFirst().sink { [weak self] history in
             guard let self, self.targetPane != nil, self.commandProvider == nil else { return }
             self.updateResults(history: history, preserveSelection: true)
+        }
+        faviconObservation = store.faviconCache?.objectWillChange.receive(on: RunLoop.main).sink { [weak self] _ in
+            guard let self, self.targetPane != nil, self.commandProvider == nil else { return }
+            self.resultsTable.reloadData()
+            self.updateSelection()
         }
         NotificationCenter.default.addObserver(self, selector: #selector(parentGeometryDidChange(_:)),
             name: NSWindow.didResizeNotification, object: parentWindow)
@@ -522,8 +529,14 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         let result = results[row]
         let view = AddressResultCell()
         let icon = view.icon
-        icon.image = NSImage(systemSymbolName: result.command?.icon ?? (result.history == nil ? "magnifyingglass" : "clock"), accessibilityDescription: nil)
-        icon.contentTintColor = .secondaryLabelColor
+        let favicon = result.history.flatMap { store.faviconCache?.image(for: URL(string: $0.url)) }
+        view.hasFavicon = favicon != nil
+        icon.image = favicon ?? NSImage(systemSymbolName: result.command?.icon ?? (result.history == nil ? "magnifyingglass" : "clock"), accessibilityDescription: nil)
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.contentTintColor = view.hasFavicon ? nil : .secondaryLabelColor
+        icon.wantsLayer = true
+        icon.layer?.cornerRadius = Chrome.faviconCornerRadius
+        icon.layer?.masksToBounds = true
         let title = view.title
         title.stringValue = result.title
         title.font = .systemFont(ofSize: 14)
@@ -562,6 +575,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             icon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             icon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 16),
+            icon.heightAnchor.constraint(equalToConstant: 16),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
             title.trailingAnchor.constraint(equalTo: result.command == nil ? remove.leadingAnchor : shortcut.leadingAnchor, constant: -8),
             shortcut.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
