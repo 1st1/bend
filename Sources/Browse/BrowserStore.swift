@@ -1421,6 +1421,14 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     @Published private(set) var certificateFailure: (url: URL, exception: CertificateException)?
     private var certificateExceptions: Set<CertificateException> = []
 
+    var usesCertificateException: Bool {
+        guard !isStartPage,
+              WebsiteCertificates.matchesSite(webView.url, committed: committedSiteURL),
+              let url = committedSiteURL, let trust = webView.serverTrust,
+              let exception = CertificateException(url: url, trust: trust) else { return false }
+        return certificateExceptions.contains(exception)
+    }
+
     func continueDespiteCertificateError() {
         guard error != nil, let failure = certificateFailure else { return }
         certificateExceptions.insert(failure.exception)

@@ -95,3 +95,5 @@ Both surfaces update together; reset restores regular untinted glass on the same
 ## Certificate exceptions
 
 [[Tests/BrowseTests/CertificateExceptionTests.swift#certificateExceptions]] runs a local self-signed HTTPS server to verify rejection, ordinary retry rejection, explicit acceptance, pane isolation, and clearing pending approval on navigation. Non-certificate errors cannot offer an exception.
+
+The committed page reports its accepted exception for the red Not Secure domain menu; unaccepted and internal pages do not.

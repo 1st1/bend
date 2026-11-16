@@ -47,6 +47,7 @@ server.serve_forever()
     let failure = try #require(page.certificateFailure)
     #expect(failure.url.absoluteString == address)
     #expect(page.webView.title != "Router fixture")
+    #expect(!page.usesCertificateException)
     let certificate = try #require(SecCertificateCreateWithData(nil, failure.exception.certificate as CFData))
     var trust: SecTrust?
     #expect(SecTrustCreateWithCertificates(certificate, SecPolicyCreateBasicX509(), &trust) == errSecSuccess)
@@ -75,6 +76,7 @@ server.serve_forever()
     }
     #expect(page.error == nil)
     #expect(page.webView.title == "Router fixture")
+    #expect(page.usesCertificateException)
     #expect(page.certificateFailure == nil)
 
     let other = PageController(address: address, configure: { $0.websiteDataStore = .nonPersistent() })
@@ -84,7 +86,9 @@ server.serve_forever()
         try await Task.sleep(for: .milliseconds(25))
     }
     #expect(other.certificateFailure != nil)
+    #expect(!other.usesCertificateException)
     page.navigate("bend://start")
+    #expect(!page.usesCertificateException)
     #expect(page.certificateFailure == nil)
     #expect(CertificateException.failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotConnectToHost)) == nil)
 }
