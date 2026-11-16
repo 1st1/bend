@@ -1,0 +1,3 @@
+kind: Fixed
+body: Keep HTTPS certificate inspection available when WebKit omits the loaded page’s server trust, including on x.com.
+time: 2026-11-16T19:41:12.610174+00:00

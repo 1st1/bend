@@ -4,6 +4,11 @@ import Testing
 import WebKit
 @testable import Browse
 
+@MainActor private final class CertificateTestWebView: FocusWebView {
+    var omitsServerTrust = false
+    override var serverTrust: SecTrust? { omitsServerTrust ? nil : super.serverTrust }
+}
+
 // @lat: [[lat.md/tests/settings-tests#Settings tests#Certificate exceptions]]
 @Test @MainActor func certificateExceptions() async throws {
     _ = NSApplication.shared
@@ -38,7 +43,10 @@ server.serve_forever()
     }
     let port = try String(contentsOf: portFile, encoding: .utf8)
     let address = "https://127.0.0.1:\(port)/"
-    let page = PageController(address: address, configure: { $0.websiteDataStore = .nonPersistent() })
+    let configuration = WKWebViewConfiguration()
+    configuration.websiteDataStore = .nonPersistent()
+    let webView = CertificateTestWebView(frame: .zero, configuration: configuration)
+    let page = PageController(address: address, webView: webView)
     defer { page.webView.stopLoading() }
     for _ in 0..<400 {
         if page.error != nil { break }
@@ -78,6 +86,45 @@ server.serve_forever()
     #expect(page.webView.title == "Router fixture")
     #expect(page.usesCertificateException)
     #expect(page.certificateFailure == nil)
+    for _ in 0..<100 where page.isLoading { try await Task.sleep(for: .milliseconds(20)) }
+    let nativeTrust = try #require(page.certificateTrust)
+    webView.omitsServerTrust = true
+    #expect(webView.serverTrust == nil)
+    let observedTrust = try #require(page.certificateTrust)
+    #expect(CertificateException(url: URL(string: address)!, trust: observedTrust)
+        == CertificateException(url: URL(string: address)!, trust: nativeTrust))
+    // A challenge for another origin must never supply this page's certificate.
+    let unrelated = WebsiteCertificates()
+    unrelated.record(observedTrust, for: URL(string: "https://localhost:\(port)/")!)
+    #expect(unrelated.trust(for: webView, committedURL: URL(string: address)) == nil)
+    let committed = page.committedSiteURL
+    page.committedSiteURL = URL(string: "https://localhost:\(port)/")
+    #expect(page.certificateTrust == nil)
+    page.committedSiteURL = committed
+    page.isLoading = true
+    #expect(page.certificateTrust == nil)
+    page.isLoading = false
+    page.error = "Navigation failed"
+    #expect(page.certificateTrust == nil)
+    page.error = nil
+    #expect(page.certificateTrust != nil)
+    // Real native inspection uses the same fallback as the menu, with no reload.
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+                          styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = webView
+    window.orderFront(nil)
+    page.showCertificates()
+    #expect(window.attachedSheet != nil)
+    page.certificates.cancel()
+    for _ in 0..<100 where window.attachedSheet != nil { try await Task.sleep(for: .milliseconds(20)) }
+    #expect(window.attachedSheet == nil)
+    window.contentView = nil
+    window.close()
+    page.certificates.reset()
+    #expect(page.certificateTrust == nil)
+    webView.omitsServerTrust = false
+    #expect(page.certificateTrust != nil)
 
     let other = PageController(address: address, configure: { $0.websiteDataStore = .nonPersistent() })
     defer { other.webView.stopLoading() }
