@@ -655,6 +655,7 @@ import Network
     try await context.loadBackgroundContent()
     try await Task.sleep(for: .seconds(25))
     #expect(nativeAttempts.contains("com.1password.1password"))
+    store.controller(for: store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }!).navigate("http://127.0.0.1:9/")
     manager.performAction(id, pageID: store.selectedTab.focusedPane)
     for _ in 0..<50 where manager.documents.isEmpty { try await Task.sleep(for: .milliseconds(200)) }
     let document = try #require(manager.documents.values.first)
@@ -1016,6 +1017,7 @@ private struct WasmRestartProfile: Codable {
     }
     for _ in 0..<100 where !wasmSucceeded() { try await Task.sleep(for: .milliseconds(100)) }
     #expect(wasmSucceeded(), "Background WASM did not instantiate: \(manager.diagnosticReport())")
+    store.controller(for: store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }!).navigate("http://127.0.0.1:9/")
     manager.performAction(id, pageID: store.selectedTab.focusedPane)
     for _ in 0..<100 where manager.documents.isEmpty { try await Task.sleep(for: .milliseconds(100)) }
     let document = try #require(manager.documents.values.first)

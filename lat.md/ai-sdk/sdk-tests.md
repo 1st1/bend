@@ -175,3 +175,7 @@ Cancelling a live stream must fail its result with CancellationError and close t
 ## Untrusted usage counters
 
 The extreme-counter regression in [[Tests/AITests/NativeProviderTests.swift]] verifies extreme provider counters cannot overflow individual responses or accumulated usage across Chat Completions, Responses, and Messages adapters.
+
+## Tool image transport
+
+[[Tests/AITests/ToolImageTests.swift#toolImageTransport]] verifies image-bearing history round trips, decoding legacy text-only results, and typed image encoding for Anthropic, OpenAI Responses, and Chat Completions.

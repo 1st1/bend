@@ -59,3 +59,7 @@ The fully clipped case has a null intersection with an infinite origin, matching
 [[Tests/BrowseTests/PaneOverflowTests.swift#overflowingPaneLayouts]] verifies width and height clipping detection, placeholder hit testing, retained WebKit state after resizing, and separation into valid tabs without losing pane identities, pins, forms, or controllers.
 
 The overflow fixture also verifies that the fitting left pane remains hit-testable while the undersized right subtree shares a recovery region, and that only those hidden panes are moved.
+
+## Native page scrolling
+
+[[Tests/BrowseTests/PaneOverflowTests.swift#nativePageScrolling]] scrolls a short start page and sends boundary wheel events, verifying that its contents move while the pane frame stays fixed, with no scrolling ancestor around pane chrome.

@@ -83,6 +83,12 @@ public struct OpenAICompatibleProvider: Provider {
               "content": .string(content),
             ]))
         }
+        let images = message.toolResults.flatMap { $0.images ?? [] }
+        if !images.isEmpty {
+          messages.append(.object(["role": .string("user"), "content": .array([
+            .object(["type": .string("text"), "text": .string("Approved screenshots returned by the preceding tools:")])
+          ] + images.map { .object(["type": .string("image_url"), "image_url": .object(["url": .string($0.dataURL)])]) })]))
+        }
         continue
       }
       var value: [String: JSONValue] = [

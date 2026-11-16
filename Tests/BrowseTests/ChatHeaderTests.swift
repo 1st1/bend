@@ -43,9 +43,9 @@ import Testing
         let new = try #require(controls.first(where: { $0.toolTip == "Clear chat" }))
         #expect(!close.isHidden && !new.isHidden)
         #expect(close.frame.maxX == (onLeft ? panelWidth : frame.bounds.maxX) - 10)
-        #expect(new.frame.maxX == (onLeft ? panelWidth : frame.bounds.maxX) - (panelWidth < 240 ? 102 : 116))
+        #expect(new.frame.maxX == (onLeft ? panelWidth : frame.bounds.maxX) - (panelWidth < 340 ? 44 : 116))
         #expect(close.frame.minX - new.frame.maxX == 6)
-        #expect(new.title == "Clear chat" && new.frame.width == (panelWidth < 240 ? 86 : 100))
+        #expect(new.title == (panelWidth < 340 ? "" : "Clear chat") && new.frame.width == (panelWidth < 340 ? 28 : 100))
     }
     for control in controls {
         let point = control.convert(NSPoint(x: control.bounds.midX, y: control.bounds.midY), to: nil)

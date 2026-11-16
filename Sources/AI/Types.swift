@@ -31,22 +31,31 @@ public struct ToolCall: Codable, Sendable, Equatable {
   }
 }
 
+public struct ToolImage: Codable, Sendable, Equatable {
+  public var mediaType: String
+  public var data: Data
+  public init(mediaType: String, data: Data) { self.mediaType = mediaType; self.data = data }
+  public var dataURL: String { "data:" + mediaType + ";base64," + data.base64EncodedString() }
+}
+
 public struct ToolResult: Codable, Sendable, Equatable {
   public var callID: String
   public var name: String
   public var value: JSONValue
   public var isError: Bool
+  public var images: [ToolImage]?
   public var subagentMessages: [Message]?
 
   public init(
     callID: String, name: String, value: JSONValue, isError: Bool = false,
-    subagentMessages: [Message]? = nil
+    subagentMessages: [Message]? = nil, images: [ToolImage]? = nil
   ) {
     self.callID = callID
     self.name = name
     self.value = value
     self.isError = isError
     self.subagentMessages = subagentMessages
+    self.images = images
   }
 }
 

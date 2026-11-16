@@ -19,6 +19,9 @@ ln -s B "$framework/Versions/Current"
 ln -s Versions/Current/Sparkle "$framework/Sparkle"
 printf '2.3.4\n' > "$root/VERSION"
 export BEND_BUILD_NUMBER=42
+cp "$(dirname "$0")/../CHANGELOG.md" "$root/CHANGELOG.md"
+mkdir -p "$root/.changes"
+cp "$(dirname "$0")/../.changes/release-dates.json" "$root/.changes/"
 mkdir -p "$root/Assets" "$root/LICENSES/ai-swift"
 cp "$(dirname "$0")/../LICENSES/ai-swift/LICENSE" "$(dirname "$0")/../LICENSES/ai-swift/NOTICE" "$root/LICENSES/ai-swift/"
 printf "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n" > "$root/Assets/SparklePublicKey.txt"
@@ -88,6 +91,8 @@ PYMEDIA
 }
 plist="$root/dist/Bend Debug.app/Contents/Info.plist"
 assert_media_capture "$plist"
+cmp "$root/CHANGELOG.md" "$root/dist/Bend Debug.app/Contents/Resources/CHANGELOG.md"
+cmp "$root/.changes/release-dates.json" "$root/dist/Bend Debug.app/Contents/Resources/release-dates.json"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == 2.3.4 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" == 42 ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist")" == 26.0 ]]

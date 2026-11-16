@@ -25,22 +25,11 @@ struct ChatSidebar: View {
     }
     var body: some View {
         ZStack(alignment: .top) {
-            if !settings.connected && chat.bubbles.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 32)).foregroundStyle(.secondary)
-                    Text("A conversation with your tab").font(.headline)
-                    Text("Log in to an AI account to ask questions and work across all panes in this tab.")
-                        .foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    Button("Connect in Settings…", action: settingsAction).buttonStyle(.borderedProminent)
-                }.padding(24).padding(.top, headerHeight)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ZStack(alignment: .bottom) {
-                    transcript
-                    composer
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { composerHeight = $0 }
-                }.clipped()
-            }
+            ZStack(alignment: .bottom) {
+                transcript
+                composer
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { composerHeight = $0 }
+            }.clipped()
             ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: !chat.running && !chat.bubbles.isEmpty,
                        newChat: { chat.clear() }, close: close)
         }
@@ -51,12 +40,12 @@ struct ChatSidebar: View {
         })
         .task {
             inputFocused = true
-            if chat.modelID.isEmpty { chat.modelID = settings.modelID }
+            if chat.modelID.isEmpty { chat.modelID = settings.modelID.isEmpty ? LocalAIProvider.modelID : settings.modelID }
             await settings.restore()
-            if chat.modelID.isEmpty { chat.modelID = settings.modelID }
+            if chat.modelID.isEmpty { chat.modelID = settings.modelID.isEmpty ? LocalAIProvider.modelID : settings.modelID }
         }
         .onChange(of: settings.modelID) { _, model in if chat.modelID.isEmpty { chat.modelID = model } }
-        .onChange(of: settings.connected) { _, connected in if !connected { chat.stop() } }
+
     }
 
     @ViewBuilder private var thinkingSummary: some View {
@@ -180,7 +169,14 @@ struct ChatSidebar: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
             ChatComposerInput(text: $chat.input, focused: $inputFocused, canSend: canSend,
-                              prompts: chat.bubbles.filter(\.isUser).map(\.text)) { chat.send() }
+                              prompts: chat.bubbles.filter(\.isUser).map(\.text), inputKeys: settings.inputKeys) { chat.send() }
+            if chat.modelID == LocalAIProvider.modelID {
+                Text("On-device · Browser tools · Actions require approval")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            if !settings.connected {
+                Button("Connect a cloud model…", action: settingsAction).font(.caption).buttonStyle(.plain)
+            }
             HStack {
                 AIModelPicker(models: settings.models, selection: $chat.modelID)
                     .disabled(chat.running)
@@ -192,7 +188,7 @@ struct ChatSidebar: View {
                 } else {
                     Button("Send", systemImage: "arrow.up") { chat.send() }
                         .disabled(!canSend)
-                        .help("Send message (⌘Return)")
+                        .help("Send message")
                 }
             }.controlSize(.small)
         }
@@ -208,12 +204,13 @@ struct ChatSidebar: View {
 // The fixed header stays above native transcript views during scrolling.
 struct ChatHeader: View {
     static func height(onLeft: Bool, panelWidth: CGFloat) -> CGFloat {
-        2 * Chrome.headerCenterY + (onLeft && panelWidth < 330 ? 32 : 0)
+        2 * Chrome.headerCenterY + (onLeft && panelWidth < 420 ? 32 : 0)
     }
     var onLeft = false
     var panelWidth: CGFloat = BrowserStore.defaultChatWidth
-    private var buttonWidth: CGFloat { panelWidth < 240 ? 86 : 100 }
-    private var topOffset: CGFloat { onLeft && panelWidth < 330 ? 32 : 0 }
+    private var compact: Bool { panelWidth < 340 }
+    private var buttonWidth: CGFloat { compact ? 28 : 100 }
+    private var topOffset: CGFloat { onLeft && panelWidth < 420 ? 32 : 0 }
     var canStartNew: Bool
     var newChat: () -> Void
     var close: () -> Void
@@ -221,9 +218,9 @@ struct ChatHeader: View {
     var body: some View {
         HStack(spacing: Chrome.sidebarControlSpacing) {
             Spacer(minLength: 0)
-            ChatHeaderButton(symbol: "square.and.pencil", label: "Clear chat", visibleTitle: "Clear chat", controlWidth: buttonWidth, enabled: canStartNew, trailingInset: buttonWidth + 16, onLeft: onLeft, panelWidth: panelWidth, topOffset: topOffset, action: newChat)
+            ChatHeaderButton(symbol: "square.and.pencil", label: "Clear chat", visibleTitle: compact ? nil : "Clear chat", controlWidth: buttonWidth, enabled: canStartNew, trailingInset: buttonWidth + 16, onLeft: onLeft, panelWidth: panelWidth, topOffset: topOffset, action: newChat)
                 .frame(width: buttonWidth, height: 28)
-            ChatHeaderButton(symbol: "xmark", label: "Close chat", visibleTitle: "Close chat", controlWidth: buttonWidth, onLeft: onLeft, panelWidth: panelWidth, topOffset: topOffset, action: close)
+            ChatHeaderButton(symbol: "xmark", label: "Close chat", visibleTitle: compact ? nil : "Close chat", controlWidth: buttonWidth, onLeft: onLeft, panelWidth: panelWidth, topOffset: topOffset, action: close)
                 .frame(width: buttonWidth, height: 28)
         }
         .buttonStyle(ChromeButtonStyle(prominent: true))
@@ -312,7 +309,10 @@ struct ChatActivityRow: View {
 
     @ViewBuilder private var details: some View {
         if let approval {
-            argumentFields(approval.fields)
+            VStack(alignment: .leading, spacing: 10) {
+                argumentFields(approval.fields)
+                if let screenshot = approval.screenshot { ChatScreenshot(data: screenshot) }
+            }
         } else if bubble.kind == .reasoning {
             ChatMarkdown(source: bubble.text, streaming: streaming)
         } else if bubble.kind == .serverTool {
@@ -340,7 +340,9 @@ struct ChatActivityRow: View {
                 if bubble.argumentFields.isEmpty {
                     Text("No arguments").font(.caption).foregroundStyle(.secondary)
                 } else { argumentFields(bubble.argumentFields) }
-                if !bubble.detail.isEmpty {
+                if let screenshots = bubble.screenshots, !screenshots.isEmpty {
+                    ForEach(screenshots.indices, id: \.self) { ChatScreenshot(data: screenshots[$0]) }
+                } else if !bubble.detail.isEmpty {
                     Text(bubble.detailTruncated ? "Result preview — model received the full chunk" : "Result").font(.caption).foregroundStyle(.secondary)
                     Text(bubble.detail).font(.system(size: 11, design: .monospaced))
                 }
@@ -358,5 +360,18 @@ struct ChatActivityRow: View {
                 }
             }
         }.textSelection(.enabled)
+    }
+}
+
+struct ChatScreenshot: View {
+    let data: Data
+    var body: some View {
+        if let image = NSImage(data: data) {
+            Image(nsImage: image)
+                .resizable().scaledToFit()
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .accessibilityLabel("Shared webpage screenshot")
+        }
     }
 }

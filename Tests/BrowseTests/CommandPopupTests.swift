@@ -30,7 +30,9 @@ import Testing
         try #require(delegate.popupCommands().first { $0.id == id })
     }
     let commands = delegate.popupCommands()
-    #expect(commands.count == 13)
+    #expect(commands.count == 17)
+    #expect(!commands.first(where: { $0.id == "explainSelection" })!.isEnabled)
+    #expect(!commands.first(where: { $0.id == "summarizeSelection" })!.isEnabled)
     let historyIndex = try #require(commands.firstIndex { $0.id == "history" })
     #expect(commands[historyIndex + 1].id == "chat-history")
     try command("favorite").perform()
@@ -64,6 +66,15 @@ import Testing
     context.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
     context.window.makeKeyAndOrderFront(nil)
     delegate.installMenus()
+    #expect(try command("chat").shortcut == "⇧⌘C")
+    #expect(try command("close").shortcut == "⇧⌘W")
+    #expect(try command("sidebar").shortcut == "⇧⌘S")
+    #expect(try command("settings").shortcut == "⌘,")
+    #expect(try command("print").shortcut == "⌘P")
+    #expect(try command("history").shortcut == "⌘Y")
+    #expect(try command("devTools").shortcut == "⇧⌘I")
+    #expect(try command("duplicate").shortcut == nil)
+
     let menu = try #require(NSApp.mainMenu?.items.first { $0.title == "View" }?.submenu)
     let chatItem = try #require(menu.items.first { $0.action == #selector(AppDelegate.toggleChat) })
     #expect(chatItem.keyEquivalent == "c" && chatItem.keyEquivalentModifierMask == [.command, .shift])
@@ -77,6 +88,8 @@ import Testing
     #expect(store.chats[store.selectedTab.id] === chat)
     let item = try #require(menu.items.first { $0.title == "Show Commands…" })
     #expect(item.keyEquivalent == "p" && item.keyEquivalentModifierMask == [.command, .shift])
+    let summarize = try #require(delegate.popupCommands().first { $0.id == "summarize" })
+    #expect(summarize.title == "Summarize Page" && summarize.shortcut == nil)
     #expect(NSApp.sendAction(item.action!, to: item.target, from: item))
     let panel = try #require(context.window.childWindows?.first { context.addressPanel.owns($0) })
     func descendants<T: NSView>(_ type: T.Type, _ view: NSView) -> [T] {
@@ -89,6 +102,9 @@ import Testing
     input.stringValue = "sidebar"
     context.addressPanel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: input))
     #expect(table.numberOfRows == 1)
+    let shortcutRow = try #require(table.view(atColumn: 0, row: 0, makeIfNecessary: true))
+    #expect(descendants(NSTextField.self, shortcutRow).contains { $0.stringValue == "⇧⌘S" })
+
     let editor = try #require(input.currentEditor() as? NSTextView)
     #expect(context.addressPanel.control(input, textView: editor, doCommandBy: #selector(NSResponder.moveDown(_:))))
     #expect(input.stringValue == "sidebar")
@@ -114,4 +130,68 @@ import Testing
     #expect(!context.addressPanel.cancelInitialEntryIfPresented())
     #expect(context.addressPanel.control(input, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:))))
     #expect(!panel.isVisible && store.selectedTab.id == blankID)
+}
+
+// @lat: [[lat.md/tests/commands-tests#Automatic command shortcuts]]
+@Test @MainActor func automaticCommandShortcuts() throws {
+    _ = NSApplication.shared
+    let oldMenu = NSApp.mainMenu
+    defer { NSApp.mainMenu = oldMenu }
+    let menu = NSMenu()
+    let submenu = NSMenu()
+    let parent = NSMenuItem(); parent.submenu = submenu; menu.addItem(parent)
+    let selector = NSSelectorFromString("futureCommand:")
+    let item = submenu.addItem(withTitle: "Future command", action: selector, keyEquivalent: "k")
+    item.keyEquivalentModifierMask = [.control, .option, .command]
+    NSApp.mainMenu = menu
+    let command = PopupCommand(id: "future", title: "Future command", detail: "", icon: "star", menuAction: selector) {}
+    #expect(command.shortcut == "⌃⌥⌘K")
+    item.keyEquivalent = "\r"; item.keyEquivalentModifierMask = [.command, .shift]
+    #expect(command.shortcut == "⇧⌘↩") // A binding change requires no palette edit.
+    item.keyEquivalent = ""
+    #expect(command.shortcut == nil)
+    item.keyEquivalent = "q"; item.tag = 1
+    #expect(command.shortcut == nil)
+    let tagged = PopupCommand(id: "tagged", title: "Tagged command", detail: "", icon: "star", menuAction: selector, menuTag: 1) {}
+    #expect(tagged.shortcut == "⇧⌘Q")
+    item.isHidden = true
+    #expect(tagged.shortcut == nil)
+    #expect(MenuShortcut.label(key: "\u{f704}", modifiers: []) == "F1")
+}
+
+// @lat: [[lat.md/tests/commands-tests#Selection commands]]
+@Test @MainActor func selectionCommands() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("SelectionCommands-\(UUID())")
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    let context = try #require(owner.active)
+    let store = context.store
+    let delegate = AppDelegate(browserWindows: owner)
+    defer {
+        owner.prepareToQuit()
+        for window in owner.windows { window.window.close() }
+        try? FileManager.default.removeItem(at: root)
+    }
+    store.newTab(address: "https://example.com/selection")
+    let page = try #require(store.selectedTab.pages.first)
+    let controller = store.controller(for: page)
+    controller.webView.loadHTMLString("<p id='text'>Explain this fact.</p>", baseURL: URL(string: page.address))
+    for _ in 0..<300 {
+        if controller.webView.url != nil && !controller.webView.isLoading { break }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    func entries() -> [PopupCommand] {
+        delegate.popupCommands().filter { ["explainSelection", "summarizeSelection"].contains($0.id) }
+    }
+    #expect(entries().count == 2 && entries().allSatisfy { !$0.isEnabled })
+    _ = try await controller.webView.evaluateJavaScript("var r=document.createRange();r.selectNodeContents(document.getElementById('text'));getSelection().removeAllRanges();getSelection().addRange(r)")
+    delegate.showCommands()
+    for _ in 0..<100 where !entries().allSatisfy({ $0.isEnabled }) { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(entries().allSatisfy { $0.isEnabled })
+    context.addressPanel.dismiss(restoreFocus: true)
+    _ = try await controller.webView.evaluateJavaScript("getSelection().removeAllRanges()")
+    delegate.showCommands()
+    for _ in 0..<10 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(entries().allSatisfy { !$0.isEnabled })
 }

@@ -127,3 +127,68 @@ private final class HistoryWebView: FocusWebView {
     #expect(BrowserStore(sessionFile: file, persistentExtensions: false).history == store.history)
     #expect(store.selectedTab.pages[0].address == "bend://start")
 }
+
+// @lat: [[lat.md/tests/history-tests#Fuzzy address quick-open]]
+@Test @MainActor func fuzzyAddressQuickOpen() throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFuzzyAddress-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let url = "https://github.com/1st1/jit"
+    store.recordVisit(url: url, title: "JIT compiler")
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 900, height: 700),
+        styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.makeKeyAndOrderFront(nil)
+    defer { window.close() }
+    let panel = AddressPanelController(store: store, parentWindow: window)
+    panel.show(for: store.selectedTab.focusedPane)
+    defer { panel.dismiss(restoreFocus: false) }
+    func descendants<T: NSView>(_ type: T.Type, _ view: NSView) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(type, $0) }
+    }
+    let popup = try #require(window.childWindows?.first)
+    let content = try #require(popup.contentView)
+    let field = try #require(descendants(NSTextField.self, content).first { $0.isEditable })
+    let editor = try #require(field.currentEditor() as? NSTextView)
+    field.stringValue = "github/jit"
+    editor.string = field.stringValue
+    editor.setSelectedRange(NSRange(location: field.stringValue.utf16.count, length: 0))
+    panel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+    let table = try #require(descendants(NSTableView.self, content).first)
+    #expect(table.numberOfRows == 2)
+    let top = try #require(table.view(atColumn: 0, row: 0, makeIfNecessary: true))
+    #expect(descendants(NSTextField.self, top).contains { $0.stringValue == "github.com/1st1/jit" })
+    let detail = try #require(descendants(NSTextField.self, top).first { $0.stringValue == "github.com/1st1/jit" })
+    func emphasizedCharacters() -> String {
+        var emphasized = ""
+        detail.attributedStringValue.enumerateAttribute(.font, in: NSRange(location: 0, length: detail.attributedStringValue.length)) { value, range, _ in
+            if let font = value as? NSFont, NSFontManager.shared.traits(of: font).contains(.boldFontMask) {
+                emphasized += (detail.stringValue as NSString).substring(with: range)
+            }
+        }
+        return emphasized
+    }
+    func checkSelectedContrast() {
+        let value = detail.attributedStringValue
+        #expect((value.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)?.alphaComponent == 1)
+        #expect((value.attribute(.foregroundColor, at: 6, effectiveRange: nil) as? NSColor)?.alphaComponent == 0.8)
+        value.enumerateAttribute(.underlineStyle, in: NSRange(location: 0, length: value.length)) { attribute, _, _ in
+            #expect(attribute == nil)
+        }
+    }
+    checkSelectedContrast()
+    #expect(emphasizedCharacters() == "github/jit")
+    #expect(field.stringValue == "github/jit")
+    #expect(panel.control(field, textView: editor, doCommandBy: #selector(NSResponder.moveDown(_:))))
+    #expect(emphasizedCharacters() == "github/jit")
+    #expect(panel.control(field, textView: editor, doCommandBy: #selector(NSResponder.moveUp(_:))))
+    checkSelectedContrast()
+    #expect(emphasizedCharacters() == "github/jit")
+    #expect(field.sendAction(field.action!, to: field.target))
+    let page = try #require(store.selectedTab.pages.first)
+    let controller = try #require(store.existingController(for: page.id))
+    #expect(controller.address == url)
+    controller.webView.stopLoading()
+    #expect(!popup.isVisible)
+}

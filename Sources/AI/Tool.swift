@@ -12,9 +12,13 @@ public struct ToolDefinition: Codable, Sendable, Equatable {
   }
 }
 
-struct ToolOutput: Sendable {
-  var value: JSONValue
-  var subagentMessages: [Message]?
+public struct ToolOutput: Sendable {
+  public var value: JSONValue
+  public var subagentMessages: [Message]?
+  public var images: [ToolImage]?
+  public init(value: JSONValue, subagentMessages: [Message]? = nil, images: [ToolImage]? = nil) {
+    self.value = value; self.subagentMessages = subagentMessages; self.images = images
+  }
 }
 
 public struct Tool: Sendable {
@@ -41,7 +45,7 @@ public struct Tool: Sendable {
     }
   }
 
-  init(
+  public init(
     definition: ToolDefinition,
     execute: @escaping @Sendable (JSONValue, ToolContext) async throws -> ToolOutput
   ) {

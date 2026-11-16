@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Validate release metadata, or batch fragments for the checked-in VERSION."""
 import argparse
+from datetime import datetime, timezone
+import json
 import os
 from pathlib import Path
 import re
@@ -91,9 +93,13 @@ def prepare():
     versions = release_versions()
     if versions and version <= max(versions):
         raise ValueError("First increase VERSION to a new MAJOR.MINOR.PATCH version")
+    dates_path = ROOT / ".changes/release-dates.json"
+    dates = json.loads(dates_path.read_text()) if dates_path.exists() else {}
     # Validate before Changie consumes fragments.
     changie("batch", f"v{current}", "--allow-no-changes=false", "--dry-run")
     changie("batch", f"v{current}", "--allow-no-changes=false")
+    dates[current] = datetime.now(timezone.utc).date().isoformat()
+    dates_path.write_text(json.dumps(dates, indent=2) + "\n")
     changie("merge")
     check()
     print(f"Prepared v{current}. Commit VERSION, CHANGELOG.md, and .changes in your release PR.")

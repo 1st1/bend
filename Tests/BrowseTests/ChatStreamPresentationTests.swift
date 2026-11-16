@@ -94,3 +94,32 @@ import Testing
     #expect(delegate.control(control, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:))))
     #expect(dismissed)
 }
+
+// @lat: [[lat.md/tests/ai-tests#Screenshot cards]]
+@Test @MainActor func chatScreenshotCards() throws {
+    _ = NSApplication.shared
+    let image = NSImage(size: NSSize(width: 80, height: 40), flipped: false) { rect in
+        NSColor.red.setFill(); rect.fill(); return true
+    }
+    let data = try #require(image.tiffRepresentation)
+    let bubble = ChatBubble(isUser: false, text: "", kind: .tool, toolID: "screenshot", title: "Page screenshot", screenshots: [data], state: "Completed")
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("ScreenshotCards-\(UUID())")
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    defer { store.stopWindow(); try? FileManager.default.removeItem(at: root) }
+    let chat = TabChat(store: store, tabID: store.selectedTab.id)
+    store.chats[store.selectedTab.id] = chat
+    chat.consume(.toolCall(.init(id: "screenshot", name: "take_screenshot", arguments: "{}")))
+    chat.consume(.toolResult(.init(callID: "screenshot", name: "take_screenshot", value: .string("Approved screenshot"), images: [.init(mediaType: "image/tiff", data: data)])))
+    #expect(chat.bubbles.last?.screenshots == [data])
+    chat.persist()
+    #expect(store.chatHistory.records.first?.bubbles.last?.screenshots == [data])
+    let restored = try JSONDecoder().decode(ChatBubble.self, from: JSONEncoder().encode(bubble))
+    #expect(restored.screenshots == [data])
+    let host = NSHostingView(rootView: ChatScreenshot(data: data).frame(width: 240, height: 120))
+    host.frame = NSRect(x: 0, y: 0, width: 240, height: 120)
+    host.layoutSubtreeIfNeeded()
+    let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+    host.cacheDisplay(in: host.bounds, to: bitmap)
+    let center = try #require(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.deviceRGB))
+    #expect(center.redComponent > 0.8 && center.greenComponent < 0.2)
+}

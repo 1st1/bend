@@ -164,7 +164,7 @@ Opening or reusing chat history gives its sidebar tab the AI Chat History title.
 
 ## Composer keyboard controls
 
-[[Tests/BrowseTests/ChatComposerTests.swift#chatComposerKeyboard]] exercises native Enter and Shift-Enter insertion at the cursor, Command-Enter submission, disabled sending, protection of active input-method composition, and local prompt history selection, traversal, editing, and Escape clearing.
+[[Tests/BrowseTests/ChatComposerTests.swift#chatComposerKeyboard]] exercises configured Enter and Shift-Enter insertion at the cursor, Command-Enter submission, disabled sending, protection of active input-method composition, and local prompt history selection, traversal, editing, and Escape clearing.
 
 ## Expanded tool card layout
 
@@ -199,3 +199,41 @@ The shared [[Tests/BrowseTests/AIOAuthBrowserTests.swift#checkOAuthBrowser|fixtu
 [[Tests/BrowseTests/AIOAuthTests.swift#aiTestCredentialIsolation]] verifies process-local credential sharing by service, service separation, deletion, and restoring default AI settings without real credentials.
 
 [[scripts/test.sh]] defines BEND_TESTING so [[Sources/Browse/TestCredential.swift#GatewayCredential]] uses in-memory storage even when native views reach shared default settings. Test binaries cannot read or mutate Keychain items. Combining test storage with the production compilation flag is rejected.
+
+## System and location approval
+
+[[Tests/BrowseTests/AISystemToolsTests.swift#aiSystemAndLocationApproval]] checks no data access before approval, denial, cancellation, live revocation, approved results, fail-closed unattended calls, and minute rounding across midnight.
+
+Injected data providers keep tests from reading the user's location or displaying macOS permission prompts.
+
+## Native changelog reads
+
+[[Tests/BrowseTests/AISystemToolsTests.swift#aiNativeChangelogReads]] verifies Unicode-bounded release notes, dates, installed version metadata, continuation cursors, native citations, cursor invalidation, navigation, and exclusion of other native pages and DOM actions.
+
+## Local summaries and chat
+
+[[Tests/BrowseTests/LocalAITests.swift#localSummariesAndChat]] verifies credential-free routing, complete long-page reads, exclusion of drafts and form values, source links, draft/model retention, permission revocation, and cancellation with a scripted provider.
+
+[[Tests/BrowseTests/LocalAITests.swift#localChunkBudgets]] checks lossless multilingual chunking and bounded reduction. [[Tests/BrowseTests/LocalAITests.swift#localModelSmoke]] optionally exercises the installed Apple model when BEND_TEST_LOCAL_AI is enabled. The scripted-provider test also checks explain and summarize selection prompts exclude the rest of the page and retain drafts/model choice. Header and command tests verify the two chat controls, the Summarize Page command, and Command-Shift-P for the command menu.
+
+## Local browser tools
+
+[[Tests/BrowseTests/LocalAITests.swift#localBrowserTools]] verifies compact complete pagination, all enabled tool definitions, shared inline action approvals, and live revocation of a pending click in a Local chat.
+
+[[Tests/BrowseTests/LocalAITests.swift#localNativeToolSmoke]] optionally exercises a real Apple-model tool-call handoff and follow-up answer. [[Tests/BrowseTests/LocalAITests.swift#localNativeBrowserSmoke]] runs native page reading, an approved click, and verification against a harmless HTML fixture. [[Tests/BrowseTests/LocalAITests.swift#localFailureCategories]] checks distinct, sanitized messages for native generation failures.
+
+## Selection and screenshot approval
+
+[[Tests/BrowseTests/AIPageContextTests.swift#aiPageContextApproval]] checks real WebKit selection and viewport images, editable-text exclusion, denial, selected-text acquisition after approval, identical screenshot preview/result bytes, live revocation, stale navigation, and screenshot exclusion for Local AI.
+
+## Chat input key preferences
+
+[[Tests/BrowseTests/ChatComposerTests.swift#chatInputKeyPreferences]] verifies default and reversed actions for all four Return combinations, cursor insertion, disabled sends, and persisted preferences.
+
+## Selection focus retention
+
+[[Tests/BrowseTests/AIPageContextTests.swift#pageSelectionFocusRetention]] transfers focus to chat for mixed text/image and image-only selections, checks the real DOM range survives typing, and verifies normal deselection and navigation cleanup.
+
+## Screenshot cards
+
+[[Tests/BrowseTests/ChatStreamPresentationTests.swift#chatScreenshotCards]] checks screenshot bytes survive chat-card serialization and that the native SwiftUI preview renders the expected image pixels.

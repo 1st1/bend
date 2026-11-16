@@ -13,6 +13,7 @@ public struct HistorySuggestion: Identifiable, Equatable, Sendable {
     public let title: String
     public let lastVisited: Date
     public let visitCount: Int
+    public var isFuzzyMatch = false
 
     public var displayURL: String {
         url.replacingOccurrences(of: "^https?://", with: "", options: .regularExpression)
@@ -130,6 +131,7 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
     // @lat: [[lat.md/architecture/history#History suggestions]]
     public func suggestions(for query: String, limit: Int = 6, now: Date = Date()) -> [HistorySuggestion] {
         let query = Self.fold(query).trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
         let grouped = Dictionary(grouping: visits, by: \.url)
         var adaptiveScores: [String: Double] = [:]
         if !query.isEmpty {
@@ -139,10 +141,15 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
                 adaptiveScores[choice.url] = max(adaptiveScores[choice.url] ?? 0, score)
             }
         }
-        let ranked = grouped.compactMap { url, visits -> (HistorySuggestion, Int, Double)? in
-            guard let latest = visits.max(by: { $0.date < $1.date }),
-                  Self.matches(query, title: latest.title, url: url) else { return nil }
-            let suggestion = HistorySuggestion(url: url, title: latest.title, lastVisited: latest.date, visitCount: visits.count)
+        let ranked = grouped.compactMap { url, visits -> (HistorySuggestion, Int, Int, Double)? in
+            guard let latest = visits.max(by: { $0.date < $1.date }) else { return nil }
+            let literal = Self.matches(query, title: latest.title, url: url)
+            var suggestion = HistorySuggestion(url: url, title: latest.title, lastVisited: latest.date, visitCount: visits.count)
+            let searchableURL = query.contains("://") ? url : suggestion.displayURL
+            let fuzzy = literal ? 0 : FuzzyMatch.score(words: words, title: latest.title,
+                url: searchableURL.removingPercentEncoding ?? searchableURL)
+            guard let fuzzy else { return nil }
+            suggestion.isFuzzyMatch = !literal
             let adaptive = adaptiveScores[url] ?? 0
             let components = URLComponents(string: url)
             let host = Self.fold(components?.host ?? "")
@@ -156,14 +163,16 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
             let isHomePage = (components?.path.isEmpty == true || components?.path == "/")
                 && components?.query == nil && components?.fragment == nil
             if isHomePage, match >= 2 { match += 1 }
+            if !literal { match = 0 }
             let frecency = visits.reduce(0.0) { $0 + pow(0.5, max(0, now.timeIntervalSince($1.date)) / (30 * 86400)) }
             // Learned choices help break ties, but cannot permanently override
             // stronger URL matches or an accumulating history of other visits.
-            return (suggestion, match, frecency + min(6, adaptive * 3))
+            return (suggestion, match, fuzzy, frecency + min(6, adaptive * 3))
         }
         return ranked.sorted {
             if $0.1 != $1.1 { return $0.1 > $1.1 }
             if $0.2 != $1.2 { return $0.2 > $1.2 }
+            if $0.3 != $1.3 { return $0.3 > $1.3 }
             if $0.0.lastVisited != $1.0.lastVisited { return $0.0.lastVisited > $1.0.lastVisited }
             return $0.0.url < $1.0.url
         }.prefix(max(0, limit)).map(\.0)

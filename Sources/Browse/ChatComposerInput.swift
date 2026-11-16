@@ -7,6 +7,7 @@ struct ChatComposerInput: NSViewRepresentable {
     @Binding var focused: Bool
     var canSend: Bool
     var prompts: [String] = []
+    var inputKeys: [String: Bool] = [:]
     var send: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -40,6 +41,7 @@ struct ChatComposerInput: NSViewRepresentable {
         context.coordinator.parent = self
         guard let input = scroll.documentView as? ChatComposerTextView else { return }
         input.canSend = canSend
+        input.inputKeys = inputKeys
         input.send = send
         if input.prompts != prompts { input.historyIndex = nil; input.prompts = prompts }
         input.wantsFocus = focused
@@ -80,6 +82,7 @@ final class ChatComposerTextView: NSTextView {
     var send: () -> Void = {}
     var wantsFocus = false
     var prompts: [String] = []
+    var inputKeys: [String: Bool] = [:]
     var historyIndex: Int?
 
     func clearRecalledPrompt() -> Bool {
@@ -97,7 +100,18 @@ final class ChatComposerTextView: NSTextView {
         if !clearRecalledPrompt() { super.cancelOperation(sender) }
     }
 
+    private func handleReturn(_ event: NSEvent) -> Bool {
+        guard let key = ChatInputKey(event: event) else { return false }
+        if hasMarkedText() { return key == .commandEnter }
+        historyIndex = nil
+        if inputKeys[key.rawValue] ?? key.sendsByDefault {
+            if canSend { send() }
+        } else { insertText("\n", replacementRange: selectedRange()) }
+        return true
+    }
+
     override func keyDown(with event: NSEvent) {
+        if handleReturn(event) { return }
         if event.keyCode == 53, event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
            clearRecalledPrompt() { return }
         if (event.keyCode == 126 || event.keyCode == 125),
@@ -126,11 +140,7 @@ final class ChatComposerTextView: NSTextView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if (event.keyCode == 36 || event.keyCode == 76),
-           event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function]) == .command {
-            if canSend && !hasMarkedText() { send() }
-            return true
-        }
+        if event.modifierFlags.contains(.command), window?.firstResponder === self, handleReturn(event) { return true }
         return super.performKeyEquivalent(with: event)
     }
     override func viewDidMoveToWindow() {

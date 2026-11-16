@@ -352,6 +352,9 @@ private struct EmptyChatProvider: Provider {
     let chat = TabChat(store: store, tabID: store.selectedTab.id)
     chat.input = "Private prompt"
     chat.send(model: Model("test", provider: ChatProvider(script: script)))
+    chat.summarize(provider: ChatProvider(script: script))
+    chat.modelID = LocalAIProvider.modelID
+    chat.send(model: Model(LocalAIProvider.modelID, provider: ChatProvider(script: script)))
     await Task.yield()
     #expect(await script.requests.isEmpty)
     #expect(!chat.running && chat.bubbles.isEmpty && chat.history.isEmpty)

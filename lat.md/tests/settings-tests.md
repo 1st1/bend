@@ -91,3 +91,9 @@ Both surfaces update together; reset restores regular untinted glass on the same
 ## Website permission persistence
 
 [[Tests/BrowseCoreTests/WebsitePermissionTests.swift#websitePermissionPersistence]] verifies scheme/port/subdomain isolation, canonical origins, Allow/Block persistence and removal, version 4 block migration, invalid-origin rejection, and preservation of zoom settings.
+
+## Certificate exceptions
+
+[[Tests/BrowseTests/CertificateExceptionTests.swift#certificateExceptions]] runs a local self-signed HTTPS server to verify rejection, ordinary retry rejection, explicit acceptance, pane isolation, and clearing pending approval on navigation. Non-certificate errors cannot offer an exception.
+
+The committed page reports its accepted exception for the red Not Secure domain menu; unaccepted and internal pages do not.

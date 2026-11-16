@@ -38,6 +38,8 @@ The smoke test waits for background errors, invokes the toolbar action, and veri
 
 [[Tests/BrowseTests/ExtensionTests.swift#privateExtensionAccess]] verifies persisted opt-ins, private-tab queries, script injection, request blocking, revocation, and refusal to supply shared extension configurations to private panes.
 
+The shared [[Tests/BrowseTests/ExtensionTests.swift#ExtensionTestNavigation]] helper waits for the exact navigation it started, so callbacks from another view or an earlier load cannot release assertions prematurely.
+
 The restored host completes an awaited ruleset disable/enable cycle and demonstrates content injection and request blocking before unload. This synchronizes teardown with WebKit’s asynchronous rule loading instead of racing its database callbacks or relying on a fixed delay.
 
 ## Private extension iframe isolation
@@ -49,3 +51,7 @@ A loopback HTTP iframe first demonstrates both cookie access and writes in an is
 ## Extension permission presentation
 
 [[Tests/BrowseTests/ExtensionPermissionTests.swift#extensionPermissionPresentation]] verifies readable permission summaries, exact website restrictions, unknown-permission visibility, deduplication, and denial when the native dialog is closed.
+
+## Native page extension isolation
+
+[[Tests/BrowseTests/ExtensionTests.swift#nativePageExtensionIsolation]] verifies native pages have no extension controller, exposed web view, or available toolbar actions, and that switching back to a website restores real content-script injection with stable tab identity.

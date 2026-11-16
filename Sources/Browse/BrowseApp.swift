@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         browserWindows.onSettings = { [weak self] section in self?.presentSettings(section: section) }
         restoreBrowserWindows()
         installMenus()
+        showReleaseNotesIfUpdated()
         AppUpdater.shared.start()
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { event in
             InputDiagnostics.record(.application, event: event)
@@ -144,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 action: #selector(AppUpdater.checkForUpdates(_:)), keyEquivalent: "")
             update.target = AppUpdater.shared
         }
+        add("What’s New", #selector(showChangelog), "", to: appMenu)
         appMenu.addItem(.separator())
         add("Settings…", #selector(showSettings), ",", to: appMenu)
         appMenu.addItem(.separator())
@@ -232,10 +234,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         settingsWindow?.show(section: section, centeredOn: browserWindows.active?.window.screen)
     }
     // @lat: [[lat.md/architecture/commands#Command popup]]
+    private var commandSelection: (pane: UUID, revision: UUID, text: String)?
+    private var commandSelectionRequest = UUID()
     @objc func showCommands() {
         guard let context = browserWindows.active else { return }
         let tabID = context.store.selectedTab.id
         let paneID = context.store.selectedTab.focusedPane
+        commandSelection = nil
+        let request = UUID()
+        commandSelectionRequest = request
+        if !context.store.isPrivate, let controller = context.store.existingController(for: paneID) {
+            let revision = controller.aiNavigationRevision
+            Task { [weak self, weak context] in
+                let text = (try? await controller.selectedPageText()) ?? ""
+                guard let self, let context, self.commandSelectionRequest == request,
+                      context.store.selectedTab.id == tabID, context.store.selectedTab.focusedPane == paneID,
+                      controller.aiNavigationRevision == revision else { return }
+                self.commandSelection = (paneID, revision, text)
+                context.addressPanel.refreshCommands()
+            }
+        }
         context.addressPanel.showCommands(for: paneID) { [weak self, weak context] in
             guard let self, let context, self.browserWindows.active === context,
                   context.store.selectedTab.id == tabID,
@@ -248,8 +266,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let store = store
         let tab = store.selectedTab
         let favorite = store.favorite(for: tab)
+        let selection = commandSelection.flatMap { value -> String? in
+            guard value.pane == tab.focusedPane,
+                  store.existingController(for: value.pane)?.aiNavigationRevision == value.revision else { return nil }
+            return value.text.isEmpty ? nil : value.text
+        }
         return [
-            PopupCommand(id: "chat", title: "Chat", detail: store.isPrivate ? "Unavailable in private windows" : "Chat with the panes in this tab", icon: "bubble.left.and.bubble.right", isEnabled: !store.isPrivate) { store.showChat() },
+            PopupCommand(id: "chat", title: "Chat", detail: store.isPrivate ? "Unavailable in private windows" : "Chat about the pages in this tab", icon: "bubble.left.and.bubble.right", isEnabled: !store.isPrivate, menuAction: #selector(toggleChat)) { store.showChat() },
+            PopupCommand(id: "summarize", title: "Summarize Page", detail: "Summarize the active page using Local AI", icon: "text.alignleft", isEnabled: canSummarizePage) { [weak self] in self?.summarizePage() },
+            PopupCommand(id: "explainSelection", title: "Explain Selected", detail: "Explain the selected webpage text using Local AI", icon: "text.bubble", isEnabled: selection != nil && canSummarizePage) { [weak self] in self?.discussCommandSelection(explain: true) },
+            PopupCommand(id: "summarizeSelection", title: "Summarize Selected", detail: "Summarize the selected webpage text using Local AI", icon: "text.alignleft", isEnabled: selection != nil && canSummarizePage) { [weak self] in self?.discussCommandSelection(explain: false) },
             PopupCommand(id: "favorite", title: favorite == nil ? "Add Tab to Favorites" : "Remove Tab from Favorites",
                 detail: "Save the active pane’s website", icon: "star", isEnabled: favorite != nil || store.canFavorite(tab)) {
                     if let favorite { store.removeFavorite(favorite.id) } else { store.requestFavorite(tab.id) }
@@ -258,7 +284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 store.duplicateTab(tab.id)
             },
             PopupCommand(id: "close", title: "Close Tab", detail: tab.isPinned ? "Unpin the tab to close it" : "Close all panes in this tab",
-                icon: "xmark", isEnabled: !tab.isPinned) { store.closeTab(tab.id) },
+                icon: "xmark", isEnabled: !tab.isPinned, menuAction: #selector(closeTab)) { store.closeTab(tab.id) },
             PopupCommand(id: "pinTab", title: tab.isPinned ? "Unpin Tab" : "Pin Tab", detail: "Protect all panes from closing", icon: "pin") {
                 store.setTabPinned(tab.id, pinned: !tab.isPinned)
             },
@@ -272,14 +298,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     store.setPanePinned(tab.focusedPane, pinned: !store.isPanePinned(tab.focusedPane))
                 },
             PopupCommand(id: "sidebar", title: store.sidebarVisible ? "Hide Sidebar" : "Show Sidebar",
-                detail: "Toggle sidebar · ⇧⌘S", icon: "sidebar.left") { store.sidebarVisible.toggle() },
-            PopupCommand(id: "settings", title: "Settings…", detail: "Browser preferences · ⌘,", icon: "gearshape") { [weak self] in self?.showSettings() },
-            PopupCommand(id: "print", title: "Print…", detail: "Print the active page · ⌘P", icon: "printer",
-                isEnabled: printablePage != nil) { [weak self] in self?.printPage() },
-            PopupCommand(id: "history", title: "View History", detail: "Browse visited pages · ⌘Y", icon: "clock") { [weak self] in self?.showHistory() },
+                detail: "Toggle sidebar", icon: "sidebar.left", menuAction: #selector(toggleSidebar)) { store.sidebarVisible.toggle() },
+            PopupCommand(id: "settings", title: "Settings…", detail: "Browser preferences", icon: "gearshape", menuAction: #selector(showSettings)) { [weak self] in self?.showSettings() },
+            PopupCommand(id: "print", title: "Print…", detail: "Print the active page", icon: "printer",
+                isEnabled: printablePage != nil, menuAction: #selector(printPage)) { [weak self] in self?.printPage() },
+            PopupCommand(id: "changelog", title: "What’s New", detail: "Features, improvements, and fixes in every release", icon: "sparkles", menuAction: #selector(showChangelog)) { store.showChangelog() },
+            PopupCommand(id: "history", title: "View History", detail: "Browse visited pages", icon: "clock", menuAction: #selector(showHistory)) { [weak self] in self?.showHistory() },
             PopupCommand(id: "chat-history", title: "Show AI Chat History", detail: "Restore conversations and their pane layouts", icon: "clock.arrow.circlepath", isEnabled: !store.isPrivate) { store.showChatHistory() },
             PopupCommand(id: "devTools", title: findSurface?.isDeveloperToolsVisible == true ? "Hide Developer Tools" : "Show Developer Tools",
-                detail: "Toggle dev tools / Web Inspector · ⇧⌘I", icon: "hammer", isEnabled: activeWebPage != nil) { [weak self] in self?.showWebInspector() }
+                detail: "Toggle dev tools / Web Inspector", icon: "hammer", isEnabled: activeWebPage != nil, menuAction: #selector(showWebInspector)) { [weak self] in self?.showWebInspector() }
         ]
     }
 
@@ -349,6 +376,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard let page = activeWebPage else { return }
         page.setPageZoom(pageZoomLevel(sender.tag, current: page.webView.pageZoom))
     }
+    @objc func showChangelog() {
+        addressPanel?.dismiss(restoreFocus: false)
+        store.showChangelog()
+    }
+
+    func showReleaseNotesIfUpdated(tracker: WhatsNewTracker = WhatsNewTracker(), show: Bool = true) {
+        guard tracker.consumeUpgrade() else { return }
+        let context = browserWindows.windows.first(where: { !$0.store.isPrivate }) ?? browserWindows.newWindow(show: false)
+        context.addressPanel.dismiss(restoreFocus: false)
+        context.store.showChangelog()
+        if show { context.window.makeKeyAndOrderFront(nil) }
+    }
+
     @objc private func showHistory() {
         addressPanel?.dismiss(restoreFocus: false)
         store.showHistory()
@@ -408,6 +448,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func splitRight() { store.split(.horizontal) }
     @objc private func splitBelow() { store.split(.vertical) }
     @objc private func zoomPane() { store.toggleZoom(store.selectedTab.focusedPane) }
+    private var canSummarizePage: Bool {
+        guard let context = browserWindows.active, !context.store.isPrivate else { return false }
+        let store = context.store
+        if let chat = store.chats[store.selectedTab.id] { return chat.canSummarize }
+        let page = store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }
+        return ["http", "https"].contains(URL(string: page?.address ?? "")?.scheme ?? "")
+    }
+
+    private func discussCommandSelection(explain: Bool) {
+        guard canSummarizePage, let selection = commandSelection,
+              selection.pane == store.selectedTab.focusedPane,
+              store.existingController(for: selection.pane)?.aiNavigationRevision == selection.revision,
+              !selection.text.isEmpty else { return }
+        store.showChat()
+        store.chats[store.selectedTab.id]?.discussSelection(selection.text, explain: explain)
+    }
+
+    @objc func summarizePage() {
+        guard let context = browserWindows.active, !context.store.isPrivate else { return }
+        context.store.showChat()
+        context.store.chats[context.store.selectedTab.id]?.summarize()
+    }
+
     @objc func toggleChat() {
         guard let context = browserWindows.active, !context.store.isPrivate else { return }
         let store = context.store

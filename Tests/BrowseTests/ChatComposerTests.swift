@@ -17,7 +17,7 @@ import AI
     var focused = true
     var sent: [String] = []
     let host = NSHostingView(rootView: ChatComposerInput(text: Binding(get: { text }, set: { text = $0 }),
-        focused: Binding(get: { focused }, set: { focused = $0 }), canSend: true, send: { sent.append(text) })
+        focused: Binding(get: { focused }, set: { focused = $0 }), canSend: true, inputKeys: ["enter": false], send: { sent.append(text) })
         .frame(width: 320).padding(12))
     let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 360, height: 160),
                           styleMask: [.titled], backing: .buffered, defer: false)
@@ -259,4 +259,45 @@ private struct ChatHistoryAppearanceFixture: View {
         host.cacheDisplay(in: host.bounds, to: bitmap)
         try #require(bitmap.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: path))
     }
+}
+
+// @lat: [[lat.md/tests/ai-tests#Chat input key preferences]]
+@Test @MainActor func chatInputKeyPreferences() throws {
+    _ = NSApplication.shared
+    let domain = "ChatKeys-\(UUID())"
+    let defaults = UserDefaults(suiteName: domain)!
+    defer { defaults.removePersistentDomain(forName: domain) }
+    let settings = AISettings(defaults: defaults)
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 300, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    let input = ChatComposerTextView(frame: window.contentView!.bounds)
+    window.contentView = input
+    window.makeFirstResponder(input)
+    defer { window.close() }
+    var sent = 0
+    input.send = { sent += 1 }
+    input.canSend = true
+    let flags: [NSEvent.ModifierFlags] = [[], .command, .option, .shift]
+    for (key, modifier) in zip(ChatInputKey.allCases, flags) {
+        let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifier,
+            timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        for sends in [key.sendsByDefault, !key.sendsByDefault] {
+            input.string = "abcd"; input.setSelectedRange(NSRange(location: 2, length: 0))
+            if sends == key.sendsByDefault { input.inputKeys = [:] }
+            else { settings.inputKeys[key.rawValue] = sends; input.inputKeys = settings.inputKeys }
+            let before = sent
+            if modifier == .command { #expect(input.performKeyEquivalent(with: event)) }
+            else { input.keyDown(with: event) }
+            #expect(sent == before + (sends ? 1 : 0))
+            #expect(input.string == (sends ? "abcd" : "ab\ncd"))
+        }
+    }
+    let restored = AISettings(defaults: defaults)
+    for key in ChatInputKey.allCases { #expect(restored.inputKeys[key.rawValue] == !key.sendsByDefault) }
+    input.inputKeys = [:]; input.canSend = false
+    let enter = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: window.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+    let before = sent, text = input.string
+    input.keyDown(with: enter)
+    #expect(sent == before && input.string == text)
 }

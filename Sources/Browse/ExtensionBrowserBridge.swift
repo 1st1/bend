@@ -79,6 +79,7 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
 
     func pageChanged(_ id: UUID) {
         guard let tab = tabs[id], let page = tab.pageController else { return }
+        if tab.isNativePage, popupPaneID == id { popup?.close(); popup = nil; popupPaneID = nil }
         var changes: WKWebExtension.TabChangedProperties = []
         if tab.lastURL != page.address { changes.insert(.URL) }
         if tab.lastTitle != page.title { changes.insert(.title) }
@@ -226,6 +227,9 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
     var page: Page? { manager?.pages.first { $0.id == id } }
     var store: BrowserStore? { manager?.store(for: id) }
     var pageController: PageController? { store?.existingController(for: id) }
+    var isNativePage: Bool {
+        (pageController?.address ?? page?.address).flatMap(URL.init(string:))?.scheme == "bend"
+    }
     func window(for context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? {
         // WebKit needs the owning window to classify this tab as private.
         guard let store else { return nil }; return manager?.window(for: store)
@@ -234,7 +238,7 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
         guard canAccess(context), let manager, let parent = store?.linkOpeners[id] else { return nil }
         return manager.tabs[parent]
     }
-    func webView(for context: WKWebExtensionContext) -> WKWebView? { canAccess(context) ? pageController?.webView : nil }
+    func webView(for context: WKWebExtensionContext) -> WKWebView? { canAccess(context) && !isNativePage ? pageController?.webView : nil }
     func title(for context: WKWebExtensionContext) -> String? { canAccess(context) ? (pageController?.title ?? page?.address) : nil }
     func url(for context: WKWebExtensionContext) -> URL? { canAccess(context) ? (pageController?.address ?? page?.address).flatMap(URL.init(string:)) : nil }
     func isLoadingComplete(for context: WKWebExtensionContext) -> Bool { !(pageController?.isLoading ?? false) }

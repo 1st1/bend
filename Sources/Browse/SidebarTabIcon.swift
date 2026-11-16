@@ -32,7 +32,7 @@ struct SidebarTabIcon: NSViewRepresentable {
         } else {
             let address = controller?.address ?? page?.address ?? "bend://start"
             let symbol = address.hasPrefix("bend://")
-                ? (address == "bend://history" ? "clock" : "square.grid.2x2") : "globe"
+                ? (address == "bend://log" ? "sparkles" : address == "bend://history" ? "clock" : "square.grid.2x2") : "globe"
             view.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
             view.contentTintColor = .secondaryLabelColor
         }

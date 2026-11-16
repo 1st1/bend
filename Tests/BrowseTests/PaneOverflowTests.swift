@@ -79,3 +79,45 @@ import BrowseCore
     let onlyHorizontal = PaneGeometry(layout: tab.layout, viewport: CGSize(width: 560, height: 800))
     #expect(onlyHorizontal.clippedPaneIDs(in: CGSize(width: 560, height: 800)) == [pages[1].id, pages[2].id])
 }
+
+// @lat: [[lat.md/tests/pane-layout-tests#Native page scrolling]]
+@Test @MainActor func nativePageScrolling() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("NativePageScroll-\(UUID())")
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    defer { store.stopWindow(); try? FileManager.default.removeItem(at: root) }
+    let page = Page()
+    let tab = BrowserTab(pages: [page])
+    store.session.workspaces = [Workspace(name: "Tabs", tabs: [tab])]
+    store.session.selectedTab = tab.id
+    let host = MountedTabHost(frame: NSRect(x: 0, y: 0, width: 650, height: 300))
+    let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = host
+    window.setFrameOrigin(NSPoint(x: -10000, y: -10000)); window.orderFront(nil)
+    defer { window.close() }
+    host.update(store: store, environment: EnvironmentValues())
+    for _ in 0..<5 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(30)) }
+    func descendants<T: NSView>(_ type: T.Type, _ view: NSView) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(type, $0) }
+    }
+    let pane = try #require(descendants(ClippedPaneHost.self, host).first)
+    #expect(pane.enclosingScrollView == nil)
+    let scroll = try #require(descendants(NSScrollView.self, pane).first)
+    let document = try #require(scroll.documentView)
+    #expect(document.bounds.height > scroll.contentView.bounds.height)
+    let paneFrame = pane.convert(pane.bounds, to: nil)
+    let original = scroll.contentView.bounds.origin
+    scroll.contentView.scroll(to: NSPoint(x: original.x, y: original.y + 80))
+    scroll.reflectScrolledClipView(scroll.contentView)
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(scroll.contentView.bounds.origin != original)
+    #expect(pane.convert(pane.bounds, to: nil) == paneFrame)
+    // Overscroll and horizontal gestures must not move the enclosing pane either.
+    for (vertical, horizontal): (Int32, Int32) in [(2000, 0), (-2000, 0), (0, 2000), (0, -2000)] {
+        let cgEvent = try #require(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+                                          wheel1: vertical, wheel2: horizontal, wheel3: 0))
+        scroll.scrollWheel(with: try #require(NSEvent(cgEvent: cgEvent)))
+        #expect(pane.convert(pane.bounds, to: nil) == paneFrame)
+    }
+}

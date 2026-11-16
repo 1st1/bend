@@ -20,6 +20,7 @@ struct ChatBubble: Identifiable, Codable {
     var argumentSummary = ""
     var argumentFields: [ChatArgumentField] = []
     var sources: [SearchSource] = []
+    var screenshots: [Data]?
     var detailTruncated = false
     var state = "Running"
     enum Kind: String, Codable { case text, tool, serverTool, reasoning }
@@ -51,6 +52,7 @@ struct ChatBubble: Identifiable, Codable {
     private var connectionObservation: AnyCancellable?
     private var accountObservation: AnyCancellable?
     private var task: Task<Void, Never>?
+    private var localRun = false
     private var run: AI.Stream<AgentResult>?
     let actionApproval = AIActionApproval()
     private var approvalObservation: AnyCancellable?
@@ -60,7 +62,7 @@ struct ChatBubble: Identifiable, Codable {
         self.store = store; self.tabID = tabID
         self.settings = settings
         approvalObservation = actionApproval.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
-        modelID = settings.modelID
+        modelID = settings.modelID.isEmpty ? LocalAIProvider.modelID : settings.modelID
         savedTab = store.session.workspaces.flatMap(\.tabs).first { $0.id == tabID }
         clearObservation = store.chatHistory.clearRequests.sink { [weak self] cutoff in
             guard let self, self.updatedAt >= cutoff else { return }
@@ -70,9 +72,13 @@ struct ChatBubble: Identifiable, Codable {
             guard let self, ids.contains(self.conversationID) else { return }
             self.resetConversation()
         }
-        accountObservation = settings.$connectionGeneration.dropFirst().sink { [weak self] _ in self?.stop(); self?.modelID = "" }
+        accountObservation = settings.$connectionGeneration.dropFirst().sink { [weak self] _ in
+            guard let self, !self.localRun else { return }
+            self.stop()
+            if self.modelID != LocalAIProvider.modelID { self.modelID = "" }
+        }
         connectionObservation = settings.$connected.removeDuplicates().dropFirst().sink { [weak self] connected in
-            if !connected { self?.stop() }
+            if !connected, self?.localRun == false { self?.stop() }
         }
     }
 
@@ -100,7 +106,8 @@ struct ChatBubble: Identifiable, Codable {
         do {
             AIDiagnostics.shared.record("run.started", tab: tabID, fields: ["model": modelID])
             let baseModel = try override ?? settings.model(modelID)
-            let paneTools = PaneChatTools(store: store, tabID: tabID, settings: settings, approve: { [weak self] request in
+            let isLocal = baseModel.id == LocalAIProvider.modelID
+            let paneTools = PaneChatTools(store: store, tabID: tabID, settings: settings, compactReads: isLocal, approve: { [weak self] request in
                 guard let self, self.running else { return false }
                 if let bubble = self.bubbles.last(where: { $0.toolID == request.callID && $0.state == "Running" }) {
                     self.approvalBubbleID = bubble.id
@@ -114,20 +121,20 @@ struct ChatBubble: Identifiable, Codable {
                 }
                 return await self.actionApproval.request(request)
             })
-            let template = settings.systemPrompt
+            let template = isLocal ? LocalAIProvider.agentInstructions : settings.systemPrompt
             let model = Model(baseModel.id, provider: PaneContextProvider(base: baseModel.provider) {
                 await paneTools.renderPrompt(template)
             })
             let agent = try Agent(tools: paneTools.tools(), maxSteps: 12, maxConcurrentTools: 1)
-            input = ""; error = nil; running = true; status = "Thinking…"
+            input = ""; error = nil; running = true; localRun = isLocal; status = "Thinking…"
             thinkingText = ""; thinkingSummary = ""; thinkingSummaryBeforeBubbleID = nil
             bubbles.append(ChatBubble(isUser: true, text: prompt))
             updatedAt = Date(); persist(); store.saveSoon()
             let token = generation
             let responseStart = bubbles.count
             let messages = history + [.user(prompt)]
-            let run = agent.run(model, messages: [.system(settings.systemPrompt)] + messages,
-                                options: .init(gatewayWebSearch: settings.webSearchEnabled, includeReasoning: true))
+            let run = agent.run(model, messages: [.system(template)] + messages,
+                                options: .init(gatewayWebSearch: !isLocal && settings.webSearchEnabled, includeReasoning: !isLocal))
             self.run = run
             task = Task { [weak self] in
                 defer { run.cancel() }
@@ -158,10 +165,100 @@ struct ChatBubble: Identifiable, Codable {
                 for index in self.bubbles.indices where (self.bubbles[index].kind == .tool || self.bubbles[index].kind == .serverTool) && self.bubbles[index].state == "Running" {
                     self.bubbles[index].state = "Stopped"
                 }
-                self.running = false; self.status = ""; self.run = nil; self.task = nil
+                self.running = false; self.localRun = false; self.status = ""; self.run = nil; self.task = nil
                 self.updatedAt = Date(); self.persist()
             }
         } catch { self.error = AISettings.message(for: error) }
+    }
+
+    var canSummarize: Bool {
+        guard !running, let store, !store.isPrivate,
+              let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }),
+              let page = tab.pages.first(where: { $0.id == tab.focusedPane }) else { return false }
+        let address = store.existingController(for: page.id)?.webView.url?.absoluteString ?? page.address
+        return ["http", "https"].contains(URL(string: address)?.scheme ?? "")
+    }
+
+    func summarize(provider: (any Provider)? = nil) { startLocalSummary(provider: provider) }
+
+    func discussSelection(_ text: String, explain: Bool, provider: (any Provider)? = nil) {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        startLocalSummary(provider: provider, selection: text, explain: explain)
+    }
+
+    private func startLocalSummary(provider: (any Provider)?, selection: String? = nil, explain: Bool = false) {
+        guard !running else { return }
+        guard let store, !store.isPrivate else { error = "AI is unavailable in private windows."; return }
+        let prompt = selection == nil ? "Summarize this page using Local AI." : (explain ? "Explain selected text using Local AI." : "Summarize selected text using Local AI.")
+        guard !prompt.isEmpty else { return }
+        guard prompt.utf8.count <= 2400 else { error = "Local AI messages must be shorter than 2,400 bytes. Try a shorter message."; return }
+        do { if provider == nil { try LocalAIProvider.checkAvailability() } }
+        catch { self.error = AISettings.message(for: error); return }
+        let pane = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID })?.focusedPane
+        let readPage = selection == nil
+        let previous = history
+        error = nil; running = true; localRun = true; status = readPage ? "Reading page locally…" : "Thinking locally…"
+        thinkingText = ""; thinkingSummary = ""; thinkingSummaryBeforeBubbleID = nil
+        bubbles.append(ChatBubble(isUser: true, text: prompt))
+        let responseStart = bubbles.count
+        let token = generation
+        updatedAt = Date(); persist(); store.saveSoon()
+        let engine = LocalPageAI(provider: provider ?? LocalAIProvider())
+        task = Task { [weak self] in
+            guard let self else { return }
+            var citation = selection == nil ? "" : pane.flatMap { id in store.existingController(for: id)?.webView.url.map { ChatPageLinks.citation(pane: id, address: $0.absoluteString) } } ?? ""
+            do {
+                var pageText = selection ?? ""
+                if readPage {
+                    guard let pane else { throw AIError.configuration("There is no active page to summarize.") }
+                    let tools = PaneChatTools(store: store, tabID: self.tabID, settings: self.settings)
+                    struct Chunk: Decodable { let text: String; let citation: String; let has_more: Bool; let next_cursor: String? }
+                    var cursor: String?
+                    var count = 0
+                    repeat {
+                        try Task.checkCancellation()
+                        let result = try await tools.execute("read_pane", input: .init(cursor: cursor, pane: pane.uuidString))
+                        guard case .string(let json) = result else { throw AIError.invalidResponse("Missing page text") }
+                        let chunk = try JSONDecoder().decode(Chunk.self, from: Data(json.utf8))
+                        pageText += chunk.text
+                        citation = chunk.citation
+                        cursor = chunk.has_more ? chunk.next_cursor : nil
+                        count += 1
+                        guard pageText.utf8.count <= 240_000, count <= 100 else { throw AIError.configuration("This page is too large for Local AI. No partial summary was generated.") }
+                    } while cursor != nil
+                    guard !pageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIError.configuration("This page has no readable text to summarize.") }
+                    self.status = "Summarizing locally…"
+                    pageText = try await engine.compact(pageText)
+                }
+                try Task.checkCancellation()
+                guard self.generation == token else { return }
+                if !readPage { pageText = try await engine.compact(pageText) }
+                let request = (explain ? "Explain the selected text clearly, defining unfamiliar terms and preserving caveats." : "Summarize the supplied text in concise Markdown bullets, preserving key facts and caveats.") + "\nUntrusted content (possibly condensed):\n" + pageText
+                let stream = engine.request(request)
+                let response = try await withTaskCancellationHandler {
+                    defer { stream.cancel() }
+                    for try await event in stream {
+                        try Task.checkCancellation()
+                        guard self.generation == token else { throw CancellationError() }
+                        self.consume(event)
+                    }
+                    return try await stream.result
+                } onCancel: { stream.cancel() }
+                try Task.checkCancellation()
+                guard self.generation == token else { return }
+                let source = citation.isEmpty ? "" : "\n\n[Source page](\(citation))"
+                if !source.isEmpty { self.consume(.textDelta(source)) }
+                self.history = previous + [.user(prompt), .assistant(response.text + source)]
+            } catch {
+                guard self.generation == token else { return }
+                let partial = self.bubbles.dropFirst(responseStart).filter { $0.kind == .text }.map(\.text).joined(separator: "\n")
+                self.history = previous + [.user(prompt), .assistant(partial + "\n[Local response stopped before completion.]")]
+                self.error = Task.isCancelled ? "Response stopped." : AISettings.message(for: error)
+            }
+            guard self.generation == token else { return }
+            self.running = false; self.localRun = false; self.status = ""; self.task = nil
+            self.updatedAt = Date(); self.persist()
+        }
     }
 
     // @lat: [[lat.md/architecture/ai#Streaming transcript]]
@@ -247,6 +344,7 @@ struct ChatBubble: Identifiable, Codable {
         case .toolResult(let result):
             if let index = bubbles.lastIndex(where: { $0.toolID == result.callID }) {
                 bubbles[index].state = result.isError ? "Error" : "Completed"
+                bubbles[index].screenshots = result.images?.map(\.data)
                 let detail = result.value.string ?? (try? result.value.jsonString()) ?? ""
                 bubbles[index].detail = String(detail.prefix(12000))
                 bubbles[index].detailTruncated = detail.count > 12000
@@ -346,10 +444,10 @@ struct ChatBubble: Identifiable, Codable {
     private func resetConversation() {
         generation = UUID(); run?.cancel(); task?.cancel(); pendingPersistence?.cancel(); pendingPersistence = nil
         actionApproval.cancel(); approvalBubbleID = nil
-        run = nil; task = nil; running = false; status = ""
+        run = nil; task = nil; running = false; localRun = false; status = ""
         conversationID = UUID(); createdAt = Date(); updatedAt = createdAt
         history = []; bubbles = []; input = ""; thinkingText = ""; thinkingSummary = ""
-        thinkingSummaryBeforeBubbleID = nil; error = nil; modelID = settings.modelID
+        thinkingSummaryBeforeBubbleID = nil; error = nil; modelID = settings.modelID.isEmpty ? LocalAIProvider.modelID : settings.modelID
         store?.saveSoon()
     }
     func clear() { guard !running else { return }; persist(); resetConversation() }
@@ -363,9 +461,18 @@ struct ChatBubble: Identifiable, Codable {
     let tabID: UUID
     private let settings: AISettings
     private let approve: Approval
-    init(store: BrowserStore?, tabID: UUID, settings: AISettings = .shared,
-         approve: @escaping Approval = { _ in false }) {
-        self.store = store; self.tabID = tabID; self.settings = settings; self.approve = approve
+    private let compactReads: Bool
+    private let systemInfo: @MainActor () -> JSONValue
+    private let currentLocation: @MainActor () async throws -> JSONValue
+    private let changelog: @MainActor () -> Changelog
+    private var changelogReads: [UUID: AIChangelogRead] = [:]
+    init(store: BrowserStore?, tabID: UUID, settings: AISettings = .shared, compactReads: Bool = false,
+         approve: @escaping Approval = { _ in false },
+         systemInfo: @escaping @MainActor () -> JSONValue = { AISystemContext.systemInfo() },
+         currentLocation: @escaping @MainActor () async throws -> JSONValue = { try await AISystemContext.location() },
+         changelog: @escaping @MainActor () -> Changelog = { .load() }) {
+        self.store = store; self.tabID = tabID; self.settings = settings; self.approve = approve; self.compactReads = compactReads
+        self.systemInfo = systemInfo; self.currentLocation = currentLocation; self.changelog = changelog
     }
 
     func paneContext() -> JSONValue {
@@ -395,11 +502,15 @@ struct ChatBubble: Identifiable, Codable {
     }
     func tools() -> [Tool] {
         guard store?.isPrivate == false else { return [] }
-        return [tool("read_pane", "Read a stable main-frame snapshot in chunks of 24000 characters and 100 elements/references. When has_more is true, call again with the same pane and returned next_cursor. Omit cursor to start a fresh read. Read all relevant chunks before summarizing; excludes input values.", fields: ["pane"]),
-         tool("navigate_pane", "Navigate a pane to an HTTP or HTTPS URL when requested by the user.", fields: ["pane", "url"]),
-         tool("create_pane", "Open an HTTP or HTTPS URL in a NEW pane to the right of the given existing pane in this chat's tab. Preserves the existing page. Requires the user's inline approval. Returns the new pane ID; read it to verify its content.", fields: ["pane", "url"]),
+        return [tool("read_pane", "Read a website or bend://log (release notes and installed Bend version) in paginated chunks with observed selectors. When has_more is true, call again with the same pane and returned next_cursor. Omit cursor to start a fresh read. Read all relevant chunks before summarizing; excludes input values.", fields: ["pane"]),
+         tool("navigate_pane", "Navigate a pane to an HTTP(S) URL or bend://log when requested by the user.", fields: ["pane", "url"]),
+         tool("create_pane", "Open an HTTP(S) URL or bend://log in a NEW pane to the right of the given existing pane in this chat's tab. Preserves the existing page. Requires the user's inline approval. Returns the new pane ID; read it to verify its content.", fields: ["pane", "url"]),
          tool("click_element", "Click one element using a CSS selector observed in read_pane. Re-read afterward.", fields: ["pane", "selector"]),
-         tool("fill_element", "Fill an ordinary text input using an observed CSS selector; does not submit. Password and payment fields are excluded.", fields: ["pane", "selector", "text"])].filter { settings.isToolEnabled($0.definition.name) }
+         tool("fill_element", "Fill an ordinary text input using an observed CSS selector; does not submit. Password and payment fields are excluded.", fields: ["pane", "selector", "text"]),
+         tool("get_selected_text", "Read the user's current selection in this webpage after inline approval. Excludes form fields. Empty selection returns empty text.", fields: ["pane"]),
+         tool("take_screenshot", "Share an image of the visible webpage viewport after inline approval. Requires a visible pane and an image-capable model. Does not capture the desktop or other panes.", fields: ["pane"]),
+         tool("get_system_info", "Ask the user to share macOS version, installed Bend version/build, current date, time rounded up to minutes, and timezone. Requires inline approval for every call.", fields: []),
+         tool("get_current_location", "Ask the user to share their current latitude, longitude, and accuracy. Requires inline approval for every call and macOS location permission. One-time request, no tracking.", fields: [])].filter { settings.isToolEnabled($0.definition.name) && (!compactReads || $0.definition.name != "take_screenshot") }
     }
     private func tool(_ name: String, _ description: String, fields: [String]) -> Tool {
         var properties = Dictionary(uniqueKeysWithValues: fields.map { ($0, JSONValue.object(["type": .string("string")])) })
@@ -411,11 +522,15 @@ struct ChatBubble: Identifiable, Codable {
             "properties": .object(properties),
             "required": .array(fields.map { .string($0) }), "additionalProperties": .bool(false)
         ])
-        return Tool(name: name, description: description, parameters: schema, arguments: Input.self) { [self] input, context in
+        return Tool(definition: .init(name: name, description: description, parameters: schema)) { [self] arguments, context in
+            let input = try arguments.decode(Input.self)
             do {
                 let result = try await execute(name, input: input, callID: context.call.id)
                 await AIDiagnostics.shared.record("tool.finished", tab: tabID, fields: ["name": name, "pane": input.pane ?? ""])
-                return result
+                if name == "take_screenshot", let encoded = result["image"]?.string, let data = Data(base64Encoded: encoded) {
+                    return ToolOutput(value: .string("Approved screenshot of the visible webpage viewport."), images: [.init(mediaType: "image/jpeg", data: data)])
+                }
+                return ToolOutput(value: result)
             } catch {
                 await AIDiagnostics.shared.record("tool.failed", tab: tabID, fields: ["name": name, "pane": input.pane ?? "", "domain": (error as NSError).domain, "code": String((error as NSError).code)])
                 throw error
@@ -428,6 +543,23 @@ struct ChatBubble: Identifiable, Codable {
         guard settings.isToolEnabled(name) else { throw AIError.configuration("This tool is disabled in Settings → AI.") }
         guard let store, let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }) else {
             throw AIError.configuration("This tab is closed.")
+        }
+        if name == "get_system_info" || name == "get_current_location" {
+            let action: AIActionApproval.Action = name == "get_system_info" ? .systemInfo : .location
+            guard await approve(.init(callID: callID, action: action, page: "")) else {
+                throw AIError.configuration("Sharing was not approved. Do not retry unless the user asks.")
+            }
+            func validateContext() throws {
+                try Task.checkCancellation()
+                guard !store.isPrivate, settings.isToolEnabled(name),
+                      store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == tabID }) else {
+                    throw AIError.configuration("The chat or tool permission changed. Request approval again if needed.")
+                }
+            }
+            try validateContext()
+            let result = name == "get_system_info" ? systemInfo() : try await currentLocation()
+            try validateContext()
+            return result
         }
         guard let value = input.pane, let id = UUID(uuidString: value),
               let page = tab.pages.first(where: { $0.id == id }) else {
@@ -454,8 +586,8 @@ struct ChatBubble: Identifiable, Codable {
         if name == "navigate_pane" || name == "create_pane" {
             guard let address = input.url, let url = URL(string: address),
                   address.count <= 8192,
-                  ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil,
-                  url.user == nil, url.password == nil else { throw AIError.configuration("Use an HTTP(S) URL without credentials.") }
+                  (address == "bend://log" || ["http", "https"].contains(url.scheme?.lowercased() ?? "")), url.host != nil,
+                  url.user == nil, url.password == nil else { throw AIError.configuration("Use an HTTP(S) URL without credentials or bend://log.") }
             try await confirm(.init(callID: callID, action: name == "create_pane" ? .create : .navigate, page: source?.absoluteString ?? page.address,
                                     destination: address))
             if name == "create_pane" {
@@ -472,10 +604,41 @@ struct ChatBubble: Identifiable, Codable {
             controller.navigate(address)
             return .string("Navigation started. Read the pane to check the loaded page.")
         }
+        if name == "read_pane", controller.address == "bend://log" {
+            if input.cursor == nil || input.cursor == "" {
+                changelogReads[id] = AIChangelogRead(revision: revision, changelog: changelog(),
+                    version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown")
+            }
+            guard let snapshot = changelogReads[id], snapshot.revision == revision else {
+                throw AIError.configuration("This read cursor expired. Read bend://log again without a cursor.")
+            }
+            try revalidate()
+            return try snapshot.read(cursor: input.cursor, pane: id)
+        }
+        changelogReads[id] = nil
         guard let url = controller.webView.url, ["http", "https"].contains(url.scheme ?? ""), !controller.isStartPage else {
             throw AIError.configuration("Only HTTP(S) website panes can be read or controlled.")
         }
         guard !controller.webView.isLoading else { throw AIError.configuration("Page is loading. Try again shortly.") }
+        if name == "get_selected_text" || name == "take_screenshot" {
+            guard name != "take_screenshot" || !compactReads else { throw AIError.configuration("Local AI does not support screenshots. Choose an image-capable cloud model.") }
+            guard store.selectedTab.id == tabID else { throw AIError.configuration("Switch to this tab before sharing.") }
+            let screenshot = name == "take_screenshot" ? try await controller.visiblePageScreenshot() : nil
+            try revalidate()
+            try await confirm(.init(callID: callID, action: name == "get_selected_text" ? .selection : .screenshot,
+                                    page: url.absoluteString, screenshot: screenshot))
+            guard store.selectedTab.id == tabID else { throw AIError.configuration("The selected tab changed.") }
+            let result: JSONValue
+            if name == "get_selected_text" {
+                result = .object(["text": .string(try await controller.selectedPageText()), "url": .string(url.absoluteString),
+                    "citation": .string(ChatPageLinks.citation(pane: id, address: url.absoluteString))])
+            } else {
+                result = .object(["image": .string(screenshot!.base64EncodedString())])
+            }
+            try revalidate()
+            guard store.selectedTab.id == tabID else { throw AIError.configuration("The selected tab changed.") }
+            return result
+        }
         let script: String
         var arguments: [String: Any] = ["expectedURL": url.absoluteString]
         switch name {
@@ -484,6 +647,8 @@ struct ChatBubble: Identifiable, Codable {
             arguments["pane"] = id.uuidString
             arguments["cursor"] = input.cursor ?? ""
             arguments["snapshotID"] = UUID().uuidString
+            arguments["textLimit"] = compactReads ? 800 : 24000
+            arguments["metadataLimit"] = compactReads ? 5 : 100
         case "click_element", "fill_element":
             guard let selector = input.selector, !selector.isEmpty, selector.count <= 2000 else { throw AIError.configuration("A CSS selector is required.") }
             guard (input.text?.count ?? 0) <= 8192 else { throw AIError.configuration("Text is too long for one browser action.") }
@@ -513,16 +678,16 @@ struct ChatBubble: Identifiable, Codable {
     if (!['http:', 'https:'].includes(location.protocol) || location.href !== expectedURL)
       throw new Error('Page changed. Read the pane again.');
     const output = (snapshot, index) => {
-      const count = Math.max(1, snapshot.chunks.length, Math.ceil(snapshot.elements.length/100), Math.ceil(snapshot.references.length/100));
+      const count = Math.max(1, snapshot.chunks.length, Math.ceil(snapshot.elements.length/snapshot.metadataLimit), Math.ceil(snapshot.references.length/snapshot.metadataLimit));
       if (!Number.isSafeInteger(index) || index < 0 || index >= count) throw new Error('Invalid read cursor. Read again without a cursor.');
       const more = index + 1 < count;
       return JSON.stringify({url:snapshot.url,title:snapshot.title,text:snapshot.chunks[index] || '',
-        text_start:index<snapshot.chunks.length?index*24000+1:null,
-        text_end:index<snapshot.chunks.length?index*24000+Array.from(snapshot.chunks[index]).length:null,
+        text_start:index<snapshot.chunks.length?index*snapshot.textLimit+1:null,
+        text_end:index<snapshot.chunks.length?index*snapshot.textLimit+Array.from(snapshot.chunks[index]).length:null,
         truncated:index+1<snapshot.chunks.length,has_more:more,next_cursor:more?snapshot.id+':'+(index+1):null,
         chunk:index+1,total_chunks:count,text_complete:index+1>=snapshot.chunks.length,
-        content_kind:index<snapshot.chunks.length?"page_text_and_metadata":"remaining_elements_and_references",elements:snapshot.elements.slice(index*100,(index+1)*100),
-        citation:snapshot.citation,references:snapshot.references.slice(index*100,(index+1)*100)});
+        content_kind:index<snapshot.chunks.length?"page_text_and_metadata":"remaining_elements_and_references",elements:snapshot.elements.slice(index*snapshot.metadataLimit,(index+1)*snapshot.metadataLimit),
+        citation:snapshot.citation,references:snapshot.references.slice(index*snapshot.metadataLimit,(index+1)*snapshot.metadataLimit)});
     };
     if (cursor) {
       const snapshot = globalThis.__bendReadSnapshot;
@@ -571,7 +736,7 @@ struct ChatBubble: Identifiable, Codable {
       .map(e => ({label:safeText(e).trim().slice(0,180),citation:citation(e)})).filter(e => e.label);
     const text = safeText(document.body);
     const snapshot = {id:snapshotID,url:location.href,title:document.title,targets:new Map(controls.map(e => [selector(e), e])),
-      chunks:text.match(/[\s\S]{1,24000}/gu) || [],elements,references,citation:citation(null)};
+      chunks:text.match(new RegExp('[\\s\\S]{1,' + textLimit + '}', 'gu')) || [],textLimit,metadataLimit,elements,references,citation:citation(null)};
     globalThis.__bendReadSnapshot = snapshot;
     return output(snapshot, 0);
     """#

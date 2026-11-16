@@ -32,7 +32,7 @@ import WebKit
             guard let id = url.host.flatMap(UUID.init(uuidString:)),
                   let components = citationComponents(url),
                   let address = components.queryItems?.first(where: { $0.name == "url" })?.value,
-                  let source = URL(string: address), ["http", "https"].contains(source.scheme?.lowercased() ?? ""),
+                  let source = URL(string: address), (address == "bend://log" || ["http", "https"].contains(source.scheme?.lowercased() ?? "")),
                   source.host != nil, source.user == nil, source.password == nil else { throw LinkError.unavailable }
             guard components.queryItems?.contains(where: { $0.name == "selector" }) != true else {
                 throw LinkError.legacyCitation
@@ -49,7 +49,7 @@ import WebKit
             store.select(tabID); store.focus(page.id)
             return
         }
-        guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil,
+        guard (url.absoluteString == "bend://log" || ["http", "https"].contains(url.scheme?.lowercased() ?? "")), url.host != nil,
               url.user == nil, url.password == nil else { throw LinkError.unsupported }
         let matches = tab.pages.filter {
             sameDocument(store.existingController(for: $0.id)?.address ?? $0.address, url.absoluteString)

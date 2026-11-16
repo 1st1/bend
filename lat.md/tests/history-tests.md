@@ -59,3 +59,17 @@ Bare-host prefixes also prefer a www. home page over a much more frequently visi
 ## Remove address suggestion
 
 [HistoryStoreTests.swift](../../Tests/BrowseTests/HistoryStoreTests.swift) exercises a popup row’s removal button and verifies immediate result refresh, persisted removal of visits and learned choices, and no navigation.
+
+## Fuzzy address matching
+
+[[Tests/BrowseCoreTests/HistoryTests.swift#fuzzyAddressMatching]] checks abbreviated paths, ordering, literal priority, gap and boundary scoring, Unicode, limits, removal, and unchanged inline completion.
+
+## Fuzzy address quick-open
+
+[[Tests/BrowseTests/HistoryStoreTests.swift#fuzzyAddressQuickOpen]] types github/jit into the native address popup and verifies the best history URL is selected without altering the input and Return navigates to the original URL.
+
+It also checks bold emphasis covers exactly the matched URL characters and selected rows use fully opaque matches with 80% opacity for unmatched text and no underlines, including after selection moves.
+
+## Matched address characters
+
+[[Tests/BrowseCoreTests/HistoryTests.swift#matchedAddressCharacters]] verifies generic URL abbreviations, best-path traceback, camel-case initials, literal/multiword matches, and UTF-16 ranges across emoji, accents, and case-fold expansion.

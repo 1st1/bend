@@ -718,6 +718,16 @@ final class BrowserStore: ObservableObject {
         return true
     }
 
+    func showChangelog() {
+        for workspace in session.workspaces {
+            if let tab = workspace.tabs.first(where: { $0.pages.contains { $0.address == "bend://log" } }),
+               let page = tab.pages.first(where: { $0.address == "bend://log" }) {
+                select(tab.id); focus(page.id); return
+            }
+        }
+        newTab(address: "bend://log")
+    }
+
     func showHistory() {
         for workspace in session.workspaces {
             if let tab = workspace.tabs.first(where: { $0.pages.contains { $0.address == "bend://history" } }),
@@ -1363,6 +1373,7 @@ class FocusWebView: WKWebView {
         return accepted
     }
     override func resignFirstResponder() -> Bool {
+        BendSelectionSupport.enable(for: self)
         let accepted = super.resignFirstResponder()
         InputDiagnostics.transition(.webFocus, .finished, view: self, flags: ["accepted": accepted])
         return accepted
@@ -1408,6 +1419,45 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     @Published var canGoBack = false
     @Published var canGoForward = false
     @Published var error: String?
+    @Published private(set) var certificateFailure: (url: URL, exception: CertificateException)?
+    private var certificateExceptions: Set<CertificateException> = []
+
+    var usesCertificateException: Bool {
+        guard !isStartPage,
+              WebsiteCertificates.matchesSite(webView.url, committed: committedSiteURL),
+              let url = committedSiteURL, let trust = webView.serverTrust,
+              let exception = CertificateException(url: url, trust: trust) else { return false }
+        return certificateExceptions.contains(exception)
+    }
+
+    func continueDespiteCertificateError() {
+        guard error != nil, let failure = certificateFailure else { return }
+        certificateExceptions.insert(failure.exception)
+        navigate(failure.url.absoluteString)
+    }
+
+    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
+                 completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        let space = challenge.protectionSpace
+        var components = URLComponents()
+        components.scheme = space.protocol
+        components.host = space.host
+        components.port = space.port
+        if webView === self.webView, space.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let trust = space.serverTrust, let url = components.url,
+           let exception = CertificateException(url: url, trust: trust),
+           certificateExceptions.contains(exception) {
+            // Apply the accepted validation failures to this trust object only.
+            // WebKit still evaluates the supplied credential's trust.
+            if let exceptions = SecTrustCopyExceptions(trust), SecTrustSetExceptions(trust, exceptions) {
+                completionHandler(.useCredential, URLCredential(trust: trust))
+            } else {
+                completionHandler(.performDefaultHandling, nil)
+            }
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
     @Published var isStartPage = true
     var onNavigation: ((String, String) -> Void)?
     var onStateChanged: (() -> Void)?
@@ -1455,6 +1505,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
          externalApplications: ExternalApplicationLinks = .shared, javaScriptDialogs: JavaScriptDialogs = .shared,
          downloads: BrowserDownloads = BrowserDownloads(), searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
+        self.isStartPage = URL(string: AddressResolver.canonicalAddress(address))?.scheme == "bend"
         self.isPrivate = isPrivate
         self.downloads = downloads
         self.externalApplications = externalApplications
@@ -1468,6 +1519,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         configuration.applicationNameForUserAgent = Self.websiteApplicationName
         configuration.websiteDataStore = AppProfile.current.websiteDataStore
         configure(configuration)
+        if URL(string: AddressResolver.canonicalAddress(address))?.scheme == "bend" { configuration.webExtensionController = nil }
         WebKitPrivacy.apply(websiteSettings?.values ?? WebsiteSettings(), to: configuration)
         webView = suppliedWebView ?? FocusWebView(frame: .zero, configuration: configuration)
         super.init()
@@ -1582,12 +1634,14 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         onInitialDownload = nil
         let localURL = URL(string: input).flatMap { LocalWebDocument.accepts($0) ? $0 : nil }
         guard let url = localURL ?? AddressResolver.resolve(input, searchEngine: searchEngine(), customSearchEngine: customSearchEngine()) else { error = "Enter a web address or search phrase."; return }
-        if extensionOrigin != nil {
+        let nativePage = url.scheme == "bend"
+        if extensionOrigin != nil || nativePage != isStartPage || (nativePage && webView.configuration.webExtensionController != nil) {
             extensionOrigin = nil
             let configuration = WKWebViewConfiguration()
             configuration.applicationNameForUserAgent = Self.websiteApplicationName
             configuration.websiteDataStore = AppProfile.current.websiteDataStore
             configure(configuration)
+            if nativePage { configuration.webExtensionController = nil }
             WebKitPrivacy.apply(websiteSettings?.values ?? WebsiteSettings(), to: configuration)
             replaceWebView(configuration: configuration)
         }
@@ -1603,6 +1657,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         webView.clearURLPreview()
         InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "bend"])
         resetFavicon(for: url)
+        certificateFailure = nil
         error = nil; address = url.absoluteString
         completedAddress = nil
         isStartPage = url.scheme == "bend"
@@ -1618,7 +1673,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
                 media.detach()
                 webView.pauseAllMediaPlayback(completionHandler: nil)
             }
-            title = address == "bend://chats" ? "AI Chat History" : address == "bend://history" ? "History" : (address == "bend://guide" ? "Tiling guide" : "New tab")
+            title = address == "bend://start" ? "New tab" : AddressResolver.nativePageTitle(address) ?? "New tab"
             reportNavigation()
         } else {
             if webView.mediaController == nil { media.attach(to: webView) }
@@ -1676,6 +1731,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         InputDiagnostics.transition(.webLoad, .started, view: webView)
         resetFavicon(for: webView.url ?? URL(string: address))
         completedAddress = nil
+        certificateFailure = nil
         if !isStartPage { error = nil }
     }
     func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
@@ -1750,7 +1806,10 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         // navigation becomes a WKDownload. The existing page remains valid.
         let policyInterruption = nativeError.domain == "WebKitErrorDomain" && nativeError.code == 102
         let cancelled = nativeError.domain == NSURLErrorDomain && nativeError.code == NSURLErrorCancelled
-        if !cancelled && !policyInterruption { error = failure.localizedDescription }
+        if !cancelled && !policyInterruption {
+            certificateFailure = CertificateException.failure(nativeError)
+            error = failure.localizedDescription
+        }
         refresh()
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {

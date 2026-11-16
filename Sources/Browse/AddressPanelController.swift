@@ -21,13 +21,30 @@ private final class AddressResultCell: NSTableCellView {
     let title = NSTextField(labelWithString: "")
     let detail = NSTextField(labelWithString: "")
     let remove = NSButton()
+    let shortcut = NSTextField(labelWithString: "")
+    var titleMatches: [NSRange] = []
+    var detailMatches: [NSRange] = []
 
     func setSelected(_ selected: Bool) {
         title.textColor = selected ? .alternateSelectedControlTextColor : .labelColor
         let secondary = selected ? NSColor.alternateSelectedControlTextColor : .secondaryLabelColor
         detail.textColor = secondary
+        shortcut.textColor = secondary
         icon.contentTintColor = secondary
         remove.contentTintColor = secondary
+        highlight(title, ranges: titleMatches, color: title.textColor!, selected: selected)
+        highlight(detail, ranges: detailMatches, color: secondary, selected: selected)
+    }
+
+    private func highlight(_ field: NSTextField, ranges: [NSRange], color: NSColor, selected: Bool) {
+        let font = NSFont.systemFont(ofSize: field === title ? 14 : 11)
+        let baseColor = selected && (!titleMatches.isEmpty || !detailMatches.isEmpty) ? color.withAlphaComponent(0.8) : color
+        let value = NSMutableAttributedString(string: field.stringValue, attributes: [.font: font, .foregroundColor: baseColor])
+        for range in ranges where NSMaxRange(range) <= value.length {
+            value.addAttributes([.font: NSFont.systemFont(ofSize: font.pointSize, weight: .bold),
+                                 .foregroundColor: selected ? color : NSColor.controlAccentColor], range: range)
+        }
+        field.attributedStringValue = value
     }
 }
 
@@ -263,6 +280,11 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         return hint
     }
 
+    func refreshCommands() {
+        guard commandProvider != nil, targetPane != nil else { return }
+        updateResults(preserveSelection: true)
+    }
+
     func showCommands(for paneID: UUID, provider: @escaping () -> [PopupCommand]) {
         dismiss(restoreFocus: false)
         commandProvider = provider
@@ -391,6 +413,14 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
                 detail: isSearch ? "Search with \(store.searchEngineName)" : "Open address", address: query, history: nil), at: 0)
             selectedResult = 0
         } else { selectedResult = -1 }
+        // Fuzzy quick-open selects the best result without replacing what was
+        // typed. A non-prefix completion cannot safely be inserted inline.
+        if allowAutofill, suggestions.first?.isFuzzyMatch == true,
+           let index = results.firstIndex(where: { $0.history?.url == suggestions.first?.url }) {
+            let topHit = results.remove(at: index)
+            results.insert(topHit, at: 0)
+            selectedResult = 0
+        }
         if allowAutofill, let suggestion = suggestions.first,
            let completion = suggestion.completion(for: typedQuery),
            let index = results.firstIndex(where: { $0.history?.url == suggestion.url }) {
@@ -503,6 +533,10 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = .secondaryLabelColor
         detail.lineBreakMode = .byTruncatingMiddle
+        if result.history != nil, !showingFrequent {
+            view.titleMatches = FuzzyMatch.ranges(typedQuery, in: result.title)
+            view.detailMatches = FuzzyMatch.ranges(typedQuery, in: result.detail)
+        }
         let remove = view.remove
         remove.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)
         remove.target = self
@@ -513,7 +547,14 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         remove.toolTip = "Remove from history"
         remove.setAccessibilityLabel("Remove \(result.title) from history")
         remove.isHidden = result.history == nil
-        for child in [icon, title, detail, remove] {
+        let shortcut = view.shortcut
+        shortcut.stringValue = result.command?.shortcut ?? ""
+        shortcut.font = .systemFont(ofSize: 12, weight: .medium)
+        shortcut.alignment = .right
+        shortcut.setContentCompressionResistancePriority(.required, for: .horizontal)
+        shortcut.setContentHuggingPriority(.required, for: .horizontal)
+        shortcut.setAccessibilityLabel(shortcut.stringValue.isEmpty ? "" : "Keyboard shortcut \(shortcut.stringValue)")
+        for child in [icon, title, detail, remove, shortcut] {
             child.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(child)
         }
@@ -522,7 +563,9 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             icon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 16),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-            title.trailingAnchor.constraint(equalTo: remove.leadingAnchor, constant: -8),
+            title.trailingAnchor.constraint(equalTo: result.command == nil ? remove.leadingAnchor : shortcut.leadingAnchor, constant: -8),
+            shortcut.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+            shortcut.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             title.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
             detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
             detail.trailingAnchor.constraint(equalTo: title.trailingAnchor),

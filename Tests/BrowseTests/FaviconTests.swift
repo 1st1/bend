@@ -110,7 +110,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
     let server = try await FaviconHTTPFixture.start(redirect: target.url("/page"))
     defer { server.listener.cancel(); target.listener.cancel() }
     let config = WKWebViewConfiguration(); config.websiteDataStore = .nonPersistent()
-    let web = FocusWebView(frame: .zero, configuration: config)
+    var web = FocusWebView(frame: .zero, configuration: config)
     let controller = PageController(address: server.url("/page").absoluteString, webView: web)
     defer { web.stopLoading() }
     func waitUntil(_ ready: () -> Bool) async throws {
@@ -158,6 +158,7 @@ private final class FaviconTestNavigation: NSObject, WKNavigationDelegate {
 
     // A late result from the old document cannot restore its icon on another site.
     controller.navigate(server.url("/slow-icon-page").absoluteString)
+    web = controller.webView // Native pages replace the outgoing website view.
     try await waitUntil { server.paths.contains("/slow") }
     controller.navigate(target.url("/blocked").absoluteString)
     try await waitUntil { web.url == target.url("/blocked") && !controller.isLoading }
