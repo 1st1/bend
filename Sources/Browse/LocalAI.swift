@@ -117,6 +117,8 @@ struct LocalAIProvider: Provider {
 
     static func failure(_ error: Error) -> AIError {
         if let error = error as? AIError { return error }
+        // Runtime availability alone cannot hide a type from older SDKs.
+        #if canImport(FoundationModels, _version: 2.0)
         if #available(macOS 27.0, *), let error = error as? LanguageModelError {
             switch error {
             case .contextSizeExceeded: return .configuration("Local AI exceeded its context window. Try a shorter request or fewer panes.")
@@ -131,6 +133,7 @@ struct LocalAIProvider: Provider {
             default: break
             }
         }
+        #endif
         if let error = error as? LanguageModelSession.GenerationError {
             switch error {
             case .exceededContextWindowSize: return .configuration("Local AI exceeded its context window. Try a shorter request or fewer panes.")
