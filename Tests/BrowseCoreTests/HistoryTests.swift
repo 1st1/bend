@@ -4,6 +4,40 @@ import Testing
 
 private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
 
+// @lat: [[lat.md/tests/history-tests#Fuzzy address matching]]
+@Test func fuzzyAddressMatching() throws {
+    var history = BrowsingHistory()
+    let jit = "https://github.com/1st1/jit"
+    let loose = "https://github.com/another/project/just-in-time"
+    history.record(url: jit, title: "JIT compiler", at: historyNow.addingTimeInterval(-86400))
+    for index in 0..<20 {
+        history.record(url: loose, title: "Compiler", at: historyNow.addingTimeInterval(Double(-index * 60)))
+    }
+    for query in ["github/jit", "GITHUB/JIT", "gh/jit", "https://github/jit", "gh/jit compiler"] {
+        let results = history.suggestions(for: query, now: historyNow)
+        #expect(results.first?.url == jit)
+        #expect(results.first?.isFuzzyMatch == true)
+        #expect(results.first?.completion(for: query) == nil)
+    }
+    #expect(history.suggestions(for: "github/jit", now: historyNow).contains { $0.url == loose })
+    #expect(history.suggestions(for: "github/zzzz", now: historyNow).isEmpty)
+    #expect(history.suggestions(for: "tij/buhtig", now: historyNow).isEmpty)
+    let literal = "https://example.com/github/jit"
+    history.record(url: literal, title: "Literal", at: historyNow.addingTimeInterval(-86400 * 60))
+    #expect(history.suggestions(for: "github/jit", now: historyNow).first?.url == literal)
+    #expect(history.suggestions(for: "github/jit", now: historyNow).first?.isFuzzyMatch == false)
+    #expect(history.suggestions(for: "github/jit", limit: 1, now: historyNow).count == 1)
+    #expect(history.suggestions(for: "github/jit", limit: 0, now: historyNow).isEmpty)
+    #expect(try #require(FuzzyMatch.score("npe", in: "NullPointerException")) > #require(FuzzyMatch.score("npe", in: "nullpointerexception")))
+    #expect(FuzzyMatch.score("cfe", in: "Café") != nil)
+    #expect(FuzzyMatch.score("東京", in: "東の京") != nil)
+    #expect(FuzzyMatch.score("aab", in: "ab") == nil)
+    #expect(FuzzyMatch.score(String(repeating: "a", count: 129), in: String(repeating: "a", count: 200)) == nil)
+    #expect(FuzzyMatch.score("z", in: String(repeating: "a", count: 2048) + "z") == nil)
+    history.remove(url: jit)
+    #expect(!history.suggestions(for: "gh/jit", now: historyNow).contains { $0.url == jit })
+}
+
 // @lat: [[lat.md/tests/history-tests#History recording]]
 @Test func historyRecording() throws {
     var history = BrowsingHistory()
@@ -136,4 +170,24 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     let pathMatch = history.suggestions(for: "nytimes.com/int", now: historyNow).first
     #expect(pathMatch?.url == timesArticle)
     #expect(pathMatch?.completion(for: "nytimes.com/int") == "nytimes.com/international/story")
+}
+
+// @lat: [[lat.md/tests/history-tests#Matched address characters]]
+@Test func matchedAddressCharacters() {
+    func characters(_ query: String, _ text: String) -> String {
+        FuzzyMatch.ranges(query, in: text).map { (text as NSString).substring(with: $0) }.joined()
+    }
+    #expect(characters("dcs/api", "docs.example.net/reference/api") == "dcs/api")
+    #expect(characters("npe", "NullPointerException") == "NPE")
+    #expect(characters("cfe", "🙂 Cafe\u{301}") == "Cfe\u{301}")
+    #expect(FuzzyMatch.ranges("cfe", in: "🙂 Cafe\u{301}") == [NSRange(location: 3, length: 1), NSRange(location: 5, length: 1), NSRange(location: 6, length: 2)])
+    #expect(characters("strasse", "Straße") == "Straße")
+    #expect(characters("abc", "abxxc axbc") == "abc")
+    #expect(FuzzyMatch.ranges("abc", in: "abxxc axbc") == [NSRange(location: 0, length: 1), NSRange(location: 1, length: 1), NSRange(location: 4, length: 1)])
+    #expect(characters("docs api", "Docs / API") == "DocsAPI")
+    #expect(FuzzyMatch.ranges("zzz", in: "Docs / API").isEmpty)
+    #expect(FuzzyMatch.ranges("", in: "Docs / API").isEmpty)
+    var history = BrowsingHistory()
+    history.record(url: "https://docs.example.net/reference/api", title: "Reference")
+    #expect(history.suggestions(for: "dcs/api").first?.url == "https://docs.example.net/reference/api")
 }

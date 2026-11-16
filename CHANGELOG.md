@@ -7,6 +7,7 @@ Earlier prototype builds used the version `0.1` without a versioned changelog; `
 
 ## v0.8.0
 ### Added
+- Find visited pages with editor-style fuzzy address matching: type github/jit to open github.com/1st1/jit, with matched characters highlighted and consecutive text and word boundaries ranked above scattered matches.
 - Read dated release notes at bend://log, with What's New opening once after a newer version or build is installed.
 - Let AI read Bend release notes and request system details or a one-time current location, with approval required before sharing system or location data.
 - Show keyboard shortcuts beside command-menu actions, automatically matching their native menu bindings.

@@ -22,6 +22,8 @@ private final class AddressResultCell: NSTableCellView {
     let detail = NSTextField(labelWithString: "")
     let remove = NSButton()
     let shortcut = NSTextField(labelWithString: "")
+    var titleMatches: [NSRange] = []
+    var detailMatches: [NSRange] = []
 
     func setSelected(_ selected: Bool) {
         title.textColor = selected ? .alternateSelectedControlTextColor : .labelColor
@@ -30,6 +32,19 @@ private final class AddressResultCell: NSTableCellView {
         shortcut.textColor = secondary
         icon.contentTintColor = secondary
         remove.contentTintColor = secondary
+        highlight(title, ranges: titleMatches, color: title.textColor!, selected: selected)
+        highlight(detail, ranges: detailMatches, color: secondary, selected: selected)
+    }
+
+    private func highlight(_ field: NSTextField, ranges: [NSRange], color: NSColor, selected: Bool) {
+        let font = NSFont.systemFont(ofSize: field === title ? 14 : 11)
+        let baseColor = selected && (!titleMatches.isEmpty || !detailMatches.isEmpty) ? color.withAlphaComponent(0.8) : color
+        let value = NSMutableAttributedString(string: field.stringValue, attributes: [.font: font, .foregroundColor: baseColor])
+        for range in ranges where NSMaxRange(range) <= value.length {
+            value.addAttributes([.font: NSFont.systemFont(ofSize: font.pointSize, weight: .bold),
+                                 .foregroundColor: selected ? color : NSColor.controlAccentColor], range: range)
+        }
+        field.attributedStringValue = value
     }
 }
 
@@ -398,6 +413,14 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
                 detail: isSearch ? "Search with \(store.searchEngineName)" : "Open address", address: query, history: nil), at: 0)
             selectedResult = 0
         } else { selectedResult = -1 }
+        // Fuzzy quick-open selects the best result without replacing what was
+        // typed. A non-prefix completion cannot safely be inserted inline.
+        if allowAutofill, suggestions.first?.isFuzzyMatch == true,
+           let index = results.firstIndex(where: { $0.history?.url == suggestions.first?.url }) {
+            let topHit = results.remove(at: index)
+            results.insert(topHit, at: 0)
+            selectedResult = 0
+        }
         if allowAutofill, let suggestion = suggestions.first,
            let completion = suggestion.completion(for: typedQuery),
            let index = results.firstIndex(where: { $0.history?.url == suggestion.url }) {
@@ -510,6 +533,10 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = .secondaryLabelColor
         detail.lineBreakMode = .byTruncatingMiddle
+        if result.history != nil, !showingFrequent {
+            view.titleMatches = FuzzyMatch.ranges(typedQuery, in: result.title)
+            view.detailMatches = FuzzyMatch.ranges(typedQuery, in: result.detail)
+        }
         let remove = view.remove
         remove.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)
         remove.target = self
