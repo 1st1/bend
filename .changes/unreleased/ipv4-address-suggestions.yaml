@@ -1,3 +1,0 @@
-kind: Fixed
-body: Match IPv4-like address input against visited IP address prefixes instead of unrelated numbers in page titles or URLs.
-time: 2026-11-16T15:58:30.765907+00:00
