@@ -25,8 +25,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         }
         window.isReleasedWhenClosed = false
         window.collectionBehavior.insert(.fullScreenNone)
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
+        for type in [NSWindow.ButtonType.miniaturizeButton, .zoomButton] {
+            window.standardWindowButton(type)?.isHidden = false
+            window.standardWindowButton(type)?.isEnabled = false
+        }
         window.toolbarStyle = .unified
         window.toolbar = NSToolbar(identifier: "BendSettingsTitlebar")
         window.setFrameAutosaveName(AppProfile.current.frameName("BrowseSettings"))

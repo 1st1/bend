@@ -185,8 +185,12 @@ import BrowseCore
     #expect(settings.window.styleMask.contains(.fullSizeContentView))
     #expect(settings.window.titleVisibility == .hidden)
     #expect(settings.window.standardWindowButton(.closeButton)?.isHidden == false)
-    #expect(settings.window.standardWindowButton(.miniaturizeButton)?.isHidden != false)
-    #expect(settings.window.standardWindowButton(.zoomButton)?.isHidden != false)
+    #expect(settings.window.standardWindowButton(.closeButton)?.isEnabled == true)
+    for type in [NSWindow.ButtonType.miniaturizeButton, .zoomButton] {
+        let button = try #require(settings.window.standardWindowButton(type))
+        #expect(!button.isHidden)
+        #expect(!button.isEnabled)
+    }
     #expect(settings.window.collectionBehavior.contains(.fullScreenNone))
     #expect(settings.window.titlebarAppearsTransparent)
     func closeShortcut() throws {
