@@ -83,3 +83,57 @@ func sidebarToolbarFade(floating: Bool, side: SidebarSide) async throws {
     #expect(viewport.maxY - next.convert(next.bounds, to: nil).maxY >= headerHeight + 44 + Chrome.sidebarTopPadding)
     store.removeFavorite(favorite)
 }
+
+// @lat: [[lat.md/tests/sidebar-tests#Favorites with no regular tabs]]
+@Test(arguments: [false, true], SidebarSide.allCases) @MainActor
+func favoritesWithoutRegularTabs(floating: Bool, side: SidebarSide) async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("EmptySidebar-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    let browser = try #require(owner.active)
+    let store = browser.store
+    store.onAddressRequested = nil
+    store.sidebarSide = side
+    store.sidebarVisible = !floating
+    store.sidebarFloating = floating
+    for index in 0..<6 {
+        if index > 0 { store.newTab() }
+        _ = try #require(store.addFavorite(store.selectedTab.id, address: "https://favorite\(index).example/"))
+    }
+    store.newTab()
+    defer { owner.prepareToQuit(); for context in owner.windows { context.window.close() } }
+    func verify(_ browser: BrowserWindowSession) async throws {
+        let host = try #require(browser.window.contentView)
+        for _ in 0..<8 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(30)) }
+        func markers(_ view: NSView) -> [WindowDragAreaView] {
+            (view as? WindowDragAreaView).map { [$0] } ?? view.subviews.flatMap(markers)
+        }
+        let tiles = markers(host).filter { $0.excluded && abs($0.bounds.height - 44) < 1 && $0.bounds.width < browser.store.sidebarWidth }
+        try #require(tiles.count == 6)
+        #expect(tiles.allSatisfy { $0.bounds.width > 50 })
+        let frames = tiles.map { host.convert($0.bounds, from: $0) }
+        #expect(Set(frames.map { Int($0.midX.rounded()) }).count == 3)
+        #expect(Set(frames.map { Int($0.midY.rounded()) }).count == 2)
+    }
+    try await verify(browser)
+    AppDelegate(browserWindows: owner).closeFocusedWindow(browser.window)
+    #expect(store.sidebarTabs.isEmpty)
+    try await verify(browser)
+    // Reopening a regular tab and closing it again must not change grid width.
+    store.newTab()
+    try await verify(browser)
+    AppDelegate(browserWindows: owner).closeFocusedWindow(browser.window)
+    #expect(store.sidebarTabs.isEmpty)
+    try await verify(browser)
+    owner.prepareToQuit()
+    for context in owner.windows { context.window.close() }
+    let restoredOwner = BrowserWindows(root: root, persistentExtensions: false)
+    restoredOwner.restore(show: false)
+    defer { restoredOwner.prepareToQuit(); for context in restoredOwner.windows { context.window.close() } }
+    let restored = try #require(restoredOwner.active)
+    restored.store.sidebarFloating = floating
+    #expect(restored.store.sidebarTabs.isEmpty)
+    try await verify(restored)
+}

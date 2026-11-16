@@ -47,3 +47,9 @@ Coverage includes exact row boundaries, the favorites inset, resizing, insertion
 [[Tests/BrowseTests/SidebarScrollStatusTests.swift#sidebarToolbarFade]] checks that the tab viewport extends beneath the toolbar on both sides in docked and floating modes, with initial clearance keeping the first row below the fade.
 
 Scrolling moves rows through the toolbar area. Adding favorites preserves the viewport and increases the first-row clearance for the fixed grid. Existing floating-sidebar interaction tests cover toolbar and tab click routing.
+
+## Favorites with no regular tabs
+
+[[Tests/BrowseTests/SidebarScrollStatusTests.swift#favoritesWithoutRegularTabs]] verifies the favorites grid keeps three full-width columns when Command-W closes the last regular tab, with only favorite tabs remaining.
+
+The native-window regression covers both sidebar sides, docked and floating layouts, adding and closing a replacement regular tab, and restoring the favorites-only session from disk.
