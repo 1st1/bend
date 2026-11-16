@@ -18,7 +18,6 @@ struct WebsitePermissionMenu: View {
                     Text("Not Secure")
                     Text("You chose to trust a certificate Bend could not verify.")
                     Text("This website’s identity cannot be confirmed.")
-                    Text("The exception lasts until you close this pane.")
                 } else {
                     Text(url.scheme == "https" ? (page.webView.hasOnlySecureContent ? "HTTPS connection" : "Some content is not secure") : "Connection is not encrypted")
                 }
