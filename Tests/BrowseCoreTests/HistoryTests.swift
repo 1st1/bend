@@ -191,3 +191,35 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     history.record(url: "https://docs.example.net/reference/api", title: "Reference")
     #expect(history.suggestions(for: "dcs/api").first?.url == "https://docs.example.net/reference/api")
 }
+
+// @lat: [[lat.md/tests/history-tests#IPv4 address suggestions]]
+@Test func ipv4AddressSuggestions() throws {
+    var history = BrowsingHistory()
+    let router = "https://10.23.4.1/"
+    let admin = "http://10.23.4.1:8080/admin"
+    let neighbor = "https://10.230.1.2/"
+    for url in [router, admin, neighbor, "https://110.23.4.1/", "https://10.2.3.1/",
+                "https://arxiv.org/abs/2610.21375", "https://example.com/10.23",
+                "https://10.23.example.com/", "https://example.com/"] {
+        history.record(url: url, title: "10.23 router", at: historyNow)
+    }
+    for query in ["10.23", " 10.23 "] {
+        let results = history.suggestions(for: query, limit: 20, now: historyNow)
+        #expect(Set(results.map(\.url)) == Set([router, admin, neighbor]))
+        #expect(results.allSatisfy { !$0.isFuzzyMatch })
+    }
+    #expect(history.suggestions(for: "10.23.", now: historyNow).map(\.url).contains(router))
+    #expect(!history.suggestions(for: "10.23.", now: historyNow).map(\.url).contains(neighbor))
+    #expect(history.suggestions(for: "10.23.4.1", now: historyNow).first?.url == router)
+    #expect(history.suggestions(for: "10.23.4.1:8080/ad", now: historyNow).map(\.url) == [admin])
+    #expect(history.suggestions(for: "https://10.23.", now: historyNow).map(\.url) == [router])
+    #expect(history.suggestions(for: "http://10.23.", now: historyNow).map(\.url) == [admin])
+    #expect(history.suggestions(for: "192.168.", now: historyNow).isEmpty)
+    #expect(history.suggestions(for: "10.23.4.1/missing", now: historyNow).isEmpty)
+    let suggestion = try #require(history.suggestions(for: "10.23.", now: historyNow).first)
+    #expect(suggestion.completion(for: "10.23.") == "10.23.4.1/")
+    // Ordinary numeric/text searches and the history page retain their matching.
+    #expect(!history.suggestions(for: "2610.21375", now: historyNow).isEmpty)
+    #expect(!history.suggestions(for: "10.23 router", now: historyNow).isEmpty)
+    #expect(history.matching("10.23").contains { $0.url == "https://example.com/" })
+}

@@ -73,3 +73,9 @@ It also checks bold emphasis covers exactly the matched URL characters and selec
 ## Matched address characters
 
 [[Tests/BrowseCoreTests/HistoryTests.swift#matchedAddressCharacters]] verifies generic URL abbreviations, best-path traceback, camel-case initials, literal/multiword matches, and UTF-16 ranges across emoji, accents, and case-fold expansion.
+
+## IPv4 address suggestions
+
+[[Tests/BrowseCoreTests/HistoryTests.swift#ipv4AddressSuggestions]] verifies numeric address prefixes only match real IPv4 hosts, excluding fuzzy numbers, unrelated titles, URL paths, and numeric domain labels.
+
+Coverage includes trailing dots, explicit schemes, ports and paths, home-page ranking, inline completion, no-match inputs, and preserving ordinary numeric/text searches and history-page filtering.

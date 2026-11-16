@@ -132,6 +132,9 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
     public func suggestions(for query: String, limit: Int = 6, now: Date = Date()) -> [HistorySuggestion] {
         let query = Self.fold(query).trimmingCharacters(in: .whitespacesAndNewlines)
         let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        let addressQuery = query.replacingOccurrences(of: "^https?://", with: "", options: .regularExpression)
+        let queryHost = String(addressQuery.prefix { !"/:?#".contains($0) })
+        let ipv4Prefix = Self.isIPv4(queryHost, partial: true) && !query.contains(where: \.isWhitespace)
         let grouped = Dictionary(grouping: visits, by: \.url)
         var adaptiveScores: [String: Double] = [:]
         if !query.isEmpty {
@@ -143,15 +146,21 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
         }
         let ranked = grouped.compactMap { url, visits -> (HistorySuggestion, Int, Int, Double)? in
             guard let latest = visits.max(by: { $0.date < $1.date }) else { return nil }
-            let literal = Self.matches(query, title: latest.title, url: url)
             var suggestion = HistorySuggestion(url: url, title: latest.title, lastVisited: latest.date, visitCount: visits.count)
             let searchableURL = query.contains("://") ? url : suggestion.displayURL
+            let components = URLComponents(string: url)
+            // Numeric address prefixes match actual IPv4 hosts from their start,
+            // never numbers in page titles, paths, or unrelated fuzzy matches.
+            if ipv4Prefix {
+                guard Self.isIPv4(components?.host ?? "", partial: false),
+                      Self.fold(searchableURL).hasPrefix(query) else { return nil }
+            }
+            let literal = ipv4Prefix || Self.matches(query, title: latest.title, url: url)
             let fuzzy = literal ? 0 : FuzzyMatch.score(words: words, title: latest.title,
                 url: searchableURL.removingPercentEncoding ?? searchableURL)
             guard let fuzzy else { return nil }
             suggestion.isFuzzyMatch = !literal
             let adaptive = adaptiveScores[url] ?? 0
-            let components = URLComponents(string: url)
             let host = Self.fold(components?.host ?? "")
             let bareHost = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
             let display = Self.fold(suggestion.displayURL)
@@ -176,6 +185,17 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
             if $0.0.lastVisited != $1.0.lastVisited { return $0.0.lastVisited > $1.0.lastVisited }
             return $0.0.url < $1.0.url
         }.prefix(max(0, limit)).map(\.0)
+    }
+
+    private static func isIPv4(_ host: String, partial: Bool) -> Bool {
+        let octets = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard partial ? (2...4).contains(octets.count) : octets.count == 4 else { return false }
+        return octets.enumerated().allSatisfy { index, octet in
+            if partial && index == octets.count - 1 && octet.isEmpty { return true }
+            return (1...3).contains(octet.count)
+                && octet.utf8.allSatisfy { (48...57).contains($0) }
+                && Int(octet).map { $0 <= 255 } == true
+        }
     }
 
     private static func fold(_ value: String) -> String {
