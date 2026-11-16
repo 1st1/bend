@@ -85,7 +85,7 @@ public enum FuzzyMatch {
         }
         // Prefer a complete suffix over the same alignment with trailing text
         // (for example, /jit over /jit-lat). Apply it before recovering highlights.
-        if !previous.isEmpty { previous[previous.count - 1] += 12 }
+        if !previous.isEmpty { previous[previous.count - 1] += 4 }
         guard let score = previous.max() else { return nil }
         var ranges: [NSRange] = []
         if positions, var column = previous.firstIndex(of: score) {
