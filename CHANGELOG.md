@@ -5,6 +5,21 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.8.0
+### Added
+- Read dated release notes at bend://log, with What's New opening once after a newer version or build is installed.
+- Let AI read Bend release notes and request system details or a one-time current location, with approval required before sharing system or location data.
+- Show keyboard shortcuts beside command-menu actions, automatically matching their native menu bindings.
+- Explain or summarize selected text locally from the command menu. Let chat read selected text or share a visible-page screenshot after approval, with a screenshot preview before sharing.
+- Continue past a website certificate error after explicit confirmation, including for local routers. Sites with an accepted exception show a red domain menu and a Not Secure explanation.
+- Configure Enter, Command-Enter, Option-Enter, and Shift-Enter independently in Settings → AI. Enter and Command-Enter send by default; Option-Enter and Shift-Enter insert a new line.
+- Choose Local in the model selector for on-device Apple Intelligence chat with browser tools, and summarize pages from the Command-Shift-P menu without sending page content to the cloud.
+### Changed
+- Disable extension actions and content access on native bend:// pages while keeping extensions available on websites.
+### Fixed
+- Keep pane frames and headers fixed when scrolling empty pages; scroll only the page contents.
+- Keep webpage selections, including images, selected when moving focus to chat and typing a message.
+
 ## v0.7.0
 ### Added
 - Add website file uploads, camera and microphone capture controls, and per-site camera, microphone, and location blocking.

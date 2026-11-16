@@ -1,3 +1,0 @@
-kind: Changed
-body: Disable extension actions and content access on native bend:// pages while keeping extensions available on websites.
-time: 2026-11-15T18:40:00-08:00
