@@ -5,10 +5,11 @@ private typealias ViewState<Value> = SwiftUI.State<Value>
 // Shared by the composer and preferred-model setting.
 struct AIModelPicker: View {
     let models: [GatewayModel]
+    private var availableModels: [GatewayModel] { [LocalAIProvider.catalogEntry] + models.filter { $0.id != LocalAIProvider.modelID } }
     @Binding var selection: String
     @ViewState private var presented = false
     private var label: String {
-        models.first(where: { $0.id == selection })?.name ?? (selection.isEmpty ? "Select model" : selection)
+        availableModels.first(where: { $0.id == selection })?.name ?? (selection.isEmpty ? "Select model" : selection)
     }
     var body: some View {
         Button { presented = true } label: {
@@ -21,7 +22,7 @@ struct AIModelPicker: View {
         .accessibilityLabel("Model").accessibilityValue(label)
         .help("Choose a model")
         .popover(isPresented: $presented, arrowEdge: .bottom) {
-            AIModelSearch(models: models, selection: $selection) { presented = false }
+            AIModelSearch(models: availableModels, selection: $selection) { presented = false }
         }
     }
 }

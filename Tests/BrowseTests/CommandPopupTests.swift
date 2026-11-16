@@ -85,7 +85,9 @@ import Testing
     #expect(!store.openChats.contains(store.selectedTab.id))
     #expect(store.chats[store.selectedTab.id] === chat)
     let item = try #require(menu.items.first { $0.title == "Show Commands…" })
-    #expect(item.keyEquivalent == "p" && item.keyEquivalentModifierMask == [.command, .shift])
+    #expect(item.keyEquivalent == "k" && item.keyEquivalentModifierMask == [.command, .shift])
+    let summarize = try #require(menu.items.first { $0.title == "Summarize Page" })
+    #expect(summarize.keyEquivalent == "p" && summarize.keyEquivalentModifierMask == [.command, .shift])
     #expect(NSApp.sendAction(item.action!, to: item.target, from: item))
     let panel = try #require(context.window.childWindows?.first { context.addressPanel.owns($0) })
     func descendants<T: NSView>(_ type: T.Type, _ view: NSView) -> [T] {

@@ -182,10 +182,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         append(edit, to: main)
 
         let view = NSMenu(title: "View")
-        add("Show Commands…", #selector(showCommands), "p", modifiers: [.command, .shift], to: view)
+        add("Show Commands…", #selector(showCommands), "k", modifiers: [.command, .shift], to: view)
         add("Split Right", #selector(splitRight), "d", to: view)
         add("Split Below", #selector(splitBelow), "d", modifiers: [.command, .shift], to: view)
         add("Zoom Pane", #selector(zoomPane), "\r", modifiers: [.command, .shift], to: view)
+        add("Summarize Page", #selector(summarizePage), "p", modifiers: [.command, .shift], to: view)
         add("Show Chat", #selector(toggleChat), "c", modifiers: [.command, .shift], to: view)
         add("Toggle Sidebar", #selector(toggleSidebar), "s", modifiers: [.command, .shift], to: view)
         view.addItem(.separator())
@@ -402,6 +403,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             menuItem.title = context.store.openChats.contains(context.store.selectedTab.id) ? "Hide Chat" : "Show Chat"
             return !context.store.isPrivate
         }
+        if menuItem.action == #selector(summarizePage) {
+            guard let context = browserWindows.active, !context.store.isPrivate else { return false }
+            let store = context.store
+            if let chat = store.chats[store.selectedTab.id] { return chat.canSummarize }
+            let page = store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }
+            return ["http", "https"].contains(URL(string: page?.address ?? "")?.scheme ?? "")
+        }
         if menuItem.action == #selector(printPage) { return printablePage != nil }
         if menuItem.action == #selector(showWebInspector) || menuItem.action == #selector(showJavaScriptConsole) {
             if menuItem.action == #selector(showWebInspector) {
@@ -424,6 +432,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func splitRight() { store.split(.horizontal) }
     @objc private func splitBelow() { store.split(.vertical) }
     @objc private func zoomPane() { store.toggleZoom(store.selectedTab.focusedPane) }
+    @objc func summarizePage() {
+        guard let context = browserWindows.active, !context.store.isPrivate else { return }
+        context.store.showChat()
+        context.store.chats[context.store.selectedTab.id]?.summarize()
+    }
+
     @objc func toggleChat() {
         guard let context = browserWindows.active, !context.store.isPrivate else { return }
         let store = context.store

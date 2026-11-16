@@ -209,3 +209,15 @@ Injected data providers keep tests from reading the user's location or displayin
 ## Native changelog reads
 
 [[Tests/BrowseTests/AISystemToolsTests.swift#aiNativeChangelogReads]] verifies Unicode-bounded release notes, dates, installed version metadata, continuation cursors, native citations, cursor invalidation, navigation, and exclusion of other native pages and DOM actions.
+
+## Local summaries and chat
+
+[[Tests/BrowseTests/LocalAITests.swift#localSummariesAndChat]] verifies credential-free routing, complete long-page reads, exclusion of drafts and form values, source links, draft/model retention, permission revocation, and cancellation with a scripted provider.
+
+[[Tests/BrowseTests/LocalAITests.swift#localChunkBudgets]] checks lossless multilingual chunking and bounded reduction. [[Tests/BrowseTests/LocalAITests.swift#localModelSmoke]] optionally exercises the installed Apple model when BEND_TEST_LOCAL_AI is enabled. Header and command tests verify the summary control and shortcut reassignment.
+
+## Local browser tools
+
+[[Tests/BrowseTests/LocalAITests.swift#localBrowserTools]] verifies compact complete pagination, all enabled tool definitions, shared inline action approvals, and live revocation of a pending click in a Local chat.
+
+[[Tests/BrowseTests/LocalAITests.swift#localNativeToolSmoke]] optionally exercises a real Apple-model tool-call handoff and follow-up answer. [[Tests/BrowseTests/LocalAITests.swift#localNativeBrowserSmoke]] runs native page reading, an approved click, and verification against a harmless HTML fixture. [[Tests/BrowseTests/LocalAITests.swift#localFailureCategories]] checks distinct, sanitized messages for native generation failures.

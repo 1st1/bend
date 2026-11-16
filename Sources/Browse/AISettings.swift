@@ -319,7 +319,7 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     }
 
     func testConnection(model override: Model? = nil) async {
-        guard !busy, !testingConnection, connected, !modelID.isEmpty else { return }
+        guard !busy, !testingConnection, (connected || modelID == LocalAIProvider.modelID), !modelID.isEmpty else { return }
         resetConnectionTest()
         let revision = testRevision
         testingConnection = true
@@ -390,6 +390,7 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     }
 
     func model(_ id: String) throws -> Model {
+        if id == LocalAIProvider.modelID { return Model(id, provider: LocalAIProvider()) }
         guard connected, !id.isEmpty else { throw AIError.configuration("Log in in Settings → AI and select a model.") }
         if isDirectKey(activeConnection) {
             guard let key = directKeys[activeConnection] else { throw AIError.configuration("Connect an API key in Settings → AI.") }
@@ -543,7 +544,7 @@ struct AISettingsView: View {
             Section {
                 HStack {
                     Button("Test connection") { Task { await settings.testConnection() } }
-                        .disabled(settings.busy || settings.testingConnection || !settings.connected || settings.modelID.isEmpty)
+                        .disabled(settings.busy || settings.testingConnection || (!settings.connected && settings.modelID != LocalAIProvider.modelID) || settings.modelID.isEmpty)
                     if settings.testingConnection {
                         ProgressView().controlSize(.small)
                         Text("Testing…").foregroundStyle(.secondary)
@@ -553,7 +554,7 @@ struct AISettingsView: View {
                             .font(.callout)
                     }
                 }
-                Text("Sends a short test to the preferred model. Uses a small amount of your plan or API credits.")
+                Text(settings.modelID == LocalAIProvider.modelID ? "Sends a short test to Apple’s on-device model. No API credits required." : "Sends a short test to the preferred model. Uses a small amount of your plan or API credits.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Preferred model") {
@@ -572,7 +573,7 @@ struct AISettingsView: View {
                     .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
                     .accessibilityLabel("System prompt")
                 HStack {
-                    Text("Applies to the next message in every chat.")
+                    Text("Applies to cloud chats. Local uses a compact on-device prompt.")
                         .font(.callout).foregroundStyle(.secondary)
                     Spacer()
                     if settings.hasCustomSystemPrompt {
