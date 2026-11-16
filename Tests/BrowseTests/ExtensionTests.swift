@@ -650,17 +650,33 @@ private func awaitFixtureRequestRules(_ context: WKWebExtensionContext) async th
 @MainActor
 final class ExtensionTestNavigation: NSObject, WKNavigationDelegate {
     var continuation: CheckedContinuation<Void, Error>?
+    private var pendingNavigation: WKNavigation?
     func load(_ web: WKWebView, url: URL) async throws {
         try await withCheckedThrowingContinuation { continuation in
+            precondition(self.continuation == nil)
             self.continuation = continuation
-            web.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+            pendingNavigation = web.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
         }
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        continuation?.resume(); continuation = nil
+        // The same delegate may observe several views, including loads already
+        // started by PageController. Only this requested navigation can finish it.
+        guard let pendingNavigation, navigation === pendingNavigation else { return }
+        let completion = continuation
+        continuation = nil; self.pendingNavigation = nil
+        completion?.resume()
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        continuation?.resume(throwing: error); continuation = nil
+        finishFailure(navigation, error: error)
+    }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        finishFailure(navigation, error: error)
+    }
+    private func finishFailure(_ navigation: WKNavigation?, error: Error) {
+        guard let pendingNavigation, navigation === pendingNavigation else { return }
+        let completion = continuation
+        continuation = nil; self.pendingNavigation = nil
+        completion?.resume(throwing: error)
     }
 }
 
