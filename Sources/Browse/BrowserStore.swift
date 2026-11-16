@@ -1418,6 +1418,37 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     @Published var canGoBack = false
     @Published var canGoForward = false
     @Published var error: String?
+    @Published private(set) var certificateFailure: (url: URL, exception: CertificateException)?
+    private var certificateExceptions: Set<CertificateException> = []
+
+    func continueDespiteCertificateError() {
+        guard error != nil, let failure = certificateFailure else { return }
+        certificateExceptions.insert(failure.exception)
+        navigate(failure.url.absoluteString)
+    }
+
+    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
+                 completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        let space = challenge.protectionSpace
+        var components = URLComponents()
+        components.scheme = space.protocol
+        components.host = space.host
+        components.port = space.port
+        if webView === self.webView, space.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let trust = space.serverTrust, let url = components.url,
+           let exception = CertificateException(url: url, trust: trust),
+           certificateExceptions.contains(exception) {
+            // Apply the accepted validation failures to this trust object only.
+            // WebKit still evaluates the supplied credential's trust.
+            if let exceptions = SecTrustCopyExceptions(trust), SecTrustSetExceptions(trust, exceptions) {
+                completionHandler(.useCredential, URLCredential(trust: trust))
+            } else {
+                completionHandler(.performDefaultHandling, nil)
+            }
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
     @Published var isStartPage = true
     var onNavigation: ((String, String) -> Void)?
     var onStateChanged: (() -> Void)?
@@ -1617,6 +1648,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         webView.clearURLPreview()
         InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "bend"])
         resetFavicon(for: url)
+        certificateFailure = nil
         error = nil; address = url.absoluteString
         completedAddress = nil
         isStartPage = url.scheme == "bend"
@@ -1690,6 +1722,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         InputDiagnostics.transition(.webLoad, .started, view: webView)
         resetFavicon(for: webView.url ?? URL(string: address))
         completedAddress = nil
+        certificateFailure = nil
         if !isStartPage { error = nil }
     }
     func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
@@ -1764,7 +1797,10 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         // navigation becomes a WKDownload. The existing page remains valid.
         let policyInterruption = nativeError.domain == "WebKitErrorDomain" && nativeError.code == 102
         let cancelled = nativeError.domain == NSURLErrorDomain && nativeError.code == NSURLErrorCancelled
-        if !cancelled && !policyInterruption { error = failure.localizedDescription }
+        if !cancelled && !policyInterruption {
+            certificateFailure = CertificateException.failure(nativeError)
+            error = failure.localizedDescription
+        }
         refresh()
     }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {

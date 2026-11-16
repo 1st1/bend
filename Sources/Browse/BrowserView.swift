@@ -710,7 +710,18 @@ private struct BrowserPane: View {
                 Image(systemName: "wifi.exclamationmark").font(.system(size: 27)).foregroundStyle(Chrome.accent)
                 Text("Couldn’t open this page").font(.system(size: 18, weight: .medium))
                 Text(error).font(.system(size: 12)).foregroundStyle(Chrome.muted).multilineTextAlignment(.center)
-                Button("Try again") { controller.navigate(controller.address) }.buttonStyle(.bordered)
+                HStack {
+                    Button("Try again") { controller.navigate(controller.address) }.buttonStyle(.bordered)
+                    if controller.certificateFailure != nil {
+                        Button("Continue anyway") { controller.continueDespiteCertificateError() }
+                            .buttonStyle(.bordered)
+                    }
+                }
+                if let failure = controller.certificateFailure {
+                    Text("Only continue if you trust \(failure.exception.host). This exception lasts until you close the pane.")
+                        .font(.system(size: 12)).foregroundStyle(Chrome.muted)
+                        .multilineTextAlignment(.center)
+                }
             }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if controller.address == "bend://log" {
             ChangelogView { store.newTab(address: $0.absoluteString) }
