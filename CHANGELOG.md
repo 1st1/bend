@@ -5,6 +5,10 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.8.3
+### Fixed
+- Switch to newly opened tabs when clicking ordinary new-window links, while keeping modifier-click tabs in the background.
+
 ## v0.8.2
 ### Fixed
 - Keep HTTPS certificate inspection available when WebKit omits the loaded page’s server trust, including on x.com.

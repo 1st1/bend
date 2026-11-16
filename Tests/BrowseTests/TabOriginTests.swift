@@ -32,8 +32,8 @@ import Testing
     store.closeTab(child.id)
     #expect(store.selectedTab.id == origin.id)
     controller.onNewLink?("bend://history", false, false)
-    #expect(store.selectedTab.id == origin.id)
     let second = try #require(store.session.workspaces.flatMap(\.tabs).first { $0.originTabID == origin.id }).id
+    #expect(store.selectedTab.id == second)
     store.select(unrelated)
     store.closeTab(second)
     #expect(store.selectedTab.id == unrelated)
