@@ -1027,7 +1027,9 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
 @Test @MainActor func nativePageExtensionIsolation() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("NativeExtensionIsolation-\(UUID())")
-    let manager = ExtensionManager(root: root.appendingPathComponent("installed"), persistent: false, websiteDataStore: .nonPersistent())
+    // This is a regular tab: a nonpersistent website store makes WebKit treat
+    // it as private and suppress content scripts without private-data access.
+    let manager = ExtensionManager(root: root.appendingPathComponent("installed"), persistent: false)
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
     defer { store.stopWindow(); try? FileManager.default.removeItem(at: root) }
     try await manager.importExtension(from: extensionFixture(at: root))
