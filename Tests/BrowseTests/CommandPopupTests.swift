@@ -64,6 +64,15 @@ import Testing
     context.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
     context.window.makeKeyAndOrderFront(nil)
     delegate.installMenus()
+    #expect(try command("chat").shortcut == "⇧⌘C")
+    #expect(try command("close").shortcut == "⇧⌘W")
+    #expect(try command("sidebar").shortcut == "⇧⌘S")
+    #expect(try command("settings").shortcut == "⌘,")
+    #expect(try command("print").shortcut == "⌘P")
+    #expect(try command("history").shortcut == "⌘Y")
+    #expect(try command("devTools").shortcut == "⇧⌘I")
+    #expect(try command("duplicate").shortcut == nil)
+
     let menu = try #require(NSApp.mainMenu?.items.first { $0.title == "View" }?.submenu)
     let chatItem = try #require(menu.items.first { $0.action == #selector(AppDelegate.toggleChat) })
     #expect(chatItem.keyEquivalent == "c" && chatItem.keyEquivalentModifierMask == [.command, .shift])
@@ -89,6 +98,9 @@ import Testing
     input.stringValue = "sidebar"
     context.addressPanel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: input))
     #expect(table.numberOfRows == 1)
+    let shortcutRow = try #require(table.view(atColumn: 0, row: 0, makeIfNecessary: true))
+    #expect(descendants(NSTextField.self, shortcutRow).contains { $0.stringValue == "⇧⌘S" })
+
     let editor = try #require(input.currentEditor() as? NSTextView)
     #expect(context.addressPanel.control(input, textView: editor, doCommandBy: #selector(NSResponder.moveDown(_:))))
     #expect(input.stringValue == "sidebar")
@@ -114,4 +126,31 @@ import Testing
     #expect(!context.addressPanel.cancelInitialEntryIfPresented())
     #expect(context.addressPanel.control(input, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:))))
     #expect(!panel.isVisible && store.selectedTab.id == blankID)
+}
+
+// @lat: [[lat.md/tests/commands-tests#Automatic command shortcuts]]
+@Test @MainActor func automaticCommandShortcuts() throws {
+    _ = NSApplication.shared
+    let oldMenu = NSApp.mainMenu
+    defer { NSApp.mainMenu = oldMenu }
+    let menu = NSMenu()
+    let submenu = NSMenu()
+    let parent = NSMenuItem(); parent.submenu = submenu; menu.addItem(parent)
+    let selector = NSSelectorFromString("futureCommand:")
+    let item = submenu.addItem(withTitle: "Future command", action: selector, keyEquivalent: "k")
+    item.keyEquivalentModifierMask = [.control, .option, .command]
+    NSApp.mainMenu = menu
+    let command = PopupCommand(id: "future", title: "Future command", detail: "", icon: "star", menuAction: selector) {}
+    #expect(command.shortcut == "⌃⌥⌘K")
+    item.keyEquivalent = "\r"; item.keyEquivalentModifierMask = [.command, .shift]
+    #expect(command.shortcut == "⇧⌘↩") // A binding change requires no palette edit.
+    item.keyEquivalent = ""
+    #expect(command.shortcut == nil)
+    item.keyEquivalent = "q"; item.tag = 1
+    #expect(command.shortcut == nil)
+    let tagged = PopupCommand(id: "tagged", title: "Tagged command", detail: "", icon: "star", menuAction: selector, menuTag: 1) {}
+    #expect(tagged.shortcut == "⇧⌘Q")
+    item.isHidden = true
+    #expect(tagged.shortcut == nil)
+    #expect(MenuShortcut.label(key: "\u{f704}", modifiers: []) == "F1")
 }

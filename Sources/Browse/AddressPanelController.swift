@@ -21,11 +21,13 @@ private final class AddressResultCell: NSTableCellView {
     let title = NSTextField(labelWithString: "")
     let detail = NSTextField(labelWithString: "")
     let remove = NSButton()
+    let shortcut = NSTextField(labelWithString: "")
 
     func setSelected(_ selected: Bool) {
         title.textColor = selected ? .alternateSelectedControlTextColor : .labelColor
         let secondary = selected ? NSColor.alternateSelectedControlTextColor : .secondaryLabelColor
         detail.textColor = secondary
+        shortcut.textColor = secondary
         icon.contentTintColor = secondary
         remove.contentTintColor = secondary
     }
@@ -513,7 +515,14 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         remove.toolTip = "Remove from history"
         remove.setAccessibilityLabel("Remove \(result.title) from history")
         remove.isHidden = result.history == nil
-        for child in [icon, title, detail, remove] {
+        let shortcut = view.shortcut
+        shortcut.stringValue = result.command?.shortcut ?? ""
+        shortcut.font = .systemFont(ofSize: 12, weight: .medium)
+        shortcut.alignment = .right
+        shortcut.setContentCompressionResistancePriority(.required, for: .horizontal)
+        shortcut.setContentHuggingPriority(.required, for: .horizontal)
+        shortcut.setAccessibilityLabel(shortcut.stringValue.isEmpty ? "" : "Keyboard shortcut \(shortcut.stringValue)")
+        for child in [icon, title, detail, remove, shortcut] {
             child.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(child)
         }
@@ -522,7 +531,9 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             icon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 16),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-            title.trailingAnchor.constraint(equalTo: remove.leadingAnchor, constant: -8),
+            title.trailingAnchor.constraint(equalTo: result.command == nil ? remove.leadingAnchor : shortcut.leadingAnchor, constant: -8),
+            shortcut.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+            shortcut.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             title.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
             detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
             detail.trailingAnchor.constraint(equalTo: title.trailingAnchor),
