@@ -39,15 +39,16 @@ struct WebsitePermissionMenu: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: capturing ? (page.cameraCaptureState != .none ? "video.fill" : "mic.fill") : "slider.horizontal.3")
-                Text(page.isStartPage ? "Page" : (page.committedSiteURL.flatMap(SiteDisplayDomain.label) ?? "Page")).lineLimit(1).truncationMode(.head)
+                Text(page.isStartPage ? page.address : (page.committedSiteURL.flatMap(SiteDisplayDomain.label) ?? "Page")).lineLimit(1).truncationMode(.head)
                     .frame(maxWidth: 220)
             }
         }
         .menuStyle(.button)
         .buttonStyle(ChromeButtonStyle(pill: true))
         .menuIndicator(.hidden)
+        .disabled(page.isStartPage)
         .fixedSize()
-        .help((page.isStartPage ? "Page" : (page.committedSiteURL.flatMap(WebsitePermission.origin) ?? "Page")) + " — " + (capturing ? "Camera or microphone in use — website permissions" : "Website permissions"))
+        .help((page.isStartPage ? page.address : (page.committedSiteURL.flatMap(WebsitePermission.origin) ?? "Page")) + " — " + (capturing ? "Camera or microphone in use — website permissions" : "Website permissions"))
         .accessibilityLabel(capturing ? "Capture controls and website permissions" : "Website permissions")
     }
 }

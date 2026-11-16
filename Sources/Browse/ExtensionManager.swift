@@ -528,7 +528,8 @@ final class ExtensionManager: NSObject, ObservableObject {
     func isEnabled(_ id: UUID) -> Bool { contexts[id]?.isLoaded == true }
 
     func isAvailable(_ id: UUID, pageID: UUID) -> Bool {
-        guard let context = contexts[id], context.isLoaded, let owner = store(for: pageID) else { return false }
+        guard let context = contexts[id], context.isLoaded, let owner = store(for: pageID),
+              tabs[pageID]?.isNativePage == false else { return false }
         return !owner.isPrivate || context.hasAccessToPrivateData
     }
 

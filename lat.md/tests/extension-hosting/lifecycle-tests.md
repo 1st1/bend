@@ -49,3 +49,7 @@ A loopback HTTP iframe first demonstrates both cookie access and writes in an is
 ## Extension permission presentation
 
 [[Tests/BrowseTests/ExtensionPermissionTests.swift#extensionPermissionPresentation]] verifies readable permission summaries, exact website restrictions, unknown-permission visibility, deduplication, and denial when the native dialog is closed.
+
+## Native page extension isolation
+
+[[Tests/BrowseTests/ExtensionTests.swift#nativePageExtensionIsolation]] verifies native pages have no extension controller, exposed web view, or available toolbar actions, and that switching back to a website restores real content-script injection with stable tab identity.

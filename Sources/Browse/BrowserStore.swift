@@ -1455,6 +1455,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
          externalApplications: ExternalApplicationLinks = .shared, javaScriptDialogs: JavaScriptDialogs = .shared,
          downloads: BrowserDownloads = BrowserDownloads(), searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
         self.address = address
+        self.isStartPage = URL(string: AddressResolver.canonicalAddress(address))?.scheme == "bend"
         self.isPrivate = isPrivate
         self.downloads = downloads
         self.externalApplications = externalApplications
@@ -1468,6 +1469,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         configuration.applicationNameForUserAgent = Self.websiteApplicationName
         configuration.websiteDataStore = AppProfile.current.websiteDataStore
         configure(configuration)
+        if URL(string: AddressResolver.canonicalAddress(address))?.scheme == "bend" { configuration.webExtensionController = nil }
         WebKitPrivacy.apply(websiteSettings?.values ?? WebsiteSettings(), to: configuration)
         webView = suppliedWebView ?? FocusWebView(frame: .zero, configuration: configuration)
         super.init()
@@ -1582,12 +1584,14 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         onInitialDownload = nil
         let localURL = URL(string: input).flatMap { LocalWebDocument.accepts($0) ? $0 : nil }
         guard let url = localURL ?? AddressResolver.resolve(input, searchEngine: searchEngine(), customSearchEngine: customSearchEngine()) else { error = "Enter a web address or search phrase."; return }
-        if extensionOrigin != nil {
+        let nativePage = url.scheme == "bend"
+        if extensionOrigin != nil || nativePage != isStartPage || (nativePage && webView.configuration.webExtensionController != nil) {
             extensionOrigin = nil
             let configuration = WKWebViewConfiguration()
             configuration.applicationNameForUserAgent = Self.websiteApplicationName
             configuration.websiteDataStore = AppProfile.current.websiteDataStore
             configure(configuration)
+            if nativePage { configuration.webExtensionController = nil }
             WebKitPrivacy.apply(websiteSettings?.values ?? WebsiteSettings(), to: configuration)
             replaceWebView(configuration: configuration)
         }

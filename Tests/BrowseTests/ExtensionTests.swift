@@ -407,6 +407,7 @@ private func awaitFixtureRequestRules(_ context: WKWebExtensionContext) async th
         try await context.loadBackgroundContent()
         try await Task.sleep(for: .seconds(8))
         #expect(context.errors.isEmpty)
+        store.controller(for: store.selectedTab.pages[0]).navigate("http://127.0.0.1:9/")
         manager.performAction(id, pageID: store.selectedTab.focusedPane)
         for _ in 0..<100 where manager.documents.isEmpty { try await Task.sleep(for: .milliseconds(100)) }
         let document = try #require(manager.documents.values.first)
@@ -440,6 +441,7 @@ private func awaitFixtureRequestRules(_ context: WKWebExtensionContext) async th
     try await manager.enable(true, id: id) { _, _ in true }
     let page = store.selectedTab.pages[0]
     let pageController = store.controller(for: page)
+    pageController.navigate("http://127.0.0.1:\(server.port)/")
     let web = pageController.webView
     let navigation = ExtensionTestNavigation()
     web.navigationDelegate = navigation
@@ -814,8 +816,11 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     let server = try await ExtensionHTTPFixture.start()
     defer { server.listener.cancel() }
     let url = URL(string: "http://127.0.0.1:\(server.port)/")!
-    let regularWeb = regular.store.controller(for: regular.store.selectedTab.pages[0]).webView
+    let regularController = regular.store.controller(for: regular.store.selectedTab.pages[0])
     let privateController = privateWindow.store.controller(for: privatePage)
+    regularController.navigate(url.absoluteString)
+    privateController.navigate(url.absoluteString)
+    let regularWeb = regularController.webView
     var privateWeb = privateController.webView
     #expect(regularWeb.configuration.userContentController !== privateWeb.configuration.userContentController)
     let navigation = ExtensionTestNavigation()
@@ -978,6 +983,7 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     #expect(loadError != nil)
     // Both host actions and extension-initiated popups reject before asking
     // WebKit for a popup view backed by shared website storage.
+    page.navigate("http://127.0.0.1:9/")
     page.error = nil
     manager.performAction(id, pageID: privatePage.id)
     #expect(page.error?.contains("popups are unavailable") == true)
@@ -1015,4 +1021,53 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     let afterClose = await persistentData.httpCookieStore.allCookies()
     #expect(!afterClose.contains { $0.name == "privateSecret" })
     #expect(afterClose.contains { $0.name == "regularSecret" && $0.value == "regular-session" })
+}
+
+// @lat: [[lat.md/tests/extension-hosting/lifecycle-tests#Native page extension isolation]]
+@Test @MainActor func nativePageExtensionIsolation() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("NativeExtensionIsolation-\(UUID())")
+    let manager = ExtensionManager(root: root.appendingPathComponent("installed"), persistent: false, websiteDataStore: .nonPersistent())
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
+    defer { store.stopWindow(); try? FileManager.default.removeItem(at: root) }
+    try await manager.importExtension(from: extensionFixture(at: root))
+    let id = try #require(manager.records.first?.id)
+    try await manager.enable(true, id: id) { _, _ in true }
+    let context = try #require(manager.contexts[id])
+    defer { try? manager.controller.unload(context) }
+    let page = store.selectedTab.pages[0]
+    let controller = store.controller(for: page)
+    manager.synchronizeTabs()
+    let tab = try #require(manager.tabs[page.id])
+    #expect(tab.isNativePage)
+    #expect(tab.webView(for: context) == nil)
+    #expect(controller.webView.configuration.webExtensionController == nil)
+    #expect(!manager.isAvailable(id, pageID: page.id))
+    let server = try await ExtensionHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let address = "http://127.0.0.1:\(server.port)/"
+    func loadWebsite() async throws {
+        controller.navigate(address)
+        for _ in 0..<150 {
+            if (try? await controller.webView.evaluateJavaScript("document.body?.dataset.browseExtension")) as? String == "active" { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(try await controller.webView.evaluateJavaScript("document.body.dataset.browseExtension") as? String == "active")
+        #expect(controller.webView.configuration.webExtensionController === manager.controller)
+        #expect(tab.webView(for: context) === controller.webView)
+        #expect(manager.isAvailable(id, pageID: page.id))
+    }
+    try await loadWebsite()
+    let websiteView = controller.webView
+    for address in ["bend://log", "bend://history", "bend://chats", "bend://guide", "bend://start"] {
+        controller.navigate(address)
+        #expect(controller.webView !== websiteView)
+        #expect(controller.webView.configuration.webExtensionController == nil)
+        #expect(tab.isNativePage && tab.webView(for: context) == nil)
+        #expect(!manager.isAvailable(id, pageID: page.id))
+        manager.performAction(id, pageID: page.id)
+        #expect(manager.popup == nil)
+    }
+    try await loadWebsite()
+    #expect(manager.tabs[page.id] === tab)
 }
