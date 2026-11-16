@@ -1,0 +1,3 @@
+kind: Fixed
+body: Keep pane frames and headers fixed when scrolling empty pages; scroll only the page contents.
+time: 2026-11-15T19:00:00-08:00

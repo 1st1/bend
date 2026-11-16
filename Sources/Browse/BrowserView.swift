@@ -320,63 +320,53 @@ private struct PaneCanvas: View {
         let clipped = geometry.clippedPaneIDs(in: viewport)
         let regions = geometry.overflowRegions(layout: layout, in: viewport)
         let livePages = Set(store.session.workspaces.flatMap(\.tabs).first { $0.id == tab.id }?.pages.map(\.id) ?? [])
-        ScrollViewReader { proxy in
-            ScrollView([.horizontal, .vertical]) {
-                ZStack(alignment: .topLeading) {
-                    ForEach(geometry.panes) { placement in
-                        if livePages.contains(placement.id), let page = tab.pages.first(where: { $0.id == placement.id }) {
-                            let hidden = clipped.contains(page.id)
-                            let visibleFrame = placement.frame.intersection(CGRect(origin: .zero, size: viewport))
-                            let frame = hidden ? placement.frame : visibleFrame
-                            BrowserPane(store: store, controller: store.controller(for: page), tab: tab, pageID: page.id)
-                                .frame(width: frame.width, height: frame.height)
-                                .opacity(hidden ? 0 : 1)
-                                .allowsHitTesting(!hidden)
-                                .accessibilityHidden(hidden)
-                                .transition(reduceMotion ? .identity : .asymmetric(
-                                    insertion: .modifier(active: PaneReveal(progress: 0, axis: placement.insertionAxis),
-                                                         identity: PaneReveal(progress: 1, axis: placement.insertionAxis)),
-                                    removal: .identity))
-                                .position(x: frame.midX, y: frame.midY)
-                                .id(page.id)
-                        }
-                    }
-                    ForEach(geometry.dividers) { divider in
-                        PaneDivider(placement: divider, paneIDs: tab.pages.map(\.id), tabID: tab.id) { store.resize(divider.id, fraction: $0, geometry: geometry) }
-                            .frame(width: divider.frame.width, height: divider.frame.height)
-                            .position(x: divider.frame.midX, y: divider.frame.midY)
-                    }
-                }
-                .frame(width: geometry.size.width, height: geometry.size.height)
-                .animation(animation, value: tab.pages.count)
-                .animation(animation, value: store.paneMoveRevision)
-            }
-            .scrollIndicators(.hidden)
-            .scrollDisabled(!clipped.isEmpty)
-            .overlay(alignment: .topLeading) {
-                ForEach(regions) { region in
-                    PaneSpacePlaceholder(count: region.paneIDs.count, canSeparate: tab.pages.count > 1) {
-                        store.separatePanes(region.paneIDs, from: tab.id)
-                    }
-                    .frame(width: region.frame.width, height: region.frame.height)
-                    .clipped()
-                    .position(x: region.frame.midX, y: region.frame.midY)
+        ZStack(alignment: .topLeading) {
+            ForEach(geometry.panes) { placement in
+                if livePages.contains(placement.id), let page = tab.pages.first(where: { $0.id == placement.id }) {
+                    let hidden = clipped.contains(page.id)
+                    let visibleFrame = placement.frame.intersection(CGRect(origin: .zero, size: viewport))
+                    let frame = hidden ? placement.frame : visibleFrame
+                    BrowserPane(store: store, controller: store.controller(for: page), tab: tab, pageID: page.id)
+                        .frame(width: frame.width, height: frame.height)
+                        .opacity(hidden ? 0 : 1)
+                        .allowsHitTesting(!hidden)
+                        .accessibilityHidden(hidden)
+                        .transition(reduceMotion ? .identity : .asymmetric(
+                            insertion: .modifier(active: PaneReveal(progress: 0, axis: placement.insertionAxis),
+                                                 identity: PaneReveal(progress: 1, axis: placement.insertionAxis)),
+                            removal: .identity))
+                        .position(x: frame.midX, y: frame.midY)
+                        .id(page.id)
                 }
             }
-            .onChange(of: clipped) { _, ids in
-                guard !ids.isEmpty else { return }
-                for page in tab.pages where ids.contains(page.id) {
-                    guard let web = store.existingController(for: page.id)?.webView,
-                          let responder = web.window?.firstResponder as? NSView,
-                          responder === web || responder.isDescendant(of: web) else { continue }
-                    web.window?.makeFirstResponder(nil)
-                }
+            ForEach(geometry.dividers) { divider in
+                PaneDivider(placement: divider, paneIDs: tab.pages.map(\.id), tabID: tab.id) { store.resize(divider.id, fraction: $0, geometry: geometry) }
+                    .frame(width: divider.frame.width, height: divider.frame.height)
+                    .position(x: divider.frame.midX, y: divider.frame.midY)
             }
-            .onChange(of: tab.pages.map(\.id)) { previous, current in
-                guard clipped.isEmpty, current.count > previous.count,
-                      let added = current.first(where: { !previous.contains($0) }) else { return }
-                InputDiagnostics.transition(.canvasScroll, .requested, paneID: added, tabID: tab.id)
-                withAnimation(animation) { proxy.scrollTo(added, anchor: .bottomTrailing) }
+        }
+        .frame(width: geometry.size.width, height: geometry.size.height)
+        .animation(animation, value: tab.pages.count)
+        .animation(animation, value: store.paneMoveRevision)
+        .frame(width: viewport.width, height: viewport.height, alignment: .topLeading)
+        .clipped()
+        .overlay(alignment: .topLeading) {
+            ForEach(regions) { region in
+                PaneSpacePlaceholder(count: region.paneIDs.count, canSeparate: tab.pages.count > 1) {
+                    store.separatePanes(region.paneIDs, from: tab.id)
+                }
+                .frame(width: region.frame.width, height: region.frame.height)
+                .clipped()
+                .position(x: region.frame.midX, y: region.frame.midY)
+            }
+        }
+        .onChange(of: clipped) { _, ids in
+            guard !ids.isEmpty else { return }
+            for page in tab.pages where ids.contains(page.id) {
+                guard let web = store.existingController(for: page.id)?.webView,
+                      let responder = web.window?.firstResponder as? NSView,
+                      responder === web || responder.isDescendant(of: web) else { continue }
+                web.window?.makeFirstResponder(nil)
             }
         }
     }
