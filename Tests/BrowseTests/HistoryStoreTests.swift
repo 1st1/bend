@@ -129,13 +129,20 @@ private final class HistoryWebView: FocusWebView {
 }
 
 // @lat: [[lat.md/tests/history-tests#Fuzzy address quick-open]]
-@Test @MainActor func fuzzyAddressQuickOpen() throws {
+@Test @MainActor func fuzzyAddressQuickOpen() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendFuzzyAddress-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
     let url = "https://github.com/1st1/jit"
     store.recordVisit(url: url, title: "JIT compiler")
+    let favicon = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
+        NSColor.systemOrange.setFill()
+        rect.fill()
+        return true
+    }
+    let cache = try #require(store.faviconCache)
+    cache.record(favicon, for: URL(string: url)!)
     let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 900, height: 700),
         styleMask: [.titled], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
@@ -151,6 +158,16 @@ private final class HistoryWebView: FocusWebView {
     let content = try #require(popup.contentView)
     let field = try #require(descendants(NSTextField.self, content).first { $0.isEditable })
     let editor = try #require(field.currentEditor() as? NSTextView)
+    store.recordVisit(url: "https://www.nytimes.com/interactive/2026/11/03/us/elections/results-alaska-us-senate.html",
+                      title: "Alaska U.S. Senate 2026: Live Midterm Election Results, Sullivan vs. Peltola - The New York Times")
+    field.stringValue = "karpathy mini ll"
+    editor.string = field.stringValue
+    panel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+    let searchTable = try #require(descendants(NSTableView.self, content).first)
+    #expect(searchTable.numberOfRows == 1)
+    let searchRow = try #require(searchTable.view(atColumn: 0, row: 0, makeIfNecessary: true))
+    #expect(descendants(NSTextField.self, searchRow).contains { $0.stringValue == "Search for “karpathy mini ll”" })
+    #expect(field.stringValue == "karpathy mini ll")
     field.stringValue = "github/jit"
     editor.string = field.stringValue
     editor.setSelectedRange(NSRange(location: field.stringValue.utf16.count, length: 0))
@@ -160,6 +177,9 @@ private final class HistoryWebView: FocusWebView {
     let top = try #require(table.view(atColumn: 0, row: 0, makeIfNecessary: true))
     #expect(descendants(NSTextField.self, top).contains { $0.stringValue == "github.com/1st1/jit" })
     let detail = try #require(descendants(NSTextField.self, top).first { $0.stringValue == "github.com/1st1/jit" })
+    let icon = try #require(descendants(NSImageView.self, top).first)
+    #expect(icon.image === cache.image(for: URL(string: url)))
+    #expect(icon.contentTintColor == nil)
     func emphasizedCharacters() -> String {
         var emphasized = ""
         detail.attributedStringValue.enumerateAttribute(.font, in: NSRange(location: 0, length: detail.attributedStringValue.length)) { value, range, _ in
@@ -185,6 +205,13 @@ private final class HistoryWebView: FocusWebView {
     #expect(panel.control(field, textView: editor, doCommandBy: #selector(NSResponder.moveUp(_:))))
     checkSelectedContrast()
     #expect(emphasizedCharacters() == "github/jit")
+    #expect(icon.contentTintColor == nil)
+    let inputBeforeRefresh = field.stringValue
+    cache.clear()
+    try await Task.sleep(for: .milliseconds(30))
+    let refreshed = try #require(table.view(atColumn: 0, row: 0, makeIfNecessary: true))
+    #expect(descendants(NSImageView.self, refreshed).first?.contentTintColor != nil)
+    #expect(field.stringValue == inputBeforeRefresh)
     #expect(field.sendAction(field.action!, to: field.target))
     let page = try #require(store.selectedTab.pages.first)
     let controller = try #require(store.existingController(for: page.id))

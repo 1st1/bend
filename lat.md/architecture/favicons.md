@@ -6,7 +6,7 @@ See [[lat.md/tests/favicons-tests|Test coverage]].
 
 ## Persistent favicon cache
 
-[[Sources/Browse/FaviconCache.swift#FaviconCache]] keeps a bounded profile cache of successful website icons so restored tabs display their favicons before their pages are loaded.
+[[Sources/Browse/FaviconCache.swift#FaviconCache]] keeps a bounded profile cache of successful website icons so restored tabs and history suggestions display their favicons without loading pages.
 
 Regular windows share [[Sources/Browse/BrowserStore.swift#BrowserStore#faviconCache]] through the root store. The cache stores at most 256 recently refreshed HTTP(S) origins in Favicons.json beside the profile session. Keys include scheme, hostname, and effective port, with no credentials, paths, queries, or fragments. Each image is rasterized to a bounded 64-pixel sRGB PNG; reads validate image size and format, and reject oversized, malformed, or unsupported snapshots. Writes are debounced and atomic, with a final flush during session saving. Cache failures preserve in-memory icons and do not block browsing. Clearing regular browsing history clears the persistent icon cache too.
 

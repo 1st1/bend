@@ -15,7 +15,8 @@ public enum FuzzyMatch {
         for word in query.split(whereSeparator: \.isWhitespace).map(String.init) {
             if let literal = text.range(of: word, options: [.caseInsensitive, .diacriticInsensitive]) {
                 result.append(NSRange(literal, in: text))
-            } else if let match = match(word, in: text, positions: true) {
+            } else if let match = match(word, in: text, positions: true),
+                      match.score >= minimumScore(for: word) {
                 result += match.ranges
             }
         }
@@ -82,6 +83,9 @@ public enum FuzzyMatch {
             }
             previous = current
         }
+        // Prefer a complete suffix over the same alignment with trailing text
+        // (for example, /jit over /jit-lat). Apply it before recovering highlights.
+        if !previous.isEmpty { previous[previous.count - 1] += 12 }
         guard let score = previous.max() else { return nil }
         var ranges: [NSRange] = []
         if positions, var column = previous.firstIndex(of: score) {
@@ -97,11 +101,23 @@ public enum FuzzyMatch {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
     }
 
+    // Require useful evidence for every word independently: a strong word must
+    // not compensate for another word scattered across an unrelated title/URL.
+    private static func minimumScore(for word: String) -> Int {
+        normalize(word).count * 12
+    }
+
+    private static func qualifiedScore(_ word: String, in text: String) -> Int? {
+        guard let value = score(word, in: text) else { return nil }
+        if text.range(of: word, options: [.caseInsensitive, .diacriticInsensitive]) != nil { return value }
+        return value >= minimumScore(for: word) ? value : nil
+    }
+
     static func score(words: [String], title: String, url: String) -> Int? {
         guard !words.isEmpty, words.joined().count <= 128 else { return nil }
         var total = 0
         for word in words {
-            guard let best = [score(word, in: title), score(word, in: url)].compactMap({ $0 }).max() else { return nil }
+            guard let best = [qualifiedScore(word, in: title), qualifiedScore(word, in: url)].compactMap({ $0 }).max() else { return nil }
             total += best
         }
         return total

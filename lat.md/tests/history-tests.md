@@ -64,11 +64,13 @@ Bare-host prefixes also prefer a www. home page over a much more frequently visi
 
 [[Tests/BrowseCoreTests/HistoryTests.swift#fuzzyAddressMatching]] checks abbreviated paths, ordering, literal priority, gap and boundary scoring, Unicode, limits, removal, and unchanged inline completion.
 
+Low-signal multiword searches exclude unrelated election results; a strong literal word cannot rescue a weak second word, while literal phrases and camel-case initials remain eligible. Complete fuzzy matches outrank otherwise identical URLs with trailing suffixes, even when the suffixed URL has more visits; extending the query still selects the longer path.
+
 ## Fuzzy address quick-open
 
 [[Tests/BrowseTests/HistoryStoreTests.swift#fuzzyAddressQuickOpen]] types github/jit into the native address popup and verifies the best history URL is selected without altering the input and Return navigates to the original URL.
 
-It also checks bold emphasis covers exactly the matched URL characters and selected rows use fully opaque matches with 80% opacity for unmatched text and no underlines, including after selection moves.
+It also checks that a low-signal history match leaves only the search action and preserves the typed query. It verifies cached favicon rendering without selection tint, and fallback refresh when the cache clears without changing the query. It also checks bold emphasis covers exactly the matched URL characters and selected rows use fully opaque matches with 80% opacity for unmatched text and no underlines, including after selection moves.
 
 ## Matched address characters
 
