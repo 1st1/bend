@@ -1373,6 +1373,7 @@ class FocusWebView: WKWebView {
         return accepted
     }
     override func resignFirstResponder() -> Bool {
+        BendSelectionSupport.enable(for: self)
         let accepted = super.resignFirstResponder()
         InputDiagnostics.transition(.webFocus, .finished, view: self, flags: ["accepted": accepted])
         return accepted

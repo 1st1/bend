@@ -1,0 +1,3 @@
+kind: Added
+body: Configure Enter, Command-Enter, Option-Enter, and Shift-Enter independently in Settings → AI. Enter and Command-Enter send by default; Option-Enter and Shift-Enter insert a new line.
+time: 2026-11-15T22:30:00-08:00

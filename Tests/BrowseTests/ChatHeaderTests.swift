@@ -8,11 +8,10 @@ import Testing
     _ = NSApplication.shared
     var newChats = 0
     var closes = 0
-    var summaries = 0
     let host = NSHostingView(rootView: HStack(spacing: 0) {
         if !onLeft { Color.clear }
         VStack(spacing: 0) {
-            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: true, newChat: { newChats += 1 }, close: { closes += 1 }, canSummarize: true, summarize: { summaries += 1 })
+            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: true, newChat: { newChats += 1 }, close: { closes += 1 })
             Color.clear
         }.frame(width: panelWidth)
         if onLeft { Color.clear }
@@ -33,7 +32,7 @@ import Testing
         (view as? ChatHeaderNativeButton).map { [$0] } ?? view.subviews.flatMap(buttons)
     }
     let controls = buttons(try #require(window.contentView?.superview))
-    #expect(controls.count == 3)
+    #expect(controls.count == 2)
     #expect(abs(controls[0].frame.midY - controls[1].frame.midY) <= 1)
     for width in [900.0, 600.0, 1200.0] {
         window.setContentSize(NSSize(width: width, height: 500))
@@ -47,9 +46,6 @@ import Testing
         #expect(new.frame.maxX == (onLeft ? panelWidth : frame.bounds.maxX) - (panelWidth < 340 ? 44 : 116))
         #expect(close.frame.minX - new.frame.maxX == 6)
         #expect(new.title == (panelWidth < 340 ? "" : "Clear chat") && new.frame.width == (panelWidth < 340 ? 28 : 100))
-        let summary = try #require(controls.first { $0.toolTip == "Summarize page locally (⌘⇧P)" })
-        #expect(new.frame.minX - summary.frame.maxX == 6)
-        #expect(summary.frame.minX >= (onLeft ? 0 : frame.bounds.maxX - panelWidth))
     }
     for control in controls {
         let point = control.convert(NSPoint(x: control.bounds.midX, y: control.bounds.midY), to: nil)
@@ -71,5 +67,4 @@ import Testing
     }
     #expect(newChats == 1)
     #expect(closes == 1)
-    #expect(summaries == 1)
 }

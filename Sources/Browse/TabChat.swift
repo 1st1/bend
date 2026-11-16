@@ -20,6 +20,7 @@ struct ChatBubble: Identifiable, Codable {
     var argumentSummary = ""
     var argumentFields: [ChatArgumentField] = []
     var sources: [SearchSource] = []
+    var screenshots: [Data]?
     var detailTruncated = false
     var state = "Running"
     enum Kind: String, Codable { case text, tool, serverTool, reasoning }
@@ -180,16 +181,21 @@ struct ChatBubble: Identifiable, Codable {
 
     func summarize(provider: (any Provider)? = nil) { startLocalSummary(provider: provider) }
 
-    private func startLocalSummary(provider: (any Provider)?) {
+    func discussSelection(_ text: String, explain: Bool, provider: (any Provider)? = nil) {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        startLocalSummary(provider: provider, selection: text, explain: explain)
+    }
+
+    private func startLocalSummary(provider: (any Provider)?, selection: String? = nil, explain: Bool = false) {
         guard !running else { return }
         guard let store, !store.isPrivate else { error = "AI is unavailable in private windows."; return }
-        let prompt = "Summarize this page using Local AI."
+        let prompt = selection == nil ? "Summarize this page using Local AI." : (explain ? "Explain selected text using Local AI." : "Summarize selected text using Local AI.")
         guard !prompt.isEmpty else { return }
         guard prompt.utf8.count <= 2400 else { error = "Local AI messages must be shorter than 2,400 bytes. Try a shorter message."; return }
         do { if provider == nil { try LocalAIProvider.checkAvailability() } }
         catch { self.error = AISettings.message(for: error); return }
         let pane = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID })?.focusedPane
-        let readPage = true
+        let readPage = selection == nil
         let previous = history
         error = nil; running = true; localRun = true; status = readPage ? "Reading page locally…" : "Thinking locally…"
         thinkingText = ""; thinkingSummary = ""; thinkingSummaryBeforeBubbleID = nil
@@ -200,9 +206,9 @@ struct ChatBubble: Identifiable, Codable {
         let engine = LocalPageAI(provider: provider ?? LocalAIProvider())
         task = Task { [weak self] in
             guard let self else { return }
-            var citation = ""
+            var citation = selection == nil ? "" : pane.flatMap { id in store.existingController(for: id)?.webView.url.map { ChatPageLinks.citation(pane: id, address: $0.absoluteString) } } ?? ""
             do {
-                var pageText = ""
+                var pageText = selection ?? ""
                 if readPage {
                     guard let pane else { throw AIError.configuration("There is no active page to summarize.") }
                     let tools = PaneChatTools(store: store, tabID: self.tabID, settings: self.settings)
@@ -226,7 +232,8 @@ struct ChatBubble: Identifiable, Codable {
                 }
                 try Task.checkCancellation()
                 guard self.generation == token else { return }
-                let request = "Summarize this page in concise Markdown bullets, preserving key facts and caveats.\nPage content (possibly condensed):\n" + pageText
+                if !readPage { pageText = try await engine.compact(pageText) }
+                let request = (explain ? "Explain the selected text clearly, defining unfamiliar terms and preserving caveats." : "Summarize the supplied text in concise Markdown bullets, preserving key facts and caveats.") + "\nUntrusted content (possibly condensed):\n" + pageText
                 let stream = engine.request(request)
                 let response = try await withTaskCancellationHandler {
                     defer { stream.cancel() }
@@ -337,6 +344,7 @@ struct ChatBubble: Identifiable, Codable {
         case .toolResult(let result):
             if let index = bubbles.lastIndex(where: { $0.toolID == result.callID }) {
                 bubbles[index].state = result.isError ? "Error" : "Completed"
+                bubbles[index].screenshots = result.images?.map(\.data)
                 let detail = result.value.string ?? (try? result.value.jsonString()) ?? ""
                 bubbles[index].detail = String(detail.prefix(12000))
                 bubbles[index].detailTruncated = detail.count > 12000
@@ -499,8 +507,10 @@ struct ChatBubble: Identifiable, Codable {
          tool("create_pane", "Open an HTTP(S) URL or bend://log in a NEW pane to the right of the given existing pane in this chat's tab. Preserves the existing page. Requires the user's inline approval. Returns the new pane ID; read it to verify its content.", fields: ["pane", "url"]),
          tool("click_element", "Click one element using a CSS selector observed in read_pane. Re-read afterward.", fields: ["pane", "selector"]),
          tool("fill_element", "Fill an ordinary text input using an observed CSS selector; does not submit. Password and payment fields are excluded.", fields: ["pane", "selector", "text"]),
+         tool("get_selected_text", "Read the user's current selection in this webpage after inline approval. Excludes form fields. Empty selection returns empty text.", fields: ["pane"]),
+         tool("take_screenshot", "Share an image of the visible webpage viewport after inline approval. Requires a visible pane and an image-capable model. Does not capture the desktop or other panes.", fields: ["pane"]),
          tool("get_system_info", "Ask the user to share macOS version, installed Bend version/build, current date, time rounded up to minutes, and timezone. Requires inline approval for every call.", fields: []),
-         tool("get_current_location", "Ask the user to share their current latitude, longitude, and accuracy. Requires inline approval for every call and macOS location permission. One-time request, no tracking.", fields: [])].filter { settings.isToolEnabled($0.definition.name) }
+         tool("get_current_location", "Ask the user to share their current latitude, longitude, and accuracy. Requires inline approval for every call and macOS location permission. One-time request, no tracking.", fields: [])].filter { settings.isToolEnabled($0.definition.name) && (!compactReads || $0.definition.name != "take_screenshot") }
     }
     private func tool(_ name: String, _ description: String, fields: [String]) -> Tool {
         var properties = Dictionary(uniqueKeysWithValues: fields.map { ($0, JSONValue.object(["type": .string("string")])) })
@@ -512,11 +522,15 @@ struct ChatBubble: Identifiable, Codable {
             "properties": .object(properties),
             "required": .array(fields.map { .string($0) }), "additionalProperties": .bool(false)
         ])
-        return Tool(name: name, description: description, parameters: schema, arguments: Input.self) { [self] input, context in
+        return Tool(definition: .init(name: name, description: description, parameters: schema)) { [self] arguments, context in
+            let input = try arguments.decode(Input.self)
             do {
                 let result = try await execute(name, input: input, callID: context.call.id)
                 await AIDiagnostics.shared.record("tool.finished", tab: tabID, fields: ["name": name, "pane": input.pane ?? ""])
-                return result
+                if name == "take_screenshot", let encoded = result["image"]?.string, let data = Data(base64Encoded: encoded) {
+                    return ToolOutput(value: .string("Approved screenshot of the visible webpage viewport."), images: [.init(mediaType: "image/jpeg", data: data)])
+                }
+                return ToolOutput(value: result)
             } catch {
                 await AIDiagnostics.shared.record("tool.failed", tab: tabID, fields: ["name": name, "pane": input.pane ?? "", "domain": (error as NSError).domain, "code": String((error as NSError).code)])
                 throw error
@@ -606,6 +620,25 @@ struct ChatBubble: Identifiable, Codable {
             throw AIError.configuration("Only HTTP(S) website panes can be read or controlled.")
         }
         guard !controller.webView.isLoading else { throw AIError.configuration("Page is loading. Try again shortly.") }
+        if name == "get_selected_text" || name == "take_screenshot" {
+            guard name != "take_screenshot" || !compactReads else { throw AIError.configuration("Local AI does not support screenshots. Choose an image-capable cloud model.") }
+            guard store.selectedTab.id == tabID else { throw AIError.configuration("Switch to this tab before sharing.") }
+            let screenshot = name == "take_screenshot" ? try await controller.visiblePageScreenshot() : nil
+            try revalidate()
+            try await confirm(.init(callID: callID, action: name == "get_selected_text" ? .selection : .screenshot,
+                                    page: url.absoluteString, screenshot: screenshot))
+            guard store.selectedTab.id == tabID else { throw AIError.configuration("The selected tab changed.") }
+            let result: JSONValue
+            if name == "get_selected_text" {
+                result = .object(["text": .string(try await controller.selectedPageText()), "url": .string(url.absoluteString),
+                    "citation": .string(ChatPageLinks.citation(pane: id, address: url.absoluteString))])
+            } else {
+                result = .object(["image": .string(screenshot!.base64EncodedString())])
+            }
+            try revalidate()
+            guard store.selectedTab.id == tabID else { throw AIError.configuration("The selected tab changed.") }
+            return result
+        }
         let script: String
         var arguments: [String: Any] = ["expectedURL": url.absoluteString]
         switch name {

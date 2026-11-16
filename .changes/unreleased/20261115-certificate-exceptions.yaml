@@ -1,0 +1,3 @@
+kind: Added
+body: Continue past a website certificate error after explicit confirmation, including for local routers. Sites with an accepted exception show a red domain menu and a Not Secure explanation.
+time: 2026-11-15T22:30:00-08:00

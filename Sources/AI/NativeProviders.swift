@@ -66,7 +66,11 @@ struct NativeGatewayWire: Sendable {
         }
         for result in message.toolResults {
           content.append(.object(["type": .string("tool_result"), "tool_use_id": .string(result.callID),
-            "content": .string(try result.value.string ?? result.value.jsonString()), "is_error": .bool(result.isError)]))
+            "content": result.images?.isEmpty == false ? .array([
+              .object(["type": .string("text"), "text": .string(try result.value.string ?? result.value.jsonString())])
+            ] + (result.images ?? []).map { .object(["type": .string("image"), "source": .object([
+              "type": .string("base64"), "media_type": .string($0.mediaType), "data": .string($0.data.base64EncodedString())])]) })
+              : .string(try result.value.string ?? result.value.jsonString()), "is_error": .bool(result.isError)]))
         }
         if !content.isEmpty { history.append(.object(["role": .string(message.role == .assistant ? "assistant" : "user"), "content": .array(content)])) }
       } else {
@@ -76,7 +80,10 @@ struct NativeGatewayWire: Sendable {
         }
         for result in message.toolResults {
           let value = result.isError ? JSONValue.object(["error": result.value]) : result.value
-          history.append(.object(["type": .string("function_call_output"), "call_id": .string(result.callID), "output": .string(try value.string ?? value.jsonString())]))
+          history.append(.object(["type": .string("function_call_output"), "call_id": .string(result.callID), "output": result.images?.isEmpty == false ? .array([
+            .object(["type": .string("input_text"), "text": .string(try value.string ?? value.jsonString())])
+          ] + (result.images ?? []).map { .object(["type": .string("input_image"), "image_url": .string($0.dataURL)]) })
+            : .string(try value.string ?? value.jsonString())]))
         }
       }
     }

@@ -6,9 +6,9 @@ See [[lat.md/tests/commands-tests|Test coverage]].
 
 ## Command popup
 
-[[Sources/Browse/BrowseApp.swift#AppDelegate#showCommands]] opens a searchable Command-Shift-K action menu for the active pane and tab, sharing the [[lat.md/architecture/address-entry#Location popup]] controller, glass shell, rows, positioning, and keyboard navigation.
+[[Sources/Browse/BrowseApp.swift#AppDelegate#showCommands]] opens a searchable Command-Shift-P action menu for the active pane and tab, sharing the [[lat.md/architecture/address-entry#Location popup]] controller, glass shell, rows, positioning, and keyboard navigation.
 
-[[Sources/Browse/BrowseApp.swift#AppDelegate#popupCommands]] supplies [[lat.md/architecture/ai|Chat]], favorite/remove favorite, duplicate tab, close tab, pin/unpin tab and pane, hide/show sidebar, Settings, Print, History, and developer tools. Labels reflect current state; unavailable actions remain visible but dimmed. Favorites retain the existing Google-account customization flow. Pin protection, private-window favorite restrictions, and print/inspector availability follow existing action rules.
+[[Sources/Browse/BrowseApp.swift#AppDelegate#popupCommands]] supplies [[lat.md/architecture/ai|Chat]], Summarize Page using Local AI, favorite/remove favorite, duplicate tab, close tab, pin/unpin tab and pane, hide/show sidebar, Settings, Print, History, and developer tools. Labels reflect current state; unavailable actions remain visible but dimmed. Favorites retain the existing Google-account customization flow. Pin protection, private-window favorite restrictions, and print/inspector availability follow existing action rules.
 
 Queries match words across action titles and descriptions without address autocompletion. Arrow keys select available actions without replacing the query; Return or a click executes, and Escape dismisses. Empty matches show a message. Execution rechecks availability and the original window, tab, and focused pane, dismissing the popup and restoring browser focus before invoking the action. Switching from initial location entry to commands retains the new blank item.
 

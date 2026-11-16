@@ -88,6 +88,7 @@ private struct AIModelSearch: View {
 enum AIPaneTool: String, CaseIterable, Identifiable {
     case read = "read_pane", navigate = "navigate_pane", create = "create_pane"
     case click = "click_element", fill = "fill_element"
+    case selection = "get_selected_text", screenshot = "take_screenshot"
     case systemInfo = "get_system_info", location = "get_current_location"
     var id: String { rawValue }
     var title: String {
@@ -97,6 +98,8 @@ enum AIPaneTool: String, CaseIterable, Identifiable {
         case .create: "Open a new pane"
         case .click: "Click elements"
         case .fill: "Fill text fields"
+        case .selection: "Selected text"
+        case .screenshot: "Page screenshot"
         case .systemInfo: "System info"
         case .location: "Current location"
         }
@@ -108,6 +111,8 @@ enum AIPaneTool: String, CaseIterable, Identifiable {
         case .create: "Open a web address beside an existing pane in this tab."
         case .click: "Click links, buttons, and other page elements."
         case .fill: "Enter text in ordinary fields without submitting."
+        case .selection: "Share selected webpage text after approval."
+        case .screenshot: "Share the visible webpage image after approval, including any visible personal information."
         case .systemInfo: "Share macOS and Bend versions, date, time, and timezone after approval."
         case .location: "Share current coordinates and accuracy after approval and macOS permission."
         }

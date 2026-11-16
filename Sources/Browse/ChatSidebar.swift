@@ -31,7 +31,7 @@ struct ChatSidebar: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { composerHeight = $0 }
             }.clipped()
             ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: !chat.running && !chat.bubbles.isEmpty,
-                       newChat: { chat.clear() }, close: close, canSummarize: chat.canSummarize, summarize: { chat.summarize() })
+                       newChat: { chat.clear() }, close: close)
         }
         .frame(maxHeight: .infinity)
         .environment(\.openURL, OpenURLAction { url in
@@ -169,7 +169,7 @@ struct ChatSidebar: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
             ChatComposerInput(text: $chat.input, focused: $inputFocused, canSend: canSend,
-                              prompts: chat.bubbles.filter(\.isUser).map(\.text)) { chat.send() }
+                              prompts: chat.bubbles.filter(\.isUser).map(\.text), inputKeys: settings.inputKeys) { chat.send() }
             if chat.modelID == LocalAIProvider.modelID {
                 Text("On-device · Browser tools · Actions require approval")
                     .font(.caption2).foregroundStyle(.secondary)
@@ -188,7 +188,7 @@ struct ChatSidebar: View {
                 } else {
                     Button("Send", systemImage: "arrow.up") { chat.send() }
                         .disabled(!canSend)
-                        .help("Send message (⌘Return)")
+                        .help("Send message")
                 }
             }.controlSize(.small)
         }
@@ -215,14 +215,9 @@ struct ChatHeader: View {
     var newChat: () -> Void
     var close: () -> Void
 
-    var canSummarize = false
-    var summarize: () -> Void = {}
-
     var body: some View {
         HStack(spacing: Chrome.sidebarControlSpacing) {
             Spacer(minLength: 0)
-            ChatHeaderButton(symbol: "text.alignleft", label: "Summarize page locally (⌘⇧P)", visibleTitle: compact ? nil : "Summarize", controlWidth: buttonWidth, enabled: canSummarize, trailingInset: 2 * buttonWidth + 22, onLeft: onLeft, panelWidth: panelWidth, topOffset: topOffset, action: summarize)
-                .frame(width: buttonWidth, height: 28)
             ChatHeaderButton(symbol: "square.and.pencil", label: "Clear chat", visibleTitle: compact ? nil : "Clear chat", controlWidth: buttonWidth, enabled: canStartNew, trailingInset: buttonWidth + 16, onLeft: onLeft, panelWidth: panelWidth, topOffset: topOffset, action: newChat)
                 .frame(width: buttonWidth, height: 28)
             ChatHeaderButton(symbol: "xmark", label: "Close chat", visibleTitle: compact ? nil : "Close chat", controlWidth: buttonWidth, onLeft: onLeft, panelWidth: panelWidth, topOffset: topOffset, action: close)
@@ -314,7 +309,10 @@ struct ChatActivityRow: View {
 
     @ViewBuilder private var details: some View {
         if let approval {
-            argumentFields(approval.fields)
+            VStack(alignment: .leading, spacing: 10) {
+                argumentFields(approval.fields)
+                if let screenshot = approval.screenshot { ChatScreenshot(data: screenshot) }
+            }
         } else if bubble.kind == .reasoning {
             ChatMarkdown(source: bubble.text, streaming: streaming)
         } else if bubble.kind == .serverTool {
@@ -342,7 +340,9 @@ struct ChatActivityRow: View {
                 if bubble.argumentFields.isEmpty {
                     Text("No arguments").font(.caption).foregroundStyle(.secondary)
                 } else { argumentFields(bubble.argumentFields) }
-                if !bubble.detail.isEmpty {
+                if let screenshots = bubble.screenshots, !screenshots.isEmpty {
+                    ForEach(screenshots.indices, id: \.self) { ChatScreenshot(data: screenshots[$0]) }
+                } else if !bubble.detail.isEmpty {
                     Text(bubble.detailTruncated ? "Result preview — model received the full chunk" : "Result").font(.caption).foregroundStyle(.secondary)
                     Text(bubble.detail).font(.system(size: 11, design: .monospaced))
                 }
@@ -360,5 +360,18 @@ struct ChatActivityRow: View {
                 }
             }
         }.textSelection(.enabled)
+    }
+}
+
+struct ChatScreenshot: View {
+    let data: Data
+    var body: some View {
+        if let image = NSImage(data: data) {
+            Image(nsImage: image)
+                .resizable().scaledToFit()
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .accessibilityLabel("Shared webpage screenshot")
+        }
     }
 }

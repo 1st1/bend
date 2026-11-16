@@ -182,11 +182,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         append(edit, to: main)
 
         let view = NSMenu(title: "View")
-        add("Show Commands…", #selector(showCommands), "k", modifiers: [.command, .shift], to: view)
+        add("Show Commands…", #selector(showCommands), "p", modifiers: [.command, .shift], to: view)
         add("Split Right", #selector(splitRight), "d", to: view)
         add("Split Below", #selector(splitBelow), "d", modifiers: [.command, .shift], to: view)
         add("Zoom Pane", #selector(zoomPane), "\r", modifiers: [.command, .shift], to: view)
-        add("Summarize Page", #selector(summarizePage), "p", modifiers: [.command, .shift], to: view)
         add("Show Chat", #selector(toggleChat), "c", modifiers: [.command, .shift], to: view)
         add("Toggle Sidebar", #selector(toggleSidebar), "s", modifiers: [.command, .shift], to: view)
         view.addItem(.separator())
@@ -235,10 +234,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         settingsWindow?.show(section: section, centeredOn: browserWindows.active?.window.screen)
     }
     // @lat: [[lat.md/architecture/commands#Command popup]]
+    private var commandSelection: (pane: UUID, revision: UUID, text: String)?
+    private var commandSelectionRequest = UUID()
     @objc func showCommands() {
         guard let context = browserWindows.active else { return }
         let tabID = context.store.selectedTab.id
         let paneID = context.store.selectedTab.focusedPane
+        commandSelection = nil
+        let request = UUID()
+        commandSelectionRequest = request
+        if !context.store.isPrivate, let controller = context.store.existingController(for: paneID) {
+            let revision = controller.aiNavigationRevision
+            Task { [weak self, weak context] in
+                let text = (try? await controller.selectedPageText()) ?? ""
+                guard let self, let context, self.commandSelectionRequest == request,
+                      context.store.selectedTab.id == tabID, context.store.selectedTab.focusedPane == paneID,
+                      controller.aiNavigationRevision == revision else { return }
+                self.commandSelection = (paneID, revision, text)
+                context.addressPanel.refreshCommands()
+            }
+        }
         context.addressPanel.showCommands(for: paneID) { [weak self, weak context] in
             guard let self, let context, self.browserWindows.active === context,
                   context.store.selectedTab.id == tabID,
@@ -251,8 +266,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let store = store
         let tab = store.selectedTab
         let favorite = store.favorite(for: tab)
+        let selection = commandSelection.flatMap { value -> String? in
+            guard value.pane == tab.focusedPane,
+                  store.existingController(for: value.pane)?.aiNavigationRevision == value.revision else { return nil }
+            return value.text.isEmpty ? nil : value.text
+        }
         return [
-            PopupCommand(id: "chat", title: "Chat", detail: store.isPrivate ? "Unavailable in private windows" : "Chat with the panes in this tab", icon: "bubble.left.and.bubble.right", isEnabled: !store.isPrivate, menuAction: #selector(toggleChat)) { store.showChat() },
+            PopupCommand(id: "chat", title: "Chat", detail: store.isPrivate ? "Unavailable in private windows" : "Chat about the pages in this tab", icon: "bubble.left.and.bubble.right", isEnabled: !store.isPrivate, menuAction: #selector(toggleChat)) { store.showChat() },
+            PopupCommand(id: "summarize", title: "Summarize Page", detail: "Summarize the active page using Local AI", icon: "text.alignleft", isEnabled: canSummarizePage) { [weak self] in self?.summarizePage() },
+            PopupCommand(id: "explainSelection", title: "Explain Selected", detail: "Explain the selected webpage text using Local AI", icon: "text.bubble", isEnabled: selection != nil && canSummarizePage) { [weak self] in self?.discussCommandSelection(explain: true) },
+            PopupCommand(id: "summarizeSelection", title: "Summarize Selected", detail: "Summarize the selected webpage text using Local AI", icon: "text.alignleft", isEnabled: selection != nil && canSummarizePage) { [weak self] in self?.discussCommandSelection(explain: false) },
             PopupCommand(id: "favorite", title: favorite == nil ? "Add Tab to Favorites" : "Remove Tab from Favorites",
                 detail: "Save the active pane’s website", icon: "star", isEnabled: favorite != nil || store.canFavorite(tab)) {
                     if let favorite { store.removeFavorite(favorite.id) } else { store.requestFavorite(tab.id) }
@@ -403,13 +426,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             menuItem.title = context.store.openChats.contains(context.store.selectedTab.id) ? "Hide Chat" : "Show Chat"
             return !context.store.isPrivate
         }
-        if menuItem.action == #selector(summarizePage) {
-            guard let context = browserWindows.active, !context.store.isPrivate else { return false }
-            let store = context.store
-            if let chat = store.chats[store.selectedTab.id] { return chat.canSummarize }
-            let page = store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }
-            return ["http", "https"].contains(URL(string: page?.address ?? "")?.scheme ?? "")
-        }
         if menuItem.action == #selector(printPage) { return printablePage != nil }
         if menuItem.action == #selector(showWebInspector) || menuItem.action == #selector(showJavaScriptConsole) {
             if menuItem.action == #selector(showWebInspector) {
@@ -432,6 +448,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func splitRight() { store.split(.horizontal) }
     @objc private func splitBelow() { store.split(.vertical) }
     @objc private func zoomPane() { store.toggleZoom(store.selectedTab.focusedPane) }
+    private var canSummarizePage: Bool {
+        guard let context = browserWindows.active, !context.store.isPrivate else { return false }
+        let store = context.store
+        if let chat = store.chats[store.selectedTab.id] { return chat.canSummarize }
+        let page = store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }
+        return ["http", "https"].contains(URL(string: page?.address ?? "")?.scheme ?? "")
+    }
+
+    private func discussCommandSelection(explain: Bool) {
+        guard canSummarizePage, let selection = commandSelection,
+              selection.pane == store.selectedTab.focusedPane,
+              store.existingController(for: selection.pane)?.aiNavigationRevision == selection.revision,
+              !selection.text.isEmpty else { return }
+        store.showChat()
+        store.chats[store.selectedTab.id]?.discussSelection(selection.text, explain: explain)
+    }
+
     @objc func summarizePage() {
         guard let context = browserWindows.active, !context.store.isPrivate else { return }
         context.store.showChat()

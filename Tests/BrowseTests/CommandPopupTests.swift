@@ -30,7 +30,9 @@ import Testing
         try #require(delegate.popupCommands().first { $0.id == id })
     }
     let commands = delegate.popupCommands()
-    #expect(commands.count == 14)
+    #expect(commands.count == 17)
+    #expect(!commands.first(where: { $0.id == "explainSelection" })!.isEnabled)
+    #expect(!commands.first(where: { $0.id == "summarizeSelection" })!.isEnabled)
     let historyIndex = try #require(commands.firstIndex { $0.id == "history" })
     #expect(commands[historyIndex + 1].id == "chat-history")
     try command("favorite").perform()
@@ -85,9 +87,9 @@ import Testing
     #expect(!store.openChats.contains(store.selectedTab.id))
     #expect(store.chats[store.selectedTab.id] === chat)
     let item = try #require(menu.items.first { $0.title == "Show Commands…" })
-    #expect(item.keyEquivalent == "k" && item.keyEquivalentModifierMask == [.command, .shift])
-    let summarize = try #require(menu.items.first { $0.title == "Summarize Page" })
-    #expect(summarize.keyEquivalent == "p" && summarize.keyEquivalentModifierMask == [.command, .shift])
+    #expect(item.keyEquivalent == "p" && item.keyEquivalentModifierMask == [.command, .shift])
+    let summarize = try #require(delegate.popupCommands().first { $0.id == "summarize" })
+    #expect(summarize.title == "Summarize Page" && summarize.shortcut == nil)
     #expect(NSApp.sendAction(item.action!, to: item.target, from: item))
     let panel = try #require(context.window.childWindows?.first { context.addressPanel.owns($0) })
     func descendants<T: NSView>(_ type: T.Type, _ view: NSView) -> [T] {
@@ -155,4 +157,41 @@ import Testing
     item.isHidden = true
     #expect(tagged.shortcut == nil)
     #expect(MenuShortcut.label(key: "\u{f704}", modifiers: []) == "F1")
+}
+
+// @lat: [[lat.md/tests/commands-tests#Selection commands]]
+@Test @MainActor func selectionCommands() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("SelectionCommands-\(UUID())")
+    let owner = BrowserWindows(root: root, persistentExtensions: false)
+    owner.restore(show: false)
+    let context = try #require(owner.active)
+    let store = context.store
+    let delegate = AppDelegate(browserWindows: owner)
+    defer {
+        owner.prepareToQuit()
+        for window in owner.windows { window.window.close() }
+        try? FileManager.default.removeItem(at: root)
+    }
+    store.newTab(address: "https://example.com/selection")
+    let page = try #require(store.selectedTab.pages.first)
+    let controller = store.controller(for: page)
+    controller.webView.loadHTMLString("<p id='text'>Explain this fact.</p>", baseURL: URL(string: page.address))
+    for _ in 0..<300 {
+        if controller.webView.url != nil && !controller.webView.isLoading { break }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    func entries() -> [PopupCommand] {
+        delegate.popupCommands().filter { ["explainSelection", "summarizeSelection"].contains($0.id) }
+    }
+    #expect(entries().count == 2 && entries().allSatisfy { !$0.isEnabled })
+    _ = try await controller.webView.evaluateJavaScript("var r=document.createRange();r.selectNodeContents(document.getElementById('text'));getSelection().removeAllRanges();getSelection().addRange(r)")
+    delegate.showCommands()
+    for _ in 0..<100 where !entries().allSatisfy({ $0.isEnabled }) { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(entries().allSatisfy { $0.isEnabled })
+    context.addressPanel.dismiss(restoreFocus: true)
+    _ = try await controller.webView.evaluateJavaScript("getSelection().removeAllRanges()")
+    delegate.showCommands()
+    for _ in 0..<10 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(entries().allSatisfy { !$0.isEnabled })
 }

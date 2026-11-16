@@ -88,6 +88,9 @@ struct LocalAIProvider: Provider {
     static let omittedRead = "Earlier page-read content omitted to fit Local AI context. Read again if needed; do not infer missing facts."
 
     static func entries(_ messages: [Message], instructions: String, tools: [LocalDeferredTool]) throws -> [Transcript.Entry] {
+        guard !messages.contains(where: { $0.toolResults.contains(where: { $0.images?.isEmpty == false }) }) else {
+            throw AIError.configuration("Local AI cannot read screenshots. Choose an image-capable model or start a new chat.")
+        }
         func segment(_ text: String) -> Transcript.Segment { .text(.init(content: text)) }
         var entries: [Transcript.Entry] = [.instructions(.init(segments: [segment(instructions)], toolDefinitions: tools.map { .init(tool: $0) }))]
         for message in messages {

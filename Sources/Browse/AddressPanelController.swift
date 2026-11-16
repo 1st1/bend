@@ -265,6 +265,11 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         return hint
     }
 
+    func refreshCommands() {
+        guard commandProvider != nil, targetPane != nil else { return }
+        updateResults(preserveSelection: true)
+    }
+
     func showCommands(for paneID: UUID, provider: @escaping () -> [PopupCommand]) {
         dismiss(restoreFocus: false)
         commandProvider = provider

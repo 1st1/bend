@@ -143,7 +143,7 @@ public struct Agent: Sendable {
       try Task.checkCancellation()
       return .init(
         callID: call.id, name: call.name, value: output.value,
-        subagentMessages: output.subagentMessages)
+        subagentMessages: output.subagentMessages, images: output.images)
     } catch {
       // Cancellation must stop the run, never become a model-visible tool error.
       if error is CancellationError || Task.isCancelled { throw CancellationError() }

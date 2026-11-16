@@ -67,6 +67,18 @@ private struct LocalFixtureProvider: Provider {
     #expect(chat.error?.contains("disabled") == true)
     #expect(await requests.prompts.count == prompts.count)
 
+    chat.discussSelection("ONLY_SELECTED_PASSAGE", explain: true, provider: provider)
+    for _ in 0..<100 where chat.running { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(chat.error == nil)
+    let selectedPrompt = await requests.prompts.last ?? ""
+    #expect(selectedPrompt.contains("ONLY_SELECTED_PASSAGE") && selectedPrompt.contains("Explain the selected text"))
+    #expect(!selectedPrompt.contains("FINAL_PAGE_FACT"))
+    #expect(chat.modelID == "cloud-choice" && chat.input == "Unsent draft")
+    chat.discussSelection("SECOND_SELECTED_PASSAGE", explain: false, provider: provider)
+    for _ in 0..<100 where chat.running { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(await requests.prompts.last?.contains("SECOND_SELECTED_PASSAGE") == true)
+    #expect(await requests.prompts.last?.contains("Explain the selected text") == false)
+
     chat.modelID = LocalAIProvider.modelID
     chat.input = "Hello locally"
     chat.send(model: Model(LocalAIProvider.modelID, provider: provider))
@@ -188,7 +200,7 @@ private struct LocalActionProvider: Provider {
     #expect(!chat.running && chat.error == nil)
     #expect(try await controller.webView.evaluateJavaScript("document.querySelector('#activate').textContent") as? String == "Activate")
     let requests = await script.requests
-    #expect(Set(requests[0].tools.map(\.name)) == Set(AIPaneTool.allCases.map(\.rawValue)))
+    #expect(Set(requests[0].tools.map(\.name)) == Set(AIPaneTool.allCases.filter { $0 != .screenshot }.map(\.rawValue)))
     #expect(requests.allSatisfy { !$0.options.gatewayWebSearch })
     #expect(requests.last?.messages.last?.toolResults.first?.isError == true)
     #expect(chat.bubbles.contains { $0.kind == .tool && $0.title == "Fill text fields" && $0.state == "Completed" })
