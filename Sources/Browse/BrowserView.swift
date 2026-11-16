@@ -162,6 +162,9 @@ struct BrowserView: View {
                     .font(.system(size: 10)).foregroundStyle(.orange).padding(20)
             }
         }
+        // An empty regular-tab list has no intrinsic width. Keep the sidebar
+        // and its overlaid toolbar/favorites at the width offered by the host.
+        .frame(maxWidth: .infinity)
         .overlay(alignment: .top) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: Chrome.sidebarControlSpacing) {

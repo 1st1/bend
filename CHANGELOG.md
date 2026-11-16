@@ -5,6 +5,11 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.8.1
+### Fixed
+- Match IPv4-like address input against visited IP address prefixes instead of unrelated numbers in page titles or URLs.
+- Keep favorites and sidebar controls at their normal width after closing the last regular tab, including after restarting Bend.
+
 ## v0.8.0
 ### Added
 - Find visited pages with editor-style fuzzy address matching: type github/jit to open github.com/1st1/jit, with matched characters highlighted and consecutive text and word boundaries ranked above scattered matches.
