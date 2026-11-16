@@ -1,3 +1,0 @@
-kind: Fixed
-body: Filter weak fuzzy address suggestions, prefer complete fuzzy address matches over matching prefixes with extra suffixes, and show cached favicons in address suggestions and browsing history.
-time: 2026-11-16T19:50:49.935310+00:00

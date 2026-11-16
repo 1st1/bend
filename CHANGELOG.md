@@ -5,6 +5,11 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.8.2
+### Fixed
+- Keep HTTPS certificate inspection available when WebKit omits the loaded page’s server trust, including on x.com.
+- Filter weak fuzzy address suggestions, prefer complete fuzzy address matches over matching prefixes with extra suffixes, and show cached favicons in address suggestions and browsing history.
+
 ## v0.8.1
 ### Fixed
 - Match IPv4-like address input against visited IP address prefixes instead of unrelated numbers in page titles or URLs.
