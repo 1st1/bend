@@ -8,6 +8,12 @@ import BrowseCore
 // @lat: [[lat.md/tests/settings-tests#Settings section toolbar]]
 @Test @MainActor func settingsSectionToolbar() async throws {
     _ = NSApplication.shared
+    // Swift's async-main runner can exit when AppKit's modal loop drains the
+    // last native source. Keep the run loop alive across close/reopen checks.
+    let keepAlive = Timer(timeInterval: 60, repeats: true) { _ in }
+    RunLoop.main.add(keepAlive, forMode: .modalPanel)
+    RunLoop.main.add(keepAlive, forMode: .common)
+    defer { keepAlive.invalidate() }
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSettingsToolbar-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
