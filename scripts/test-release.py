@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Exercise real Changie in disposable git repositories."""
+from datetime import datetime, timezone
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -52,6 +54,8 @@ class ReleaseTests(unittest.TestCase):
         (self.root / "VERSION").write_text("0.2.0\n")
         self.release("prepare")
         self.assertTrue((self.root / ".changes/v0.2.0.md").is_file())
+        dates = json.loads((self.root / ".changes/release-dates.json").read_text())
+        self.assertEqual(dates["0.2.0"], datetime.now(timezone.utc).date().isoformat())
         self.assertEqual(list((self.root / ".changes/unreleased").glob("*.yaml")), [])
         self.assertIn("macOS 26", (self.root / "CHANGELOG.md").read_text())
         self.assertIn("\n\n## v0.1.0", (self.root / "CHANGELOG.md").read_text())

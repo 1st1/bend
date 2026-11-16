@@ -363,9 +363,17 @@ struct ChatBubble: Identifiable, Codable {
     let tabID: UUID
     private let settings: AISettings
     private let approve: Approval
+    private let systemInfo: @MainActor () -> JSONValue
+    private let currentLocation: @MainActor () async throws -> JSONValue
+    private let changelog: @MainActor () -> Changelog
+    private var changelogReads: [UUID: AIChangelogRead] = [:]
     init(store: BrowserStore?, tabID: UUID, settings: AISettings = .shared,
-         approve: @escaping Approval = { _ in false }) {
+         approve: @escaping Approval = { _ in false },
+         systemInfo: @escaping @MainActor () -> JSONValue = { AISystemContext.systemInfo() },
+         currentLocation: @escaping @MainActor () async throws -> JSONValue = { try await AISystemContext.location() },
+         changelog: @escaping @MainActor () -> Changelog = { .load() }) {
         self.store = store; self.tabID = tabID; self.settings = settings; self.approve = approve
+        self.systemInfo = systemInfo; self.currentLocation = currentLocation; self.changelog = changelog
     }
 
     func paneContext() -> JSONValue {
@@ -395,11 +403,13 @@ struct ChatBubble: Identifiable, Codable {
     }
     func tools() -> [Tool] {
         guard store?.isPrivate == false else { return [] }
-        return [tool("read_pane", "Read a stable main-frame snapshot in chunks of 24000 characters and 100 elements/references. When has_more is true, call again with the same pane and returned next_cursor. Omit cursor to start a fresh read. Read all relevant chunks before summarizing; excludes input values.", fields: ["pane"]),
-         tool("navigate_pane", "Navigate a pane to an HTTP or HTTPS URL when requested by the user.", fields: ["pane", "url"]),
-         tool("create_pane", "Open an HTTP or HTTPS URL in a NEW pane to the right of the given existing pane in this chat's tab. Preserves the existing page. Requires the user's inline approval. Returns the new pane ID; read it to verify its content.", fields: ["pane", "url"]),
+        return [tool("read_pane", "Read a website or bend://log (release notes and installed Bend version) in chunks of 24000 characters and 100 elements/references. When has_more is true, call again with the same pane and returned next_cursor. Omit cursor to start a fresh read. Read all relevant chunks before summarizing; excludes input values.", fields: ["pane"]),
+         tool("navigate_pane", "Navigate a pane to an HTTP(S) URL or bend://log when requested by the user.", fields: ["pane", "url"]),
+         tool("create_pane", "Open an HTTP(S) URL or bend://log in a NEW pane to the right of the given existing pane in this chat's tab. Preserves the existing page. Requires the user's inline approval. Returns the new pane ID; read it to verify its content.", fields: ["pane", "url"]),
          tool("click_element", "Click one element using a CSS selector observed in read_pane. Re-read afterward.", fields: ["pane", "selector"]),
-         tool("fill_element", "Fill an ordinary text input using an observed CSS selector; does not submit. Password and payment fields are excluded.", fields: ["pane", "selector", "text"])].filter { settings.isToolEnabled($0.definition.name) }
+         tool("fill_element", "Fill an ordinary text input using an observed CSS selector; does not submit. Password and payment fields are excluded.", fields: ["pane", "selector", "text"]),
+         tool("get_system_info", "Ask the user to share macOS version, installed Bend version/build, current date, time rounded up to minutes, and timezone. Requires inline approval for every call.", fields: []),
+         tool("get_current_location", "Ask the user to share their current latitude, longitude, and accuracy. Requires inline approval for every call and macOS location permission. One-time request, no tracking.", fields: [])].filter { settings.isToolEnabled($0.definition.name) }
     }
     private func tool(_ name: String, _ description: String, fields: [String]) -> Tool {
         var properties = Dictionary(uniqueKeysWithValues: fields.map { ($0, JSONValue.object(["type": .string("string")])) })
@@ -429,6 +439,23 @@ struct ChatBubble: Identifiable, Codable {
         guard let store, let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }) else {
             throw AIError.configuration("This tab is closed.")
         }
+        if name == "get_system_info" || name == "get_current_location" {
+            let action: AIActionApproval.Action = name == "get_system_info" ? .systemInfo : .location
+            guard await approve(.init(callID: callID, action: action, page: "")) else {
+                throw AIError.configuration("Sharing was not approved. Do not retry unless the user asks.")
+            }
+            func validateContext() throws {
+                try Task.checkCancellation()
+                guard !store.isPrivate, settings.isToolEnabled(name),
+                      store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == tabID }) else {
+                    throw AIError.configuration("The chat or tool permission changed. Request approval again if needed.")
+                }
+            }
+            try validateContext()
+            let result = name == "get_system_info" ? systemInfo() : try await currentLocation()
+            try validateContext()
+            return result
+        }
         guard let value = input.pane, let id = UUID(uuidString: value),
               let page = tab.pages.first(where: { $0.id == id }) else {
             throw AIError.configuration("Pane is no longer in this chat's tab. Use the current pane context in the system prompt.")
@@ -454,8 +481,8 @@ struct ChatBubble: Identifiable, Codable {
         if name == "navigate_pane" || name == "create_pane" {
             guard let address = input.url, let url = URL(string: address),
                   address.count <= 8192,
-                  ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil,
-                  url.user == nil, url.password == nil else { throw AIError.configuration("Use an HTTP(S) URL without credentials.") }
+                  (address == "bend://log" || ["http", "https"].contains(url.scheme?.lowercased() ?? "")), url.host != nil,
+                  url.user == nil, url.password == nil else { throw AIError.configuration("Use an HTTP(S) URL without credentials or bend://log.") }
             try await confirm(.init(callID: callID, action: name == "create_pane" ? .create : .navigate, page: source?.absoluteString ?? page.address,
                                     destination: address))
             if name == "create_pane" {
@@ -472,6 +499,18 @@ struct ChatBubble: Identifiable, Codable {
             controller.navigate(address)
             return .string("Navigation started. Read the pane to check the loaded page.")
         }
+        if name == "read_pane", controller.address == "bend://log" {
+            if input.cursor == nil || input.cursor == "" {
+                changelogReads[id] = AIChangelogRead(revision: revision, changelog: changelog(),
+                    version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown")
+            }
+            guard let snapshot = changelogReads[id], snapshot.revision == revision else {
+                throw AIError.configuration("This read cursor expired. Read bend://log again without a cursor.")
+            }
+            try revalidate()
+            return try snapshot.read(cursor: input.cursor, pane: id)
+        }
+        changelogReads[id] = nil
         guard let url = controller.webView.url, ["http", "https"].contains(url.scheme ?? ""), !controller.isStartPage else {
             throw AIError.configuration("Only HTTP(S) website panes can be read or controlled.")
         }

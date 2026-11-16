@@ -22,7 +22,7 @@ Versions have exactly three numeric components with no leading zeroes, prefix, o
 
 ## Prepare a release
 
-Edit [[VERSION]] to the intended new version, then run `python3 scripts/release.py prepare`. The command batches pending fragments into that version’s release notes and regenerates [[CHANGELOG.md]].
+Edit [[VERSION]] to the intended new version, then run `python3 scripts/release.py prepare`. The command batches pending fragments into that version’s release notes, records its UTC preparation date in [[.changes/release-dates.json]], and regenerates [[CHANGELOG.md]].
 
 For example, change VERSION from `0.1.0` to `0.2.0`, then run the preparation command. Review and commit VERSION, CHANGELOG.md, and all changes under `.changes`, including consumed fragment deletions, in the release PR. The command refuses to reuse or decrease an existing version and requires at least one fragment. Adding VERSION to a repository establishes a baseline; only a subsequent increase requests a production candidate. It does not commit, tag, sign, or publish anything.
 

@@ -71,6 +71,8 @@ trap cleanup EXIT
 candidate="$staging/$app_name.app"
 mkdir -p "$candidate/Contents/MacOS" "$candidate/Contents/Resources"
 cp "$PWD/scripts/fixtures/browser-capabilities.html" "$candidate/Contents/Resources/BrowserCapabilities.html"
+cp "$PWD/CHANGELOG.md" "$candidate/Contents/Resources/CHANGELOG.md"
+cp "$PWD/.changes/release-dates.json" "$candidate/Contents/Resources/release-dates.json"
 cp "$PWD/Assets/AppIcon.icns" "$candidate/Contents/Resources/AppIcon.icns"
 mkdir -p "$candidate/Contents/Resources/Licenses/AI"
 cp "$PWD/LICENSES/ai-swift/LICENSE" "$PWD/LICENSES/ai-swift/NOTICE" "$candidate/Contents/Resources/Licenses/AI/"
@@ -111,7 +113,7 @@ cat > "$candidate/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$build_number</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSLocationUsageDescription</key><string>Allow websites you approve to use your location for maps, local searches, and nearby services.</string>
+  <key>NSLocationUsageDescription</key><string>Share your location with websites or your AI provider only when you approve, for maps, local searches, and nearby services.</string>
   <key>NSCameraUsageDescription</key><string>Allow websites you approve to use your camera for video calls and other camera features.</string>
   <key>NSMicrophoneUsageDescription</key><string>Allow websites you approve to use your microphone for calls and other audio features.</string>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoadsInWebContent</key><true/></dict>

@@ -199,3 +199,13 @@ The shared [[Tests/BrowseTests/AIOAuthBrowserTests.swift#checkOAuthBrowser|fixtu
 [[Tests/BrowseTests/AIOAuthTests.swift#aiTestCredentialIsolation]] verifies process-local credential sharing by service, service separation, deletion, and restoring default AI settings without real credentials.
 
 [[scripts/test.sh]] defines BEND_TESTING so [[Sources/Browse/TestCredential.swift#GatewayCredential]] uses in-memory storage even when native views reach shared default settings. Test binaries cannot read or mutate Keychain items. Combining test storage with the production compilation flag is rejected.
+
+## System and location approval
+
+[[Tests/BrowseTests/AISystemToolsTests.swift#aiSystemAndLocationApproval]] checks no data access before approval, denial, cancellation, live revocation, approved results, fail-closed unattended calls, and minute rounding across midnight.
+
+Injected data providers keep tests from reading the user's location or displaying macOS permission prompts.
+
+## Native changelog reads
+
+[[Tests/BrowseTests/AISystemToolsTests.swift#aiNativeChangelogReads]] verifies Unicode-bounded release notes, dates, installed version metadata, continuation cursors, native citations, cursor invalidation, navigation, and exclusion of other native pages and DOM actions.

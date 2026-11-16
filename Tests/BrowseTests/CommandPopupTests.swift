@@ -30,7 +30,7 @@ import Testing
         try #require(delegate.popupCommands().first { $0.id == id })
     }
     let commands = delegate.popupCommands()
-    #expect(commands.count == 13)
+    #expect(commands.count == 14)
     let historyIndex = try #require(commands.firstIndex { $0.id == "history" })
     #expect(commands[historyIndex + 1].id == "chat-history")
     try command("favorite").perform()

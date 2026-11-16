@@ -689,7 +689,7 @@ private struct BrowserPane: View {
     @ViewBuilder
     private var pageIcon: some View {
         if controller.isStartPage {
-            Image(systemName: controller.address == "bend://history" ? "clock" : "square.grid.2x2")
+            Image(systemName: controller.address == "bend://log" ? "sparkles" : controller.address == "bend://history" ? "clock" : "square.grid.2x2")
                 .font(.system(size: 11)).foregroundStyle(Chrome.muted)
         } else if let favicon = controller.favicon {
             Image(nsImage: favicon).resizable().scaledToFit()
@@ -712,6 +712,8 @@ private struct BrowserPane: View {
                 Text(error).font(.system(size: 12)).foregroundStyle(Chrome.muted).multilineTextAlignment(.center)
                 Button("Try again") { controller.navigate(controller.address) }.buttonStyle(.bordered)
             }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if controller.address == "bend://log" {
+            ChangelogView { store.newTab(address: $0.absoluteString) }
         } else if controller.address == "bend://chats" {
                     ChatHistoryView(store: store, history: store.chatHistory)
                 } else if controller.address == "bend://history" {

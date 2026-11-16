@@ -4,6 +4,7 @@ import Combine
 // @lat: [[lat.md/architecture/ai#Action approval]]
 @MainActor final class AIActionApproval: ObservableObject {
     enum Action: String {
+        case systemInfo = "get_system_info", location = "get_current_location"
         case navigate = "navigate_pane", create = "create_pane", click = "click_element", fill = "fill_element"
         var buttonTitle: String {
             switch self {
@@ -11,6 +12,8 @@ import Combine
             case .create: "Open in new pane"
             case .click: "Click element"
             case .fill: "Fill field"
+            case .systemInfo: "Share system info"
+            case .location: "Share location"
             }
         }
     }
@@ -31,6 +34,11 @@ import Combine
         var target: Target?
 
         var fields: [ChatArgumentField] {
+            if action == .systemInfo || action == .location {
+                return [ChatArgumentField(label: "Share with AI", value: action == .systemInfo
+                    ? "macOS version, Bend version/build, current date, time rounded up to minutes, and timezone."
+                    : "Current latitude, longitude, and accuracy. macOS may also ask for location permission. This is a one-time request.")]
+            }
             var result = [ChatArgumentField(label: action == .create ? "Beside page" : "Current page", value: page)]
             if let destination { result.append(.init(label: "Open", value: destination)) }
             if let target {

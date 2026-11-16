@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         browserWindows.onSettings = { [weak self] section in self?.presentSettings(section: section) }
         restoreBrowserWindows()
         installMenus()
+        showReleaseNotesIfUpdated()
         AppUpdater.shared.start()
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { event in
             InputDiagnostics.record(.application, event: event)
@@ -144,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 action: #selector(AppUpdater.checkForUpdates(_:)), keyEquivalent: "")
             update.target = AppUpdater.shared
         }
+        add("What’s New", #selector(showChangelog), "", to: appMenu)
         appMenu.addItem(.separator())
         add("Settings…", #selector(showSettings), ",", to: appMenu)
         appMenu.addItem(.separator())
@@ -276,6 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             PopupCommand(id: "settings", title: "Settings…", detail: "Browser preferences", icon: "gearshape", menuAction: #selector(showSettings)) { [weak self] in self?.showSettings() },
             PopupCommand(id: "print", title: "Print…", detail: "Print the active page", icon: "printer",
                 isEnabled: printablePage != nil, menuAction: #selector(printPage)) { [weak self] in self?.printPage() },
+            PopupCommand(id: "changelog", title: "What’s New", detail: "Features, improvements, and fixes in every release", icon: "sparkles", menuAction: #selector(showChangelog)) { store.showChangelog() },
             PopupCommand(id: "history", title: "View History", detail: "Browse visited pages", icon: "clock", menuAction: #selector(showHistory)) { [weak self] in self?.showHistory() },
             PopupCommand(id: "chat-history", title: "Show AI Chat History", detail: "Restore conversations and their pane layouts", icon: "clock.arrow.circlepath", isEnabled: !store.isPrivate) { store.showChatHistory() },
             PopupCommand(id: "devTools", title: findSurface?.isDeveloperToolsVisible == true ? "Hide Developer Tools" : "Show Developer Tools",
@@ -349,6 +352,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard let page = activeWebPage else { return }
         page.setPageZoom(pageZoomLevel(sender.tag, current: page.webView.pageZoom))
     }
+    @objc func showChangelog() {
+        addressPanel?.dismiss(restoreFocus: false)
+        store.showChangelog()
+    }
+
+    func showReleaseNotesIfUpdated(tracker: WhatsNewTracker = WhatsNewTracker(), show: Bool = true) {
+        guard tracker.consumeUpgrade() else { return }
+        let context = browserWindows.windows.first(where: { !$0.store.isPrivate }) ?? browserWindows.newWindow(show: false)
+        context.addressPanel.dismiss(restoreFocus: false)
+        context.store.showChangelog()
+        if show { context.window.makeKeyAndOrderFront(nil) }
+    }
+
     @objc private func showHistory() {
         addressPanel?.dismiss(restoreFocus: false)
         store.showHistory()

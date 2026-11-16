@@ -357,6 +357,7 @@ public enum AddressResolver {
         case "bend://guide": return "Tiling guide"
         case "bend://history": return "History"
         case "bend://chats": return "AI Chat History"
+        case "bend://log": return "What’s New"
         default: return nil
         }
     }
@@ -364,7 +365,7 @@ public enum AddressResolver {
     public static func resolve(_ input: String, searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil) -> URL? {
         let text = canonicalAddress(input.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty else { return nil }
-        if ["bend://start", "bend://guide", "bend://history", "bend://chats"].contains(text) { return URL(string: text) }
+        if ["bend://start", "bend://guide", "bend://history", "bend://chats", "bend://log"].contains(text) { return URL(string: text) }
         if text.contains("://") {
             guard let url = URL(string: text), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
                   let host = url.host, !host.isEmpty else { return nil }

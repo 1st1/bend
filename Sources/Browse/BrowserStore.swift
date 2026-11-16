@@ -718,6 +718,16 @@ final class BrowserStore: ObservableObject {
         return true
     }
 
+    func showChangelog() {
+        for workspace in session.workspaces {
+            if let tab = workspace.tabs.first(where: { $0.pages.contains { $0.address == "bend://log" } }),
+               let page = tab.pages.first(where: { $0.address == "bend://log" }) {
+                select(tab.id); focus(page.id); return
+            }
+        }
+        newTab(address: "bend://log")
+    }
+
     func showHistory() {
         for workspace in session.workspaces {
             if let tab = workspace.tabs.first(where: { $0.pages.contains { $0.address == "bend://history" } }),
@@ -1622,7 +1632,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
                 media.detach()
                 webView.pauseAllMediaPlayback(completionHandler: nil)
             }
-            title = address == "bend://chats" ? "AI Chat History" : address == "bend://history" ? "History" : (address == "bend://guide" ? "Tiling guide" : "New tab")
+            title = address == "bend://start" ? "New tab" : AddressResolver.nativePageTitle(address) ?? "New tab"
             reportNavigation()
         } else {
             if webView.mediaController == nil { media.attach(to: webView) }

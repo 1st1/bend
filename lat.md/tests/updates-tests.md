@@ -29,3 +29,15 @@ Recent checks suppress the additional launch request; older checks permit it. [[
 [[Tests/BrowseTests/AppUpdaterTests.swift#applicationUpdatePreview]] exercises debug-only preview eligibility, the pinned Sparkle fixture, real update windows, download cancellation, replay, and the simulated Install and Relaunch action.
 
 The preview uses no updater or installation helper. The test supplies an isolated bundle and intercepts the completion explanation; the running test process survives the final button. Packaging coverage in [[scripts/test-build-app.sh]] verifies opt-in metadata, its removal by normal builds, and rejection of preview production builds.
+
+## Changelog content and routing
+
+[[Tests/BrowseTests/ChangelogTests.swift#changelogContentAndRouting]] verifies release parsing, Markdown/link rendering, bundled loading, native address/title routing, tab reuse, session persistence, and exclusion from web history.
+
+[[Tests/BrowseTests/ChangelogTests.swift#changelogPageLayout]] renders the real changelog at wide and narrow widths and optionally captures snapshots. Packaging tests verify the embedded file matches the complete source changelog.
+
+Release dates are checked for valid calendar days, missing or malformed metadata, bundle loading, and rendering at both pane widths.
+
+## Post-update release notes
+
+[[Tests/BrowseTests/ChangelogTests.swift#postUpdateReleaseNotes]] verifies first-launch baselining, version/build upgrades, quiet restarts and rollbacks, debug/malformed metadata exclusion, regular-window routing, and reuse of an existing changelog tab.
