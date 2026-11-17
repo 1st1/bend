@@ -507,6 +507,23 @@ struct PaneBodyBackground: View {
     }
 }
 
+// Interpolate layout values before laying out native title handles and buttons.
+// A platform frame animation otherwise leaves embedded native views at their final position.
+private struct AnimatedPaneHeader<Content: View>: View, Animatable {
+    nonisolated var leadingInset: CGFloat
+    nonisolated var controlsWidth: CGFloat
+    @ViewBuilder var content: (CGFloat) -> Content
+
+    nonisolated var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(leadingInset, controlsWidth) }
+        set { leadingInset = newValue.first; controlsWidth = newValue.second }
+    }
+
+    var body: some View {
+        content(controlsWidth).padding(.leading, leadingInset)
+    }
+}
+
 private struct BrowserPane: View {
     // The 24-point buttons have a 36-point center pitch across group boundaries.
     private static let controlGroupSpacing: CGFloat = 12
@@ -517,6 +534,7 @@ private struct BrowserPane: View {
     @ViewState<CGFloat> private var headerHeight: CGFloat = Chrome.paneHeaderHeight
     @ViewState<Bool> private var titleHovered = false
     @ViewState<Bool> private var paneHovered = false
+    @ViewState<CGFloat> private var windowControlsWidth: CGFloat = 36
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var focused: Bool { tab.focusedPane == pageID }
     private var pinned: Bool { tab.pages.first { $0.id == pageID }?.isPinned == true }
@@ -580,105 +598,115 @@ private struct BrowserPane: View {
     }
 
     private var header: some View {
-        HStack(spacing: Self.controlGroupSpacing) {
-            if hostsWindowControls {
-                if !store.sidebarVisible {
-                    HStack(spacing: Chrome.sidebarControlSpacing) {
-                        if tab.id == store.session.selectedTab { DownloadsButton(downloads: store.downloads) }
-                        iconButton(store.sidebarSide == .left ? "sidebar.left" : "sidebar.right", "Show sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible = true }
-                            .background(WindowDragArea(excluded: true))
-                    }
-                }
-            }
+        AnimatedPaneHeader(
+            leadingInset: hostsWindowControls && !store.isFullScreen && !hasLeftChat ? 66 + Self.controlGroupSpacing : 0,
+            controlsWidth: hostsWindowControls && !store.sidebarVisible ? windowControlsWidth : 0
+        ) { controlsWidth in
             HStack(spacing: 0) {
-                HStack(spacing: 7) {
-                    ZStack {
-                        pageIcon.opacity(titleHovered ? 0 : 1)
-                        Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.75))
-                            .opacity(titleHovered ? 1 : 0)
-                    }.frame(width: 14, height: 14).accessibilityHidden(true)
-                    if store.isPrivate {
-                        Image(systemName: "eye.slash").help("Private Browsing")
-                            .accessibilityLabel("Private Browsing")
-                    }
-                    Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
-                        .truncationMode(.tail)
-                        .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
+                HStack(spacing: Chrome.sidebarControlSpacing) {
+                    if tab.id == store.session.selectedTab { DownloadsButton(downloads: store.downloads) }
+                    iconButton(store.sidebarSide == .left ? "sidebar.left" : "sidebar.right", "Show sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible = true }
+                        .background(WindowDragArea(excluded: true))
                 }
-                .padding(.horizontal, 7).frame(height: 24)
-                .background(ChromeButtonStyle.highlightBackground.opacity(titleHovered ? 1 : 0), in: Capsule())
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: titleHovered)
-                .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title,
-                    onHover: { titleHovered = $0 }))
-                .layoutPriority(1)
-                Spacer(minLength: 0)
-                    .frame(maxHeight: .infinity)
-            }
-            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            HStack(spacing: 0) {
-                HStack(spacing: Self.controlGroupSpacing) {
-                    HStack(spacing: 0) {
-                        iconButton("chevron.left", "Back · ⌘[") {
-                            store.focus(pageID); store.goBack(from: pageID)
-                        }.disabled(!store.canGoBack(from: pageID))
-                        iconButton("chevron.right", "Forward · ⌘]") {
-                            store.focus(pageID); controller.webView.goForward()
-                        }.disabled(controller.isStartPage || !controller.canGoForward)
+                .padding(.trailing, Self.controlGroupSpacing)
+                .fixedSize()
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowControlsWidth = $0 }
+                .frame(width: controlsWidth, alignment: .trailing)
+                .clipped()
+                .opacity(hostsWindowControls && !store.sidebarVisible ? 1 : 0)
+                .allowsHitTesting(hostsWindowControls && !store.sidebarVisible)
+                .accessibilityHidden(!hostsWindowControls || store.sidebarVisible)
+                HStack(spacing: 0) {
+                    HStack(spacing: 7) {
+                        ZStack {
+                            pageIcon.opacity(titleHovered ? 0 : 1)
+                            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.75))
+                                .opacity(titleHovered ? 1 : 0)
+                        }.frame(width: 14, height: 14).accessibilityHidden(true)
+                        if store.isPrivate {
+                            Image(systemName: "eye.slash").help("Private Browsing")
+                                .accessibilityLabel("Private Browsing")
+                        }
+                        Text(controller.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                            .truncationMode(.tail)
+                            .foregroundStyle(.white.opacity(focused ? 0.9 : 0.55))
                     }
-                    iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
-                        store.focus(pageID)
-                        if controller.isLoading { controller.webView.stopLoading() }
-                        else if !controller.isStartPage { controller.webView.reload() }
-                    }.disabled(controller.isStartPage)
-                    HStack(spacing: 0) {
-                        if tab.pages.count > 1 {
-                            iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
+                    .padding(.horizontal, 7).frame(height: 24)
+                    .background(ChromeButtonStyle.highlightBackground.opacity(titleHovered ? 1 : 0), in: Capsule())
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: titleHovered)
+                    .overlay(PaneDragHandle(store: store, tabID: tab.id, pageID: pageID, title: controller.title,
+                        onHover: { titleHovered = $0 }))
+                    .layoutPriority(1)
+                    Spacer(minLength: 0)
+                        .frame(maxHeight: .infinity)
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .padding(.trailing, Self.controlGroupSpacing)
+                HStack(spacing: 0) {
+                    HStack(spacing: Self.controlGroupSpacing) {
+                        HStack(spacing: 0) {
+                            iconButton("chevron.left", "Back · ⌘[") {
+                                store.focus(pageID); store.goBack(from: pageID)
+                            }.disabled(!store.canGoBack(from: pageID))
+                            iconButton("chevron.right", "Forward · ⌘]") {
+                                store.focus(pageID); controller.webView.goForward()
+                            }.disabled(controller.isStartPage || !controller.canGoForward)
+                        }
+                        iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
+                            store.focus(pageID)
+                            if controller.isLoading { controller.webView.stopLoading() }
+                            else if !controller.isStartPage { controller.webView.reload() }
+                        }.disabled(controller.isStartPage)
+                        HStack(spacing: 0) {
+                            if tab.pages.count > 1 {
+                                iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
+                            }
                         }
                     }
-                }
-                .opacity(focused || paneHovered ? 1 : 0)
-                .allowsHitTesting(focused || paneHovered)
-                .accessibilityHidden(!focused && !paneHovered)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused || paneHovered)
-                .background {
-                    if focused || paneHovered { WindowDragArea(excluded: true, identifier: "paneNavigationControls") }
-                }
-                if let address = store.pinnedReturnAddress(pageID) {
-                    iconButton("arrow.uturn.backward", "Return to Pinned URL") {
-                        store.returnToPinnedURL(pageID)
-                    }
-                    .help("Return to Pinned URL: \(address)")
-                    .background(WindowDragArea(excluded: true, identifier: "pinnedReturnControl"))
-                }
-                WebsitePermissionMenu(page: controller, settings: store.websiteSettings,
-                                      extensions: store.extensions, pageID: pageID) {
-                    store.focus(pageID); store.onSettingsRequested?(.extensions)
-                }
-                .opacity(focused || paneHovered ? 1 : 0)
-                .allowsHitTesting(focused || paneHovered)
-                .accessibilityHidden(!focused && !paneHovered)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused || paneHovered)
-                .background {
-                    if focused || paneHovered { WindowDragArea(excluded: true) }
-                }
-                PinCloseButton(pinned: pinned, setPinned: { store.setPanePinned(pageID, pinned: $0) },
-                               close: { store.closePane(pageID) })
-                    .opacity(pinned || focused || paneHovered ? 1 : 0)
-                    .allowsHitTesting(pinned || focused || paneHovered)
-                    .accessibilityHidden(!pinned && !focused && !paneHovered)
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: pinned || focused || paneHovered)
+                    .opacity(focused || paneHovered ? 1 : 0)
+                    .allowsHitTesting(focused || paneHovered)
+                    .accessibilityHidden(!focused && !paneHovered)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused || paneHovered)
                     .background {
-                        if pinned || focused || paneHovered { WindowDragArea(excluded: true) }
+                        if focused || paneHovered { WindowDragArea(excluded: true, identifier: "paneNavigationControls") }
                     }
-            }.fixedSize()
+                    if let address = store.pinnedReturnAddress(pageID) {
+                        iconButton("arrow.uturn.backward", "Return to Pinned URL") {
+                            store.returnToPinnedURL(pageID)
+                        }
+                        .help("Return to Pinned URL: \(address)")
+                        .background(WindowDragArea(excluded: true, identifier: "pinnedReturnControl"))
+                    }
+                    WebsitePermissionMenu(page: controller, settings: store.websiteSettings,
+                                          extensions: store.extensions, pageID: pageID) {
+                        store.focus(pageID); store.onSettingsRequested?(.extensions)
+                    }
+                    .opacity(focused || paneHovered ? 1 : 0)
+                    .allowsHitTesting(focused || paneHovered)
+                    .accessibilityHidden(!focused && !paneHovered)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused || paneHovered)
+                    .background {
+                        if focused || paneHovered { WindowDragArea(excluded: true) }
+                    }
+                    PinCloseButton(pinned: pinned, setPinned: { store.setPanePinned(pageID, pinned: $0) },
+                                   close: { store.closePane(pageID) })
+                        .opacity(pinned || focused || paneHovered ? 1 : 0)
+                        .allowsHitTesting(pinned || focused || paneHovered)
+                        .accessibilityHidden(!pinned && !focused && !paneHovered)
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: pinned || focused || paneHovered)
+                        .background {
+                            if pinned || focused || paneHovered { WindowDragArea(excluded: true) }
+                        }
+                }.fixedSize()
+            }
         }
-        .padding(.leading, hostsWindowControls && !store.isFullScreen && !hasLeftChat ? 66 + Self.controlGroupSpacing : 0)
         .padding(.horizontal, 12).frame(height: Chrome.paneHeaderHeight)
         // Retained pane hosts do not inherit the window shell's animation transaction.
         // Animate the inset itself rather than inserting/removing a spacer view.
         .animation(reduceMotion || tab.id != store.session.selectedTab ? nil : .easeInOut(duration: 0.2), value: hasLeftChat)
+        .animation(reduceMotion || tab.id != store.session.selectedTab ? nil : .easeInOut(duration: 0.2), value: store.sidebarVisible)
         .background(WindowDragArea(onPress: { store.focus(pageID) }))
         .background {
             store.paneHighlight.titleTintColor.color

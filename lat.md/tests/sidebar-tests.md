@@ -30,6 +30,8 @@ Both sidebar positions exercise mirrored native dragging. Missing position defau
 
 [PaneResizingTests.swift](../../Tests/BrowseTests/PaneResizingTests.swift) samples native canvas geometry during sidebar collapse and restoration, checking intermediate positions, final bounds, reversal, and unchanged live WebView/controller identity.
 
+It also samples the native title handle relative to the canvas in both directions, catching header jumps that smooth canvas motion can hide.
+
 Both sidebar positions are covered. Disabling animations applies the final layout immediately without intermediate frames. Changing sides retains the mounted canvas, native WebView parent, and unsaved form state while moving the canvas to the opposite edge.
 
 ## Native sidebar tab dragging
