@@ -86,7 +86,7 @@ import BrowseCore
     func dragAreas(in view: NSView) -> [WindowDragAreaView] {
         (view as? WindowDragAreaView).map { [$0] } ?? view.subviews.flatMap { dragAreas(in: $0) }
     }
-    let regions = dragAreas(in: content).filter { !$0.isHiddenOrHasHiddenAncestor }
+    let regions = dragAreas(in: content).filter { !$0.isHiddenOrHasHiddenAncestor && !$0.visibleRect.isEmpty }
     let backgrounds = regions.filter { !$0.excluded }
     #expect(backgrounds.count == 3) // sidebar plus both pane headers
     for area in backgrounds {

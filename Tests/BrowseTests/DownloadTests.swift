@@ -237,7 +237,7 @@ import WebKit
     try await downloadWait { store.downloads.items.first?.state == .completed }
     func controls(_ view: NSView) -> [NSRect] {
         var result = view.subviews.flatMap { controls($0) }
-        if let area = view as? WindowDragAreaView, area.excluded, !area.isHiddenOrHasHiddenAncestor,
+        if let area = view as? WindowDragAreaView, area.excluded, !area.isHiddenOrHasHiddenAncestor, !area.visibleRect.isEmpty,
            abs(area.bounds.width - 28) < 0.5, abs(area.bounds.height - 28) < 0.5 {
             let frame = area.convert(area.bounds, to: nil)
             if abs(context.window.frame.height - frame.midY - Chrome.headerCenterY) < 0.5 {
