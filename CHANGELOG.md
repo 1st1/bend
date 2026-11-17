@@ -5,6 +5,14 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.8.4
+### Added
+- Back can close link-opened tabs and panes at the beginning of their history and return to their origin. Enabled by default, with separate toggles in Settings → UI → Links.
+### Fixed
+- Align left-side chat toolbar buttons with the traffic lights and remove unused traffic-light spacing from adjacent pane headers.
+- Smooth chat opening and closing by sliding pane titles into position and fading chat toolbar controls out before they overlap the expanding page.
+- Smoothly slide pane titles and sidebar controls when showing or hiding the sidebar.
+
 ## v0.8.3
 ### Fixed
 - Switch to newly opened tabs when clicking ordinary new-window links, while keeping modifier-click tabs in the background.
