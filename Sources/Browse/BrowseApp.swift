@@ -479,7 +479,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     @objc private func toggleSidebar() { store.sidebarVisible.toggle() }
     @objc private func reload() { if !focused.isStartPage { focused.webView.reload() } }
-    @objc private func back() { focused.webView.goBack() }
+    @objc private func back() { store.goBack(from: store.selectedTab.focusedPane) }
     @objc private func forward() { focused.webView.goForward() }
     @objc private func about() {
         NSApp.orderFrontStandardAboutPanel(options: [.applicationName: AppProfile.current.name,

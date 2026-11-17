@@ -618,8 +618,8 @@ private struct BrowserPane: View {
                 HStack(spacing: Self.controlGroupSpacing) {
                     HStack(spacing: 0) {
                         iconButton("chevron.left", "Back · ⌘[") {
-                            store.focus(pageID); controller.webView.goBack()
-                        }.disabled(controller.isStartPage || !controller.canGoBack)
+                            store.focus(pageID); store.goBack(from: pageID)
+                        }.disabled(!store.canGoBack(from: pageID))
                         iconButton("chevron.right", "Forward · ⌘]") {
                             store.focus(pageID); controller.webView.goForward()
                         }.disabled(controller.isStartPage || !controller.canGoForward)
