@@ -528,6 +528,10 @@ private struct BrowserPane: View {
         if #available(macOS 26.0, *) { return !controller.isStartPage && controller.error == nil }
         return false
     }
+    private var hasLeftChat: Bool {
+        store.sidebarSide == .right && !store.isPrivate &&
+            store.openChats.contains(tab.id) && store.chats[tab.id] != nil
+    }
     private var hostsWindowControls: Bool {
         let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
         return (!store.sidebarVisible || store.sidebarSide == .right) && pageID == (zoomed ?? tab.layout.paneIDs.first)
@@ -578,7 +582,7 @@ private struct BrowserPane: View {
     private var header: some View {
         HStack(spacing: Self.controlGroupSpacing) {
             if hostsWindowControls {
-                if !store.isFullScreen { Color.clear.frame(width: 66) }
+                if !store.isFullScreen && !hasLeftChat { Color.clear.frame(width: 66) }
                 if !store.sidebarVisible {
                     HStack(spacing: Chrome.sidebarControlSpacing) {
                         if tab.id == store.session.selectedTab { DownloadsButton(downloads: store.downloads) }

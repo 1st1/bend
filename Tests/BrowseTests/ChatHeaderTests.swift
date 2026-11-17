@@ -4,7 +4,7 @@ import Testing
 @testable import Browse
 
 // @lat: [[lat.md/tests/ai-tests#Chat header controls]]
-@Test(arguments: [false, true], [CGFloat(200), 360, 600]) @MainActor func chatHeaderControls(onLeft: Bool, panelWidth: CGFloat) async throws {
+@Test(arguments: [false, true], [CGFloat(200), 339, 340, 360, 600]) @MainActor func chatHeaderControls(onLeft: Bool, panelWidth: CGFloat) async throws {
     _ = NSApplication.shared
     var newChats = 0
     var closes = 0
@@ -18,7 +18,7 @@ import Testing
     }.ignoresSafeArea())
     host.safeAreaRegions = []
     let window = BrowseWindow(contentRect: NSRect(x: -10000, y: -10000, width: 900, height: 500),
-        styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+        styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     window.toolbar = NSToolbar(identifier: "ChatHeaderTest")
     window.titleVisibility = .hidden
     window.appearance = NSAppearance(named: .darkAqua)
@@ -42,6 +42,13 @@ import Testing
         let close = try #require(controls.first(where: { $0.toolTip == "Close chat" }))
         let new = try #require(controls.first(where: { $0.toolTip == "Clear chat" }))
         #expect(!close.isHidden && !new.isHidden)
+        #expect(abs(close.frame.midY - (frame.bounds.maxY - Chrome.headerCenterY)) <= 1)
+        if onLeft {
+            let zoom = try #require(window.standardWindowButton(.zoomButton))
+            let lights = zoom.convert(zoom.bounds, to: frame)
+            #expect(new.frame.minX >= lights.maxX + 8)
+            #expect(abs(close.frame.midY - lights.midY) <= 1)
+        }
         #expect(close.frame.maxX == (onLeft ? panelWidth : frame.bounds.maxX) - 10)
         #expect(new.frame.maxX == (onLeft ? panelWidth : frame.bounds.maxX) - (panelWidth < 340 ? 44 : 116))
         #expect(close.frame.minX - new.frame.maxX == 6)

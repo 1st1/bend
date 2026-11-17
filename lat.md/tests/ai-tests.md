@@ -54,6 +54,8 @@ Stale citations remain unavailable in split tabs without a designated link pane.
 
 [[Tests/BrowseTests/ChatHeaderTests.swift#chatHeaderControls]] exercises both left and right chat placement and verifies native mouse dispatch, alignment, visibility, spacing across window sizes, and exclusion from window dragging.
 
+Left-side controls share the traffic-light centerline without overlap, including minimum width and both sides of the icon-only threshold.
+
 ## Streaming transcript
 
 [[Tests/BrowseTests/ChatStreamPresentationTests.swift#chatStreamPresentation]] verifies step starts create no placeholder bubbles, provider reasoning updates one latest-paragraph summary across steps and clears with chat, tool states update by call ID, and answer deltas combine into one text bubble.
