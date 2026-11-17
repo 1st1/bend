@@ -582,7 +582,6 @@ private struct BrowserPane: View {
     private var header: some View {
         HStack(spacing: Self.controlGroupSpacing) {
             if hostsWindowControls {
-                if !store.isFullScreen && !hasLeftChat { Color.clear.frame(width: 66) }
                 if !store.sidebarVisible {
                     HStack(spacing: Chrome.sidebarControlSpacing) {
                         if tab.id == store.session.selectedTab { DownloadsButton(downloads: store.downloads) }
@@ -674,7 +673,12 @@ private struct BrowserPane: View {
                         if pinned || focused || paneHovered { WindowDragArea(excluded: true) }
                     }
             }.fixedSize()
-        }.padding(.horizontal, 12).frame(height: Chrome.paneHeaderHeight)
+        }
+        .padding(.leading, hostsWindowControls && !store.isFullScreen && !hasLeftChat ? 66 + Self.controlGroupSpacing : 0)
+        .padding(.horizontal, 12).frame(height: Chrome.paneHeaderHeight)
+        // Retained pane hosts do not inherit the window shell's animation transaction.
+        // Animate the inset itself rather than inserting/removing a spacer view.
+        .animation(reduceMotion || tab.id != store.session.selectedTab ? nil : .easeInOut(duration: 0.2), value: hasLeftChat)
         .background(WindowDragArea(onPress: { store.focus(pageID) }))
         .background {
             store.paneHighlight.titleTintColor.color

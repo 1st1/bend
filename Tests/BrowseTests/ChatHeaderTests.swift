@@ -75,3 +75,48 @@ import Testing
     #expect(newChats == 1)
     #expect(closes == 1)
 }
+
+// @lat: [[lat.md/tests/ai-tests#Chat header dismissal]]
+@Test @MainActor func chatHeaderDismissal() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    defer { store.stopWindow(); try? FileManager.default.removeItem(at: root) }
+    let id = store.selectedTab.id
+    store.showChat()
+    let button = ChatHeaderNativeButton()
+    let anchor = ChatHeaderButtonAnchor(button: button)
+    anchor.onLeft = true
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 900, height: 500),
+                          styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+    window.contentView = anchor
+    window.orderFront(nil)
+    defer { window.orderOut(nil); window.contentView = nil; button.removeFromSuperview() }
+    anchor.observePresentation(store: store, tabID: id)
+    anchor.placeButton()
+    let initial = button.frame
+    if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        let fade = try #require(button.layer?.animation(forKey: "chatReveal") as? CABasicAnimation)
+        #expect((fade.fromValue as? NSNumber)?.doubleValue == 0)
+        #expect(fade.duration == 0.16)
+    }
+    store.openChats.remove(id)
+    #expect(!button.presentationActive)
+    #expect(button.hitTest(NSPoint(x: 5, y: 5)) == nil)
+    // SwiftUI may continue laying out the outgoing view during its longer transition.
+    anchor.placeButton()
+    try await Task.sleep(for: .milliseconds(140))
+    #expect(button.isHidden && button.alphaValue == 0)
+    if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { #expect(button.frame.minX < initial.minX) }
+    store.openChats.insert(id)
+    #expect(button.presentationActive && !button.isHidden && button.alphaValue == 1)
+    #expect(button.frame == initial)
+    if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        #expect(button.layer?.animation(forKey: "chatReveal") != nil)
+    }
+    // An old dismissal completion must not hide a rapidly reopened toolbar.
+    store.openChats.remove(id)
+    store.openChats.insert(id)
+    try await Task.sleep(for: .milliseconds(140))
+    #expect(button.presentationActive && !button.isHidden && button.alphaValue == 1)
+}

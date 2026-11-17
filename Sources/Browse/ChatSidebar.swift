@@ -30,7 +30,7 @@ struct ChatSidebar: View {
                 composer
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { composerHeight = $0 }
             }.clipped()
-            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, canStartNew: !chat.running && !chat.bubbles.isEmpty,
+            ChatHeader(onLeft: onLeft, panelWidth: panelWidth, chat: chat, canStartNew: !chat.running && !chat.bubbles.isEmpty,
                        newChat: { chat.clear() }, close: close)
         }
         .frame(maxHeight: .infinity)
@@ -210,6 +210,7 @@ struct ChatHeader: View {
     var panelWidth: CGFloat = BrowserStore.defaultChatWidth
     private var compact: Bool { panelWidth < 340 }
     private var buttonWidth: CGFloat { compact ? 28 : 100 }
+    var chat: TabChat? = nil
     var canStartNew: Bool
     var newChat: () -> Void
     var close: () -> Void
@@ -217,9 +218,9 @@ struct ChatHeader: View {
     var body: some View {
         HStack(spacing: Chrome.sidebarControlSpacing) {
             Spacer(minLength: 0)
-            ChatHeaderButton(symbol: "square.and.pencil", label: "Clear chat", visibleTitle: compact ? nil : "Clear chat", controlWidth: buttonWidth, enabled: canStartNew, trailingInset: buttonWidth + 16, onLeft: onLeft, panelWidth: panelWidth, action: newChat)
+            ChatHeaderButton(symbol: "square.and.pencil", label: "Clear chat", visibleTitle: compact ? nil : "Clear chat", controlWidth: buttonWidth, enabled: canStartNew, trailingInset: buttonWidth + 16, onLeft: onLeft, panelWidth: panelWidth, chat: chat, action: newChat)
                 .frame(width: buttonWidth, height: 28)
-            ChatHeaderButton(symbol: "xmark", label: "Close chat", visibleTitle: compact ? nil : "Close chat", controlWidth: buttonWidth, onLeft: onLeft, panelWidth: panelWidth, action: close)
+            ChatHeaderButton(symbol: "xmark", label: "Close chat", visibleTitle: compact ? nil : "Close chat", controlWidth: buttonWidth, onLeft: onLeft, panelWidth: panelWidth, chat: chat, action: close)
                 .frame(width: buttonWidth, height: 28)
         }
         .buttonStyle(ChromeButtonStyle(prominent: true))

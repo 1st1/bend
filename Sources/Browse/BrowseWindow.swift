@@ -26,7 +26,7 @@ class BrowseWindow: NSWindow {
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown,
            let button = contentView?.superview?.subviews.compactMap({ $0 as? ChatHeaderNativeButton }).last(where: {
-               !$0.isHiddenOrHasHiddenAncestor && $0.bounds.contains($0.convert(event.locationInWindow, from: nil))
+               $0.presentationActive && !$0.isHiddenOrHasHiddenAncestor && $0.bounds.contains($0.convert(event.locationInWindow, from: nil))
            }) {
             chatHeaderPress = button
             button.mouseDown(with: event)
