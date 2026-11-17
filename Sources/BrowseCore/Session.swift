@@ -145,15 +145,17 @@ public struct Page: Codable, Identifiable, Sendable {
     public var isPinned: Bool
     public var pinnedAddress: String?
     public var favoriteID: UUID?
+    public var originPageID: UUID?
     public init(address: String = "bend://start", isPinned: Bool = false) {
         let address = AddressResolver.canonicalAddress(address)
         id = UUID(); self.address = address; self.isPinned = isPinned
         pinnedAddress = isPinned ? address : nil
     }
 
-    private enum CodingKeys: String, CodingKey { case id, address, isPinned, pinnedAddress, favoriteID }
+    private enum CodingKeys: String, CodingKey { case id, address, isPinned, pinnedAddress, favoriteID, originPageID }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        originPageID = try values.decodeIfPresent(UUID.self, forKey: .originPageID)
         id = try values.decode(UUID.self, forKey: .id)
         address = AddressResolver.canonicalAddress(try values.decode(String.self, forKey: .address))
         isPinned = try values.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
@@ -228,6 +230,8 @@ public struct BrowserSession: Codable, Sendable {
     public var commandClickDestination: CommandClickDestination?
     public var commandShiftClickDestination: LinkOpenDestination?
     public var optionClickDestination: LinkOpenDestination?
+    public var closeLinkTabOnBack: Bool?
+    public var closeLinkPaneOnBack: Bool?
     public var inactivePaneDimAmount: Double?
     public var windowGlass: GlassAppearance?
     public var paneHeaderGlass: GlassAppearance?

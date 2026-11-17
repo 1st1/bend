@@ -384,6 +384,8 @@ private struct UISettingsView: View {
                 Text("Downloads")
             }
             Section {
+                Toggle("Close link-opened tabs when going back past the first page", isOn: $store.closeLinkTabOnBack)
+                Toggle("Close link-opened panes when going back past the first page", isOn: $store.closeLinkPaneOnBack)
                 Picker("Command-click a link", selection: $store.commandClickDestination) {
                     Text("Always open a new pane").tag(CommandClickDestination.newPane)
                     Text("Reuse one dedicated pane per tab").tag(CommandClickDestination.dedicatedPane)

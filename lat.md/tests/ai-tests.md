@@ -54,6 +54,8 @@ Stale citations remain unavailable in split tabs without a designated link pane.
 
 [[Tests/BrowseTests/ChatHeaderTests.swift#chatHeaderControls]] exercises both left and right chat placement and verifies native mouse dispatch, alignment, visibility, spacing across window sizes, and exclusion from window dragging.
 
+Left-side controls share the traffic-light centerline without overlap, including minimum width and both sides of the icon-only threshold.
+
 ## Streaming transcript
 
 [[Tests/BrowseTests/ChatStreamPresentationTests.swift#chatStreamPresentation]] verifies step starts create no placeholder bubbles, provider reasoning updates one latest-paragraph summary across steps and clears with chat, tool states update by call ID, and answer deltas combine into one text bubble.
@@ -237,3 +239,9 @@ Injected data providers keep tests from reading the user's location or displayin
 ## Screenshot cards
 
 [[Tests/BrowseTests/ChatStreamPresentationTests.swift#chatScreenshotCards]] checks screenshot bytes survive chat-card serialization and that the native SwiftUI preview renders the expected image pixels.
+
+## Chat header dismissal
+
+[[Tests/BrowseTests/ChatHeaderTests.swift#chatHeaderDismissal]] verifies native toolbar controls stop intercepting clicks immediately when chat closes and disappear before the outgoing panel transition finishes.
+
+Initial attachment and reopening install a fade-in animation unless Reduce Motion is enabled. Outgoing layout cannot restore the buttons. Reopening restores their position and visibility, and an earlier animation completion cannot hide a rapidly reopened toolbar.

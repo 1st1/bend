@@ -94,16 +94,25 @@ func sidebarVisibilityAnimation(animationsDisabled: Bool, side: SidebarSide) asy
     }
     for _ in 0..<8 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(30)) }
     let canvas = try #require(mounted(in: host))
+    func titleHandle(in view: NSView) -> PaneDragSourceView? {
+        if let handle = view as? PaneDragSourceView { return handle }
+        return view.subviews.lazy.compactMap { titleHandle(in: $0) }.first
+    }
+    let title = try #require(titleHandle(in: canvas))
+    let titleStart = title.convert(title.bounds, to: canvas).minX
     let originalWebView = controller.webView
     let originalParent = try #require(originalWebView.superview)
     let expanded = canvas.convert(canvas.bounds, to: nil)
     for visible in [false, true] {
         store.sidebarVisible = visible
         var positions: [CGFloat] = []
+        var titlePositions: [CGFloat] = []
         for _ in 0..<30 {
             host.layoutSubtreeIfNeeded()
             let frame = canvas.convert(canvas.bounds, to: nil)
             positions.append(side == .left ? frame.minX : -frame.maxX)
+            let currentTitle = try #require(titleHandle(in: canvas))
+            titlePositions.append(currentTitle.convert(currentTitle.bounds, to: canvas).minX)
             #expect(abs(side == .left ? frame.maxX - expanded.maxX : frame.minX - expanded.minX) < 0.5)
             try await Task.sleep(for: .milliseconds(10))
         }
@@ -114,6 +123,11 @@ func sidebarVisibilityAnimation(animationsDisabled: Bool, side: SidebarSide) asy
         let intermediate = positions.contains { position in position > collapsedX + 1 && position < expandedX - 1 }
         let shouldAnimate = !animationsDisabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         #expect(intermediate == shouldAnimate)
+        if side == .left && shouldAnimate {
+            let hiddenTitleX = visible ? titlePositions.first! : titlePositions.last!
+            #expect(titlePositions.contains { $0 > titleStart + 2 && $0 < hiddenTitleX - 2 },
+                    "Title should slide locally, sampled positions: \(titlePositions)")
+        }
         #expect(mounted(in: host) === canvas)
         #expect(store.existingController(for: page.id) === controller)
         #expect(controller.webView === originalWebView && originalWebView.superview === originalParent)

@@ -294,6 +294,24 @@ final class BrowserStore: ObservableObject {
         }
     }
 
+    var closeLinkTabOnBack: Bool {
+        get { sharedStore?.closeLinkTabOnBack ?? session.closeLinkTabOnBack ?? true }
+        set {
+            if let sharedStore { sharedStore.closeLinkTabOnBack = newValue; return }
+            session.closeLinkTabOnBack = newValue
+            saveSoon()
+        }
+    }
+
+    var closeLinkPaneOnBack: Bool {
+        get { sharedStore?.closeLinkPaneOnBack ?? session.closeLinkPaneOnBack ?? true }
+        set {
+            if let sharedStore { sharedStore.closeLinkPaneOnBack = newValue; return }
+            session.closeLinkPaneOnBack = newValue
+            saveSoon()
+        }
+    }
+
     static let defaultInactivePaneDimAmount = 0.08
 
     var inactivePaneDimAmount: Double {
@@ -450,6 +468,52 @@ final class BrowserStore: ObservableObject {
         InputDiagnostics.transition(.storeSelection, session.selectedTab == id ? .unchanged : .changed, tabID: id)
         session.selectedTab = id; zoomedPane = nil; saveSoon()
     }
+    private func linkTabToCloseOnBack(for pageID: UUID) -> BrowserTab? {
+        guard closeLinkTabOnBack,
+              let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == pageID } }),
+              tab.originTabID != nil, tab.pages.count == 1, !tab.isPinned else { return nil }
+        return tab
+    }
+
+    private func linkPaneToCloseOnBack(for pageID: UUID) -> Page? {
+        guard closeLinkPaneOnBack,
+              let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == pageID } }),
+              tab.pages.count > 1, !tab.isPinned,
+              let page = tab.pages.first(where: { $0.id == pageID }), !page.isPinned,
+              page.originPageID != nil else { return nil }
+        return page
+    }
+
+    private func canCloseOnBack(_ pageID: UUID) -> Bool {
+        linkPaneToCloseOnBack(for: pageID) != nil || linkTabToCloseOnBack(for: pageID) != nil
+    }
+
+    private func closeOnBack(_ pageID: UUID) {
+        if let page = linkPaneToCloseOnBack(for: pageID) {
+            closePane(pageID)
+            if let origin = page.originPageID { focus(origin) }
+        } else if let tab = linkTabToCloseOnBack(for: pageID) {
+            closeTab(tab.id)
+        }
+    }
+
+    func canGoBack(from pageID: UUID) -> Bool {
+        let controller = existingController(for: pageID)
+        return (controller?.webView.canGoBack == true && controller?.backItemClosesPage != true) || canCloseOnBack(pageID)
+    }
+
+    // @lat: [[lat.md/architecture/link-navigation#Back from a link-created tab]]
+    func goBack(from pageID: UUID) {
+        guard let controller = existingController(for: pageID) else { return }
+        if controller.backItemClosesPage {
+            closeOnBack(pageID)
+        } else if controller.webView.canGoBack {
+            controller.webView.goBack()
+        } else {
+            closeOnBack(pageID)
+        }
+    }
+
     func focus(_ id: UUID) {
         InputDiagnostics.transition(.storeFocus, selectedTab.focusedPane == id ? .unchanged : .requested, paneID: id)
         guard selectedTab.focusedPane != id, selectedTab.pages.contains(where: { $0.id == id }) else { return }
@@ -477,6 +541,8 @@ final class BrowserStore: ObservableObject {
         select(tab.id)
         editTab(tab.id) {
             $0.split(axis: .horizontal, after: source, address: address)
+            let destination = $0.focusedPane
+            if let index = $0.pages.firstIndex(where: { $0.id == destination }) { $0.pages[index].originPageID = source }
             if fromMainFrame { linkOpeners[$0.focusedPane] = source }
         }
     }
@@ -615,6 +681,7 @@ final class BrowserStore: ObservableObject {
         let title = address == "bend://start" ? "New tab" : AddressResolver.nativePageTitle(address) ?? "New tab"
         var tab = BrowserTab(title: title, pages: [Page(address: address)])
         if let source = originPageID ?? linkOpener {
+            tab.pages[0].originPageID = source
             tab.originTabID = session.workspaces.flatMap(\.tabs).first { $0.pages.contains { $0.id == source } }?.id
         }
         if let linkOpener { linkOpeners[tab.pages[0].id] = linkOpener }
@@ -960,7 +1027,8 @@ final class BrowserStore: ObservableObject {
         let extensionURL = URL(string: page.address).flatMap {
             ["webkit-extension", "safari-web-extension"].contains($0.scheme ?? "") ? $0 : nil
         }
-        let controller = PageController(address: extensionURL == nil ? page.address : "bend://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, downloads: downloads, searchEngine: searchEngine, customSearchEngine: customSearchEngine, configure: { [weak self] configuration in
+        let hasLinkOrigin = session.workspaces.flatMap(\.tabs).contains { $0.originTabID != nil && $0.pages.contains { $0.id == page.id } }
+        let controller = PageController(address: extensionURL == nil ? page.address : "bend://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, seedCloseHistory: hasLinkOrigin || page.originPageID != nil, downloads: downloads, searchEngine: searchEngine, customSearchEngine: customSearchEngine, configure: { [weak self] configuration in
             self?.configureWebView(configuration)
         })
         bindController(controller, to: page)
@@ -1019,6 +1087,13 @@ final class BrowserStore: ObservableObject {
                     break
                 }
             }
+        }
+        controller.canCloseFromHistory = { [weak self] in
+            guard let self else { return false }
+            return self.selectedTab.pages.contains { $0.id == page.id } && self.canCloseOnBack(page.id)
+        }
+        controller.onCloseFromHistory = { [weak self] in
+            self?.closeOnBack(page.id)
         }
         controller.onNewTab = { [weak self] address in self?.newTab(address: address, originPageID: page.id, afterCurrent: true, inBackground: true) }
         controller.onNewPane = { [weak self] address in self?.openPane(address: address, toRightOf: page.id) }
@@ -1466,6 +1541,13 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     @Published var isStartPage = true
     var onNavigation: ((String, String) -> Void)?
     var onStateChanged: (() -> Void)?
+    var canCloseFromHistory: (() -> Bool)?
+    var onCloseFromHistory: (() -> Void)?
+    private var historySwipeGuard: HistorySwipeGuard?
+    private let seedCloseHistory: Bool
+    private var closeHistoryURL: URL?
+    private var pendingCloseHistoryDestination: URL?
+    var backItemClosesPage: Bool { closeHistoryURL != nil && webView.backForwardList.backItem?.url == closeHistoryURL }
     var onNewTab: ((String) -> Void)?
     var onNewPane: ((String) -> Void)?
     var onNewLink: ((String, Bool, Bool) -> Void)?
@@ -1517,8 +1599,9 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }()
 
     init(address: String, paneID: UUID? = nil, isPrivate: Bool = false, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil, faviconCache: FaviconCache? = nil,
-         externalApplications: ExternalApplicationLinks = .shared, javaScriptDialogs: JavaScriptDialogs = .shared,
+         seedCloseHistory: Bool = false, externalApplications: ExternalApplicationLinks = .shared, javaScriptDialogs: JavaScriptDialogs = .shared,
          downloads: BrowserDownloads = BrowserDownloads(), searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
+        self.seedCloseHistory = seedCloseHistory
         self.address = address
         self.isStartPage = URL(string: AddressResolver.canonicalAddress(address))?.scheme == "bend"
         self.isPrivate = isPrivate
@@ -1536,6 +1619,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         configure(configuration)
         if URL(string: AddressResolver.canonicalAddress(address))?.scheme == "bend" { configuration.webExtensionController = nil }
         WebKitPrivacy.apply(websiteSettings?.values ?? WebsiteSettings(), to: configuration)
+        if seedCloseHistory { configuration.setURLSchemeHandler(CloseHistoryPage(), forURLScheme: "bend") }
         webView = suppliedWebView ?? FocusWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.diagnosticPaneID = paneID
@@ -1570,6 +1654,10 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     private func observeWebView() {
+        historySwipeGuard = HistorySwipeGuard(webView: webView) { [weak self] in
+            guard let self else { return false }
+            return self.backItemClosesPage && self.canCloseFromHistory?() != true
+        }
         applyWebsiteSecurity(websiteSettings?.values ?? WebsiteSettings())
         OptionClickObserver.install(in: webView.configuration.userContentController)
         webView.onOptionLink = { [weak self] address, mainFrame in
@@ -1605,6 +1693,10 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     private func replaceWebView(configuration: WKWebViewConfiguration) {
+        closeHistoryURL = nil; pendingCloseHistoryDestination = nil
+        if seedCloseHistory, configuration.urlSchemeHandler(forURLScheme: "bend") == nil {
+            configuration.setURLSchemeHandler(CloseHistoryPage(), forURLScheme: "bend")
+        }
         certificates.reset()
         InputDiagnostics.transition(.webReplacement, .started, view: webView)
         stopCapture()
@@ -1692,6 +1784,17 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
             title = address == "bend://start" ? "New tab" : AddressResolver.nativePageTitle(address) ?? "New tab"
             reportNavigation()
         } else {
+            if seedCloseHistory, closeHistoryURL == nil, webView.backForwardList.currentItem == nil {
+                let marker = URL(string: "bend://close/" + UUID().uuidString)!
+                closeHistoryURL = marker
+                pendingCloseHistoryDestination = url
+                webView.load(URLRequest(url: marker))
+                return
+            }
+            if pendingCloseHistoryDestination != nil {
+                pendingCloseHistoryDestination = url
+                return
+            }
             if webView.mediaController == nil { media.attach(to: webView) }
             if let localDocumentDirectory { webView.loadFileURL(url, allowingReadAccessTo: localDocumentDirectory) }
             else { webView.load(URLRequest(url: url)) }
@@ -1699,9 +1802,12 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     func refresh() {
+        historySwipeGuard?.historyDidChange()
         defer { onStateChanged?() }
         isLoading = webView.isLoading; progress = webView.estimatedProgress
-        canGoBack = webView.canGoBack; canGoForward = webView.canGoForward
+        canGoBack = webView.canGoBack && (!backItemClosesPage || canCloseFromHistory?() == true)
+        canGoForward = webView.canGoForward
+        guard pendingCloseHistoryDestination == nil, webView.url != closeHistoryURL || closeHistoryURL == nil else { return }
         if !isStartPage {
             if let url = webView.url {
                 discardFavicon(ifLeaving: url)
@@ -1754,6 +1860,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         resetFavicon(for: webView.url)
     }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if let marker = closeHistoryURL, webView.url == marker { return }
         aiNavigationRevision = UUID()
         onInitialDownload = nil
         discardFavicon(ifLeaving: webView.url)
@@ -1766,6 +1873,12 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         if !isStartPage, let url = webView.url { applyWebsiteZoom(for: url) }
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if let marker = closeHistoryURL, webView.url == marker,
+           let destination = pendingCloseHistoryDestination {
+            pendingCloseHistoryDestination = nil
+            load(destination)
+            return
+        }
         InputDiagnostics.transition(.webLoad, .finished, view: webView)
         refresh()
         recordCompletedVisit()
@@ -1888,6 +2001,26 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         self.webView(webView, decidePolicyFor: action) { policy in decisionHandler(policy, preferences) }
     }
 
+    // Reject our sentinel at WebKit's history-traversal boundary, before it
+    // restores a cached page or starts ordinary navigation policy/loading.
+    func webView(_ webView: WKWebView, shouldGoTo backForwardListItem: WKBackForwardListItem,
+                 willUseInstantBack: Bool, completionHandler: @escaping @MainActor (Bool) -> Void) {
+        guard let marker = closeHistoryURL, backForwardListItem.url == marker else {
+            completionHandler(true)
+            return
+        }
+        completionHandler(false)
+        closeFromHistoryIfAllowed()
+    }
+
+    private func closeFromHistoryIfAllowed() {
+        guard canCloseFromHistory?() == true else { return }
+        Task { @MainActor [weak self] in
+            guard let self, self.canCloseFromHistory?() == true else { return }
+            self.onCloseFromHistory?()
+        }
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
         InputDiagnostics.transition(.navigationPolicy, .requested, view: webView, flags: [
             "link": action.navigationType == .linkActivated, "command": action.modifierFlags.contains(.command),
@@ -1902,6 +2035,18 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
             originalHandler(policy)
         }
         guard let url = action.request.url else { decisionHandler(.cancel); return }
+        if let marker = closeHistoryURL, url == marker {
+            if pendingCloseHistoryDestination != nil, action.navigationType != .backForward {
+                decisionHandler(.allow)
+            } else {
+                decisionHandler(.cancel)
+                if action.navigationType == .backForward, action.targetFrame?.isMainFrame == true,
+                   canCloseFromHistory?() == true {
+                    closeFromHistoryIfAllowed()
+                }
+            }
+            return
+        }
         if openOptionClickedLink(action) { decisionHandler(.cancel); return }
         if action.shouldPerformDownload, BrowserDownloads.supports(url) {
             decisionHandler(.download)

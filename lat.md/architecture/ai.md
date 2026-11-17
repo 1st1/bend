@@ -143,7 +143,7 @@ Each conversation is an atomic, owner-readable JSON file under AIChats beside th
 
 [[Sources/Browse/SidebarResizing.swift#SidebarResizeHandle]] also resizes chat from its canvas-facing edge, with mirrored window-coordinate dragging and an eight-point hit region.
 
-[[Sources/Browse/BrowserStore.swift#BrowserStore#chatWidth]] defaults to 360 points and persists per window. Bounds derive from the sidebar: the same 200-point minimum and 1.5 times its 400-point maximum. Nonfinite stored widths use the default. [[Sources/Browse/ChatHeaderButton.swift#ChatHeaderButtonAnchor#placeButton]] tracks the current panel width; narrow headers use smaller labelled buttons, and narrow left panels put controls below the window traffic lights. Resizing updates the retained page canvas without replacing its controllers.
+[[Sources/Browse/BrowserStore.swift#BrowserStore#chatWidth]] defaults to 360 points and persists per window. Bounds derive from the sidebar: the same 200-point minimum and 1.5 times its 400-point maximum. Nonfinite stored widths use the default. [[Sources/Browse/ChatHeaderButton.swift#ChatHeaderButtonAnchor#placeButton]] tracks the current panel width; narrow headers use icon-only buttons. Controls stay on the traffic-light centerline on either side, with enough horizontal clearance for the window buttons even at minimum panel width. Resizing updates the retained page canvas without replacing its controllers. Native toolbar buttons fade in over 160 ms on attachment and reopening. They observe chat visibility directly: closing disables hit targets immediately, then fades and slides them outward over 80 ms, ahead of the panel transition. Tab switches and Reduce Motion hide them immediately; rapid reopening cancels stale dismissal.
 
 ## Local AI
 

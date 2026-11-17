@@ -66,4 +66,4 @@ Context-menu background tabs load real pages without activation. Download-only b
 
 [DownloadTests.swift](../../Tests/BrowseTests/DownloadTests.swift) verifies one visible Downloads control remains inside the window across sidebar toggles, pane zoom, and tab switching, beside the sidebar toggle when collapsed; clearing the list removes it.
 
-Both controls retain their 28-point size and two-point gap in expanded and collapsed layouts.
+Both controls retain their 28-point size and two-point gap in expanded and collapsed layouts. Visibility checks exclude controls clipped to zero width while retained for header animation.

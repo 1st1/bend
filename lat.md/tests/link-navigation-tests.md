@@ -85,3 +85,27 @@ The copied destination has a fresh pane identity. After restoring, the next Comm
 ## Return to origin tab
 
 [[Tests/BrowseTests/TabOriginTests.swift#closingLinkTabReturnsToOrigin]] verifies iframe context-menu origins, nested link tabs, persisted origin metadata, background opening and closure, and fallback after the origin closes.
+
+## Back closes link-created tabs
+
+[[Tests/BrowseTests/TabOriginTests.swift#backClosesLinkTabs]] verifies real WebKit history traversal before tab closure, origin return, reopen availability, manual/pinned/split tab protection, and the shared preference's default and persistence.
+
+Real WebKit Back navigation reaches a private history marker and closes the tab; disabled or pinned tabs and direct marker URL loads cannot close it. The early history policy rejects the marker synchronously even for cached-page restoration and permits ordinary history items. Session state retains the destination URL. Physical swipe animation and cancellation require a manual trackpad check.
+
+## Back closes link-created panes
+
+[[Tests/BrowseTests/TabOriginTests.swift#backClosesLinkPanes]] verifies that Back traverses real history, then closes a link-opened pane and returns focus to its origin without closing the tab.
+
+The pane preference defaults on, persists across restart, and is shared across windows independently of the tab preference. Disabled marker navigation leaves the pane open. Origin metadata and the real URL survive reopening; manually created splits remain open.
+
+## Back closes original pane of a split link tab
+
+[[Tests/BrowseTests/TabOriginTests.swift#backClosesOriginalLinkTabPane]] verifies native Back closes only the original pane of a link-opened tab after adding another pane.
+
+The pane preference controls closure independently of the tab preference. The tab and sibling pane survive, focus falls back to the sibling when the source is in another tab, and reopening retains the original URL and source metadata.
+
+## Disabled marker swipe suppression
+
+[[Tests/BrowseTests/TabOriginTests.swift#disabledMarkerSwipeSuppression]] verifies that an unavailable marker disables native gesture recognition before backward input reaches WebKit, including zero-delta starts.
+
+Suppression survives reversal, release, and momentum. Forward gestures and eligible Back gestures remain enabled, and real history changes restore snapshot recording. Physical preview timing requires a trackpad check.
