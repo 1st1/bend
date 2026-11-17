@@ -1027,7 +1027,7 @@ final class BrowserStore: ObservableObject {
             switch adjacent ? self.commandClickDestination : .newTab {
             case .newPane: self.openPane(address: address, toRightOf: page.id, fromMainFrame: mainFrame)
             case .dedicatedPane: self.openInDedicatedPane(address: address, from: page.id, fromMainFrame: mainFrame)
-            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, originPageID: page.id, closeIfDownload: true, afterCurrent: true, inBackground: true)
+            case .newTab: self.newTab(address: address, linkOpener: mainFrame ? page.id : nil, originPageID: page.id, closeIfDownload: true, afterCurrent: true, inBackground: adjacent)
             }
         }
         controller.onCommandShiftLink = { [weak self] address, mainFrame in

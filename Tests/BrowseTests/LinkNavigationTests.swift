@@ -136,12 +136,18 @@ private final class LinkAction: WKNavigationAction {
     #expect(store.session.workspaces[0].tabs.first { $0.id == originalTab.id }?.pages.count == initialCount + 1)
 
     store.commandClickDestination = .newPane
-    controller.onNewLink?("https://example.com/window", false, false)
-    #expect(store.selectedTab.id == originalTab.id)
-    let popup = store.session.workspaces[0].tabs[originalIndex + 1]
-    #expect(popup.pages.first?.address == "https://example.com/window")
-    #expect(store.linkOpeners[popup.focusedPane] == nil)
-    #expect(store.session.workspaces[0].tabs.last?.id == trailingTab)
+    for mainFrame in [true, false] {
+        store.select(originalTab.id)
+        controller.onNewLink?("https://example.com/window", false, mainFrame)
+        let popup = store.session.workspaces[0].tabs[originalIndex + 1]
+        #expect(store.selectedTab.id == popup.id)
+        #expect(popup.pages.first?.address == "https://example.com/window")
+        #expect(popup.originTabID == originalTab.id)
+        #expect(store.linkOpeners[popup.focusedPane] == (mainFrame ? source.id : nil))
+        #expect(store.session.workspaces[0].tabs.last?.id == trailingTab)
+        store.closeTab(popup.id)
+        #expect(store.selectedTab.id == originalTab.id)
+    }
     controller.onNewLink?("https://example.com/adjacent-again", true, false)
     #expect(store.selectedTab.id == originalTab.id)
     #expect(store.selectedTab.pages.count == initialCount + 2)
