@@ -53,6 +53,7 @@ jobs:
     timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      RUN_TAB_PERF: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'tab-perf')) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -82,6 +83,30 @@ jobs:
           LIBDISPATCH_COOPERATIVE_POOL_STRICT: '1'
         run: |
           ./scripts/test.sh 2>&1 | tee ci-logs/tests.log
+      - name: Measure tab memory footprint
+        id: tab-memory
+        if: env.RUN_TAB_PERF == 'true'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: |
+          mkdir -p tab-perf
+          python3 scripts/bench-tab-memory.py --skip-build --output tab-perf/memory.json \
+            2>&1 | tee ci-logs/tab-memory.log
+      - name: Summarize tab performance
+        if: steps.tab-memory.outcome == 'success' || steps.tab-memory.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          python3 scripts/report-tab-performance.py ci-logs/tests.log tab-perf \
+            | tee tab-perf/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload tab performance reports
+        if: steps.tab-memory.outcome == 'success' || steps.tab-memory.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tab-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tab-perf/
+          if-no-files-found: error
+          retention-days: 14
       - name: Collect native crash reports
         if: always()
         run: |
