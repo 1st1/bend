@@ -133,14 +133,13 @@ struct TabPerformanceTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["BEND_RUN_TAB_SPEED"] == "1"
         || ProcessInfo.processInfo.environment["BEND_SPEED_OUT"] != nil))
     func speed() async throws {
-        var results: [String: [String: Double]] = [:]
-
-        // 1. Location popup typing over 60 tabs and 3,000 history entries.
-        do {
-            let browser = try BenchmarkWindow(count: 60, address: "bend://start",
+        // 1. Location popup typing at (10 tabs, 300 history) -> (100 tabs, 3,000 history).
+        var typingSamples: [SpeedUISample] = []
+        for (tabs, historyCount) in [(10, 300), (100, 3000)] {
+            let browser = try BenchmarkWindow(count: tabs, address: "bend://start",
                 size: NSSize(width: 1200, height: 800), origin: NSPoint(x: -20_000, y: -20_000), makeKey: true)
             defer { browser.close() }
-            seedHistory(browser.store, pages: 3000)
+            seedHistory(browser.store, pages: historyCount)
             let panel = AddressPanelController(store: browser.store, parentWindow: browser.window)
             browser.settle()
             panel.show(for: browser.store.selectedTab.focusedPane)
@@ -153,74 +152,79 @@ struct TabPerformanceTests {
             let editor = field.currentEditor() as? NSTextView
             let words = Array("github pull requests")
 
-            results["typing"] = measureUI([browser], steps: words.count) { i in
+            typingSamples.append(measureUI([browser], tabs: tabs, history: historyCount, steps: words.count) { i in
                 let text = String(words[0...i])
                 field.stringValue = text
                 editor?.string = text
                 panel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
-            }
+            })
+            try? await Task.sleep(for: .milliseconds(50))
         }
-        try? await Task.sleep(for: .milliseconds(50))
 
-        // 2. Find in Page typing on a loaded local fixture over 60 tabs.
+        // 2. Find in Page typing on a loaded local fixture at 10 -> 100 tabs.
+        var findingSamples: [SpeedUISample] = []
         do {
             let server = try await ExtensionHTTPFixture.start()
             defer { server.listener.cancel() }
             let address = "http://127.0.0.1:\(server.port)/"
-            let browser = try BenchmarkWindow(count: 60, address: "https://example.invalid/",
-                selectedAddress: address, size: NSSize(width: 1200, height: 800),
-                origin: NSPoint(x: -20_000, y: -20_000), makeKey: true)
-            defer { browser.close() }
-            browser.settle()
+            for tabs in [10, 100] {
+                let browser = try BenchmarkWindow(count: tabs, address: "https://example.invalid/",
+                    selectedAddress: address, size: NSSize(width: 1200, height: 800),
+                    origin: NSPoint(x: -20_000, y: -20_000), makeKey: true)
+                defer { browser.close() }
+                browser.settle()
 
-            let first = browser.tabs[0]
-            try await browser.waitForFixture(first, expression: "document.readyState === 'complete' && window.blockedScriptRan === true")
-            let controller = try #require(browser.store.existingController(for: first.focusedPane))
-            _ = try await controller.webView.evaluateJavaScript(
-                "document.body.innerHTML = '<p>github pull requests review queue</p><p>github issues and pull requests</p><p>documentation search index</p>'; true"
-            )
-            browser.settle()
+                let first = browser.tabs[0]
+                try await browser.waitForFixture(first, expression: "document.readyState === 'complete' && window.blockedScriptRan === true")
+                let controller = try #require(browser.store.existingController(for: first.focusedPane))
+                _ = try await controller.webView.evaluateJavaScript(
+                    "document.body.innerHTML = '<p>github pull requests review queue</p><p>github issues and pull requests</p><p>documentation search index</p>'; true"
+                )
+                browser.settle()
 
-            let surface = try #require(browser.views(WebSurfaceHost.self).first)
-            surface.performFindAction(.showFindInterface)
-            browser.settle()
+                let surface = try #require(browser.views(WebSurfaceHost.self).first)
+                surface.performFindAction(.showFindInterface)
+                browser.settle()
 
-            let bar = try #require(surface.findBarView)
-            let field = try #require(descendants(NSTextField.self, in: bar).first { $0.isEditable })
-            field.selectText(nil)
-            let editor = field.currentEditor() as? NSTextView
-            let words = Array("github pull requests")
+                let bar = try #require(surface.findBarView)
+                let field = try #require(descendants(NSTextField.self, in: bar).first { $0.isEditable })
+                field.selectText(nil)
+                let editor = field.currentEditor() as? NSTextView
+                let words = Array("github pull requests")
 
-            results["finding"] = measureUI([browser], steps: words.count) { i in
-                let text = String(words[0...i])
-                field.stringValue = text
-                editor?.string = text
-                surface.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+                findingSamples.append(measureUI([browser], tabs: tabs, steps: words.count) { i in
+                    let text = String(words[0...i])
+                    field.stringValue = text
+                    editor?.string = text
+                    surface.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+                })
+                try? await Task.sleep(for: .milliseconds(50))
             }
         }
-        try? await Task.sleep(for: .milliseconds(50))
 
-        // 3. Changing an @Published store property that no sidebar row or pane reads.
-        do {
-            let browser = try BenchmarkWindow(count: 60, address: "bend://start",
+        // 3. Changing an @Published store property that no sidebar row or pane reads at 10 -> 100 tabs.
+        var unrelatedSamples: [SpeedUISample] = []
+        for tabs in [10, 100] {
+            let browser = try BenchmarkWindow(count: tabs, address: "bend://start",
                 size: NSSize(width: 1200, height: 800), origin: NSPoint(x: -20_000, y: -20_000))
             defer { browser.close() }
             browser.settle()
             #expect(browser.store.sidebarVisible)
 
-            results["unrelatedChange"] = measureUI([browser], steps: 60) { i in
+            unrelatedSamples.append(measureUI([browser], tabs: tabs, steps: 60) { i in
                 browser.store.sidebarFloating = i.isMultiple(of: 2)
-            }
+            })
             browser.store.sidebarFloating = false
+            try? await Task.sleep(for: .milliseconds(50))
         }
-        try? await Task.sleep(for: .milliseconds(50))
 
-        // 4. Frame-paced sidebar resize drag across two 60-tab windows sharing a primary store.
-        do {
-            let primary = try BenchmarkWindow(count: 60, address: "bend://start",
+        // 4. Frame-paced sidebar resize drag across two shared-store windows at 10 -> 100 tabs.
+        var dragSamples: [SpeedDragSample] = []
+        for tabs in [10, 100] {
+            let primary = try BenchmarkWindow(count: tabs, address: "bend://start",
                 size: NSSize(width: 1200, height: 800), origin: NSPoint(x: -20_000, y: -20_000))
             defer { primary.close() }
-            let secondary = try BenchmarkWindow(count: 60, address: "bend://start",
+            let secondary = try BenchmarkWindow(count: tabs, address: "bend://start",
                 size: NSSize(width: 1200, height: 800), origin: NSPoint(x: -20_000, y: -19_000),
                 sharedStore: primary.store)
             defer { secondary.close() }
@@ -261,34 +265,36 @@ struct TabPerformanceTests {
             secondary.settle()
             clock.stop()
 
-            var values = Dictionary(uniqueKeysWithValues: LoopClock.summary(clock.marked).map { ("stepMs." + $0, $1) })
-            for (key, value) in LoopClock.summary(clock.unmarked) {
-                values["otherMs." + key] = value
-            }
-            values["publishedWhileHeld"] = Double(publishedHeld)
-            values["rowsPerStep"] = Double(counters.counts.sidebarRowBodies) / Double(steps)
-            values["paneBodiesPerStep"] = Double(counters.counts.browserPaneBodies) / Double(steps)
-            values["mountedRootReplacementsPerStep"] = Double(counters.counts.mountedRootReplacements) / Double(steps)
-            values["shadowInvalidationsPerStep"] = Double(counters.counts.shadowInvalidations) / Double(steps)
-            values["shadowDrawsPerStep"] = Double(counters.counts.shadowDraws) / Double(steps)
-            results["sidebarEdge"] = values
+            dragSamples.append(SpeedDragSample(
+                tabs: tabs,
+                windows: 2,
+                stepMs: LoopClock.summary(clock.marked),
+                otherMs: LoopClock.summary(clock.unmarked),
+                publishedWhileHeld: publishedHeld,
+                rowsPerStep: Double(counters.counts.sidebarRowBodies) / Double(steps),
+                paneBodiesPerStep: Double(counters.counts.browserPaneBodies) / Double(steps),
+                mountedRootReplacementsPerStep: Double(counters.counts.mountedRootReplacements) / Double(steps),
+                shadowInvalidationsPerStep: Double(counters.counts.shadowInvalidations) / Double(steps),
+                shadowDrawsPerStep: Double(counters.counts.shadowDraws) / Double(steps)
+            ))
+            try? await Task.sleep(for: .milliseconds(50))
         }
-        try? await Task.sleep(for: .milliseconds(50))
 
-        // 5. Pure history suggestion ranking over 3,000 entries.
-        do {
+        // 5. Pure history suggestion ranking across 300 -> 3,000 entries.
+        var rankingSamples: [SpeedMicroSample] = []
+        let queries = [
+            "g", "gi", "git", "gith", "githu", "github", "github p", "github pu", "github pul", "github pull",
+            "zq", "zqx", "zqxw", "issu", "issue", "issues", "isuses", "documnet", "docum", "documen"
+        ]
+        for entryCount in [300, 3000] {
             var history = BrowsingHistory()
             let words = ["github", "issues", "pull", "requests", "docs", "document", "search", "mail", "news", "maps"]
-            for i in 0..<3000 {
+            for i in 0..<entryCount {
                 history.record(
                     url: "https://site\(i).example/page",
                     title: "\(words[i % words.count]) \(words[(i / 10) % words.count]) page \(i)"
                 )
             }
-            let queries = [
-                "g", "gi", "git", "gith", "githu", "github", "github p", "github pu", "github pul", "github pull",
-                "zq", "zqx", "zqxw", "issu", "issue", "issues", "isuses", "documnet", "docum", "documen"
-            ]
             var times: [Double] = []
             for _ in 0..<5 {
                 for query in queries {
@@ -297,51 +303,68 @@ struct TabPerformanceTests {
                     times.append((CACurrentMediaTime() - start) * 1000)
                 }
             }
-            results["ranking"] = ["ms": percentile(times, 0.5)]
+            rankingSamples.append(SpeedMicroSample(count: entryCount, ms: percentile(times, 0.5)))
         }
 
-        // 6. Cold-loading a BrowserStore from a persisted 150-tab session file.
+        // 6. Cold-loading a BrowserStore from a persisted session file at 10 -> 100 tabs.
+        var sessionSamples: [SpeedMicroSample] = []
         do {
             let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSessionBench-\(UUID())")
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: root) }
 
-            let sessionFile = root.appendingPathComponent("session.json")
-            let tabs = (0..<150).map { BrowserTab(title: "Saved tab \($0 + 1)", pages: [Page(address: "https://tab\($0).example/")]) }
-            var session = BrowserSession()
-            session.workspaces = [Workspace(name: "Saved", tabs: tabs)]
-            session.selectedTab = tabs[0].id
-            try JSONEncoder().encode(session).write(to: sessionFile)
+            for tabCount in [10, 100] {
+                let sessionFile = root.appendingPathComponent("session-\(tabCount).json")
+                let tabs = (0..<tabCount).map { BrowserTab(title: "Saved tab \($0 + 1)", pages: [Page(address: "https://tab\($0).example/")]) }
+                var session = BrowserSession()
+                session.workspaces = [Workspace(name: "Saved", tabs: tabs)]
+                session.selectedTab = tabs[0].id
+                try JSONEncoder().encode(session).write(to: sessionFile)
 
-            var times: [Double] = []
-            var openedStores: [BrowserStore] = []
-            defer { for store in openedStores { store.stopWindow() } }
-            for _ in 0..<5 {
-                let manager = ExtensionManager(
-                    root: root.appendingPathComponent("extensions-\(UUID())"),
-                    persistent: false,
-                    websiteDataStore: .nonPersistent(),
-                    notifications: TestNotifications()
-                )
-                manager.presentsWindows = false
-                let start = CACurrentMediaTime()
-                let opened = BrowserStore(sessionFile: sessionFile, persistentExtensions: false, extensionManager: manager)
-                times.append((CACurrentMediaTime() - start) * 1000)
-                openedStores.append(opened)
+                var times: [Double] = []
+                var openedStores: [BrowserStore] = []
+                defer { for store in openedStores { store.stopWindow() } }
+                for _ in 0..<5 {
+                    let manager = ExtensionManager(
+                        root: root.appendingPathComponent("extensions-\(UUID())"),
+                        persistent: false,
+                        websiteDataStore: .nonPersistent(),
+                        notifications: TestNotifications()
+                    )
+                    manager.presentsWindows = false
+                    let start = CACurrentMediaTime()
+                    let opened = BrowserStore(sessionFile: sessionFile, persistentExtensions: false, extensionManager: manager)
+                    times.append((CACurrentMediaTime() - start) * 1000)
+                    openedStores.append(opened)
+                }
+                sessionSamples.append(SpeedMicroSample(count: tabCount, ms: percentile(times, 0.5)))
             }
-            results["sessionOpen"] = ["ms": percentile(times, 0.5)]
         }
 
-        try report("BEND_TAB_SPEED", results)
+        let speedReport = SpeedReport(
+            ui: [
+                "typing": SpeedPair.ui(low: typingSamples[0], high: typingSamples[1]),
+                "finding": SpeedPair.ui(low: findingSamples[0], high: findingSamples[1]),
+                "unrelatedChange": SpeedPair.ui(low: unrelatedSamples[0], high: unrelatedSamples[1]),
+            ],
+            sidebarEdge: SpeedPair.drag(low: dragSamples[0], high: dragSamples[1]),
+            micro: [
+                "ranking": SpeedPair.micro(low: rankingSamples[0], high: rankingSamples[1]),
+                "sessionOpen": SpeedPair.micro(low: sessionSamples[0], high: sessionSamples[1]),
+            ]
+        )
+
+        try report("BEND_TAB_SPEED", speedReport)
         if let out = ProcessInfo.processInfo.environment["BEND_SPEED_OUT"] {
             let url = URL(fileURLWithPath: out)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let data = try JSONSerialization.data(withJSONObject: results, options: [.prettyPrinted, .sortedKeys])
-            try data.write(to: url)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(speedReport).write(to: url)
         }
     }
 
-    private func measureUI(_ browsers: [BenchmarkWindow], steps: Int, _ step: (Int) -> Void) -> [String: Double] {
+    private func measureUI(_ browsers: [BenchmarkWindow], tabs: Int, history: Int? = nil, steps: Int, _ step: (Int) -> Void) -> SpeedUISample {
         var sends = 0
         let watches = browsers.map { $0.store.objectWillChange.sink { _ in sends += 1 } }
         defer { for watch in watches { watch.cancel() } }
@@ -359,17 +382,19 @@ struct TabPerformanceTests {
         }
 
         let counts = counters.counts
-        return [
-            "ms": percentile(times, 0.5),
-            "p95Ms": percentile(times, 0.95),
-            "totalMs": times.reduce(0, +),
-            "storeChangesPerStep": Double(sends) / Double(steps),
-            "rowsPerStep": Double(counts.sidebarRowBodies) / Double(steps),
-            "paneBodiesPerStep": Double(counts.browserPaneBodies) / Double(steps),
-            "mountedRootReplacementsPerStep": Double(counts.mountedRootReplacements) / Double(steps),
-            "shadowInvalidationsPerStep": Double(counts.shadowInvalidations) / Double(steps),
-            "shadowDrawsPerStep": Double(counts.shadowDraws) / Double(steps),
-        ]
+        return SpeedUISample(
+            tabs: tabs,
+            history: history,
+            ms: percentile(times, 0.5),
+            p95Ms: percentile(times, 0.95),
+            totalMs: times.reduce(0, +),
+            storeChangesPerStep: Double(sends) / Double(steps),
+            rowsPerStep: Double(counts.sidebarRowBodies) / Double(steps),
+            paneBodiesPerStep: Double(counts.browserPaneBodies) / Double(steps),
+            mountedRootReplacementsPerStep: Double(counts.mountedRootReplacements) / Double(steps),
+            shadowInvalidationsPerStep: Double(counts.shadowInvalidations) / Double(steps),
+            shadowDrawsPerStep: Double(counts.shadowDraws) / Double(steps)
+        )
     }
 
     private func seedHistory(_ store: BrowserStore, pages: Int) {
@@ -555,6 +580,14 @@ private func percentile(_ values: [Double], _ quantile: Double) -> Double {
 /// Times main run-loop turns from wake (`afterWaiting`) to sleep (`beforeWaiting`),
 /// separating turns marked by the benchmark from unrelated background turns.
 private final class LoopClock: @unchecked Sendable {
+    struct Summary: Encodable {
+        let count: Int
+        let p50: Double
+        let p95: Double
+        let max: Double
+        let total: Double
+    }
+
     private(set) var marked: [Double] = []
     private(set) var unmarked: [Double] = []
     private var woke: CFAbsoluteTime = 0
@@ -585,17 +618,17 @@ private final class LoopClock: @unchecked Sendable {
         observers = []
     }
 
-    static func summary(_ values: [Double]) -> [String: Double] {
-        guard !values.isEmpty else { return ["count": 0] }
+    static func summary(_ values: [Double]) -> Summary {
+        guard !values.isEmpty else { return Summary(count: 0, p50: 0, p95: 0, max: 0, total: 0) }
         let sorted = values.sorted()
         func at(_ q: Double) -> Double { sorted[min(sorted.count - 1, Int(q * Double(sorted.count)))] }
-        return [
-            "count": Double(sorted.count),
-            "p50": at(0.5),
-            "p95": at(0.95),
-            "max": sorted.last!,
-            "total": sorted.reduce(0, +),
-        ]
+        return Summary(
+            count: sorted.count,
+            p50: at(0.5),
+            p95: at(0.95),
+            max: sorted.last!,
+            total: sorted.reduce(0, +)
+        )
     }
 }
 
@@ -667,6 +700,83 @@ private struct FootprintSample: Encodable {
     let loadWallMilliseconds: Double
 }
 
+private struct SpeedUISample: Encodable {
+    let tabs: Int
+    let history: Int?
+    let ms: Double
+    let p95Ms: Double
+    let totalMs: Double
+    let storeChangesPerStep: Double
+    let rowsPerStep: Double
+    let paneBodiesPerStep: Double
+    let mountedRootReplacementsPerStep: Double
+    let shadowInvalidationsPerStep: Double
+    let shadowDrawsPerStep: Double
+}
+
+private struct SpeedDragSample: Encodable {
+    let tabs: Int
+    let windows: Int
+    let stepMs: LoopClock.Summary
+    let otherMs: LoopClock.Summary
+    let publishedWhileHeld: Int
+    let rowsPerStep: Double
+    let paneBodiesPerStep: Double
+    let mountedRootReplacementsPerStep: Double
+    let shadowInvalidationsPerStep: Double
+    let shadowDrawsPerStep: Double
+}
+
+private struct SpeedMicroSample: Encodable {
+    let count: Int
+    let ms: Double
+}
+
+private struct SpeedPair<Sample: Encodable>: Encodable {
+    let low: Sample
+    let high: Sample
+    let ratio: [String: Double]
+}
+
+private func ratioIfValid(_ numerator: Double, _ denominator: Double) -> Double? {
+    denominator > 0 && numerator >= 0 ? numerator / denominator : nil
+}
+
+private extension SpeedPair where Sample == SpeedUISample {
+    static func ui(low: SpeedUISample, high: SpeedUISample) -> Self {
+        SpeedPair(low: low, high: high, ratio: [
+            "ms": ratioIfValid(high.ms, low.ms),
+            "p95Ms": ratioIfValid(high.p95Ms, low.p95Ms),
+            "totalMs": ratioIfValid(high.totalMs, low.totalMs),
+        ].compactMapValues { $0 })
+    }
+}
+
+private extension SpeedPair where Sample == SpeedDragSample {
+    static func drag(low: SpeedDragSample, high: SpeedDragSample) -> Self {
+        SpeedPair(low: low, high: high, ratio: [
+            "stepP50": ratioIfValid(high.stepMs.p50, low.stepMs.p50),
+            "stepP95": ratioIfValid(high.stepMs.p95, low.stepMs.p95),
+            "stepMax": ratioIfValid(high.stepMs.max, low.stepMs.max),
+        ].compactMapValues { $0 })
+    }
+}
+
+private extension SpeedPair where Sample == SpeedMicroSample {
+    static func micro(low: SpeedMicroSample, high: SpeedMicroSample) -> Self {
+        SpeedPair(low: low, high: high, ratio: [
+            "ms": ratioIfValid(high.ms, low.ms),
+        ].compactMapValues { $0 })
+    }
+}
+
+private struct SpeedReport: Encodable {
+    let schemaVersion = 2
+    let ui: [String: SpeedPair<SpeedUISample>]
+    let sidebarEdge: SpeedPair<SpeedDragSample>
+    let micro: [String: SpeedPair<SpeedMicroSample>]
+}
+
 private struct Workload: Encodable {
     static let steps = 8
     let wallMilliseconds: Double
@@ -696,13 +806,10 @@ private struct ScalingReport: Encodable {
         self.samples = samples
         ratios100Over10 = Dictionary(uniqueKeysWithValues: samples[1].workloads.map { name, large in
             let small = samples[0].workloads[name]!
-            func ratio(_ numerator: Double, _ denominator: Double) -> Double? {
-                denominator > 0 && numerator >= 0 ? numerator / denominator : nil
-            }
             return (name, [
-                "wall": ratio(large.wallMilliseconds, small.wallMilliseconds),
-                "mainThreadCPU": ratio(large.mainThreadMilliseconds, small.mainThreadMilliseconds),
-                "liveThreadsCPU": ratio(large.liveThreadsMilliseconds, small.liveThreadsMilliseconds),
+                "wall": ratioIfValid(large.wallMilliseconds, small.wallMilliseconds),
+                "mainThreadCPU": ratioIfValid(large.mainThreadMilliseconds, small.mainThreadMilliseconds),
+                "liveThreadsCPU": ratioIfValid(large.liveThreadsMilliseconds, small.liveThreadsMilliseconds),
             ].compactMapValues { $0 })
         })
     }

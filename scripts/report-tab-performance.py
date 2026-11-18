@@ -15,13 +15,13 @@ WORKLOADS = {
     "scroll": "Sidebar scroll",
 }
 SPEED_WORKLOADS = {
-    "typing": "Location typing",
-    "finding": "Find in page",
-    "unrelatedChange": "Unrelated store change",
+    "typing": "Location typing (10t/300h → 100t/3kh)",
+    "finding": "Find in page (10 → 100 tabs)",
+    "unrelatedChange": "Unrelated store change (10 → 100 tabs)",
 }
 MICRO_WORKLOADS = {
-    "ranking": "History ranking (3,000 entries)",
-    "sessionOpen": "Cold session open (150 tabs)",
+    "ranking": ("History ranking", "entries"),
+    "sessionOpen": ("Cold session open", "tabs"),
 }
 
 
@@ -38,6 +38,11 @@ def write_table(headers, rows):
     for cells in rows:
         row(cells)
     print()
+
+
+def fmt_pair(low, high, precision=2):
+    ratio = f" ({high / low:.2f}×)" if low > 0 else ""
+    return f"{low:.{precision}f} → {high:.{precision}f}{ratio}"
 
 
 def scaling_summary(path, output):
@@ -83,54 +88,64 @@ def memory_summary(path):
 
 
 def speed_summary(path):
-    print("### UI speed benchmarks\n")
+    print("### UI speed scaling\n")
     if not path.is_file():
         print("Speed report unavailable. See the **Measure tab UI speed** step.\n")
         return
     speed = json.loads(path.read_text(encoding="utf-8"))
+    ui = speed.get("ui", {})
     rows = []
     for key, label in SPEED_WORKLOADS.items():
-        if key not in speed:
+        if key not in ui:
             continue
-        item = speed[key]
+        low, high = ui[key]["low"], ui[key]["high"]
         rows.append([
             label,
-            f'{item.get("ms", 0.0):.2f}',
-            f'{item.get("p95Ms", 0.0):.2f}',
-            f'{item.get("totalMs", 0.0):.1f}',
-            f'{item.get("storeChangesPerStep", 0.0):.1f}',
-            f'{item.get("rowsPerStep", 0.0):.1f}',
-            f'{item.get("paneBodiesPerStep", 0.0):.1f}',
-            f'{item.get("mountedRootReplacementsPerStep", 0.0):.1f}',
-            f'{item.get("shadowInvalidationsPerStep", 0.0):.1f}',
+            fmt_pair(low.get("ms", 0.0), high.get("ms", 0.0)),
+            fmt_pair(low.get("p95Ms", 0.0), high.get("p95Ms", 0.0)),
+            fmt_pair(low.get("totalMs", 0.0), high.get("totalMs", 0.0), precision=1),
+            f'{high.get("storeChangesPerStep", 0.0):.1f}',
+            f'{low.get("rowsPerStep", 0.0):.0f} → {high.get("rowsPerStep", 0.0):.0f}',
+            f'{high.get("paneBodiesPerStep", 0.0):.1f}',
+            f'{high.get("mountedRootReplacementsPerStep", 0.0):.1f}',
+            f'{high.get("shadowInvalidationsPerStep", 0.0):.1f}',
         ])
     if rows:
         write_table([
-            "Workload", "Median (ms)", "p95 (ms)", "Total (ms)", "Store changes/step",
-            "Row bodies/step", "Pane bodies/step", "Roots/step", "Shadow inv/step",
+            "Workload", "Median (ms)", "p95 (ms)", "Total (ms)", "Store changes/step at 100",
+            "Row bodies/step", "Pane bodies/step at 100", "Roots/step at 100", "Shadow inv/step at 100",
         ], rows)
     if "sidebarEdge" in speed:
-        edge = speed["sidebarEdge"]
-        step = (f'{edge.get("stepMs.p50", 0.0):.2f} / {edge.get("stepMs.p95", 0.0):.2f} / '
-                f'{edge.get("stepMs.max", 0.0):.2f} ({int(edge.get("stepMs.count", 0))})')
-        other = (f'{edge.get("otherMs.p50", 0.0):.2f} / {edge.get("otherMs.p95", 0.0):.2f} / '
-                 f'{edge.get("otherMs.max", 0.0):.2f} ({int(edge.get("otherMs.count", 0))})')
+        low = speed["sidebarEdge"]["low"]
+        high = speed["sidebarEdge"]["high"]
+        ls, hs = low["stepMs"], high["stepMs"]
         write_table([
-            "Frame-paced drag", "Step frame p50/p95/max (ms)", "Other frame p50/p95/max (ms)",
-            "Published held", "Row bodies/step", "Pane bodies/step", "Roots/step", "Shadow inv/step",
+            "Frame-paced drag", "Step frame p50 (ms)", "Step frame p95 (ms)", "Step frame max (ms)",
+            "Published held", "Row bodies/step", "Pane bodies/step at 100", "Roots/step at 100", "Shadow inv/step",
         ], [[
-            "Sidebar edge (2 windows)", step, other, f'{edge.get("publishedWhileHeld", 0.0):.0f}',
-            f'{edge.get("rowsPerStep", 0.0):.1f}', f'{edge.get("paneBodiesPerStep", 0.0):.1f}',
-            f'{edge.get("mountedRootReplacementsPerStep", 0.0):.1f}',
-            f'{edge.get("shadowInvalidationsPerStep", 0.0):.1f}',
+            f'Sidebar edge ({high.get("windows", 2)} windows, {low["tabs"]} → {high["tabs"]} tabs)',
+            fmt_pair(ls.get("p50", 0.0), hs.get("p50", 0.0)),
+            fmt_pair(ls.get("p95", 0.0), hs.get("p95", 0.0)),
+            fmt_pair(ls.get("max", 0.0), hs.get("max", 0.0)),
+            f'{low.get("publishedWhileHeld", 0)} → {high.get("publishedWhileHeld", 0)}',
+            f'{low.get("rowsPerStep", 0.0):.0f} → {high.get("rowsPerStep", 0.0):.0f}',
+            f'{high.get("paneBodiesPerStep", 0.0):.1f}',
+            f'{high.get("mountedRootReplacementsPerStep", 0.0):.1f}',
+            f'{low.get("shadowInvalidationsPerStep", 0.0):.0f} → {high.get("shadowInvalidationsPerStep", 0.0):.0f}',
         ]])
-    micro = [
-        [label, f'{speed[key].get("ms", 0.0):.2f}']
-        for key, label in MICRO_WORKLOADS.items()
-        if key in speed
-    ]
+    micro_data = speed.get("micro", {})
+    micro = []
+    for key, (label, unit) in MICRO_WORKLOADS.items():
+        if key not in micro_data:
+            continue
+        low, high = micro_data[key]["low"], micro_data[key]["high"]
+        micro.append([
+            label,
+            f'{low["count"]:,} → {high["count"]:,} {unit}',
+            fmt_pair(low.get("ms", 0.0), high.get("ms", 0.0)),
+        ])
     if micro:
-        write_table(["Model / startup microbenchmark", "Median (ms)"], micro)
+        write_table(["Model / startup scaling", "Scale", "Median (ms)"], micro)
 
 
 def main():
