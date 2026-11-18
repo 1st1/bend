@@ -41,3 +41,19 @@ Closing a pane and then its tab reopens them in reverse order without duplicate 
 ## Flat tab list restoration
 
 [ReopenTests.swift](../../Tests/BrowseTests/ReopenTests.swift) verifies legacy groups merge in order without losing selection, pane identities, layouts, or URLs. New tabs append to the list; close/reopen and saving preserve the single-group session.
+
+## Tab performance baselines
+
+The offscreen browser benchmark measures tab retention and the UI work of selecting tabs, editing a hidden tab's title, resizing the window, and scrolling the sidebar with 10 and 100 visited tabs.
+
+Run `scripts/test.sh --filter TabPerformanceTests` and save the line beginning with `BEND_TAB_SCALING` for comparison. Each workload applies eight operations to real AppKit and SwiftUI views. The JSON records restored, visited, and background-opened controller counts, mounted-root replacements, pane and row body evaluations, and shadow invalidation and draw counts. It also records wall and main-thread CPU time, aggregate CPU for live task threads, and 100-to-10 ratios. Aggregate live-thread CPU can decrease when a thread exits between samples, so the ratio is omitted when the delta is unsuitable.
+
+Lifecycle assertions cover lazy restoration, selection, loading without mounting a background tab, and controller cleanup. Timing is observational and varies with the machine and OS. Offscreen layers can record invalidations without drawing. Debug counters only collect during the measured workloads. Instruments can capture the matching `TabPerformance` signpost intervals.
+
+## Tab memory footprint
+
+The memory script measures the host process and WebKit processes serving a fixed set of loaded tabs in an offscreen Bend window.
+
+Run `python3 scripts/bench-tab-memory.py --tabs 30 --output /tmp/bend-tab-memory.json` in a macOS GUI session with the native test toolchain. The script runs 1, 10, and the requested largest tab count in fresh test hosts. A loopback-only HTTP fixture builds 4,096 DOM cards and retains a fully written 12 MiB typed array per tab. Each sample waits for every document's readiness marker, then allows a one-second settling interval. The sampler records live controllers and attached views without waking hidden pages.
+
+The JSON on stdout and summary on stderr report the number of distinct WebContent processes serving the fixture pages, plus raw physical-footprint bytes for the host and each of those processes from `proc_pid_rusage`. A test-only WebKit selector attributes launchd-parented services to their views. GPU, networking, and unattached process-cache services are outside the sample. Compare identical workloads on the same OS and hardware. The host footprint includes the Swift test runtime.

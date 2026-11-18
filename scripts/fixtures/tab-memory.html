@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'">
+<title>Bend tab memory fixture</title>
+<style>
+  body { font: 14px system-ui; }
+  #fixture { display: grid; grid-template-columns: repeat(4, 1fr); }
+  article { background: #dae8f2; margin: 3px; padding: 6px; }
+</style>
+<main id="fixture"></main>
+<script>
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < 4096; i++) {
+    const card = document.createElement("article");
+    const label = document.createElement("strong");
+    label.textContent = "Bend benchmark card " + i;
+    const detail = document.createElement("span");
+    detail.textContent = " Local fixture content";
+    card.append(label, detail);
+    fragment.append(card);
+  }
+  document.getElementById("fixture").append(fragment);
+  // Commit every page of the allocation and keep the buffer reachable.
+  window.fixtureBytes = new Uint8Array(12 * 1024 * 1024);
+  window.fixtureBytes.fill(0xa5);
+  // Force layout once before releasing the benchmark's readiness barrier.
+  document.body.getBoundingClientRect();
+  window.bendMemoryReady = true;
+</script>
