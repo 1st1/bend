@@ -62,8 +62,8 @@ Bend CI publishes a tab performance summary and a downloadable artifact on main 
 
 ## Tab speed benchmarks
 
-[[Tests/BrowseTests/TabPerformanceTests.swift#TabPerformanceTests|TabPerformanceTests/speed]] measures interactive UI, frame-paced drag, history ranking, and cold session-open latencies across 60-tab offscreen windows when enabled.
+[[Tests/BrowseTests/TabPerformanceTests.swift#TabPerformanceTests|TabPerformanceTests/speed]] measures 10-to-100 scaling for interactive UI, frame-paced drag, history ranking, and cold session opening when enabled.
 
-Normal `./scripts/test.sh` runs discover `TabPerformanceTests/speed` as a declared skip unless `BEND_RUN_TAB_SPEED=1` or `BEND_SPEED_OUT` is set. When enabled, it runs location typing (`AddressPanelController`), find-in-page typing (`WebSurfaceHost`), unrelated `@Published` store changes, frame-paced dual-window sidebar edge dragging (`LoopClock`), pure history ranking over 3,000 entries, and cold 150-tab session opening without duplicating the 10-to-100 scaling workloads.
+Normal `./scripts/test.sh` runs discover `TabPerformanceTests/speed` as a declared skip unless `BEND_RUN_TAB_SPEED=1` or `BEND_SPEED_OUT` is set. When enabled, it compares `10 → 100` tabs across location typing (`10t/300h → 100t/3kh` in `AddressPanelController`), find-in-page typing (`WebSurfaceHost`), unrelated `@Published` store changes, frame-paced dual-window sidebar edge dragging (`LoopClock`), and cold session opening, plus `300 → 3,000` entry history ranking, without duplicating the four `scaling` workloads.
 
-It prints the `BEND_TAB_SPEED` JSON marker and writes `BEND_SPEED_OUT` when set. CI runs it in the same `RUN_TAB_PERF == 'true'` shard-1 path as the scaling and memory benchmarks, and `scripts/report-tab-performance.py` summarizes `speed.json` into `tab-perf/summary.md`.
+It prints the `BEND_TAB_SPEED` JSON marker (`schemaVersion = 2`) and writes `BEND_SPEED_OUT` when set. CI runs it in the same `RUN_TAB_PERF == 'true'` shard-1 path as the scaling and memory benchmarks, and `scripts/report-tab-performance.py` summarizes `speed.json` into `tab-perf/summary.md`.
