@@ -46,7 +46,7 @@ Closing a pane and then its tab reopens them in reverse order without duplicate 
 
 The offscreen browser benchmark measures tab retention and the UI work of selecting tabs, editing a hidden tab's title, resizing the window, and scrolling the sidebar with 10 and 100 visited tabs.
 
-Run `BEND_RUN_TAB_SCALING=1 scripts/test.sh --filter TabPerformanceTests/scaling` and save the line beginning with `BEND_TAB_SCALING` for comparison. Each workload applies eight operations to real AppKit and SwiftUI views. The JSON records restored, visited, and background-opened controller counts, mounted-root replacements, pane and row body evaluations, and shadow invalidation and draw counts. It also records wall and main-thread CPU time, aggregate CPU for live task threads, and 100-to-10 ratios. Aggregate live-thread CPU can decrease when a thread exits between samples, so the ratio is omitted when the delta is unsuitable.
+Run `BEND_RUN_TAB_SCALING=1 scripts/test.sh --filter TabPerformanceTests/scaling` and save the line beginning with `BEND_TAB_SCALING` for comparison. Each workload applies eight operations to real AppKit and SwiftUI views. The JSON records restored, visited, and background-opened controller counts, store `objectWillChange` counts, per-step median and p95 latencies, mounted-root replacements, pane and row body evaluations, and shadow invalidation and draw counts. It also records wall and main-thread CPU time, aggregate CPU for live task threads, and 100-to-10 ratios. Aggregate live-thread CPU can decrease when a thread exits between samples, so the ratio is omitted when the delta is unsuitable.
 
 Lifecycle assertions cover lazy restoration, selection, loading without mounting a background tab, and controller cleanup. Timing is observational and varies with the machine and OS. Offscreen layers can record invalidations without drawing. The required suite discovers this test as a declared skip. Fixtures finish loading while their tabs are selected, before the measured workloads begin. Debug counters only collect during those workloads. Instruments can capture the matching `TabPerformance` signpost intervals.
 
@@ -58,4 +58,12 @@ Run `python3 scripts/bench-tab-memory.py --tabs 30 --output /tmp/bend-tab-memory
 
 The JSON on stdout and summary on stderr report the number of distinct WebContent processes serving the fixture pages, plus raw physical-footprint bytes for the host and each of those processes from `proc_pid_rusage`. A test-only WebKit selector attributes launchd-parented services to their views. GPU, networking, and unattached process-cache services are outside the sample. Compare identical workloads on the same OS and hardware. The host footprint includes the Swift test runtime.
 
-Bend CI publishes a tab performance summary and a downloadable artifact on main and on pull requests labeled `tab-perf`. The second native shard runs both benchmarks in separate steps using its existing Swift test build. The artifact includes both JSON reports, the Markdown summary, and the tested commit and runner toolchain. Benchmark measurements are informational.
+Bend CI publishes a tab performance summary and a downloadable artifact on main and on pull requests labeled `tab-perf`. The second native shard runs these benchmarks in separate steps using its existing Swift test build. The artifact includes the JSON reports, the Markdown summary, and the tested commit and runner toolchain. Benchmark measurements are informational.
+
+## Tab speed benchmarks
+
+[[Tests/BrowseTests/TabPerformanceTests.swift#TabPerformanceTests|TabPerformanceTests/speed]] measures interactive UI, frame-paced drag, history ranking, and cold session-open latencies across 60-tab offscreen windows when enabled.
+
+Normal `./scripts/test.sh` runs discover `TabPerformanceTests/speed` as a declared skip unless `BEND_RUN_TAB_SPEED=1` or `BEND_SPEED_OUT` is set. When enabled, it runs location typing (`AddressPanelController`), find-in-page typing (`WebSurfaceHost`), unrelated `@Published` store changes, frame-paced dual-window sidebar edge dragging (`LoopClock`), pure history ranking over 3,000 entries, and cold 150-tab session opening without duplicating the 10-to-100 scaling workloads.
+
+It prints the `BEND_TAB_SPEED` JSON marker and writes `BEND_SPEED_OUT` when set. CI runs it in the same `RUN_TAB_PERF == 'true'` shard-1 path as the scaling and memory benchmarks, and `scripts/report-tab-performance.py` summarizes `speed.json` into `tab-perf/summary.md`.

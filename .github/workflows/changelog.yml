@@ -54,7 +54,7 @@ jobs:
       matrix:
         shard: [0, 1]
     runs-on: macos-26
-    # The reporting shard also needs time to upload artifacts after both benchmarks.
+    # The reporting shard also needs time to upload artifacts after all benchmarks.
     timeout-minutes: ${{ matrix.shard == 1 && 50 || 45 }}
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
@@ -111,6 +111,17 @@ jobs:
           mkdir -p tab-perf
           python3 scripts/bench-tab-memory.py --skip-build --output tab-perf/memory.json \
             2>&1 | tee ci-logs/tab-memory.log
+      - name: Measure tab UI speed
+        if: matrix.shard == 1 && env.RUN_TAB_PERF == 'true'
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          BEND_RUN_TAB_SPEED: '1'
+          BEND_SPEED_OUT: tab-perf/speed.json
+        run: |
+          mkdir -p tab-perf
+          ./scripts/test.sh --skip-build --filter TabPerformanceTests/speed \
+            2>&1 | tee ci-logs/tab-speed.log
       - name: Summarize tab performance
         if: matrix.shard == 1 && env.RUN_TAB_PERF == 'true'
         continue-on-error: true

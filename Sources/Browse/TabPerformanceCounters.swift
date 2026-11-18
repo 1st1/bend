@@ -12,23 +12,32 @@ final class TabPerformanceCounters {
         var shadowDraws = 0
     }
 
+    private final class WeakBox<Object: AnyObject> {
+        weak var value: Object?
+        init(_ value: Object) { self.value = value }
+    }
+
     static var active: TabPerformanceCounters?
-    private weak var store: BrowserStore?
-    private weak var window: NSWindow?
+    private let stores: [WeakBox<BrowserStore>]
+    private let windows: [WeakBox<NSWindow>]
     private(set) var counts = Counts()
 
-    init(store: BrowserStore, window: NSWindow) {
-        self.store = store
-        self.window = window
+    convenience init(store: BrowserStore, window: NSWindow) {
+        self.init(stores: [store], windows: [window])
+    }
+
+    init(stores: [BrowserStore], windows: [NSWindow]) {
+        self.stores = stores.map(WeakBox.init)
+        self.windows = windows.map(WeakBox.init)
     }
 
     static func record(_ counter: WritableKeyPath<Counts, Int>, store: BrowserStore) {
-        guard let active, active.store === store else { return }
+        guard let active, active.stores.contains(where: { $0.value === store }) else { return }
         active.counts[keyPath: counter] += 1
     }
 
     static func record(_ counter: WritableKeyPath<Counts, Int>, window: NSWindow?) {
-        guard let window, let active, active.window === window else { return }
+        guard let window, let active, active.windows.contains(where: { $0.value === window }) else { return }
         active.counts[keyPath: counter] += 1
     }
 }
