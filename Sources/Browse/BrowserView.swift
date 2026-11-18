@@ -210,6 +210,9 @@ private struct SidebarTabRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        #if DEBUG
+        TabPerformanceCounters.record(\.sidebarRowBodies, store: store)
+        #endif
         let selected = tab.id == store.session.selectedTab
         return HStack(spacing: 8) {
             Button {
@@ -556,7 +559,10 @@ private struct BrowserPane: View {
     }
 
     var body: some View {
-        ClippedPaneContent(content: decoratedPane, store: store, tabID: tab.id, pageID: pageID,
+        #if DEBUG
+        TabPerformanceCounters.record(\.browserPaneBodies, store: store)
+        #endif
+        return ClippedPaneContent(content: decoratedPane, store: store, tabID: tab.id, pageID: pageID,
                            onHover: { paneHovered = $0 })
     }
 

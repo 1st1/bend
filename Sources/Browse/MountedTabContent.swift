@@ -70,6 +70,9 @@ final class MountedTabHost: NSView {
                 for page in tab.pages {
                     InputDiagnostics.transition(.mountedTabRoot, .replaced, view: host, paneID: page.id, tabID: tab.id)
                 }
+                #if DEBUG
+                TabPerformanceCounters.record(\.mountedRootReplacements, store: store)
+                #endif
                 host.rootView = root
             } else {
                 host = TabHostingView(rootView: root)

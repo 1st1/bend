@@ -6,7 +6,7 @@ import SwiftUI
 struct PaneShadowPlane: NSViewRepresentable {
     @ObservedObject var store: BrowserStore
     func makeNSView(context: Context) -> PaneShadowView { PaneShadowView() }
-    func updateNSView(_ view: PaneShadowView, context: Context) { view.needsDisplay = true }
+    func updateNSView(_ view: PaneShadowView, context: Context) { view.invalidateShadow() }
 }
 
 final class PaneShadowView: NSView {
@@ -21,21 +21,34 @@ final class PaneShadowView: NSView {
         for name in [NSView.boundsDidChangeNotification, NSView.frameDidChangeNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(geometryChanged(_:)), name: name, object: nil)
         }
-        needsDisplay = true
+        invalidateShadow()
     }
 
     @objc private func geometryChanged(_ notification: Notification) {
         guard let changed = notification.object as? NSView, changed !== self, changed.window === window else { return }
-        needsDisplay = true
+        #if DEBUG
+        TabPerformanceCounters.record(\.shadowGeometryInvalidations, window: window)
+        #endif
+        invalidateShadow()
     }
 
     override func layout() {
         super.layout()
+        invalidateShadow()
+    }
+
+    func invalidateShadow() {
+        #if DEBUG
+        TabPerformanceCounters.record(\.shadowInvalidations, window: window)
+        #endif
         needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let root = window?.contentView, let context = NSGraphicsContext.current?.cgContext else { return }
+        #if DEBUG
+        TabPerformanceCounters.record(\.shadowDraws, window: window)
+        #endif
         context.saveGState()
         defer { context.restoreGState() }
         var shapes: [(path: CGPath, rect: CGRect, viewport: CGRect, color: CGColor, blur: CGFloat,
