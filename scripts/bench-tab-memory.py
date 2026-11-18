@@ -55,6 +55,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tabs", type=int, default=30, help="largest sample size (default: 30)")
     parser.add_argument("--output", type=Path, help="also write the JSON report to this path")
+    parser.add_argument("--skip-build", action="store_true", help="reuse an existing scripts/test.sh build")
     args = parser.parse_args()
     if sys.platform != "darwin":
         parser.error("the benchmark requires macOS")
@@ -67,7 +68,7 @@ def main():
         thread.start()
         try:
             address = f"http://127.0.0.1:{server.server_port}/"
-            samples = [sample(count, address, skip_build=index > 0)
+            samples = [sample(count, address, skip_build=args.skip_build or index > 0)
                        for index, count in enumerate((1, 10, args.tabs))]
         finally:
             server.shutdown()
