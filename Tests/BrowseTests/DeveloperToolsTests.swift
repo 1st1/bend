@@ -86,7 +86,11 @@ import WebKit
     try await wait { await contents(pages[0].webView).contains("Console opened") }
     // Reproduce errors after attaching, as when reloading a failing website.
     for page in pages { _ = try await page.webView.evaluateJavaScript("emitDiagnostics(); void 0") }
-    try await wait { await contents(pages[0].webView).contains("BEND_REJECTION_0") }
+    // The timer exception and the unhandled rejection arrive independently.
+    try await wait {
+        let text = await contents(pages[0].webView)
+        return text.contains("BEND_REJECTION_0") && text.contains("BEND_THROW_0")
+    }
     let text = await contents(pages[0].webView)
     #expect(text.contains("BEND_CONSOLE_0"))
     #expect(text.contains("BEND_THROW_0"))
