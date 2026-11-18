@@ -1,8 +1,10 @@
 #if DEBUG
 import AppKit
 import BrowseCore
+import Combine
 import Darwin
 import os
+import QuartzCore
 import SwiftUI
 import Testing
 import WebKit
@@ -127,6 +129,277 @@ struct TabPerformanceTests {
             loadWallMilliseconds: Double(seconds.seconds) * 1000 + Double(seconds.attoseconds) / 1e15))
     }
 
+    // @lat: [[lat.md/tests/session-tests#Tab speed benchmarks]]
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["BEND_RUN_TAB_SPEED"] == "1"
+        || ProcessInfo.processInfo.environment["BEND_SPEED_OUT"] != nil))
+    func speed() async throws {
+        var results: [String: [String: Double]] = [:]
+
+        // 1. Location popup typing over 60 tabs and 3,000 history entries.
+        do {
+            let browser = try BenchmarkWindow(count: 60, address: "bend://start",
+                size: NSSize(width: 1200, height: 800), origin: NSPoint(x: -20_000, y: -20_000), makeKey: true)
+            defer { browser.close() }
+            seedHistory(browser.store, pages: 3000)
+            let panel = AddressPanelController(store: browser.store, parentWindow: browser.window)
+            browser.settle()
+            panel.show(for: browser.store.selectedTab.focusedPane)
+            defer { panel.dismiss(restoreFocus: false) }
+            browser.settle()
+
+            let popup = try #require(browser.window.childWindows?.first)
+            let content = try #require(popup.contentView)
+            let field = try #require(descendants(NSTextField.self, in: content).first { $0.isEditable })
+            let editor = field.currentEditor() as? NSTextView
+            let words = Array("github pull requests")
+
+            results["typing"] = measureUI([browser], steps: words.count) { i in
+                let text = String(words[0...i])
+                field.stringValue = text
+                editor?.string = text
+                panel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+            }
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+
+        // 2. Find in Page typing on a loaded local fixture over 60 tabs.
+        do {
+            let server = try await ExtensionHTTPFixture.start()
+            defer { server.listener.cancel() }
+            let address = "http://127.0.0.1:\(server.port)/"
+            let browser = try BenchmarkWindow(count: 60, address: "https://example.invalid/",
+                selectedAddress: address, size: NSSize(width: 1200, height: 800),
+                origin: NSPoint(x: -20_000, y: -20_000), makeKey: true)
+            defer { browser.close() }
+            browser.settle()
+
+            let first = browser.tabs[0]
+            try await browser.waitForFixture(first, expression: "document.readyState === 'complete' && window.blockedScriptRan === true")
+            let controller = try #require(browser.store.existingController(for: first.focusedPane))
+            _ = try await controller.webView.evaluateJavaScript(
+                "document.body.innerHTML = '<p>github pull requests review queue</p><p>github issues and pull requests</p><p>documentation search index</p>'; true"
+            )
+            browser.settle()
+
+            let surface = try #require(browser.views(WebSurfaceHost.self).first)
+            surface.performFindAction(.showFindInterface)
+            browser.settle()
+
+            let bar = try #require(surface.findBarView)
+            let field = try #require(descendants(NSTextField.self, in: bar).first { $0.isEditable })
+            field.selectText(nil)
+            let editor = field.currentEditor() as? NSTextView
+            let words = Array("github pull requests")
+
+            results["finding"] = measureUI([browser], steps: words.count) { i in
+                let text = String(words[0...i])
+                field.stringValue = text
+                editor?.string = text
+                surface.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+            }
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+
+        // 3. Changing an @Published store property that no sidebar row or pane reads.
+        do {
+            let browser = try BenchmarkWindow(count: 60, address: "bend://start",
+                size: NSSize(width: 1200, height: 800), origin: NSPoint(x: -20_000, y: -20_000))
+            defer { browser.close() }
+            browser.settle()
+            #expect(browser.store.sidebarVisible)
+
+            results["unrelatedChange"] = measureUI([browser], steps: 60) { i in
+                browser.store.sidebarFloating = i.isMultiple(of: 2)
+            }
+            browser.store.sidebarFloating = false
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+
+        // 4. Frame-paced sidebar resize drag across two 60-tab windows sharing a primary store.
+        do {
+            let primary = try BenchmarkWindow(count: 60, address: "bend://start",
+                size: NSSize(width: 1200, height: 800), origin: NSPoint(x: -20_000, y: -20_000))
+            defer { primary.close() }
+            let secondary = try BenchmarkWindow(count: 60, address: "bend://start",
+                size: NSSize(width: 1200, height: 800), origin: NSPoint(x: -20_000, y: -19_000),
+                sharedStore: primary.store)
+            defer { secondary.close() }
+            primary.settle()
+            secondary.settle()
+
+            let handle = try #require(primary.views(SidebarResizeView.self).first)
+            let grab = handle.convert(NSPoint(x: 3, y: handle.bounds.midY), to: nil)
+
+            var published = 0
+            let watchPrimary = primary.store.objectWillChange.sink { _ in published += 1 }
+            let watchSecondary = secondary.store.objectWillChange.sink { _ in published += 1 }
+            defer {
+                watchPrimary.cancel()
+                watchSecondary.cancel()
+            }
+
+            let counters = TabPerformanceCounters(stores: [primary.store, secondary.store],
+                windows: [primary.window, secondary.window])
+            TabPerformanceCounters.active = counters
+            defer { TabPerformanceCounters.active = nil }
+
+            let clock = LoopClock()
+            clock.start()
+
+            let steps = 60
+            try sendMouse(.leftMouseDown, at: grab, to: primary.window)
+            try await Task.sleep(for: .milliseconds(16))
+            for step in 1...steps {
+                let out = CGFloat(step <= steps / 2 ? step : steps - step) * 2
+                clock.mark()
+                try sendMouse(.leftMouseDragged, at: NSPoint(x: grab.x + out + 2, y: grab.y), to: primary.window)
+                try await Task.sleep(for: .milliseconds(16))
+            }
+            let publishedHeld = published
+            try sendMouse(.leftMouseUp, at: NSPoint(x: grab.x + 2, y: grab.y), to: primary.window)
+            primary.settle()
+            secondary.settle()
+            clock.stop()
+
+            var values = Dictionary(uniqueKeysWithValues: LoopClock.summary(clock.marked).map { ("stepMs." + $0, $1) })
+            for (key, value) in LoopClock.summary(clock.unmarked) {
+                values["otherMs." + key] = value
+            }
+            values["publishedWhileHeld"] = Double(publishedHeld)
+            values["rowsPerStep"] = Double(counters.counts.sidebarRowBodies) / Double(steps)
+            values["paneBodiesPerStep"] = Double(counters.counts.browserPaneBodies) / Double(steps)
+            values["mountedRootReplacementsPerStep"] = Double(counters.counts.mountedRootReplacements) / Double(steps)
+            values["shadowInvalidationsPerStep"] = Double(counters.counts.shadowInvalidations) / Double(steps)
+            values["shadowDrawsPerStep"] = Double(counters.counts.shadowDraws) / Double(steps)
+            results["sidebarEdge"] = values
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+
+        // 5. Pure history suggestion ranking over 3,000 entries.
+        do {
+            var history = BrowsingHistory()
+            let words = ["github", "issues", "pull", "requests", "docs", "document", "search", "mail", "news", "maps"]
+            for i in 0..<3000 {
+                history.record(
+                    url: "https://site\(i).example/page",
+                    title: "\(words[i % words.count]) \(words[(i / 10) % words.count]) page \(i)"
+                )
+            }
+            let queries = [
+                "g", "gi", "git", "gith", "githu", "github", "github p", "github pu", "github pul", "github pull",
+                "zq", "zqx", "zqxw", "issu", "issue", "issues", "isuses", "documnet", "docum", "documen"
+            ]
+            var times: [Double] = []
+            for _ in 0..<5 {
+                for query in queries {
+                    let start = CACurrentMediaTime()
+                    _ = history.suggestions(for: query, limit: 6)
+                    times.append((CACurrentMediaTime() - start) * 1000)
+                }
+            }
+            results["ranking"] = ["ms": percentile(times, 0.5)]
+        }
+
+        // 6. Cold-loading a BrowserStore from a persisted 150-tab session file.
+        do {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSessionBench-\(UUID())")
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+
+            let sessionFile = root.appendingPathComponent("session.json")
+            let tabs = (0..<150).map { BrowserTab(title: "Saved tab \($0 + 1)", pages: [Page(address: "https://tab\($0).example/")]) }
+            var session = BrowserSession()
+            session.workspaces = [Workspace(name: "Saved", tabs: tabs)]
+            session.selectedTab = tabs[0].id
+            try JSONEncoder().encode(session).write(to: sessionFile)
+
+            var times: [Double] = []
+            var openedStores: [BrowserStore] = []
+            defer { for store in openedStores { store.stopWindow() } }
+            for _ in 0..<5 {
+                let manager = ExtensionManager(
+                    root: root.appendingPathComponent("extensions-\(UUID())"),
+                    persistent: false,
+                    websiteDataStore: .nonPersistent(),
+                    notifications: TestNotifications()
+                )
+                manager.presentsWindows = false
+                let start = CACurrentMediaTime()
+                let opened = BrowserStore(sessionFile: sessionFile, persistentExtensions: false, extensionManager: manager)
+                times.append((CACurrentMediaTime() - start) * 1000)
+                openedStores.append(opened)
+            }
+            results["sessionOpen"] = ["ms": percentile(times, 0.5)]
+        }
+
+        try report("BEND_TAB_SPEED", results)
+        if let out = ProcessInfo.processInfo.environment["BEND_SPEED_OUT"] {
+            let url = URL(fileURLWithPath: out)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let data = try JSONSerialization.data(withJSONObject: results, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: url)
+        }
+    }
+
+    private func measureUI(_ browsers: [BenchmarkWindow], steps: Int, _ step: (Int) -> Void) -> [String: Double] {
+        var sends = 0
+        let watches = browsers.map { $0.store.objectWillChange.sink { _ in sends += 1 } }
+        defer { for watch in watches { watch.cancel() } }
+
+        let counters = TabPerformanceCounters(stores: browsers.map(\.store), windows: browsers.map(\.window))
+        TabPerformanceCounters.active = counters
+        defer { TabPerformanceCounters.active = nil }
+
+        var times: [Double] = []
+        for i in 0..<steps {
+            let start = CACurrentMediaTime()
+            step(i)
+            for browser in browsers { browser.drain() }
+            times.append((CACurrentMediaTime() - start) * 1000)
+        }
+
+        let counts = counters.counts
+        return [
+            "ms": percentile(times, 0.5),
+            "p95Ms": percentile(times, 0.95),
+            "totalMs": times.reduce(0, +),
+            "storeChangesPerStep": Double(sends) / Double(steps),
+            "rowsPerStep": Double(counts.sidebarRowBodies) / Double(steps),
+            "paneBodiesPerStep": Double(counts.browserPaneBodies) / Double(steps),
+            "mountedRootReplacementsPerStep": Double(counts.mountedRootReplacements) / Double(steps),
+            "shadowInvalidationsPerStep": Double(counts.shadowInvalidations) / Double(steps),
+            "shadowDrawsPerStep": Double(counts.shadowDraws) / Double(steps),
+        ]
+    }
+
+    private func seedHistory(_ store: BrowserStore, pages: Int) {
+        let words = ["github", "issues", "pull", "requests", "docs", "document", "search", "mail", "news", "maps"]
+        for i in 0..<pages {
+            store.recordVisit(
+                url: "https://site\(i).example/page",
+                title: "\(words[i % words.count]) \(words[(i / 10) % words.count]) page \(i)"
+            )
+        }
+    }
+
+    private func descendants<T: NSView>(_ type: T.Type, in view: NSView) -> [T] {
+        ((view as? T).map { [$0] } ?? []) + view.subviews.flatMap { descendants(type, in: $0) }
+    }
+
+    private func sendMouse(_ type: NSEvent.EventType, at point: NSPoint, to window: NSWindow) throws {
+        let event = try #require(NSEvent.mouseEvent(
+            with: type,
+            location: point,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 1,
+            pressure: type == .leftMouseUp ? 0 : 1
+        ))
+        window.sendEvent(event)
+    }
 }
 
 @MainActor
@@ -136,9 +409,20 @@ private final class BenchmarkWindow {
     let tabs: [BrowserTab]
     let window: BrowseWindow
 
-    init(count: Int, address: String) throws {
+    init(
+        count: Int,
+        address: String,
+        selectedAddress: String? = nil,
+        size: NSSize = NSSize(width: 1100, height: 390),
+        origin: NSPoint = NSPoint(x: -10000, y: -10000),
+        makeKey: Bool = false,
+        sharedStore: BrowserStore? = nil
+    ) throws {
         _ = NSApplication.shared
-        tabs = (0..<count).map { BrowserTab(title: "Benchmark tab \($0 + 1)", pages: [Page(address: address)]) }
+        tabs = (0..<count).map { index in
+            let tabAddress = index == 0 ? (selectedAddress ?? address) : address
+            return BrowserTab(title: "Benchmark tab \(index + 1)", pages: [Page(address: tabAddress)])
+        }
         let sessionFile = root.appendingPathComponent("session.json")
         var session = BrowserSession()
         session.workspaces = [Workspace(name: "Benchmark", tabs: tabs)]
@@ -153,22 +437,27 @@ private final class BenchmarkWindow {
         let manager = ExtensionManager(root: root.appendingPathComponent("extensions"), persistent: false,
             websiteDataStore: .nonPersistent(), notifications: TestNotifications())
         manager.presentsWindows = false
-        store = BrowserStore(sessionFile: sessionFile, extensionManager: manager)
-        window = BrowseWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 390),
+        store = BrowserStore(sessionFile: sessionFile, persistentExtensions: false,
+            extensionManager: manager, sharedStore: sharedStore)
+        window = BrowseWindow(contentRect: NSRect(origin: origin, size: size),
             styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.browserStore = store
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
-        window.toolbar = NSToolbar(identifier: "TabPerformance")
+        window.toolbar = NSToolbar(identifier: "TabPerformance-\(UUID())")
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea()
             .transaction { transaction in
                 transaction.animation = nil
                 transaction.disablesAnimations = true
             })
-        window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
-        window.orderFront(nil)
+        window.setFrameOrigin(origin)
+        if makeKey {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            window.orderFront(nil)
+        }
     }
 
     var liveCount: Int {
@@ -201,6 +490,19 @@ private final class BenchmarkWindow {
         window.displayIfNeeded()
     }
 
+    func drain() {
+        RunLoop.current.run(mode: .default, before: Date())
+        flush()
+        for child in window.childWindows ?? [] {
+            child.contentView?.layoutSubtreeIfNeeded()
+            child.displayIfNeeded()
+        }
+    }
+
+    func settle() {
+        for _ in 0..<10 { drain() }
+    }
+
     func waitForFixture(_ tab: BrowserTab, expression: String) async throws {
         let deadline = ContinuousClock.now + .seconds(15)
         while ContinuousClock.now < deadline {
@@ -213,6 +515,9 @@ private final class BenchmarkWindow {
     }
 
     func measure(_ name: StaticString, operation: (Int) -> Void, verify: (Int) -> Bool) throws -> Workload {
+        var storeChanges = 0
+        let watch = store.objectWillChange.sink { _ in storeChanges += 1 }
+        defer { watch.cancel() }
         let counters = TabPerformanceCounters(store: store, window: window)
         TabPerformanceCounters.active = counters
         defer { TabPerformanceCounters.active = nil }
@@ -221,16 +526,76 @@ private final class BenchmarkWindow {
         defer { signposter.endInterval(name, interval) }
         let before = try CPUTime()
         let start = ContinuousClock.now
+        var stepTimes: [Double] = []
         for step in 0..<Workload.steps {
+            let stepStart = CACurrentMediaTime()
             operation(step)
             flush()
             guard verify(step) else { throw BenchmarkError.workloadDidNotApply(String(describing: name), step) }
+            stepTimes.append((CACurrentMediaTime() - stepStart) * 1000)
         }
         let elapsed = start.duration(to: .now).components
         let after = try CPUTime()
         return Workload(wallMilliseconds: Double(elapsed.seconds) * 1000 + Double(elapsed.attoseconds) / 1e15,
             mainThreadMilliseconds: Double(after.main - before.main) / 1e6,
-            liveThreadsMilliseconds: Double(after.live - before.live) / 1000, counts: counters.counts)
+            liveThreadsMilliseconds: Double(after.live - before.live) / 1000,
+            medianStepMilliseconds: percentile(stepTimes, 0.5),
+            p95StepMilliseconds: percentile(stepTimes, 0.95),
+            storeChanges: storeChanges,
+            counts: counters.counts)
+    }
+}
+
+private func percentile(_ values: [Double], _ quantile: Double) -> Double {
+    let sorted = values.sorted()
+    guard !sorted.isEmpty else { return 0 }
+    return sorted[min(sorted.count - 1, Int(quantile * Double(sorted.count)))]
+}
+
+/// Times main run-loop turns from wake (`afterWaiting`) to sleep (`beforeWaiting`),
+/// separating turns marked by the benchmark from unrelated background turns.
+private final class LoopClock: @unchecked Sendable {
+    private(set) var marked: [Double] = []
+    private(set) var unmarked: [Double] = []
+    private var woke: CFAbsoluteTime = 0
+    private var carrying = false
+    private var observers: [CFRunLoopObserver] = []
+
+    func mark() { carrying = true }
+
+    func start() {
+        let wake = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.afterWaiting.rawValue, true, CFIndex.min) { [unowned self] _, _ in
+            woke = CFAbsoluteTimeGetCurrent()
+        }
+        let sleep = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, true, CFIndex.max) { [unowned self] _, _ in
+            guard woke > 0 else { return }
+            let ms = (CFAbsoluteTimeGetCurrent() - woke) * 1000
+            if carrying { marked.append(ms) } else { unmarked.append(ms) }
+            carrying = false
+            woke = 0
+        }
+        for observer in [wake, sleep].compactMap({ $0 }) {
+            CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+            observers.append(observer)
+        }
+    }
+
+    func stop() {
+        for observer in observers { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
+        observers = []
+    }
+
+    static func summary(_ values: [Double]) -> [String: Double] {
+        guard !values.isEmpty else { return ["count": 0] }
+        let sorted = values.sorted()
+        func at(_ q: Double) -> Double { sorted[min(sorted.count - 1, Int(q * Double(sorted.count)))] }
+        return [
+            "count": Double(sorted.count),
+            "p50": at(0.5),
+            "p95": at(0.95),
+            "max": sorted.last!,
+            "total": sorted.reduce(0, +),
+        ]
     }
 }
 
@@ -307,6 +672,9 @@ private struct Workload: Encodable {
     let wallMilliseconds: Double
     let mainThreadMilliseconds: Double
     let liveThreadsMilliseconds: Double
+    let medianStepMilliseconds: Double
+    let p95StepMilliseconds: Double
+    let storeChanges: Int
     let counts: TabPerformanceCounters.Counts
 }
 
