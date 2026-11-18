@@ -28,7 +28,7 @@ class UpdateFeedTests(unittest.TestCase):
         self.metadata = {"RELEASE_VERSION": "0.3.0", "BEND_BUILD_NUMBER": "125001"}
         self.save_metadata()
         (self.root / "Bend-0.3.0-arm64.dmg").write_bytes(b"archive fixture")
-        (self.root / "RELEASE_NOTES.md").write_text("Fix <something> & improve tabs.")
+        (self.root / "RELEASE_NOTES.md").write_text("## v0.3.0\n\n- Fix `<something>` & improve [tabs](https://example.com).\n")
         self.env = patch.dict(os.environ, {"GITHUB_REPOSITORY": "1st1/bend"})
         self.env.start()
         self.addCleanup(self.env.stop)
@@ -38,7 +38,8 @@ class UpdateFeedTests(unittest.TestCase):
         (self.root / "build.json").write_text(json.dumps(self.metadata))
 
     def test_feed_targets_exact_signed_archive_and_build(self):
-        xml = ET.parse(feed.make_feed(self.root, self.signature))
+        appcast = feed.make_feed(self.root, self.signature)
+        xml = ET.parse(appcast)
         item = xml.find("./channel/item")
         self.assertEqual(item.findtext(feed.element("version")), "125001")
         self.assertEqual(item.findtext(feed.element("shortVersionString")), "0.3.0")
@@ -48,7 +49,10 @@ class UpdateFeedTests(unittest.TestCase):
         self.assertEqual(enclosure.get("length"), "15")
         self.assertEqual(enclosure.get("url"), "https://github.com/1st1/bend/releases/download/v0.3.0/Bend-0.3.0-arm64.dmg")
         self.assertEqual(enclosure.get(feed.element("edSignature")), self.signature)
-        self.assertIn("&lt;something&gt;", item.findtext("description"))
+        description = item.find("description")
+        self.assertEqual(description.get(feed.element("format")), "markdown")
+        self.assertEqual(description.text, "## v0.3.0\n\n- Fix `<something>` & improve [tabs](https://example.com).\n")
+        self.assertIn("&lt;something&gt;", appcast.read_text())
 
     def test_reject_invalid_metadata_and_missing_archive(self):
         for field, value in [("RELEASE_VERSION", "../elsewhere"), ("BEND_BUILD_NUMBER", "0")]:

@@ -72,6 +72,32 @@ final class AppUpdater: NSObject, ObservableObject, @preconcurrency SPUStandardU
     func standardUserDriverWillFinishUpdateSession() {
         availableVersion = nil
     }
+
+    func standardUserDriverWillShowReleaseNotesText(_ releaseNotesAttributedString: NSAttributedString,
+                                                    forUpdate update: SUAppcastItem,
+                                                    withBundleDisplayVersion bundleDisplayVersion: String,
+                                                    bundleVersion: String) -> NSAttributedString? {
+        Self.releaseNotesText(for: update)
+    }
+
+    static func releaseNotesText(for update: SUAppcastItem) -> NSAttributedString? {
+        guard update.itemDescriptionFormat == "markdown",
+              let markdown = update.itemDescription,
+              !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return renderReleaseNotesMarkdown(markdown)
+    }
+
+    static func renderReleaseNotesMarkdown(_ markdown: String) -> NSAttributedString {
+        ChatMarkdownDocument.render(
+            markdown,
+            inlineCodeBackground: NSColor.labelColor.withAlphaComponent(0.08),
+            codeBlockBackground: NSColor.labelColor.withAlphaComponent(0.06),
+            allowedLinkSchemes: ["https", "http"],
+            requireLinkHost: true
+        )
+    }
 }
 
 struct AppUpdateButton: View {

@@ -69,7 +69,8 @@ struct ChatInlineText: NSViewRepresentable {
         layout.ensureLayout(for: container)
         return CGSize(width: width, height: ceil(layout.usedRect(for: container).height))
     }
-    static func render(_ source: AttributedString, size: CGFloat, heading: Bool) -> NSAttributedString {
+    static func render(_ source: AttributedString, size: CGFloat, heading: Bool,
+                       inlineCodeBackground: NSColor = NSColor.white.withAlphaComponent(0.08)) -> NSAttributedString {
         let output = NSMutableAttributedString()
         for run in source.runs {
             let value = String(source[run.range].characters)
@@ -86,7 +87,7 @@ struct ChatInlineText: NSViewRepresentable {
                                                               .paragraphStyle: paragraph]
             if let link = run.link { attributes[.link] = link }
             if run.strikethroughStyle != nil { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
-            if run.font != nil { attributes[.backgroundColor] = NSColor.white.withAlphaComponent(0.08) }
+            if run.font != nil { attributes[.backgroundColor] = inlineCodeBackground }
             output.append(NSAttributedString(string: value, attributes: attributes))
         }
         return output
