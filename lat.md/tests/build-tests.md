@@ -50,4 +50,4 @@ Coverage includes exact-commit tags, complete asset upload before publication, d
 
 ## Native test runner coverage
 
-[[scripts/test-test-runner.py#TestRunnerTests]] verifies full inventory execution, skip accounting, rejection of unmatched filters and ambiguous names, failed-process propagation, timeout termination, and continued execution after failures, crashes, timeouts, or missing results.
+[[scripts/test-test-runner.py#TestRunnerTests]] verifies full inventory execution, disjoint shard coverage, shard input validation, skip accounting, rejection of unmatched filters and ambiguous names, failed-process propagation, timeout termination, and continued execution after failures, crashes, timeouts, or missing results.
