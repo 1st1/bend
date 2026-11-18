@@ -139,7 +139,7 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
     }
 }
 
-public struct Page: Codable, Identifiable, Sendable {
+public struct Page: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var address: String
     public var isPinned: Bool
@@ -164,7 +164,7 @@ public struct Page: Codable, Identifiable, Sendable {
     }
 }
 
-public struct BrowserTab: Codable, Identifiable, Sendable {
+public struct BrowserTab: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var title: String
     public var layout: PaneLayout

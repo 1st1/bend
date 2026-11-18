@@ -24,6 +24,8 @@ Tab and pane hosting views disable inherited safe-area regions: the window shell
 
 [BrowserView.swift](../../Sources/Browse/BrowserView.swift) renders each retained canvas from its own tab model. Pane focus and window controls belong to that tab, and another tab's zoom cannot replace its layout. A cross-tab pane transfer reattaches the existing web view to the destination host without navigating or replacing its controller. Retention avoids reparenting and zero-sized WebKit layout during ordinary tab switches; it does not prevent WebKit process termination or pages' own background behavior. [[lat.md/tests/session-tests#Mounted tab switching]] verifies native parent identity and document state.
 
+[[Sources/Browse/MountedTabContent.swift#MountedTabHost#update]] compares each retained tab's canvas inputs before replacing its SwiftUI root. Pane layout, focus, selection, and relevant chrome preferences drive those inputs. Page controllers publish directly to their own panes. A sidebar title edit or width change leaves the mounted roots in place, and AppKit sizes only the selected host to the available viewport.
+
 Session restoration creates controllers lazily on selection. Opening a new tab in the background starts its controller immediately and defers mounting its canvas until selection. The [[lat.md/tests/session-tests#Tab performance baselines]] track native work as visited tabs accumulate.
 
 ## Session restoration

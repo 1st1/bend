@@ -18,6 +18,8 @@ Dragging the canvas-facing edge uses mirrored directions and measures pointer mo
 
 [BrowserView.swift](../../Sources/Browse/BrowserView.swift) animates collapse and restoration over 200 ms with an ease-in-out curve. The sidebar slides and fades at its configured edge while the native pane canvas resizes in place, retaining its WebViews and document state. Rapid toggles reverse toward the latest layout. Reduce Motion disables the animation; width dragging remains immediate. [[lat.md/tests/sidebar-tests#Sidebar visibility animation]] covers intermediate geometry, stable native parents, retained form state, and reversal.
 
+[[Sources/Browse/BrowserStore.swift#BrowserStore#resizeSidebar]] publishes each accepted width immediately and schedules a session save. Width updates leave the tab membership and extension activation bookkeeping alone.
+
 ## Floating sidebar
 
 [FloatingSidebar.swift](../../Sources/Browse/FloatingSidebar.swift) reveals the hidden sidebar at the configured window edge without resizing the browser canvas or changing the pinned-sidebar preference.
@@ -31,6 +33,8 @@ In the key window, moving within thirteen points of the configured edge reveals 
 [[Sources/Browse/SidebarScrollStatus.swift#SidebarScrollStatus]] counts tabs fully outside the visible scroll viewport. Small pills show those counts at the top and bottom fades in docked and floating sidebars.
 
 Partially visible rows are excluded. Zero counts hide their pill; an empty list or unmeasured viewport hides both. Counts follow scrolling, resizing, tab membership, the measured fixed-header inset (including favorites), and the areas covered by the toolbar and floating media player. The top pill sits below the fixed header and the bottom pill above the player. The calculation shares [[Sources/Browse/BrowserView.swift#Chrome#sidebarTabHeight]] and [[Sources/Browse/BrowserView.swift#Chrome#sidebarTabSpacing]] with the fixed-height row layout.
+
+[[Sources/Browse/BrowserView.swift#SidebarTabRow]] compares its tab, selection, menu, and icon inputs before updating. [[Sources/Browse/SidebarTabIcon.swift#SidebarTabIconPresentation]] carries the effective favicon or fallback symbol into each row. Sidebar width changes can lay out existing rows without replacing their content, and native row targets are available as soon as the scroll viewport moves.
 
 [[Sources/Browse/SidebarScrollStatus.swift#SidebarOverflowPill]] overlays a compact material capsule outside the content opacity mask, without reserving space or intercepting scrolling, selection, or dragging. Pills use 9-point text and a borderless material background at 80% opacity, with no directional icon. Their position identifies the edge; accessibility labels name both the count and edge. [[lat.md/tests/sidebar-tests#Sidebar overflow counts]] covers edge positions, partial visibility, favorites, and changing viewport or tab counts.
 

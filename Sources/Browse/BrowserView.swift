@@ -67,7 +67,8 @@ struct BrowserView: View {
             transaction.disablesAnimations = true
         }
         .overlay { FloatingSidebarTracking(store: store).accessibilityHidden(true) }
-        .background(PaneShadowPlane(store: store).allowsHitTesting(false).accessibilityHidden(true))
+        .background(PaneShadowPlane(appearance: PaneShadowAppearance(store: store))
+            .allowsHitTesting(false).accessibilityHidden(true))
         .background {
             if #available(macOS 26.0, *) {
                 Color.black.opacity(store.windowGlass.darkening).allowsHitTesting(false)
@@ -113,19 +114,27 @@ struct BrowserView: View {
         // The docked canvas contributes its own gap after the sidebar.
         let leadingInset = Chrome.sidebarHorizontalInset - (!floating && store.sidebarSide == .right ? Chrome.paneInset : 0)
         let trailingInset = Chrome.sidebarHorizontalInset - (!floating && store.sidebarSide == .left ? Chrome.paneInset : 0)
+        let tabs = store.sidebarTabs
+        let selectedID = store.session.selectedTab
+        let showsPaneCounts = store.sidebarWidth >= 160
+        let favoritesFull = store.favorites.count >= SidebarFavorite.limit
+        let rows = tabs.map { tab in
+            SidebarTabRow(store: store, tab: tab, selected: tab.id == selectedID,
+                          showsPaneCount: showsPaneCounts && tab.pages.count > 1,
+                          favoriteID: store.favorite(for: tab)?.id,
+                          canFavorite: store.canFavorite(tab), favoritesFull: favoritesFull,
+                          icon: SidebarTabIconPresentation(store: store, tab: tab))
+        }
         return VStack(alignment: .leading, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Chrome.sidebarTabSpacing) {
-                    ForEach(store.sidebarTabs) { tab in
-                        SidebarTabRow(store: store, tab: tab)
-                    }
-
+                    ForEach(rows, id: \.tab.id) { $0.equatable() }
                 }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
                     .padding(.top, sidebarHeaderHeight + Chrome.sidebarTopPadding)
                     .padding(.bottom, Chrome.sidebarScrollFadeHeight + mediaPlayerHeight)
             }
             .onScrollGeometryChange(for: SidebarScrollStatus.self) { geometry in
-                SidebarScrollStatus(visibleRect: geometry.visibleRect, tabCount: store.sidebarTabs.count,
+                SidebarScrollStatus(visibleRect: geometry.visibleRect, tabCount: tabs.count,
                                     topInset: sidebarHeaderHeight + Chrome.sidebarTopPadding, bottomOcclusion: mediaPlayerHeight,
                                     topOcclusion: sidebarHeaderHeight)
             } action: { _, status in
@@ -203,29 +212,40 @@ struct BrowserView: View {
 
 }
 
-private struct SidebarTabRow: View {
-    @ObservedObject var store: BrowserStore
+private struct SidebarTabRow: View, Equatable {
+    let store: BrowserStore
     let tab: BrowserTab
+    let selected: Bool
+    let showsPaneCount: Bool
+    let favoriteID: UUID?
+    let canFavorite: Bool
+    let favoritesFull: Bool
+    let icon: SidebarTabIconPresentation
     @ViewState<Bool> private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.store === rhs.store && lhs.tab == rhs.tab && lhs.selected == rhs.selected &&
+            lhs.showsPaneCount == rhs.showsPaneCount && lhs.favoriteID == rhs.favoriteID &&
+            lhs.canFavorite == rhs.canFavorite && lhs.favoritesFull == rhs.favoritesFull && lhs.icon == rhs.icon
+    }
 
     var body: some View {
         #if DEBUG
         TabPerformanceCounters.record(\.sidebarRowBodies, store: store)
         #endif
-        let selected = tab.id == store.session.selectedTab
         return HStack(spacing: 8) {
             Button {
                 if OptionKeyState.optionAtClick { store.toggleTabPinned(tab.id) }
                 else { store.select(tab.id) }
             } label: {
                 HStack(spacing: 9) {
-                    SidebarTabIcon(store: store, tab: tab)
+                    SidebarTabIcon(presentation: icon)
                         .frame(width: SidebarTabIconView.slotSize.width, height: SidebarTabIconView.slotSize.height)
                         .accessibilityHidden(true)
                     FadingTabTitle(title: tab.title)
                         .font(.system(size: 12, weight: selected ? .medium : .regular))
-                    if tab.pages.count > 1 && store.sidebarWidth >= 160 {
+                    if showsPaneCount {
                         Text("\(tab.pages.count)").font(.system(size: 9, design: .monospaced)).foregroundStyle(Chrome.muted)
                     }
                 }.frame(maxHeight: .infinity).contentShape(Rectangle())
@@ -258,12 +278,12 @@ private struct SidebarTabRow: View {
         .contextMenu {
             Button("New tab") { store.newTab() }
             Button("Duplicate tab") { store.duplicateTab(tab.id) }
-            if let favorite = store.favorite(for: tab) {
-                Button("Remove from Favorites") { store.removeFavorite(favorite.id) }
+            if let favoriteID {
+                Button("Remove from Favorites") { store.removeFavorite(favoriteID) }
             } else if !store.isPrivate {
-                Button(store.favorites.count >= SidebarFavorite.limit ? "Add to Favorites (9 maximum)" : "Add to Favorites") {
+                Button(favoritesFull ? "Add to Favorites (9 maximum)" : "Add to Favorites") {
                     store.requestFavorite(tab.id)
-                }.disabled(!store.canFavorite(tab))
+                }.disabled(!canFavorite)
             }
             Button(tab.isPinned ? "Unpin tab" : "Pin tab") { store.toggleTabPinned(tab.id) }
             Button("Close tab") { store.closeTab(tab.id) }.disabled(tab.isPinned)
@@ -300,39 +320,90 @@ private struct FadingTabTitle: View {
     }
 }
 
-struct TabCanvasRoot: View {
-    @ObservedObject var store: BrowserStore
+struct TabCanvasState: Equatable {
     let tab: BrowserTab
+    let chrome: TabCanvasChrome
+    let selected: Bool
+    let zoomedPane: UUID?
+    let hasLeftChat: Bool
+
+    var id: UUID { tab.id }
+    var pages: [Page] { tab.pages }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        // The title is drawn by the sidebar. Pane headers use their controllers.
+        lhs.id == rhs.id && lhs.tab.layout == rhs.tab.layout && lhs.pages == rhs.pages &&
+            lhs.tab.focusedPane == rhs.tab.focusedPane && lhs.tab.originTabID == rhs.tab.originTabID &&
+            lhs.chrome == rhs.chrome && lhs.selected == rhs.selected &&
+            lhs.zoomedPane == rhs.zoomedPane && lhs.hasLeftChat == rhs.hasLeftChat
+    }
+}
+
+struct TabCanvasChrome: Equatable {
+    let sidebarVisible: Bool
+    let sidebarSide: SidebarSide
+    let isFullScreen: Bool
+    let paneHighlight: PaneHighlight
+    let inactivePaneDimAmount: Double
+    let paneHeaderGlass: GlassAppearance
+    let paneHeaderTopRimClipping: Double
+    let paneHeaderBottomRimClipping: Double
+    let paneMoveRevision: Int
+    // Also invalidate Back button chrome when either link-close preference changes.
+    let closeLinkTabOnBack: Bool
+    let closeLinkPaneOnBack: Bool
+
+    @MainActor init(store: BrowserStore) {
+        sidebarVisible = store.sidebarVisible
+        sidebarSide = store.sidebarSide
+        isFullScreen = store.isFullScreen
+        paneHighlight = store.paneHighlight
+        inactivePaneDimAmount = store.inactivePaneDimAmount
+        paneHeaderGlass = store.paneHeaderGlass
+        paneHeaderTopRimClipping = store.paneHeaderTopRimClipping
+        paneHeaderBottomRimClipping = store.paneHeaderBottomRimClipping
+        paneMoveRevision = store.paneMoveRevision
+        closeLinkTabOnBack = store.closeLinkTabOnBack
+        closeLinkPaneOnBack = store.closeLinkPaneOnBack
+    }
+}
+
+struct TabCanvasRoot: View {
+    let store: BrowserStore
+    let canvas: TabCanvasState
 
     var body: some View {
         GeometryReader { geometry in
-            PaneCanvas(store: store, tab: tab, viewport: geometry.size)
+            PaneCanvas(store: store, canvas: canvas, viewport: geometry.size)
         }
     }
 }
 
 private struct PaneCanvas: View {
-    @ObservedObject var store: BrowserStore
-    let tab: BrowserTab
+    let store: BrowserStore
+    let canvas: TabCanvasState
     let viewport: CGSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var animation: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
 
     var body: some View {
-        let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
-        let layout = zoomed.map(PaneLayout.pane) ?? tab.layout
+        let tab = canvas.tab
+        let layout = canvas.zoomedPane.map(PaneLayout.pane) ?? tab.layout
         let geometry = PaneGeometry(layout: layout, viewport: viewport)
         let clipped = geometry.clippedPaneIDs(in: viewport)
         let regions = geometry.overflowRegions(layout: layout, in: viewport)
-        let livePages = Set(store.session.workspaces.flatMap(\.tabs).first { $0.id == tab.id }?.pages.map(\.id) ?? [])
+        // A retained canvas can run layout before its host receives a pane
+        // transfer. Do not recreate controllers for pages that already left it.
+        let liveTab = store.session.workspaces.lazy.flatMap(\.tabs).first { $0.id == tab.id }
+        let livePages = Set(liveTab?.pages.map(\.id) ?? [])
         ZStack(alignment: .topLeading) {
             ForEach(geometry.panes) { placement in
                 if livePages.contains(placement.id), let page = tab.pages.first(where: { $0.id == placement.id }) {
                     let hidden = clipped.contains(page.id)
                     let visibleFrame = placement.frame.intersection(CGRect(origin: .zero, size: viewport))
                     let frame = hidden ? placement.frame : visibleFrame
-                    BrowserPane(store: store, controller: store.controller(for: page), tab: tab, pageID: page.id)
+                    BrowserPane(store: store, controller: store.controller(for: page), canvas: canvas, pageID: page.id)
                         .frame(width: frame.width, height: frame.height)
                         .opacity(hidden ? 0 : 1)
                         .allowsHitTesting(!hidden)
@@ -353,7 +424,7 @@ private struct PaneCanvas: View {
         }
         .frame(width: geometry.size.width, height: geometry.size.height)
         .animation(animation, value: tab.pages.count)
-        .animation(animation, value: store.paneMoveRevision)
+        .animation(animation, value: canvas.chrome.paneMoveRevision)
         .frame(width: viewport.width, height: viewport.height, alignment: .topLeading)
         .clipped()
         .overlay(alignment: .topLeading) {
@@ -530,32 +601,29 @@ private struct AnimatedPaneHeader<Content: View>: View, Animatable {
 private struct BrowserPane: View {
     // The 24-point buttons have a 36-point center pitch across group boundaries.
     private static let controlGroupSpacing: CGFloat = 12
-    @ObservedObject var store: BrowserStore
+    let store: BrowserStore
     @ObservedObject var controller: PageController
-    let tab: BrowserTab
+    let canvas: TabCanvasState
     let pageID: UUID
     @ViewState<CGFloat> private var headerHeight: CGFloat = Chrome.paneHeaderHeight
     @ViewState<Bool> private var titleHovered = false
     @ViewState<Bool> private var paneHovered = false
     @ViewState<CGFloat> private var windowControlsWidth: CGFloat = 36
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var tab: BrowserTab { canvas.tab }
+    private var chrome: TabCanvasChrome { canvas.chrome }
     private var focused: Bool { tab.focusedPane == pageID }
     private var pinned: Bool { tab.pages.first { $0.id == pageID }?.isPinned == true }
     private var activeHeaderTint: NSColor? {
-        guard focused, store.paneHighlight.style == .titleTint else { return nil }
-        return store.paneHighlight.titleTintColor.nsColor.withAlphaComponent(store.paneHighlight.titleTintIntensity)
+        guard focused, chrome.paneHighlight.style == .titleTint else { return nil }
+        return chrome.paneHighlight.titleTintColor.nsColor.withAlphaComponent(chrome.paneHighlight.titleTintIntensity)
     }
     private var usesSharedHeader: Bool {
         if #available(macOS 26.0, *) { return !controller.isStartPage && controller.error == nil }
         return false
     }
-    private var hasLeftChat: Bool {
-        store.sidebarSide == .right && !store.isPrivate &&
-            store.openChats.contains(tab.id) && store.chats[tab.id] != nil
-    }
     private var hostsWindowControls: Bool {
-        let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
-        return (!store.sidebarVisible || store.sidebarSide == .right) && pageID == (zoomed ?? tab.layout.paneIDs.first)
+        (!chrome.sidebarVisible || chrome.sidebarSide == .right) && pageID == (canvas.zoomedPane ?? tab.layout.paneIDs.first)
     }
 
     var body: some View {
@@ -571,7 +639,7 @@ private struct BrowserPane: View {
         .overlay {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.black)
-                .opacity(focused || store.paneHighlight.style != .transparency ? 0 : store.inactivePaneDimAmount)
+                .opacity(focused || chrome.paneHighlight.style != .transparency ? 0 : chrome.inactivePaneDimAmount)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
@@ -582,10 +650,10 @@ private struct BrowserPane: View {
     private var paneContent: some View {
         if #available(macOS 26.0, *), !controller.isStartPage, controller.error == nil {
             WebSurface(webView: controller.webView, topContentInset: headerHeight,
-                       headerAppearance: store.paneHeaderGlass, topRimClipping: store.paneHeaderTopRimClipping,
-                       bottomRimClipping: store.paneHeaderBottomRimClipping,
+                       headerAppearance: chrome.paneHeaderGlass, topRimClipping: chrome.paneHeaderTopRimClipping,
+                       bottomRimClipping: chrome.paneHeaderBottomRimClipping,
                        activeHeaderTint: activeHeaderTint)
-                .background(PaneChromeBackground(cornerRadius: 12, topRimClipping: store.paneHeaderTopRimClipping))
+                .background(PaneChromeBackground(cornerRadius: 12, topRimClipping: chrome.paneHeaderTopRimClipping))
                 .overlay(alignment: .top) {
                     header
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
@@ -594,9 +662,9 @@ private struct BrowserPane: View {
             VStack(spacing: 0) {
                 header
                     .background(PaneChromeBackground(cornerRadius: 11, roundsBottomCorners: false,
-                                                    topRimClipping: store.paneHeaderTopRimClipping,
-                                                    bottomRimClipping: store.paneHeaderBottomRimClipping,
-                                                    appearance: store.paneHeaderGlass))
+                                                    topRimClipping: chrome.paneHeaderTopRimClipping,
+                                                    bottomRimClipping: chrome.paneHeaderBottomRimClipping,
+                                                    appearance: chrome.paneHeaderGlass))
                 pageContent
                     .background(PaneBodyBackground())
             }
@@ -605,13 +673,13 @@ private struct BrowserPane: View {
 
     private var header: some View {
         AnimatedPaneHeader(
-            leadingInset: hostsWindowControls && !store.isFullScreen && !hasLeftChat ? 66 + Self.controlGroupSpacing : 0,
-            controlsWidth: hostsWindowControls && !store.sidebarVisible ? windowControlsWidth : 0
+            leadingInset: hostsWindowControls && !chrome.isFullScreen && !canvas.hasLeftChat ? 66 + Self.controlGroupSpacing : 0,
+            controlsWidth: hostsWindowControls && !chrome.sidebarVisible ? windowControlsWidth : 0
         ) { controlsWidth in
             HStack(spacing: 0) {
                 HStack(spacing: Chrome.sidebarControlSpacing) {
-                    if tab.id == store.session.selectedTab { DownloadsButton(downloads: store.downloads) }
-                    iconButton(store.sidebarSide == .left ? "sidebar.left" : "sidebar.right", "Show sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible = true }
+                    if canvas.selected { DownloadsButton(downloads: store.downloads) }
+                    iconButton(chrome.sidebarSide == .left ? "sidebar.left" : "sidebar.right", "Show sidebar · ⌘⇧S", prominent: true) { store.sidebarVisible = true }
                         .background(WindowDragArea(excluded: true))
                 }
                 .padding(.trailing, Self.controlGroupSpacing)
@@ -619,9 +687,9 @@ private struct BrowserPane: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowControlsWidth = $0 }
                 .frame(width: controlsWidth, alignment: .trailing)
                 .clipped()
-                .opacity(hostsWindowControls && !store.sidebarVisible ? 1 : 0)
-                .allowsHitTesting(hostsWindowControls && !store.sidebarVisible)
-                .accessibilityHidden(!hostsWindowControls || store.sidebarVisible)
+                .opacity(hostsWindowControls && !chrome.sidebarVisible ? 1 : 0)
+                .allowsHitTesting(hostsWindowControls && !chrome.sidebarVisible)
+                .accessibilityHidden(!hostsWindowControls || chrome.sidebarVisible)
                 HStack(spacing: 0) {
                     HStack(spacing: 7) {
                         ZStack {
@@ -667,7 +735,7 @@ private struct BrowserPane: View {
                         }.disabled(controller.isStartPage)
                         HStack(spacing: 0) {
                             if tab.pages.count > 1 {
-                                iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
+                                iconButton(canvas.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
                             }
                         }
                     }
@@ -711,12 +779,12 @@ private struct BrowserPane: View {
         .padding(.horizontal, 12).frame(height: Chrome.paneHeaderHeight)
         // Retained pane hosts do not inherit the window shell's animation transaction.
         // Animate the inset itself rather than inserting/removing a spacer view.
-        .animation(reduceMotion || tab.id != store.session.selectedTab ? nil : .easeInOut(duration: 0.2), value: hasLeftChat)
-        .animation(reduceMotion || tab.id != store.session.selectedTab ? nil : .easeInOut(duration: 0.2), value: store.sidebarVisible)
+        .animation(reduceMotion || !canvas.selected ? nil : .easeInOut(duration: 0.2), value: canvas.hasLeftChat)
+        .animation(reduceMotion || !canvas.selected ? nil : .easeInOut(duration: 0.2), value: chrome.sidebarVisible)
         .background(WindowDragArea(onPress: { store.focus(pageID) }))
         .background {
-            store.paneHighlight.titleTintColor.color
-                .opacity(!usesSharedHeader && focused && store.paneHighlight.style == .titleTint ? store.paneHighlight.titleTintIntensity : 0)
+            chrome.paneHighlight.titleTintColor.color
+                .opacity(!usesSharedHeader && focused && chrome.paneHighlight.style == .titleTint ? chrome.paneHighlight.titleTintIntensity : 0)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)

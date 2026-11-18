@@ -2,10 +2,60 @@ import AppKit
 import SwiftUI
 import BrowseCore
 
+struct SidebarTabIconPresentation: Equatable {
+    enum Icon: Equatable {
+        case image(NSImage)
+        case symbol(String)
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            switch (lhs, rhs) {
+            case (.image(let lhs), .image(let rhs)): lhs === rhs
+            case (.symbol(let lhs), .symbol(let rhs)): lhs == rhs
+            default: false
+            }
+        }
+    }
+
+    let tabID: UUID
+    let frontID: UUID?
+    let backID: UUID?
+    let count: Int
+    let front: Icon
+    let back: Icon
+
+    @MainActor init(store: BrowserStore, tab: BrowserTab) {
+        let active = tab.pages.first { $0.id == tab.focusedPane } ?? tab.pages.first
+        let other = tab.layout.paneIDs.first { $0 != active?.id }
+            .flatMap { id in tab.pages.first { $0.id == id } }
+        tabID = tab.id
+        frontID = active?.id
+        backID = other?.id
+        count = tab.pages.count
+        front = Self.icon(for: active, store: store)
+        back = Self.icon(for: other, store: store)
+    }
+
+    @MainActor private static func icon(for page: Page?, store: BrowserStore) -> Icon {
+        guard let page else { return .symbol("square.grid.2x2") }
+        if let image = store.favicon(for: page) { return .image(image) }
+        let address = store.existingController(for: page.id)?.address ?? page.address
+        switch address {
+        case "bend://log": return .symbol("sparkles")
+        case "bend://history": return .symbol("clock")
+        default: return .symbol(address.hasPrefix("bend://") ? "square.grid.2x2" : "globe")
+        }
+    }
+}
+
 struct SidebarTabIcon: NSViewRepresentable {
-    @ObservedObject var store: BrowserStore
+    let presentation: SidebarTabIconPresentation
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let tab: BrowserTab
+
+    init(presentation: SidebarTabIconPresentation) { self.presentation = presentation }
+
+    init(store: BrowserStore, tab: BrowserTab) {
+        self.init(presentation: SidebarTabIconPresentation(store: store, tab: tab))
+    }
 
     func makeNSView(context: Context) -> SidebarTabIconView { SidebarTabIconView() }
 
@@ -14,25 +64,19 @@ struct SidebarTabIcon: NSViewRepresentable {
     }
 
     func updateNSView(_ view: SidebarTabIconView, context: Context) {
-        let active = tab.pages.first { $0.id == tab.focusedPane } ?? tab.pages.first
-        let other = tab.layout.paneIDs.first { $0 != active?.id }
-            .flatMap { id in tab.pages.first { $0.id == id } }
-        update(view.frontIcon, page: active)
-        update(view.backIcon, page: other)
-        view.updateStack(front: active?.id, back: other?.id, count: tab.pages.count,
-                         animate: view.tabID == tab.id && !reduceMotion)
-        view.tabID = tab.id
+        if view.presentation?.front != presentation.front { update(view.frontIcon, icon: presentation.front) }
+        if view.presentation?.back != presentation.back { update(view.backIcon, icon: presentation.back) }
+        view.updateStack(front: presentation.frontID, back: presentation.backID, count: presentation.count,
+                         animate: view.tabID == presentation.tabID && !reduceMotion)
+        view.presentation = presentation
     }
 
-    private func update(_ view: NSImageView, page: Page?) {
-        let controller = page.flatMap { store.existingController(for: $0.id) }
-        if let image = page.flatMap({ store.favicon(for: $0) }) {
+    private func update(_ view: NSImageView, icon: SidebarTabIconPresentation.Icon) {
+        switch icon {
+        case .image(let image):
             view.image = image
             view.contentTintColor = nil
-        } else {
-            let address = controller?.address ?? page?.address ?? "bend://start"
-            let symbol = address.hasPrefix("bend://")
-                ? (address == "bend://log" ? "sparkles" : address == "bend://history" ? "clock" : "square.grid.2x2") : "globe"
+        case .symbol(let symbol):
             view.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
             view.contentTintColor = .secondaryLabelColor
         }
@@ -41,7 +85,8 @@ struct SidebarTabIcon: NSViewRepresentable {
 
 final class SidebarTabIconView: NSView {
     static let slotSize = CGSize(width: 24, height: 28)
-    var tabID: UUID?
+    var tabID: UUID? { presentation?.tabID }
+    var presentation: SidebarTabIconPresentation?
     let frontIcon = NSImageView()
     let backIcon = NSImageView()
     private let frontShadow = SidebarIconContactShadow()
@@ -63,7 +108,7 @@ final class SidebarTabIconView: NSView {
         let shouldFade = animate && window != nil && frontPageID != nil && count > 1
         frontPageID = front
         backPageID = back
-        paneCount = count
+        if count != paneCount { paneCount = count }
         for (view, changed) in [(frontIcon as NSView, changedFront), (backIcon, changedBack),
                                 (frontShadow, changedBack)] {
             if !animate || count <= 1 { view.layer?.removeAnimation(forKey: "stackFade") }

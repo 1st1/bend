@@ -1,15 +1,34 @@
 import AppKit
+import BrowseCore
 import SwiftUI
 
 // Shadows and outlines belong to the window background, outside clipped pane
 // canvases. They follow pane geometry without consuming any layout space.
 struct PaneShadowPlane: NSViewRepresentable {
-    @ObservedObject var store: BrowserStore
+    let appearance: PaneShadowAppearance
     func makeNSView(context: Context) -> PaneShadowView { PaneShadowView() }
-    func updateNSView(_ view: PaneShadowView, context: Context) { view.invalidateShadow() }
+    func updateNSView(_ view: PaneShadowView, context: Context) { view.updateAppearance(appearance) }
+}
+
+struct PaneShadowAppearance: Equatable {
+    let tabID: UUID
+    let focusedPane: UUID
+    let layout: PaneLayout
+    let highlight: PaneHighlight
+
+    @MainActor init(store: BrowserStore) {
+        let tab = store.selectedTab
+        tabID = tab.id
+        focusedPane = tab.focusedPane
+        layout = store.zoomedPane.map(PaneLayout.pane) ?? tab.layout
+        highlight = store.paneHighlight
+    }
 }
 
 final class PaneShadowView: NSView {
+    private var shadowAppearance: PaneShadowAppearance?
+    private let geometrySources = NSHashTable<NSView>.weakObjects()
+
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -17,6 +36,7 @@ final class PaneShadowView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         NotificationCenter.default.removeObserver(self)
+        geometrySources.removeAllObjects()
         guard window != nil else { return }
         for name in [NSView.boundsDidChangeNotification, NSView.frameDidChangeNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(geometryChanged(_:)), name: name, object: nil)
@@ -25,10 +45,18 @@ final class PaneShadowView: NSView {
     }
 
     @objc private func geometryChanged(_ notification: Notification) {
-        guard let changed = notification.object as? NSView, changed !== self, changed.window === window else { return }
+        guard let changed = notification.object as? NSView,
+              geometrySources.contains(changed) || changed is MountedTabHost || changed is ClippedPaneHost,
+              changed.window === window, !changed.isHiddenOrHasHiddenAncestor else { return }
         #if DEBUG
         TabPerformanceCounters.record(\.shadowGeometryInvalidations, window: window)
         #endif
+        invalidateShadow()
+    }
+
+    func updateAppearance(_ next: PaneShadowAppearance) {
+        guard next != shadowAppearance else { return }
+        shadowAppearance = next
         invalidateShadow()
     }
 
@@ -53,9 +81,22 @@ final class PaneShadowView: NSView {
         defer { context.restoreGState() }
         var shapes: [(path: CGPath, rect: CGRect, viewport: CGRect, color: CGColor, blur: CGFloat,
                       offset: CGSize, outline: (path: CGPath, color: CGColor)?)] = []
+        geometrySources.removeAllObjects()
         func collect(_ view: NSView) {
             guard !view.isHiddenOrHasHiddenAncestor else { return }
-            if let pane = view as? ClippedPaneHost, !pane.visibleRect.isEmpty {
+            if let canvas = view as? MountedTabHost, let id = canvas.selectedID, let host = canvas.mounted[id] {
+                collect(host)
+                return
+            }
+            if let pane = view as? ClippedPaneHost {
+                // Track the coordinate path as well as the pane's own frame.
+                // A sidebar transition can move the entire canvas sideways.
+                var source: NSView? = pane
+                while let current = source, !geometrySources.contains(current) {
+                    geometrySources.add(current)
+                    source = current.superview
+                }
+                guard !pane.visibleRect.isEmpty else { return }
                 let rect = pane.convert(pane.bounds, to: self)
                 var ancestor = pane.superview
                 while let parent = ancestor, !(parent is MountedTabHost) { ancestor = parent.superview }
