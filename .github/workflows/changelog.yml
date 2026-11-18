@@ -47,10 +47,15 @@ jobs:
         run: python3 scripts/test-test-runner.py
 
   native:
-    name: macOS 26 build and tests
+    name: macOS 26 build and tests (shard ${{ matrix.shard }})
     needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
     runs-on: macos-26
-    timeout-minutes: 45
+    # The reporting shard also needs time to upload artifacts after both benchmarks.
+    timeout-minutes: ${{ matrix.shard == 1 && 50 || 45 }}
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       RUN_TAB_PERF: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'tab-perf')) }}
@@ -60,46 +65,60 @@ jobs:
           persist-credentials: false
       - name: Verify toolchain
         run: |
+          mkdir -p ci-logs
           test "$(uname -m)" = arm64
           xcodebuild -version
           xcrun --sdk macosx --show-sdk-version
           swift --version
       - name: Test packaging scripts
+        if: matrix.shard == 0
         run: |
           bash scripts/test-build-app.sh
           bash scripts/test-build-prod.sh
       - name: Compile production
+        if: matrix.shard == 0
         run: |
-          mkdir -p ci-logs
           sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
           swift build -c release --disable-sandbox -Xswiftc -DBEND_PRODUCTION \
             -Xlinker -platform_version -Xlinker macos -Xlinker 26.0 -Xlinker "$sdk_version" \
             2>&1 | tee ci-logs/build.log
       - name: Test signed update feed and tamper rejection
+        if: matrix.shard == 0
         run: python3 scripts/test-update-feed.py
       - name: Run Swift tests
         timeout-minutes: 30
         env:
           LIBDISPATCH_COOPERATIVE_POOL_STRICT: '1'
+          BEND_TEST_SHARD_INDEX: ${{ matrix.shard }}
+          BEND_TEST_SHARD_COUNT: '2'
         run: |
           ./scripts/test.sh 2>&1 | tee ci-logs/tests.log
-      - name: Measure tab memory footprint
-        id: tab-memory
-        if: env.RUN_TAB_PERF == 'true'
+      - name: Measure tab UI scaling
+        if: matrix.shard == 1 && env.RUN_TAB_PERF == 'true'
         continue-on-error: true
-        timeout-minutes: 5
+        timeout-minutes: 9
+        env:
+          BEND_RUN_TAB_SCALING: '1'
+        run: |
+          mkdir -p tab-perf
+          ./scripts/test.sh --skip-build --filter TabPerformanceTests/scaling \
+            2>&1 | tee ci-logs/tab-scaling.log
+      - name: Measure tab memory footprint
+        if: matrix.shard == 1 && env.RUN_TAB_PERF == 'true'
+        continue-on-error: true
+        timeout-minutes: 4
         run: |
           mkdir -p tab-perf
           python3 scripts/bench-tab-memory.py --skip-build --output tab-perf/memory.json \
             2>&1 | tee ci-logs/tab-memory.log
       - name: Summarize tab performance
-        if: steps.tab-memory.outcome == 'success' || steps.tab-memory.outcome == 'failure'
+        if: matrix.shard == 1 && env.RUN_TAB_PERF == 'true'
         continue-on-error: true
         run: |
-          python3 scripts/report-tab-performance.py ci-logs/tests.log tab-perf \
+          python3 scripts/report-tab-performance.py ci-logs/tab-scaling.log tab-perf \
             | tee tab-perf/summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload tab performance reports
-        if: steps.tab-memory.outcome == 'success' || steps.tab-memory.outcome == 'failure'
+        if: matrix.shard == 1 && env.RUN_TAB_PERF == 'true'
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -125,7 +144,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: native-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          name: native-logs-${{ github.run_id }}-${{ github.run_attempt }}-shard-${{ matrix.shard }}
           path: ci-logs/
           if-no-files-found: ignore
           retention-days: 14

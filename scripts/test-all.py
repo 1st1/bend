@@ -23,7 +23,11 @@ def run(command, timeout=180):
     return process.returncode, output
 
 
-def main(command):
+def main(command, shard_index=0, shard_count=1):
+    if not 0 <= shard_index < shard_count:
+        print("Test shard index must be in the range 0..<shard count.", file=sys.stderr)
+        return 1
+
     # Discovery builds once with exactly the same SDK flags as execution.
     listing = subprocess.run([arg for arg in command if arg != "--no-parallel"] + ["list"],
                              capture_output=True, text=True)
@@ -31,7 +35,7 @@ def main(command):
     if listing.returncode:
         sys.stdout.write(listing.stdout)
         return listing.returncode
-    names = [line.strip() for line in listing.stdout.splitlines() if line.strip()]
+    names = sorted(line.strip() for line in listing.stdout.splitlines() if line.strip())
     if not names or len(set(names)) != len(names) or any(
             not re.fullmatch(r"(?:Browse(?:Core)?Tests|AITests)[./].+\(.*\)", name) for name in names):
         sys.stderr.write("Unrecognized or empty test inventory:\n" + listing.stdout)
@@ -46,8 +50,14 @@ def main(command):
         sys.stderr.write("Ambiguous test inventory; cannot guarantee complete isolated execution.\n")
         return 1
     groups = ([core] if core else []) + ([sdk] if sdk else []) + [[name] for name in native]
+    if shard_count > len(groups):
+        print("Test shard count exceeds the number of execution groups.", file=sys.stderr)
+        return 1
+    groups = groups[shard_index::shard_count]
+    selected = sum(map(len, groups))
     failures = []
-    print(f"Discovered {len(names)} tests; running {len(native)} native tests in separate processes.", flush=True)
+    print(f"Discovered {len(names)} tests. Shard {shard_index + 1}/{shard_count} will run "
+          f"{selected} tests in {len(groups)} isolated groups.", flush=True)
     for index, group in enumerate(groups, 1):
         label = group[0] if len(group) == 1 else f"{len(group)} model/SDK tests"
         print(f"\n[{index}/{len(groups)}] {label}", flush=True)
@@ -64,9 +74,19 @@ def main(command):
     if failures:
         print("\nFailed groups:\n" + "\n".join(failures))
         return 1
-    print(f"\nAll {len(names)} discovered tests completed successfully (including declared skips).")
+    print(f"\nAll {selected} tests in this shard completed successfully (including declared skips).")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    shard_index = os.environ.get("BEND_TEST_SHARD_INDEX")
+    shard_count = os.environ.get("BEND_TEST_SHARD_COUNT")
+    if (shard_index is None) != (shard_count is None):
+        sys.exit("Set BEND_TEST_SHARD_INDEX and BEND_TEST_SHARD_COUNT together.")
+    if shard_index is None:
+        sys.exit(main(sys.argv[1:]))
+    try:
+        index, count = int(shard_index), int(shard_count)
+    except ValueError:
+        sys.exit("BEND_TEST_SHARD_INDEX and BEND_TEST_SHARD_COUNT must be integers.")
+    sys.exit(main(sys.argv[1:], index, count))
