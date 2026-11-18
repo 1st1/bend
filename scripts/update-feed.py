@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Create a signed Sparkle feed for the exact notarized release artifact."""
 import base64
-import html
 import json
 import os
 from pathlib import Path
@@ -43,7 +42,7 @@ def make_feed(directory, signature):
     ET.SubElement(item, element("shortVersionString")).text = version
     ET.SubElement(item, element("minimumSystemVersion")).text = "26.0"
     ET.SubElement(item, element("hardwareRequirements")).text = "arm64"
-    ET.SubElement(item, "description").text = "<pre>" + html.escape((directory / "RELEASE_NOTES.md").read_text()) + "</pre>"
+    ET.SubElement(item, "description", {element("format"): "markdown"}).text = (directory / "RELEASE_NOTES.md").read_text()
     ET.SubElement(item, "enclosure", {
         "url": f"https://github.com/{repo}/releases/download/v{version}/{archive.name}",
         "length": str(archive.stat().st_size), "type": "application/octet-stream",

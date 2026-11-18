@@ -26,13 +26,55 @@ import Sparkle
     let production = AppUpdater(profile: .production, bundle: bundle)
     #expect(production.isEnabled)
     #expect(production.supportsGentleScheduledUpdateReminders)
-    // Catch misspelled optional Objective-C callbacks, which silently suppress reminders.
+    // Catch misspelled optional Objective-C callbacks, which silently suppress reminders or release-notes styling.
     for name in ["standardUserDriverShouldHandleShowingScheduledUpdate:andInImmediateFocus:",
                  "standardUserDriverWillHandleShowingUpdate:forUpdate:state:",
                  "standardUserDriverDidReceiveUserAttentionForUpdate:",
-                 "standardUserDriverWillFinishUpdateSession"] {
+                 "standardUserDriverWillFinishUpdateSession",
+                 "standardUserDriverWillShowReleaseNotesText:forUpdate:withBundleDisplayVersion:bundleVersion:"] {
         #expect(production.responds(to: NSSelectorFromString(name)))
     }
+    let markdownItem = try #require(SUAppcastItem(dictionary: [
+        "title": "Bend 0.4.0",
+        "sparkle:version": "12002",
+        "sparkle:shortVersionString": "0.4.0",
+        "description": [
+            "format": "markdown",
+            "content": "## v0.4.0\n\n- Use `bend` with [docs](https://example.com/docs), [bad](javascript:alert(1)), [internal](bend-pane://id).",
+        ],
+        "enclosure": ["url": "https://example.invalid/Bend.dmg", "length": "100"],
+    ]))
+    let rendered = try #require(production.standardUserDriverWillShowReleaseNotesText(
+        NSAttributedString(string: "fallback"),
+        forUpdate: markdownItem,
+        withBundleDisplayVersion: "0.4.0",
+        bundleVersion: "12002"
+    ))
+    let text = rendered.string as NSString
+    #expect(text.contains("## v0.4.0") == false)
+    #expect(text.contains("v0.4.0"))
+    let codeRange = text.range(of: "bend")
+    let codeFont = try #require(rendered.attribute(.font, at: codeRange.location, effectiveRange: nil) as? NSFont)
+    #expect(codeFont.isFixedPitch)
+    #expect(rendered.attribute(.backgroundColor, at: codeRange.location, effectiveRange: nil) != nil)
+    let docsRange = text.range(of: "docs")
+    #expect(rendered.attribute(.link, at: docsRange.location, effectiveRange: nil) as? URL == URL(string: "https://example.com/docs"))
+    #expect(rendered.attribute(.link, at: text.range(of: "bad").location, effectiveRange: nil) == nil)
+    #expect(rendered.attribute(.link, at: text.range(of: "internal").location, effectiveRange: nil) == nil)
+
+    let htmlItem = try #require(SUAppcastItem(dictionary: [
+        "title": "Bend 0.4.0",
+        "sparkle:version": "12002",
+        "sparkle:shortVersionString": "0.4.0",
+        "description": "<pre>Legacy HTML</pre>",
+        "enclosure": ["url": "https://example.invalid/Bend.dmg", "length": "100"],
+    ]))
+    #expect(production.standardUserDriverWillShowReleaseNotesText(
+        NSAttributedString(string: "fallback"),
+        forUpdate: htmlItem,
+        withBundleDisplayVersion: "0.4.0",
+        bundleVersion: "12002"
+    ) == nil)
 }
 
 // @lat: [[lat.md/tests/updates-tests#Application update launch scheduling]]
@@ -74,18 +116,35 @@ import Sparkle
     defer { preview.dismiss() }
     let item = try #require(preview.makeItem())
     #expect(item.displayVersionString == "0.3.0")
+    #expect(item.itemDescriptionFormat == "markdown")
     #expect(item.itemDescription?.contains("Nothing will be downloaded") == true)
     let state = try #require(try AppUpdatePreview.makeState())
     #expect(state.stage == .notDownloaded)
     #expect(state.userInitiated)
-    func buttons(_ view: NSView) -> [NSButton] {
-        (view as? NSButton).map { [$0] } ?? view.subviews.flatMap { buttons($0) }
+    func subviews<T: NSView>(_ type: T.Type, in view: NSView) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { subviews(type, in: $0) }
     }
     func button(_ title: String) -> NSButton? {
-        NSApp.windows.filter(\.isVisible).compactMap(\.contentView).flatMap { buttons($0) }.first { $0.title == title }
+        NSApp.windows.filter(\.isVisible).compactMap(\.contentView).flatMap { subviews(NSButton.self, in: $0) }.first { $0.title == title }
+    }
+    func releaseNotesView() -> NSTextView? {
+        NSApp.windows.filter(\.isVisible).compactMap(\.contentView).flatMap { subviews(NSTextView.self, in: $0) }
+            .first { $0.string.contains("Update preview") }
     }
     preview.show()
     try await Task.sleep(for: .milliseconds(250))
+    let notesView = try #require(releaseNotesView())
+    let notesText = notesView.attributedString()
+    let notesString = notesText.string as NSString
+    #expect(notesString.contains("v0.3.0"))
+    #expect(notesString.contains("Update preview"))
+    #expect(notesString.contains("AppUpdatePreview"))
+    #expect(!notesString.contains("##"))
+    let previewCodeRange = notesString.range(of: "AppUpdatePreview")
+    let previewCodeFont = try #require(notesText.attribute(.font, at: previewCodeRange.location, effectiveRange: nil) as? NSFont)
+    #expect(previewCodeFont.isFixedPitch)
+    let previewLinkRange = notesString.range(of: "release notes")
+    #expect(notesText.attribute(.link, at: previewLinkRange.location, effectiveRange: nil) as? URL == URL(string: "https://example.invalid/releases"))
     try #require(button("Install Update")).performClick(nil)
     try await Task.sleep(for: .milliseconds(250))
     try #require(button("Cancel")).performClick(nil)

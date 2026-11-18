@@ -4,7 +4,7 @@ import Sparkle
 
 // @lat: [[lat.md/architecture/updates#Update interface preview]]
 @MainActor
-final class AppUpdatePreview {
+final class AppUpdatePreview: NSObject, @preconcurrency SPUStandardUserDriverDelegate {
     let version = "0.3.0"
     private let bundle: Bundle
     private let completion: () -> Void
@@ -14,12 +14,13 @@ final class AppUpdatePreview {
     init(bundle: Bundle, completion: (() -> Void)? = nil) {
         self.bundle = bundle
         self.completion = completion ?? Self.showCompletion
+        super.init()
     }
 
     func show() {
         if let driver { driver.showUpdateInFocus(); return }
         guard let item = makeItem(), let state = try? Self.makeState() else { return }
-        let driver = SPUStandardUserDriver(hostBundle: bundle, delegate: nil)
+        let driver = SPUStandardUserDriver(hostBundle: bundle, delegate: self)
         self.driver = driver
         driver.showUpdateFound(with: item, state: state) { [weak self] choice in
             // Let Sparkle finish closing its release-notes window first.
@@ -37,15 +38,30 @@ final class AppUpdatePreview {
             "title": "Bend \(version)",
             "sparkle:version": "999999999",
             "sparkle:shortVersionString": version,
-            "description": """
-                <h2>Update preview</h2>
-                <p>This is a demonstration of Bend’s update experience.</p>
-                <ul><li>See the download and preparation progress.</li>
-                <li>Try the Install and Relaunch button.</li></ul>
-                <p>Nothing will be downloaded or installed, and Bend will stay open.</p>
-                """,
+            "description": [
+                "format": "markdown",
+                "content": """
+                    ## v\(version)
+
+                    ### Update preview
+
+                    This is a demonstration of Bend’s native update dialog using `AppUpdatePreview`.
+
+                    - See the download and `Sparkle` preparation progress.
+                    - Try the **Install and Relaunch** button or open [release notes](https://example.invalid/releases).
+
+                    Nothing will be downloaded or installed, and Bend will stay open.
+                    """,
+            ],
             "enclosure": ["url": "https://example.invalid/Bend-preview.dmg", "length": "24000000"],
         ])
+    }
+
+    func standardUserDriverWillShowReleaseNotesText(_ releaseNotesAttributedString: NSAttributedString,
+                                                    forUpdate update: SUAppcastItem,
+                                                    withBundleDisplayVersion bundleDisplayVersion: String,
+                                                    bundleVersion: String) -> NSAttributedString? {
+        AppUpdater.releaseNotesText(for: update)
     }
 
     static func makeState() throws -> SPUUserUpdateState? {

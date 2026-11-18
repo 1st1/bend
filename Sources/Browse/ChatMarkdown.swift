@@ -13,8 +13,17 @@ struct ChatMarkdown: View {
 }
 
 @MainActor enum ChatMarkdownDocument {
-    static func render(_ source: String) -> NSAttributedString {
+    static func render(
+        _ source: String,
+        inlineCodeBackground: NSColor = NSColor.white.withAlphaComponent(0.08),
+        codeBlockBackground: NSColor = NSColor.white.withAlphaComponent(0.06),
+        allowedLinkSchemes: Set<String> = ["https", "http", "mailto", "bend-pane"],
+        requireLinkHost: Bool = false
+    ) -> NSAttributedString {
         let output = NSMutableAttributedString()
+        func inline(_ node: any Markup) -> AttributedString {
+            ChatMarkdownText.inline(node, allowedSchemes: allowedLinkSchemes, requireHost: requireLinkHost)
+        }
         func paragraph(_ text: NSAttributedString, indent: CGFloat = 0, marker: String = "") {
             let value = NSMutableAttributedString()
             if !marker.isEmpty { value.append(NSAttributedString(string: marker + "\t", attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.secondaryLabelColor])) }
@@ -33,7 +42,7 @@ struct ChatMarkdown: View {
             let indent = CGFloat(depth) * 18
             switch node {
             case let heading as Heading:
-                paragraph(ChatInlineText.render(ChatMarkdownText.inline(heading), size: heading.level == 1 ? 19 : heading.level == 2 ? 16 : 14, heading: true), indent: indent, marker: marker)
+                paragraph(ChatInlineText.render(inline(heading), size: heading.level == 1 ? 19 : heading.level == 2 ? 16 : 14, heading: true, inlineCodeBackground: inlineCodeBackground), indent: indent, marker: marker)
             case let list as OrderedList:
                 for (index, item) in list.children.enumerated() {
                     for (offset, child) in item.children.enumerated() { block(child, depth: depth + 1, marker: offset == 0 ? "\(Int(list.startIndex) + index)." : "") }
@@ -46,19 +55,19 @@ struct ChatMarkdown: View {
             case let quote as BlockQuote:
                 for child in quote.children { block(child, depth: depth + 1, marker: "│") }
             case let code as CodeBlock:
-                paragraph(NSAttributedString(string: code.code.trimmingCharacters(in: .newlines), attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor, .backgroundColor: NSColor.white.withAlphaComponent(0.06)]), indent: indent, marker: marker)
+                paragraph(NSAttributedString(string: code.code.trimmingCharacters(in: .newlines), attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor, .backgroundColor: codeBlockBackground]), indent: indent, marker: marker)
             case let table as Markdown.Table:
                 for row in [table.head as any Markup] + Array(table.body.children) {
                     let line = NSMutableAttributedString()
                     for (index, cell) in row.children.enumerated() {
                         if index > 0 { line.append(NSAttributedString(string: "\t")) }
-                        line.append(ChatInlineText.render(ChatMarkdownText.inline(cell), size: 12, heading: row is Markdown.Table.Head))
+                        line.append(ChatInlineText.render(inline(cell), size: 12, heading: row is Markdown.Table.Head, inlineCodeBackground: inlineCodeBackground))
                     }
                     paragraph(line, indent: indent)
                 }
             case is ThematicBreak: paragraph(NSAttributedString(string: "────────", attributes: [.foregroundColor: NSColor.separatorColor]))
             case let html as HTMLBlock: paragraph(NSAttributedString(string: html.rawHTML, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor]))
-            default: paragraph(ChatInlineText.render(ChatMarkdownText.inline(node), size: 13, heading: false), indent: indent, marker: marker)
+            default: paragraph(ChatInlineText.render(inline(node), size: 13, heading: false, inlineCodeBackground: inlineCodeBackground), indent: indent, marker: marker)
             }
         }
         for child in Document(parsing: source).children { block(child) }
@@ -68,7 +77,11 @@ struct ChatMarkdown: View {
 }
 
 enum ChatMarkdownText {
-    static func inline(_ node: any Markup) -> AttributedString {
+    static func inline(
+        _ node: any Markup,
+        allowedSchemes: Set<String> = ["https", "http", "mailto", "bend-pane"],
+        requireHost: Bool = false
+    ) -> AttributedString {
         if let text = node as? Markdown.Text { return AttributedString(text.string) }
         if node is SoftBreak { return AttributedString(" ") }
         if node is LineBreak { return AttributedString("\n") }
@@ -79,7 +92,9 @@ enum ChatMarkdownText {
             result.backgroundColor = .white.opacity(0.08)
             return result
         }
-        var result = node.children.reduce(into: AttributedString()) { $0 += inline($1) }
+        var result = node.children.reduce(into: AttributedString()) {
+            $0 += inline($1, allowedSchemes: allowedSchemes, requireHost: requireHost)
+        }
         if node is Strong || node is Emphasis {
             for run in result.runs {
                 var intent = run.inlinePresentationIntent ?? []
@@ -89,7 +104,9 @@ enum ChatMarkdownText {
         }
         if node is Strikethrough { result.strikethroughStyle = .single }
         if let link = node as? Markdown.Link, let destination = link.destination,
-           let url = URL(string: destination), ["https", "http", "mailto", "bend-pane"].contains(url.scheme?.lowercased() ?? "") {
+           let url = URL(string: destination),
+           allowedSchemes.contains(url.scheme?.lowercased() ?? ""),
+           !requireHost || url.host != nil {
             result.link = url
         }
         // Images remain descriptive text; rendering a response never fetches remote content.
