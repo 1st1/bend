@@ -24,7 +24,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             window.titlebarSeparatorStyle = .none
         }
         window.isReleasedWhenClosed = false
-        window.collectionBehavior.insert(.fullScreenNone)
+        window.collectionBehavior.insert(.fullScreenAuxiliary)
         for type in [NSWindow.ButtonType.miniaturizeButton, .zoomButton] {
             window.standardWindowButton(type)?.isHidden = false
             window.standardWindowButton(type)?.isEnabled = false
@@ -32,7 +32,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.toolbarStyle = .unified
         window.toolbar = NSToolbar(identifier: "BendSettingsTitlebar")
         window.setFrameAutosaveName(AppProfile.current.frameName("BrowseSettings"))
-        let hosting = NSHostingController(rootView: BrowserSettingsView(store: store, navigation: navigation, onScrollUnderHeader: { [weak window] scrolled in
+        let hosting = NSHostingController(rootView: BrowserSettingsView(store: store, navigation: navigation, onClose: { [weak window] in
+            window?.performClose(nil)
+        }, onScrollUnderHeader: { [weak window] scrolled in
             window?.titlebarAppearsTransparent = !scrolled
             window?.titlebarSeparatorStyle = scrolled ? .automatic : .none
         })
@@ -47,9 +49,23 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.minSize = NSSize(width: 880, height: 480)
         window.maxSize = NSSize(width: 880, height: window.maxSize.height)
     }
-    func show(section: SettingsSection? = nil, centeredOn screen: NSScreen? = nil) {
+    func show(section: SettingsSection? = nil, centeredOn screen: NSScreen? = nil, attachedTo parent: NSWindow? = nil) {
         guard NSApp.modalWindow == nil || NSApp.modalWindow === window else { return }
         if let section { navigation.selection = section }
+        if window.sheetParent != nil {
+            window.makeKey()
+            return
+        }
+        if let parent, !window.isVisible, parent.attachedSheet == nil {
+            navigation.isSheet = true
+            // AppKit's attached sheet slides down within the browser's Space,
+            // including fullscreen, without activating a standalone window.
+            parent.beginSheet(window) { [weak window] _ in
+                window?.orderOut(nil)
+            }
+            return
+        }
+        navigation.isSheet = false
         let screen = screen ?? NSApp.keyWindow?.screen ?? NSScreen.main
         window.makeKeyAndOrderFront(nil)
         window.contentView?.layoutSubtreeIfNeeded()
@@ -97,6 +113,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 }
 
 private final class SettingsWindow: NSWindow {
+    override func performClose(_ sender: Any?) {
+        if let parent = sheetParent {
+            parent.endSheet(self)
+        } else {
+            super.performClose(sender)
+        }
+    }
+
     override func cancelOperation(_ sender: Any?) {
         guard attachedSheet == nil else { return }
         performClose(sender)
@@ -150,11 +174,13 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 @MainActor
 final class SettingsNavigation: ObservableObject {
     @Published var selection: SettingsSection? = .ui
+    @Published var isSheet = false
 }
 
 struct BrowserSettingsView: View {
     @ObservedObject var store: BrowserStore
     @ObservedObject var navigation: SettingsNavigation
+    var onClose: (() -> Void)? = nil
     var onScrollUnderHeader: (Bool) -> Void = { _ in }
     @ViewState<Bool> private var contentUnderHeader = false
     private var selection: SettingsSection? { navigation.selection }
@@ -216,6 +242,11 @@ struct BrowserSettingsView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .background {
+            if navigation.isSheet, let onClose {
+                SettingsTrafficLights(onClose: onClose).frame(width: 0, height: 0)
+            }
+        }
         .onChange(of: contentUnderHeader) { _, scrolled in onScrollUnderHeader(scrolled) }
         .onChange(of: selection) { _, _ in contentUnderHeader = false }
     }
@@ -764,4 +795,52 @@ private struct SearchSettingsView: View {
             template = store.customSearchEngine?.template ?? ""
         }
     }
+}
+
+/// Sheets suppress AppKit's titlebar buttons; reuse native button cells in the upper-left sheet frame.
+struct SettingsTrafficLights: NSViewRepresentable {
+    var onClose: () -> Void
+
+    func makeNSView(context: Context) -> SettingsTrafficLightsAnchor { SettingsTrafficLightsAnchor() }
+    func updateNSView(_ view: SettingsTrafficLightsAnchor, context: Context) {
+        view.controls.onClose = onClose
+        view.placeControls()
+    }
+    static func dismantleNSView(_ view: SettingsTrafficLightsAnchor, coordinator: ()) {
+        view.controls.removeFromSuperview()
+    }
+}
+
+final class SettingsTrafficLightsAnchor: NSView {
+    let controls = SettingsTrafficLightsView()
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); placeControls() }
+    func placeControls() {
+        guard let frameView = window?.contentView?.superview else {
+            controls.removeFromSuperview()
+            return
+        }
+        if controls.superview !== frameView { frameView.addSubview(controls, positioned: .above, relativeTo: nil) }
+        controls.frame = NSRect(x: 16, y: frameView.bounds.maxY - 40, width: 68, height: 28)
+        controls.autoresizingMask = [.minYMargin, .maxXMargin]
+    }
+}
+
+final class SettingsTrafficLightsView: NSView {
+    var onClose: (() -> Void)?
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: 68, height: 28))
+        for (index, kind) in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].enumerated() {
+            guard let button = NSWindow.standardWindowButton(kind, for: [.titled, .closable, .miniaturizable, .resizable]) else { continue }
+            button.setFrameOrigin(NSPoint(x: CGFloat(index) * 22, y: (28 - button.frame.height) / 2))
+            button.isEnabled = kind == .closeButton
+            if kind == .closeButton {
+                button.target = self
+                button.action = #selector(closeSettings)
+                button.setAccessibilityLabel("Close Settings")
+            }
+            addSubview(button)
+        }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    @objc private func closeSettings() { onClose?() }
 }

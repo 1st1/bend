@@ -99,3 +99,9 @@ Both surfaces update together; reset restores regular untinted glass on the same
 The committed page reports its accepted exception for the red Not Secure domain menu; unaccepted and internal pages do not.
 
 The test also suppresses WebKit’s server-trust property after a real TLS challenge and opens and dismisses the actual native certificate sheet using the observed trust. Origin mismatches, loading, navigation errors, and clearing the cache disable that fallback; native trust remains available after the cache clears.
+
+## Attached settings sheet
+
+[[Tests/BrowseTests/BrowserWindowTests.swift#settingsAttachedSheet]] verifies Settings attaches to the originating browser without entering an application-modal loop, preserves section navigation, and dismisses and reopens with Escape and Command-W.
+
+The upper-left sheet frame exposes native traffic lights with only Close enabled; clicking it dismisses the sheet. Physical fullscreen Space retention and the native top-edge slide require a manual check.

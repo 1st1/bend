@@ -790,3 +790,59 @@ import BrowseCore
     #expect(owner.windows.isEmpty)
     #expect(window.store.history.visits.isEmpty)
 }
+
+// @lat: [[lat.md/tests/settings-tests#Attached settings sheet]]
+@Test @MainActor func settingsAttachedSheet() async throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSheetSettings-\(UUID())")
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let parent = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1100, height: 800),
+                          styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+    parent.isReleasedWhenClosed = false
+    parent.orderFront(nil)
+    let settings = SettingsWindowController(store: store)
+    defer {
+        if parent.attachedSheet != nil { parent.endSheet(settings.window) }
+        settings.window.orderOut(nil); parent.orderOut(nil)
+        store.stopWindow(); try? FileManager.default.removeItem(at: root)
+    }
+    settings.show(attachedTo: parent)
+    try await Task.sleep(for: .milliseconds(350))
+    #expect(parent.attachedSheet === settings.window)
+    #expect(settings.window.sheetParent === parent)
+    #expect(NSApp.modalWindow == nil)
+    func lights(in view: NSView) -> SettingsTrafficLightsView? {
+        if let controls = view as? SettingsTrafficLightsView { return controls }
+        return view.subviews.lazy.compactMap { lights(in: $0) }.first
+    }
+    let frameView = try #require(settings.window.contentView?.superview)
+    let controls = try #require(lights(in: frameView))
+    let buttons = controls.subviews.compactMap { $0 as? NSButton }
+    #expect(buttons.count == 3)
+    #expect(buttons.map(\.isEnabled) == [true, false, false])
+    #expect(!controls.isHiddenOrHasHiddenAncestor)
+    #expect(controls.convert(controls.bounds, to: nil).maxX < 200)
+    settings.show(section: .search, attachedTo: parent)
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(settings.window.title == "Search")
+    settings.window.cancelOperation(nil)
+    try await Task.sleep(for: .milliseconds(350))
+    #expect(parent.attachedSheet == nil)
+    #expect(!settings.window.isVisible)
+    settings.show(attachedTo: parent)
+    try await Task.sleep(for: .milliseconds(350))
+    let close = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: settings.window.windowNumber,
+        context: nil, characters: "w", charactersIgnoringModifiers: "w", isARepeat: false, keyCode: 13))
+    #expect(settings.window.performKeyEquivalent(with: close))
+    try await Task.sleep(for: .milliseconds(350))
+    #expect(parent.attachedSheet == nil)
+    #expect(!settings.window.isVisible)
+    settings.show(attachedTo: parent)
+    try await Task.sleep(for: .milliseconds(350))
+    let reopenedControls = try #require(lights(in: frameView))
+    try #require(reopenedControls.subviews.first as? NSButton).performClick(nil)
+    try await Task.sleep(for: .milliseconds(350))
+    #expect(parent.attachedSheet == nil)
+    #expect(!settings.window.isVisible)
+}

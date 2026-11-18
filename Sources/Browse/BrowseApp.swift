@@ -231,7 +231,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func presentSettings(section: SettingsSection? = nil) {
         addressPanel?.dismiss(restoreFocus: false)
         if settingsWindow == nil { settingsWindow = SettingsWindowController(store: browserWindows.sharedStore) }
-        settingsWindow?.show(section: section, centeredOn: browserWindows.active?.window.screen)
+        settingsWindow?.show(section: section, centeredOn: browserWindows.active?.window.screen,
+                             attachedTo: browserWindows.active?.window)
     }
     // @lat: [[lat.md/architecture/commands#Command popup]]
     private var commandSelection: (pane: UUID, revision: UUID, text: String)?
