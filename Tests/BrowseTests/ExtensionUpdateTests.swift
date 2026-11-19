@@ -194,7 +194,7 @@ import WebKit
 }
 
 // @lat: [[lat.md/tests/extension-hosting/extension-updates-tests#Extension update service smoke test]]
-@Test(arguments: ["ublock-lite", "1password", "dark-reader"])
+@Test(arguments: CatalogExtension.curated.map(\.id))
 func extensionUpdateServiceSmoke(entryID: String) async throws {
     guard let selection = ProcessInfo.processInfo.environment["BROWSE_TEST_EXTENSION_UPDATES"],
           selection == "1" || selection.split(separator: ",").contains(Substring(entryID)) else { return }
