@@ -1,0 +1,3 @@
+kind: Added
+body: Switch tabs in most-recently-used order with Control-Tab and Control-Shift-Tab. Holding Control shows a switcher of recent tabs; press Tab to move through it, click a tab, or release Control to switch.
+time: 2026-11-19T12:00:00.000000-08:00

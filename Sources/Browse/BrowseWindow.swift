@@ -23,6 +23,16 @@ class BrowseWindow: NSWindow {
     }
 
     private weak var chatHeaderPress: ChatHeaderNativeButton?
+
+    // @lat: [[lat.md/architecture/session#Session lifecycle#Recent tab switching]]
+    /// AppKit offers key equivalents to the window's views before the main menu. Focused
+    /// web content claims them for the page, so Control-Tab goes to the menu first.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 48, event.modifierFlags.intersection([.command, .option, .control]) == .control,
+           NSApp.mainMenu?.performKeyEquivalent(with: event) == true { return true }
+        return super.performKeyEquivalent(with: event)
+    }
+
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown,
            let button = contentView?.superview?.subviews.compactMap({ $0 as? ChatHeaderNativeButton }).last(where: {
@@ -41,6 +51,7 @@ class BrowseWindow: NSWindow {
             }
         }
         InputDiagnostics.record(.window, event: event)
+        if event.type == .flagsChanged, !event.modifierFlags.contains(.control) { browserStore?.endTabCycle() }
         switch event.type {
         case .leftMouseDown:
             cancelPaneDrag()
@@ -69,6 +80,9 @@ class BrowseWindow: NSWindow {
                 forwardToAppKit(event)
                 return
             }
+        case .keyDown where event.keyCode == 53 && browserStore?.tabCycle != nil:
+            browserStore?.cancelTabCycle()
+            return
         case .keyDown where event.keyCode == 53 && capturesPaneGesture:
             cancelPaneDrag()
             return

@@ -11,12 +11,12 @@ private final class AddressResultsTable: NSTableView {
     override var acceptsFirstResponder: Bool { false }
 }
 
-private enum AddressPopupLayout {
+enum AddressPopupLayout {
     static let rowHeight: CGFloat = 42
     static let chromeHeight: CGFloat = 80
 }
 
-private final class AddressResultCell: NSTableCellView {
+final class AddressResultCell: NSTableCellView {
     let icon = NSImageView()
     let title = NSTextField(labelWithString: "")
     let detail = NSTextField(labelWithString: "")
@@ -49,7 +49,7 @@ private final class AddressResultCell: NSTableCellView {
     }
 }
 
-private final class AddressResultRow: NSTableRowView {
+final class AddressResultRow: NSTableRowView {
     override var isSelected: Bool {
         didSet {
             needsDisplay = true
@@ -76,6 +76,30 @@ private struct AddressResult {
     let address: String
     let history: HistorySuggestion?
     var command: PopupCommand? = nil
+}
+
+/// Wraps popup content in the shared Liquid Glass shell used by browser popups.
+@MainActor
+func popupGlassShell(containing content: NSView) -> NSView {
+    let glass = NSGlassEffectView()
+    glass.style = .regular
+    glass.cornerRadius = 18
+    glass.contentView = content
+    // Clip the complete glass compositor, including its outer decoration.
+    // A bare glass view at the window edge can leave a rectangular rim.
+    let clip = NSView()
+    clip.wantsLayer = true
+    clip.layer?.cornerRadius = glass.cornerRadius
+    clip.layer?.masksToBounds = true
+    glass.translatesAutoresizingMaskIntoConstraints = false
+    clip.addSubview(glass)
+    NSLayoutConstraint.activate([
+        glass.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+        glass.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+        glass.topAnchor.constraint(equalTo: clip.topAnchor),
+        glass.bottomAnchor.constraint(equalTo: clip.bottomAnchor)
+    ])
+    return clip
 }
 
 // @lat: [[lat.md/architecture/address-entry#Location popup]]
@@ -121,25 +145,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         panel.title = "Open Location"
 
         let background = NSView()
-        let glass = NSGlassEffectView()
-        glass.style = .regular
-        glass.cornerRadius = 18
-        glass.contentView = background
-        // Clip the complete glass compositor, including its outer decoration.
-        // A bare glass view at the window edge can leave a rectangular rim.
-        let clip = NSView()
-        clip.wantsLayer = true
-        clip.layer?.cornerRadius = glass.cornerRadius
-        clip.layer?.masksToBounds = true
-        glass.translatesAutoresizingMaskIntoConstraints = false
-        clip.addSubview(glass)
-        NSLayoutConstraint.activate([
-            glass.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
-            glass.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
-            glass.topAnchor.constraint(equalTo: clip.topAnchor),
-            glass.bottomAnchor.constraint(equalTo: clip.bottomAnchor)
-        ])
-        panel.contentView = clip
+        panel.contentView = popupGlassShell(containing: background)
 
         input.font = .systemFont(ofSize: 14)
         input.placeholderAttributedString = NSAttributedString(string: "Search or enter address", attributes: [

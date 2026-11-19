@@ -158,6 +158,7 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
     let store: BrowserStore
     let window: BrowseWindow
     private(set) var addressPanel: AddressPanelController!
+    private(set) var tabSwitcher: TabSwitcherPanel!
     var onFocus: (() -> Void)?
     var onClose: (() -> Void)?
 
@@ -191,6 +192,8 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
         else { window.contentView = content }
         addressPanel = AddressPanelController(store: store, parentWindow: window)
         store.onAddressRequested = { [weak self] paneID in self?.addressPanel.show(for: paneID) }
+        tabSwitcher = TabSwitcherPanel(store: store, parentWindow: window)
+        store.onTabCycleChanged = { [weak self] in self?.tabSwitcher.update() }
         InputDiagnostics.transition(.windowOpen, .created, window: window)
     }
 
@@ -199,6 +202,8 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
         if #available(macOS 15.4, *) { store.extensions.focusWindow(window) }
     }
     func windowDidResignKey(_ notification: Notification) {
+        // Control release is only observed while this window is key.
+        store.cancelTabCycle()
         if #available(macOS 15.4, *) { store.extensions.controller.didFocusWindow(nil) }
     }
     // @lat: [[lat.md/architecture/windows#Fullscreen chrome]]
@@ -230,6 +235,7 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         addressPanel.dismiss(restoreFocus: false)
+        store.cancelTabCycle()
         if #available(macOS 15.4, *) { store.extensions.detachWindow(window) }
         store.stopWindow()
         window.contentView = nil
