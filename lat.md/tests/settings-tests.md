@@ -104,4 +104,4 @@ The test also suppresses WebKit’s server-trust property after a real TLS chall
 
 [[Tests/BrowseTests/BrowserWindowTests.swift#settingsAttachedSheet]] verifies Settings attaches to the originating browser without entering an application-modal loop, preserves section navigation, and dismisses and reopens with Escape and Command-W.
 
-The upper-left sheet frame exposes native traffic lights with only Close enabled; clicking it dismisses the sheet. Physical fullscreen Space retention and the native top-edge slide require a manual check.
+The upper-left sheet frame exposes native traffic lights with only Close enabled; clicking it dismisses the sheet. The same Settings window restores its standalone fullscreen policy when reopened without a parent. Physical fullscreen Space retention and the native top-edge slide require a manual check.

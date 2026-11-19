@@ -810,6 +810,7 @@ import BrowseCore
     try await Task.sleep(for: .milliseconds(350))
     #expect(parent.attachedSheet === settings.window)
     #expect(settings.window.sheetParent === parent)
+    #expect(settings.window.collectionBehavior.contains(.fullScreenAuxiliary))
     #expect(NSApp.modalWindow == nil)
     func lights(in view: NSView) -> SettingsTrafficLightsView? {
         if let controls = view as? SettingsTrafficLightsView { return controls }
@@ -845,4 +846,7 @@ import BrowseCore
     try await Task.sleep(for: .milliseconds(350))
     #expect(parent.attachedSheet == nil)
     #expect(!settings.window.isVisible)
+    settings.show()
+    #expect(settings.window.collectionBehavior.contains(.fullScreenNone))
+    settings.window.close()
 }

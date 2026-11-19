@@ -24,7 +24,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             window.titlebarSeparatorStyle = .none
         }
         window.isReleasedWhenClosed = false
-        window.collectionBehavior.insert(.fullScreenAuxiliary)
+        window.collectionBehavior.insert(.fullScreenNone)
         for type in [NSWindow.ButtonType.miniaturizeButton, .zoomButton] {
             window.standardWindowButton(type)?.isHidden = false
             window.standardWindowButton(type)?.isEnabled = false
@@ -57,6 +57,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             return
         }
         if let parent, !window.isVisible, parent.attachedSheet == nil {
+            window.collectionBehavior.remove(.fullScreenNone)
+            window.collectionBehavior.insert(.fullScreenAuxiliary)
             navigation.isSheet = true
             // AppKit's attached sheet slides down within the browser's Space,
             // including fullscreen, without activating a standalone window.
@@ -65,6 +67,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             }
             return
         }
+        window.collectionBehavior.remove(.fullScreenAuxiliary)
+        window.collectionBehavior.insert(.fullScreenNone)
         navigation.isSheet = false
         let screen = screen ?? NSApp.keyWindow?.screen ?? NSScreen.main
         window.makeKeyAndOrderFront(nil)
