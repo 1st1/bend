@@ -7,7 +7,7 @@ Earlier prototype builds used the version `0.1` without a versioned changelog; `
 
 ## v0.9.0
 ### Added
-- Added an experimental “Sleep inactive panes” switch in Development settings. Eligible background pages release memory and reload when revisited. The switch is off by default.
+- Added an experimental “Sleep inactive panes” switch in Development settings. Eligible background pages release memory after 30 minutes of inactivity under normal conditions and reload when revisited. The switch is off by default.
 ### Changed
 - Render Markdown release notes natively in the app update dialog.
 ### Fixed
