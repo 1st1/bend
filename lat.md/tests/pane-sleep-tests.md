@@ -18,7 +18,7 @@ Verify clean documents are eligible while changed fields, sticky edits, editable
 
 Verify every selected-tab pane stays awake, recently hidden pages retain their grace period, site exceptions apply, selection invalidates an outstanding check, and sleeping releases the old controller/WebView before restoring URL and history.
 
-Navigation invalidates an outstanding check. Transfers preserve sleeping state, explicit destinations supersede it, and closing a sleeping pane drops its capture.
+Navigation invalidates an outstanding check. Subsequent sweeps must eventually release an eligible pane once WebKit settles. Transfers preserve sleeping state, explicit destinations supersede it, and closing a sleeping pane drops its capture.
 
 ## Persistent exceptions
 

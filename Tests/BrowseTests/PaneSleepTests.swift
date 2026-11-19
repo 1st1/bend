@@ -140,6 +140,18 @@ private func sleepLoaded(_ web: WKWebView) async throws {
     #expect(store.sleepCandidate(page.id) == nil)
     prefs.enabled = true
     let resumedCoordinator = try #require(store.sleepCoordinator)
+    // A WebKit reply or session update can invalidate a sweep. The real timer
+    // tries again next minute. Advance the scheduler clock without that wait.
+    func waitForSleep(_ id: UUID) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(15))
+        repeat {
+            await resumedCoordinator.run(now: ProcessInfo.processInfo.systemUptime + 1801, lowPower: false)
+            if store.sleepingPanes[id] != nil { return }
+            try await Task.sleep(for: .milliseconds(100))
+        } while clock.now < deadline
+        _ = try #require(store.sleepingPanes[id], "A background pane must sleep after WebKit settles")
+    }
     store.editTab(first.id) { $0.pages[0].isPinned = true }
     #expect(store.sleepCandidate(page.id) == nil)
     store.editTab(first.id) { $0.pages[0].isPinned = false }
@@ -153,8 +165,7 @@ private func sleepLoaded(_ web: WKWebView) async throws {
     await attempt.value
     #expect(store.sleepingPanes[page.id] == nil)
     store.select(second.id); update()
-    await resumedCoordinator.run(now: ProcessInfo.processInfo.systemUptime + 1801, lowPower: false)
-    #expect(store.sleepingPanes[page.id] != nil)
+    try await waitForSleep(page.id)
     #expect(store.existingController(for: page.id) == nil)
     controller = nil
     update()
@@ -179,9 +190,7 @@ private func sleepLoaded(_ web: WKWebView) async throws {
     await navigating.value
     #expect(store.sleepingPanes[page.id] == nil)
     try await sleepLoaded(restored.webView)
-    try await Task.sleep(for: .milliseconds(100))
-    await resumedCoordinator.suspend(page.id)
-    #expect(store.sleepingPanes[page.id] != nil)
+    try await waitForSleep(page.id)
     let sibling = first.pages[1].id
     // This sibling was opened before opt-in. Its first instrumented document
     // is eligible only after it navigates.
@@ -190,8 +199,7 @@ private func sleepLoaded(_ web: WKWebView) async throws {
     siblingWeb.reload()
     try await sleepLoaded(siblingWeb)
     #expect(await PaneSleepProbe.check(siblingWeb) != nil)
-    await resumedCoordinator.suspend(sibling)
-    #expect(store.sleepingPanes[sibling] != nil)
+    try await waitForSleep(sibling)
     let destination = BrowserStore(sessionFile: root.appendingPathComponent("other.json"), sharedStore: store)
     defer { destination.stopWindow() }
     #expect(store.transfer(tab: first.id, to: destination, at: .workspace(destination.session.workspaces[0].id)))
