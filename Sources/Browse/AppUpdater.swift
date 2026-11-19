@@ -81,7 +81,8 @@ final class AppUpdater: NSObject, ObservableObject, @preconcurrency SPUStandardU
     }
 
     static func releaseNotesText(for update: SUAppcastItem) -> NSAttributedString? {
-        guard update.itemDescriptionFormat == "markdown",
+        guard update.releaseNotesURL == nil,
+              update.itemDescriptionFormat == "markdown",
               let markdown = update.itemDescription,
               !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
