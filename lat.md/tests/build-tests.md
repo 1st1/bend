@@ -50,4 +50,6 @@ Coverage includes exact-commit tags, complete asset upload before publication, d
 
 ## Native test runner coverage
 
-[[scripts/test-test-runner.py#TestRunnerTests]] verifies full inventory execution, disjoint shard coverage, shard input validation, skip accounting, rejection of unmatched filters and ambiguous names, failed-process propagation, timeout termination, and continued execution after failures, crashes, timeouts, or missing results.
+[[scripts/test-test-runner.py#TestRunnerTests]] verifies that the runner executes the full test inventory and that shards cover it without overlap.
+
+The tests cover shard input validation, skip accounting, unmatched filters, ambiguous names, process failures, and timeout termination. They also verify that execution continues after failures, crashes, timeouts, or missing results.

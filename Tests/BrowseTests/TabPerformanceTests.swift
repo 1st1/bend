@@ -104,13 +104,13 @@ struct TabPerformanceTests {
         try #require(count > 0)
         let browser = try BenchmarkWindow(count: count, address: address)
         defer { browser.close() }
-        let before = try CPUTime()
+        let before = CPUTime()
         let start = ContinuousClock.now
         for tab in browser.tabs {
             if tab.id != browser.store.session.selectedTab { browser.store.select(tab.id) }
             try await browser.waitForFixture(tab, expression: "window.bendMemoryReady === true")
         }
-        let after = try CPUTime()
+        let after = CPUTime()
         let seconds = start.duration(to: .now).components
         try await Task.sleep(for: .seconds(1))
         let selected = try #require(browser.store.existingController(for: browser.store.selectedTab.focusedPane))
@@ -192,13 +192,21 @@ struct TabPerformanceTests {
                 let editor = field.currentEditor() as? NSTextView
                 let words = Array("github pull requests")
 
-                findingSamples.append(measureUI([browser], tabs: tabs, steps: words.count) { i in
+                var finalKeyStart = 0.0
+                var sample = measureUI([browser], tabs: tabs, steps: words.count) { i in
+                    if i == words.count - 1 { finalKeyStart = CACurrentMediaTime() }
                     let text = String(words[0...i])
                     field.stringValue = text
                     editor?.string = text
                     surface.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
-                })
-                try? await Task.sleep(for: .milliseconds(50))
+                }
+                // The fixture contains exactly one occurrence of the complete query.
+                while surface.matchCount != 1 {
+                    try #require(CACurrentMediaTime() - finalKeyStart < 5, "Final find result timed out")
+                    try await Task.sleep(for: .milliseconds(1))
+                }
+                sample.finalKeyToResultMs = (CACurrentMediaTime() - finalKeyStart) * 1000
+                findingSamples.append(sample)
             }
         }
 
@@ -249,6 +257,7 @@ struct TabPerformanceTests {
 
             let clock = LoopClock()
             clock.start()
+            defer { clock.stop() }
 
             let steps = 60
             try sendMouse(.leftMouseDown, at: grab, to: primary.window)
@@ -258,12 +267,16 @@ struct TabPerformanceTests {
                 clock.mark()
                 try sendMouse(.leftMouseDragged, at: NSPoint(x: grab.x + out + 2, y: grab.y), to: primary.window)
                 try await Task.sleep(for: .milliseconds(16))
+                if step == steps / 2 {
+                    let current = handle.convert(NSPoint(x: 3, y: handle.bounds.midY), to: nil)
+                    try #require(abs(current.x - grab.x) > 30, "Sidebar edge did not follow the drag")
+                }
             }
             let publishedHeld = published
             try sendMouse(.leftMouseUp, at: NSPoint(x: grab.x + 2, y: grab.y), to: primary.window)
             primary.settle()
             secondary.settle()
-            clock.stop()
+            try #require(!clock.marked.isEmpty, "No drag frames were sampled")
 
             dragSamples.append(SpeedDragSample(
                 tabs: tabs,
@@ -549,7 +562,7 @@ private final class BenchmarkWindow {
         let signposter = OSSignposter(subsystem: "com.bend.browser", category: "TabPerformance")
         let interval = signposter.beginInterval(name)
         defer { signposter.endInterval(name, interval) }
-        let before = try CPUTime()
+        let before = CPUTime()
         let start = ContinuousClock.now
         var stepTimes: [Double] = []
         for step in 0..<Workload.steps {
@@ -560,10 +573,10 @@ private final class BenchmarkWindow {
             stepTimes.append((CACurrentMediaTime() - stepStart) * 1000)
         }
         let elapsed = start.duration(to: .now).components
-        let after = try CPUTime()
+        let after = CPUTime()
         return Workload(wallMilliseconds: Double(elapsed.seconds) * 1000 + Double(elapsed.attoseconds) / 1e15,
             mainThreadMilliseconds: Double(after.main - before.main) / 1e6,
-            liveThreadsMilliseconds: Double(after.live - before.live) / 1000,
+            processMilliseconds: Double(after.process - before.process) / 1e6,
             medianStepMilliseconds: percentile(stepTimes, 0.5),
             p95StepMilliseconds: percentile(stepTimes, 0.95),
             storeChanges: storeChanges,
@@ -634,28 +647,12 @@ private final class LoopClock: @unchecked Sendable {
 
 private enum BenchmarkError: Error {
     case fixtureTimeout(String)
-    case cpuSampling(kern_return_t)
     case workloadDidNotApply(String, Int)
 }
 
 private struct CPUTime {
-    let main: UInt64
-    let live: Int64
-
-    init() throws {
-        main = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
-        var times = task_thread_times_info_data_t()
-        let capacity = MemoryLayout<task_thread_times_info_data_t>.size / MemoryLayout<integer_t>.size
-        var count = mach_msg_type_number_t(capacity)
-        let result = withUnsafeMutablePointer(to: &times) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: capacity) {
-                task_info(mach_task_self_, task_flavor_t(TASK_THREAD_TIMES_INFO), $0, &count)
-            }
-        }
-        guard result == KERN_SUCCESS else { throw BenchmarkError.cpuSampling(result) }
-        live = (Int64(times.user_time.seconds) + Int64(times.system_time.seconds)) * 1_000_000
-            + Int64(times.user_time.microseconds) + Int64(times.system_time.microseconds)
-    }
+    let main = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+    let process = clock_gettime_nsec_np(CLOCK_PROCESS_CPUTIME_ID)
 }
 
 @MainActor
@@ -703,6 +700,7 @@ private struct FootprintSample: Encodable {
 private struct SpeedUISample: Encodable {
     let tabs: Int
     let history: Int?
+    var finalKeyToResultMs: Double? = nil
     let ms: Double
     let p95Ms: Double
     let totalMs: Double
@@ -771,7 +769,7 @@ private extension SpeedPair where Sample == SpeedMicroSample {
 }
 
 private struct SpeedReport: Encodable {
-    let schemaVersion = 2
+    let schemaVersion = 3
     let ui: [String: SpeedPair<SpeedUISample>]
     let sidebarEdge: SpeedPair<SpeedDragSample>
     let micro: [String: SpeedPair<SpeedMicroSample>]
@@ -781,7 +779,7 @@ private struct Workload: Encodable {
     static let steps = 8
     let wallMilliseconds: Double
     let mainThreadMilliseconds: Double
-    let liveThreadsMilliseconds: Double
+    let processMilliseconds: Double
     let medianStepMilliseconds: Double
     let p95StepMilliseconds: Double
     let storeChanges: Int
@@ -797,7 +795,7 @@ private struct ScalingSample: Encodable {
 }
 
 private struct ScalingReport: Encodable {
-    let schemaVersion = 1
+    let schemaVersion = 2
     let stepsPerWorkload = Workload.steps
     let samples: [ScalingSample]
     let ratios100Over10: [String: [String: Double]]
@@ -809,7 +807,7 @@ private struct ScalingReport: Encodable {
             return (name, [
                 "wall": ratioIfValid(large.wallMilliseconds, small.wallMilliseconds),
                 "mainThreadCPU": ratioIfValid(large.mainThreadMilliseconds, small.mainThreadMilliseconds),
-                "liveThreadsCPU": ratioIfValid(large.liveThreadsMilliseconds, small.liveThreadsMilliseconds),
+                "processCPU": ratioIfValid(large.processMilliseconds, small.processMilliseconds),
             ].compactMapValues { $0 })
         })
     }

@@ -115,6 +115,11 @@ def speed_summary(path):
             "Workload", "Median (ms)", "p95 (ms)", "Total (ms)", "Store changes/step at 100",
             "Row bodies/step", "Pane bodies/step at 100", "Roots/step at 100", "Shadow inv/step at 100",
         ], rows)
+    finding = ui.get("finding", {})
+    if "finalKeyToResultMs" in finding.get("low", {}):
+        low, high = finding["low"], finding["high"]
+        print(f'Final find keystroke to verified match count ({low["tabs"]} → {high["tabs"]} tabs): '
+              f'{fmt_pair(low["finalKeyToResultMs"], high["finalKeyToResultMs"])} ms.\n')
     if "sidebarEdge" in speed:
         low = speed["sidebarEdge"]["low"]
         high = speed["sidebarEdge"]["high"]
