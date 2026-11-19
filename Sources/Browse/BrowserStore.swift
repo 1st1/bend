@@ -444,7 +444,7 @@ final class BrowserStore: ObservableObject {
         let clamped = min(Self.sidebarWidthRange.upperBound, max(Self.sidebarWidthRange.lowerBound, width))
         guard clamped != sidebarWidth else { return }
         session.sidebarWidth = clamped
-        saveSoon()
+        scheduleSessionSave()
     }
 
     @discardableResult
