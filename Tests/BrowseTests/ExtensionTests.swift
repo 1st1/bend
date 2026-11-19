@@ -721,7 +721,7 @@ final class ExtensionTestNavigation: NSObject, WKNavigationDelegate {
 }
 
 // @lat: [[lat.md/tests/extension-hosting/catalog-tests#Catalog package download smoke test]]
-@Test(arguments: ["1password", "dark-reader"]) @MainActor func catalogDownloadSmoke(entryID: String) async throws {
+@Test(arguments: ["1password", "dark-reader", "browserpass"]) @MainActor func catalogDownloadSmoke(entryID: String) async throws {
     guard #available(macOS 15.4, *), ProcessInfo.processInfo.environment["BROWSE_TEST_CATALOG_DOWNLOAD"] == "1" else { return }
     let entry = try #require(CatalogExtension.curated.first { $0.id == entryID })
     let download = entry.download

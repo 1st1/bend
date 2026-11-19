@@ -26,6 +26,6 @@ A rejected package leaves no installed record or package files. A matching impor
 
 ## Catalog package download smoke test
 
-[ExtensionTests.swift](../../../Tests/BrowseTests/ExtensionTests.swift) optionally downloads the pinned official 1Password and Dark Reader packages, validates their checksums, and imports each disabled into temporary storage.
+[ExtensionTests.swift](../../../Tests/BrowseTests/ExtensionTests.swift) optionally downloads the pinned official 1Password, Browserpass and Dark Reader packages, validates their checksums, and imports each disabled into temporary storage.
 
 Set `BROWSE_TEST_CATALOG_DOWNLOAD=1` to exercise the real catalog network path. The test verifies package identity and version without enabling the extension, opening windows, or touching the user's profile.

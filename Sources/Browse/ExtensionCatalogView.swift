@@ -100,6 +100,11 @@ struct ExtensionCatalogView: View {
                     version: record.flatMap { manager.contexts[$0.id]?.webExtension.displayVersion })
             }
             Text(description).font(.callout).fixedSize(horizontal: false, vertical: true)
+            if entry.id == "browserpass" {
+                Text("To use your pass store, [install the Browserpass native helper](https://github.com/browserpass/browserpass-native#installation) and follow its Firefox setup for macOS.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if entry.id == "1password" {
                 Label("To connect to the 1Password desktop app, open 1Password → Settings → Browser → Add Browser and select Bend in your Applications folder, if you haven’t already.", systemImage: "info.circle")
                     .font(.callout).foregroundStyle(.secondary)
