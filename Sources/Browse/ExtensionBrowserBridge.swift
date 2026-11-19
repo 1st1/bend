@@ -239,7 +239,7 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
         return manager.tabs[parent]
     }
     func webView(for context: WKWebExtensionContext) -> WKWebView? { canAccess(context) && !isNativePage ? pageController?.webView : nil }
-    func title(for context: WKWebExtensionContext) -> String? { canAccess(context) ? (pageController?.title ?? page?.address) : nil }
+    func title(for context: WKWebExtensionContext) -> String? { canAccess(context) ? (pageController?.title ?? store?.sleepingPanes[id]?.title ?? page?.address) : nil }
     func url(for context: WKWebExtensionContext) -> URL? { canAccess(context) ? (pageController?.address ?? page?.address).flatMap(URL.init(string:)) : nil }
     func isLoadingComplete(for context: WKWebExtensionContext) -> Bool { !(pageController?.isLoading ?? false) }
     func isSelected(for context: WKWebExtensionContext) -> Bool { store?.selectedTab.pages.contains { $0.id == id } ?? false }
@@ -269,21 +269,27 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
         }
         completionHandler(nil)
     }
+    private func wakeForNavigation() -> PageController? {
+        if let pageController { return pageController }
+        guard let store, store.sleepingPanes[id] != nil, let page else { return nil }
+        return store.controller(for: page)
+    }
     func reload(fromOrigin: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
         guard canAccess(context) else { completionHandler(manager?.failure("This extension cannot access this private tab.")); return }
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["reload": true])
+        let pageController = wakeForNavigation()
         if fromOrigin { pageController?.webView.reloadFromOrigin() } else { pageController?.webView.reload() }
         completionHandler(nil)
     }
     func goBack(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
         guard canAccess(context) else { completionHandler(manager?.failure("This extension cannot access this private tab.")); return }
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["back": true])
-        pageController?.webView.goBack(); completionHandler(nil)
+        wakeForNavigation()?.webView.goBack(); completionHandler(nil)
     }
     func goForward(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
         guard canAccess(context) else { completionHandler(manager?.failure("This extension cannot access this private tab.")); return }
         InputDiagnostics.transition(.extensionTabAction, .requested, paneID: id, flags: ["forward": true])
-        pageController?.webView.goForward(); completionHandler(nil)
+        wakeForNavigation()?.webView.goForward(); completionHandler(nil)
     }
     func close(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
         guard canAccess(context) else { completionHandler(manager?.failure("This extension cannot access this private tab.")); return }

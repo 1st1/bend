@@ -332,7 +332,15 @@ private struct PaneCanvas: View {
                     let hidden = clipped.contains(page.id)
                     let visibleFrame = placement.frame.intersection(CGRect(origin: .zero, size: viewport))
                     let frame = hidden ? placement.frame : visibleFrame
-                    BrowserPane(store: store, controller: store.controller(for: page), tab: tab, pageID: page.id)
+                    Group {
+                        if let sleeping = store.sleepingPanes[page.id], tab.id != store.session.selectedTab {
+                            if let image = NSImage(data: sleeping.snapshot) {
+                                Image(nsImage: image).resizable().scaledToFit().accessibilityHidden(true)
+                            } else { Color.clear }
+                        } else {
+                            BrowserPane(store: store, controller: store.controller(for: page), tab: tab, pageID: page.id)
+                        }
+                    }
                         .frame(width: frame.width, height: frame.height)
                         .opacity(hidden ? 0 : 1)
                         .allowsHitTesting(!hidden)
@@ -579,12 +587,20 @@ private struct BrowserPane: View {
     }
 
     @ViewBuilder
+    private var wakePreview: some View {
+        if let image = controller.wakeSnapshot {
+            Image(nsImage: image).resizable().scaledToFit().allowsHitTesting(false).accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder
     private var paneContent: some View {
         if #available(macOS 26.0, *), !controller.isStartPage, controller.error == nil {
             WebSurface(webView: controller.webView, topContentInset: headerHeight,
                        headerAppearance: store.paneHeaderGlass, topRimClipping: store.paneHeaderTopRimClipping,
                        bottomRimClipping: store.paneHeaderBottomRimClipping,
                        activeHeaderTint: activeHeaderTint)
+                .overlay { wakePreview }
                 .background(PaneChromeBackground(cornerRadius: 12, topRimClipping: store.paneHeaderTopRimClipping))
                 .overlay(alignment: .top) {
                     header
@@ -598,6 +614,7 @@ private struct BrowserPane: View {
                                                     bottomRimClipping: store.paneHeaderBottomRimClipping,
                                                     appearance: store.paneHeaderGlass))
                 pageContent
+                    .overlay { wakePreview }
                     .background(PaneBodyBackground())
             }
         }

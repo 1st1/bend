@@ -5,6 +5,14 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.9.0
+### Added
+- Added an experimental “Sleep inactive panes” switch in Development settings. Eligible background pages release memory and reload when revisited. The switch is off by default.
+### Changed
+- Render Markdown release notes natively in the app update dialog.
+### Fixed
+- Open Settings as a sheet sliding down from the browser, keeping fullscreen in the current Space and preserving traffic-light close controls.
+
 ## v0.8.4
 ### Added
 - Back can close link-opened tabs and panes at the beginning of their history and return to their origin. Enabled by default, with separate toggles in Settings → UI → Links.

@@ -7,7 +7,7 @@ import WebKitFindSupport
 @MainActor
 final class BrowserStore: ObservableObject {
     @Published var session: BrowserSession {
-        didSet { pruneChats() }
+        didSet { pruneChats(); sleepCoordinator?.noteVisible(previous: oldValue) }
     }
     @Published var chats: [UUID: TabChat] = [:]
     // Session observers can prune chats midway through a tab mutation. Only queue
@@ -94,6 +94,10 @@ final class BrowserStore: ObservableObject {
         set { localHistoryError = newValue }
     }
     private var browsers: [UUID: PageController] = [:]
+    private(set) var sleepingPanes: [UUID: SleepingPane] = [:]
+    let sleepPreferences: PaneSleepPreferences
+    private var sleepObservation: AnyCancellable?
+    private(set) var sleepCoordinator: PaneSleepCoordinator?
     private var diagnosticPaneTabs: [UUID: UUID] = [:]
     private struct ClosedItem {
         let tab: BrowserTab
@@ -116,7 +120,8 @@ final class BrowserStore: ObservableObject {
     private var historyDirty = false
     private var historyWritable = true
 
-    init(sessionFile: URL? = nil, persistentExtensions: Bool = true, extensionManager: AnyObject? = nil, sharedStore: BrowserStore? = nil, isPrivate: Bool = false) {
+    init(sessionFile: URL? = nil, persistentExtensions: Bool = true, extensionManager: AnyObject? = nil, sharedStore: BrowserStore? = nil, isPrivate: Bool = false, sleepPreferences: PaneSleepPreferences? = nil) {
+        self.sleepPreferences = sleepPreferences ?? sharedStore?.sleepPreferences ?? .shared
         self.isPrivate = isPrivate
         self.sharedStore = sharedStore
         mediaPlaybackFocus = sharedStore?.mediaPlaybackFocus ?? MediaPlaybackFocus()
@@ -200,6 +205,17 @@ final class BrowserStore: ObservableObject {
         if sharedStore == nil { downloads.directory = downloadDirectory }
         tracePaneMembership()
         extensionStorage = extensionManager
+        sleepObservation = self.sleepPreferences.$enabled.removeDuplicates().sink { [weak self] enabled in
+            guard let self else { return }
+            if enabled {
+                sleepCoordinator = PaneSleepCoordinator(store: self)
+                sleepCoordinator?.start()
+            } else {
+                sleepCoordinator?.stop()
+                sleepCoordinator = nil
+            }
+            for controller in browsers.values { controller.setSleepTracking(enabled) }
+        }
         faviconObservation = faviconCache?.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
         if let sharedStore {
             sharedObservation = sharedStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
@@ -1027,12 +1043,14 @@ final class BrowserStore: ObservableObject {
         let extensionURL = URL(string: page.address).flatMap {
             ["webkit-extension", "safari-web-extension"].contains($0.scheme ?? "") ? $0 : nil
         }
+        let sleeping = sleepingPanes.removeValue(forKey: page.id).flatMap { $0.address == page.address ? $0 : nil }
         let hasLinkOrigin = session.workspaces.flatMap(\.tabs).contains { $0.originTabID != nil && $0.pages.contains { $0.id == page.id } }
-        let controller = PageController(address: extensionURL == nil ? page.address : "bend://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, seedCloseHistory: hasLinkOrigin || page.originPageID != nil, downloads: downloads, searchEngine: searchEngine, customSearchEngine: customSearchEngine, configure: { [weak self] configuration in
+        let controller = PageController(address: extensionURL == nil ? page.address : "bend://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, seedCloseHistory: hasLinkOrigin || page.originPageID != nil, downloads: downloads, searchEngine: searchEngine, customSearchEngine: customSearchEngine, sleeping: sleeping, trackSleep: sleepPreferences.enabled, configure: { [weak self] configuration in
             self?.configureWebView(configuration)
         })
         bindController(controller, to: page)
         browsers[page.id] = controller
+        sleepCoordinator?.didCreate(page.id)
         if isPrivate, extensionURL != nil {
             controller.error = PageController.privateExtensionPageError
             return controller
@@ -1053,6 +1071,29 @@ final class BrowserStore: ObservableObject {
             }
         }
         return controller
+    }
+
+    // @lat: [[lat.md/architecture/pane-sleep#Automatic pane sleeping]]
+    func sleepCandidate(_ id: UUID) -> PageController? {
+        guard !windowStopped, sleepPreferences.enabled,
+              websiteSettings.errorMessage == nil,
+              let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == id } }),
+              tab.id != session.selectedTab, chats[tab.id]?.running != true, !tab.isPinned,
+              let page = tab.pages.first(where: { $0.id == id }), !page.isPinned, page.favoriteID == nil,
+              !linkOpeners.keys.contains(id), !linkOpeners.values.contains(id),
+              let controller = browsers[id], controller.canSleep,
+              let url = controller.webView.url, let host = WebsiteSettings.hostname(for: url),
+              !sleepPreferences.keepAwakeHosts.contains(host) else { return nil }
+        return controller
+    }
+
+    func finishSleeping(_ id: UUID, controller: PageController, state: SleepingPane) {
+        guard sleepCandidate(id) === controller else { return }
+        controller.prepareForSleep()
+        mediaCoordinator.unregister(id)
+        browsers.removeValue(forKey: id)
+        sleepingPanes[id] = state
+        objectWillChange.send()
     }
 
     func favicon(for page: Page) -> NSImage? {
@@ -1141,6 +1182,7 @@ final class BrowserStore: ObservableObject {
     func existingController(for pageID: UUID) -> PageController? { browsers[pageID] }
 
     private func removeController(_ id: UUID) {
+        sleepingPanes.removeValue(forKey: id)
         mediaCoordinator.unregister(id)
         let controller = browsers.removeValue(forKey: id)
         controller?.permissionPrompt.cancel()
@@ -1210,6 +1252,10 @@ final class BrowserStore: ObservableObject {
         guard nextSource.isValid, nextDestination.isValid else { return false }
         let oldPageOrder = session.workspaces.flatMap(\.tabs).flatMap(\.pages).map(\.id)
         for page in incoming.pages {
+            if let sleeping = sleepingPanes.removeValue(forKey: page.id) {
+                destination.sleepingPanes[page.id] = sleeping
+            }
+            destination.sleepCoordinator?.didCreate(page.id)
             if let controller = browsers[page.id] {
                 destination.browsers[page.id] = controller
                 destination.bindController(controller, to: page)
@@ -1249,6 +1295,7 @@ final class BrowserStore: ObservableObject {
     }
 
     func clearOpenTabsForPrivacy() {
+        sleepingPanes.removeAll()
         // Explicit privacy clearing includes pinned panes and must not populate Reopen Closed Tab.
         for chat in chats.values { chat.stop() }
         chats.removeAll(); openChats.removeAll()
@@ -1263,6 +1310,8 @@ final class BrowserStore: ObservableObject {
     }
 
     func stopWindow() {
+        sleepObservation?.cancel(); sleepCoordinator?.stop(); sleepCoordinator = nil
+        sleepingPanes.removeAll()
         for chat in chats.values { chat.stop() }
         mediaCoordinator.removeAll()
         save()
@@ -1382,6 +1431,7 @@ class FocusWebView: WKWebView {
         inspectorSupport = support
         return support
     }
+    var hasOpenInspector: Bool { inspectorSupport?.isVisible == true }
     func closeInspector() {
         (superview as? WebSurfaceHost)?.removeDeveloperTools()
         inspectorSupport?.invalidate()
@@ -1493,7 +1543,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     @Published var progress = 0.0
     @Published var canGoBack = false
     @Published var canGoForward = false
-    @Published var error: String?
+    @Published var error: String? { didSet { if error != nil { wakeSnapshot = nil } } }
     @Published private(set) var certificateFailure: (url: URL, exception: CertificateException)?
     private var certificateExceptions: Set<CertificateException> = []
 
@@ -1545,7 +1595,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     var onCloseFromHistory: (() -> Void)?
     private var historySwipeGuard: HistorySwipeGuard?
     private let seedCloseHistory: Bool
-    private var closeHistoryURL: URL?
+    private(set) var closeHistoryURL: URL?
     private var pendingCloseHistoryDestination: URL?
     var backItemClosesPage: Bool { closeHistoryURL != nil && webView.backForwardList.backItem?.url == closeHistoryURL }
     var onNewTab: ((String) -> Void)?
@@ -1588,6 +1638,17 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     private var localDocumentDirectory: URL?
     private let externalApplications: ExternalApplicationLinks
     private let javaScriptDialogs: JavaScriptDialogs
+    private(set) var sleepNavigationRevision = 0
+    private var trackSleep: Bool
+    private var sleepMayResubmit = false
+    @Published var wakeSnapshot: NSImage?
+    var canSleep: Bool {
+        certificateExceptions.isEmpty && !sleepMayResubmit && !isStartPage && error == nil && !isLoading && !webView.isLoading &&
+        webView.cameraCaptureState == .none && webView.microphoneCaptureState == .none &&
+        !webView.hasOpenInspector && webView.window?.attachedSheet == nil &&
+        !javaScriptDialogs.hasPending(for: webView) && !downloads.hasActiveDownload(for: webView) &&
+        !media.sessions.contains(where: \.playing)
+    }
 
     // WebKit's default user agent omits Safari's product tokens. Some sites
     // consequently serve a legacy, fixed-width page to an otherwise modern engine.
@@ -1600,7 +1661,8 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
 
     init(address: String, paneID: UUID? = nil, isPrivate: Bool = false, webView suppliedWebView: FocusWebView? = nil, websiteSettings: WebsiteSettingsStore? = nil, faviconCache: FaviconCache? = nil,
          seedCloseHistory: Bool = false, externalApplications: ExternalApplicationLinks = .shared, javaScriptDialogs: JavaScriptDialogs = .shared,
-         downloads: BrowserDownloads = BrowserDownloads(), searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
+         downloads: BrowserDownloads = BrowserDownloads(), searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil, sleeping: SleepingPane? = nil, trackSleep: Bool = false, configure: @escaping (WKWebViewConfiguration) -> Void = { _ in }) {
+        self.trackSleep = trackSleep
         self.seedCloseHistory = seedCloseHistory
         self.address = address
         self.isStartPage = URL(string: AddressResolver.canonicalAddress(address))?.scheme == "bend"
@@ -1625,7 +1687,15 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         webView.diagnosticPaneID = paneID
         InputDiagnostics.transition(.webReplacement, .created, view: webView)
         observeWebView()
-        navigate(address)
+        if let sleeping {
+            closeHistoryURL = sleeping.closeHistoryURL
+            self.address = sleeping.address; title = sleeping.title; isStartPage = false
+            wakeSnapshot = NSImage(data: sleeping.snapshot)
+            webView.interactionState = sleeping.interactionState
+            webView.pageZoom = sleeping.zoom
+            let navigation = webView.backForwardList.currentItem.flatMap { webView.go(to: $0) }
+            if navigation == nil { navigate(sleeping.address) }
+        } else { navigate(address) }
         websiteSettingsObservation = websiteSettings?.$values.sink { [weak self] values in
             guard let self else { return }
             self.applyWebsiteSecurity(values)
@@ -1633,6 +1703,17 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
             guard let url = self.zoomURL, WebsiteSettings.hostname(for: url) != nil else { return }
             self.webView.pageZoom = CGFloat(values.zoom(for: url))
         }
+    }
+
+    func prepareForSleep() {
+        faviconTask?.cancel(); faviconTask = nil
+        observations.removeAll()
+        onNavigation = nil; onStateChanged = nil; onFocus = nil
+        onFaviconChanged = nil; onVisit = nil; onHistoryTitleChanged = nil
+        media.detach()
+        webView.onFocus = nil; webView.onDialogInvalidated = nil
+        webView.navigationDelegate = nil; webView.uiDelegate = nil
+        webView.removeFromSuperview()
     }
 
     private func applyWebsiteSecurity(_ values: WebsiteSettings) {
@@ -1653,12 +1734,20 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         if let websiteSettings { webView.pageZoom = CGFloat(websiteSettings.values.zoom(for: url)) }
     }
 
+    func setSleepTracking(_ enabled: Bool) {
+        trackSleep = enabled
+        let scripts = webView.configuration.userContentController
+        if enabled { PaneSleepProbe.install(in: scripts) }
+        else { PaneSleepProbe.remove(from: scripts) }
+    }
+
     private func observeWebView() {
         historySwipeGuard = HistorySwipeGuard(webView: webView) { [weak self] in
             guard let self else { return false }
             return self.backItemClosesPage && self.canCloseFromHistory?() != true
         }
         applyWebsiteSecurity(websiteSettings?.values ?? WebsiteSettings())
+        if trackSleep { PaneSleepProbe.install(in: webView.configuration.userContentController) }
         OptionClickObserver.install(in: webView.configuration.userContentController)
         webView.onOptionLink = { [weak self] address, mainFrame in
             self?.onOptionLink?(address, mainFrame)
@@ -1850,6 +1939,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         fileUpload.cancel()
         (webView as? FocusWebView)?.clearURLPreview()
         (webView.superview as? WebSurfaceHost)?.hideFindBar(restoreFocus: false)
+        sleepNavigationRevision += 1
         InputDiagnostics.transition(.webLoad, .started, view: webView)
         resetFavicon(for: webView.url ?? URL(string: address))
         completedAddress = nil
@@ -1873,6 +1963,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         if !isStartPage, let url = webView.url { applyWebsiteZoom(for: url) }
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        wakeSnapshot = nil
         if let marker = closeHistoryURL, webView.url == marker,
            let destination = pendingCloseHistoryDestination {
             pendingCloseHistoryDestination = nil
@@ -1928,6 +2019,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { show(error) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { show(error) }
     func show(_ failure: Error) {
+        wakeSnapshot = nil
         InputDiagnostics.transition(.webLoad, .cancelled, view: webView)
         completedAddress = nil
         let nativeError = failure as NSError
@@ -2022,6 +2114,11 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
+        // History restoration may replay a form submission. Keep this controller
+        // awake after non-GET navigation, even across subsequent redirects.
+        if action.targetFrame?.isMainFrame == true, action.request.httpMethod != "GET" {
+            sleepMayResubmit = true
+        }
         InputDiagnostics.transition(.navigationPolicy, .requested, view: webView, flags: [
             "link": action.navigationType == .linkActivated, "command": action.modifierFlags.contains(.command),
             "mainFrame": action.targetFrame?.isMainFrame == true, "newWindow": action.targetFrame == nil

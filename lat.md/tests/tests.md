@@ -37,6 +37,7 @@ Set `BEND_TEST_SHARD_INDEX` (zero-based) and `BEND_TEST_SHARD_COUNT` together to
 - [[commands-tests|Command panel]] — Command discovery, validation, and execution in the command popup.
 - [[link-navigation-tests|Link navigation]] — Modified clicks, link context menus, and destination previews.
 - [[extension-hosting|Extensions]] — Lifecycle, compatibility, catalog, diagnostics, and updates.
+- [[pane-sleep-tests|Pane sleeping]] — Eligibility, release, restoration, and persistent exceptions.
 - [[ai-tests|Native AI chat]] — Streaming, conversation isolation, Gateway connection, and pane tool boundaries.
 
 The [[lat.md/ai-sdk/sdk-tests|AI SDK tests]] cover provider parsing, streaming integrity, agent orchestration, and opt-in loopback networking.

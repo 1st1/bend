@@ -229,7 +229,7 @@ struct BrowserSettingsView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 case .development:
-                    DevelopmentSettingsView()
+                    DevelopmentSettingsView(sleepPreferences: store.sleepPreferences)
                 }
             }
             .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
@@ -363,11 +363,13 @@ private struct SettingsScrollEdge: ViewModifier {
 }
 
 private struct DevelopmentSettingsView: View {
+    let sleepPreferences: PaneSleepPreferences
     @ObservedObject private var aiDebugging = AIDiagnostics.shared
     @AppStorage(InputDiagnostics.enabledPreferenceKey) private var loggingEnabled = false
 
     var body: some View {
         Form {
+            PaneSleepSettings(settings: sleepPreferences)
             Section {
                 Toggle("Input and pane logging", isOn: $loggingEnabled)
             } header: {

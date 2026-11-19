@@ -16,7 +16,7 @@ See [[lat.md/tests/session-tests|Test coverage]].
 
 [MountedTabContent.swift](../../Sources/Browse/MountedTabContent.swift) retains a native hosting view for each visited tab, hiding inactive containers instead of rebuilding the pane canvas on selection.
 
-Unvisited tabs stay lazy. Inactive content remains natively hidden while its pane and WebKit parent views stay attached. The tab hosting view explicitly returns no hit when it or an ancestor is hidden, before entering SwiftUI hit testing: a hidden SwiftUI root can otherwise claim events intended for the visible page. Hidden containers retain their last viewport; selection applies the current size. Closed tabs release their containers, and closed panes are removed from retained trees. Focus moves out of a hidden canvas without taking focus from unrelated controls.
+Unvisited tabs stay lazy. Inactive content remains natively hidden while its pane and WebKit parent views stay attached, until [[pane-sleep#Automatic pane sleeping]] safely releases an eligible pane. The tab hosting view explicitly returns no hit when it or an ancestor is hidden, before entering SwiftUI hit testing: a hidden SwiftUI root can otherwise claim events intended for the visible page. Hidden containers retain their last viewport; selection applies the current size. Closed tabs release their containers, and closed panes are removed from retained trees. Focus moves out of a hidden canvas without taking focus from unrelated controls.
 
 Tab switches apply chat visibility and the resulting canvas width immediately, without resize animation. Chat visibility changes within the selected tab still animate opening and closing unless Reduce Motion is enabled.
 
