@@ -394,7 +394,7 @@ import WebKit
     #expect(other.downloadDirectory == BrowserDownloads.defaultDirectory)
 }
 
-private final class DownloadHTTPFixture: @unchecked Sendable {
+final class DownloadHTTPFixture: @unchecked Sendable {
     static let slowSize = 512 * 1024
     let listener: NWListener
     private let queue = DispatchQueue(label: "Bend.download-fixture")

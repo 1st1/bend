@@ -125,6 +125,13 @@ final class DownloadDockProgress {
 @MainActor
 final class BrowserDownloads: NSObject, ObservableObject, WKDownloadDelegate {
     @Published private(set) var items: [BrowserDownload] = []
+    private var startingDownloads: [ObjectIdentifier: Int] = [:]
+
+    func hasActiveDownload(for web: WKWebView) -> Bool {
+        startingDownloads[ObjectIdentifier(web), default: 0] > 0 || items.contains { $0.state == .downloading && $0.webView === web } ||
+        pendingRetries.values.contains { $0.webView === web || $0.retryWebView === web }
+    }
+
     @Published private(set) var activeCount = 0
     @Published private(set) var progressFraction: Double?
     @Published private(set) var persistenceError: String?
@@ -157,7 +164,13 @@ final class BrowserDownloads: NSObject, ObservableObject, WKDownloadDelegate {
 
     func start(_ request: URLRequest, in webView: WKWebView) {
         guard Self.supports(request.url), !stopped else { return }
+        let identity = ObjectIdentifier(webView)
+        startingDownloads[identity, default: 0] += 1
         webView.startDownload(using: request) { [weak self, weak webView] download in
+            if let self {
+                let count = self.startingDownloads[identity, default: 1] - 1
+                self.startingDownloads[identity] = count > 0 ? count : nil
+            }
             guard let self, let webView else { download.cancel(nil); return }
             self.receive(download, from: webView)
         }

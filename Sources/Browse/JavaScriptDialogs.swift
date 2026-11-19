@@ -62,6 +62,8 @@ final class JavaScriptDialogs {
         return "\(scheme)://\(hostname)" + (port > 0 && port != defaultPort ? ":\(port)" : "")
     }
 
+    func hasPending(for web: WKWebView) -> Bool { pending.values.contains { $0.web === web } }
+
     func request(_ request: Request, from web: WKWebView, completion: @escaping (Response) -> Void) {
         guard let window = web.window, Self.isVisible(web, in: window), window.isKeyWindow,
               window.attachedSheet == nil, !suppressed.contains(web),
