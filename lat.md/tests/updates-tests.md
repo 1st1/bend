@@ -10,11 +10,15 @@ See [[lat.md/architecture/updates|Architecture and behavior]].
 
 ## Application updater isolation
 
-[[Tests/BrowseTests/AppUpdaterTests.swift#applicationUpdaterIsolation]] verifies only packaged production apps are eligible for updates, debug checks are no-ops, Sparkle’s optional reminder and release-notes callbacks are registered with their exact selectors, and Markdown release notes render inline code and safe links while ignoring HTML items.
+[[Tests/BrowseTests/AppUpdaterTests.swift#applicationUpdaterIsolation]] checks production eligibility, debug isolation, and registration of Sparkle’s reminder and release-notes callbacks.
+
+Inline Markdown renders code and safe links. HTML uses Sparkle’s default rendering. An item with both a Markdown summary and a release-notes URL retains Sparkle’s downloaded notes.
 
 ## Application update feed
 
-[[scripts/test-update-feed.py#UpdateFeedTests]] verifies exact archive/build metadata, XML-escaped Markdown release notes with `sparkle:format="markdown"`, rejection of invalid metadata, and signatures using a public RFC test key on macOS. Tampered archives/feeds and mismatched signing keys are rejected.
+[[scripts/test-update-feed.py#UpdateFeedTests]] verifies exact archive/build metadata, XML-escaped Markdown release notes with `sparkle:format="markdown"`, rejection of invalid metadata, and signatures using a public RFC test key on macOS.
+
+Tampered archives/feeds and mismatched signing keys are rejected.
 
 The manual verification helper is exercised with a mocked Keychain export and real signing tools, checking one export per run, progress and success output, restrictive permissions, and cleanup after success or key mismatch.
 

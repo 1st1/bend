@@ -4,6 +4,12 @@ import Testing
 import Sparkle
 @testable import Browse
 
+private func requiredLocation(of substring: String, in text: NSString) throws -> Int {
+    let location = text.range(of: substring).location
+    try #require(location != NSNotFound, "Missing release note text: \(substring)")
+    return location
+}
+
 // @lat: [[lat.md/tests/updates-tests#Application updater isolation]]
 @Test @MainActor func applicationUpdaterIsolation() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendUpdater-\(UUID())")
@@ -34,7 +40,7 @@ import Sparkle
                  "standardUserDriverWillShowReleaseNotesText:forUpdate:withBundleDisplayVersion:bundleVersion:"] {
         #expect(production.responds(to: NSSelectorFromString(name)))
     }
-    let markdownItem = try #require(SUAppcastItem(dictionary: [
+    var markdownProperties: [String: Any] = [
         "title": "Bend 0.4.0",
         "sparkle:version": "12002",
         "sparkle:shortVersionString": "0.4.0",
@@ -43,7 +49,8 @@ import Sparkle
             "content": "## v0.4.0\n\n- Use `bend` with [docs](https://example.com/docs), [bad](javascript:alert(1)), [internal](bend-pane://id).",
         ],
         "enclosure": ["url": "https://example.invalid/Bend.dmg", "length": "100"],
-    ]))
+    ]
+    let markdownItem = try #require(SUAppcastItem(dictionary: markdownProperties))
     let rendered = try #require(production.standardUserDriverWillShowReleaseNotesText(
         NSAttributedString(string: "fallback"),
         forUpdate: markdownItem,
@@ -53,14 +60,21 @@ import Sparkle
     let text = rendered.string as NSString
     #expect(text.contains("## v0.4.0") == false)
     #expect(text.contains("v0.4.0"))
-    let codeRange = text.range(of: "bend")
-    let codeFont = try #require(rendered.attribute(.font, at: codeRange.location, effectiveRange: nil) as? NSFont)
+    let codeLocation = try requiredLocation(of: "bend", in: text)
+    let codeFont = try #require(rendered.attribute(.font, at: codeLocation, effectiveRange: nil) as? NSFont)
     #expect(codeFont.isFixedPitch)
-    #expect(rendered.attribute(.backgroundColor, at: codeRange.location, effectiveRange: nil) != nil)
-    let docsRange = text.range(of: "docs")
-    #expect(rendered.attribute(.link, at: docsRange.location, effectiveRange: nil) as? URL == URL(string: "https://example.com/docs"))
-    #expect(rendered.attribute(.link, at: text.range(of: "bad").location, effectiveRange: nil) == nil)
-    #expect(rendered.attribute(.link, at: text.range(of: "internal").location, effectiveRange: nil) == nil)
+    #expect(rendered.attribute(.backgroundColor, at: codeLocation, effectiveRange: nil) != nil)
+    let docsLocation = try requiredLocation(of: "docs", in: text)
+    #expect(rendered.attribute(.link, at: docsLocation, effectiveRange: nil) as? URL == URL(string: "https://example.com/docs"))
+    let badLocation = try requiredLocation(of: "bad", in: text)
+    #expect(rendered.attribute(.link, at: badLocation, effectiveRange: nil) == nil)
+    let internalLocation = try requiredLocation(of: "internal", in: text)
+    #expect(rendered.attribute(.link, at: internalLocation, effectiveRange: nil) == nil)
+
+    markdownProperties["sparkle:releaseNotesLink"] = ["content": "https://example.com/full-notes.md"]
+    let linkedItem = try #require(SUAppcastItem(dictionary: markdownProperties))
+    try #require(linkedItem.releaseNotesURL != nil)
+    #expect(AppUpdater.releaseNotesText(for: linkedItem) == nil)
 
     let htmlItem = try #require(SUAppcastItem(dictionary: [
         "title": "Bend 0.4.0",
@@ -140,11 +154,11 @@ import Sparkle
     #expect(notesString.contains("Update preview"))
     #expect(notesString.contains("AppUpdatePreview"))
     #expect(!notesString.contains("##"))
-    let previewCodeRange = notesString.range(of: "AppUpdatePreview")
-    let previewCodeFont = try #require(notesText.attribute(.font, at: previewCodeRange.location, effectiveRange: nil) as? NSFont)
+    let previewCodeLocation = try requiredLocation(of: "AppUpdatePreview", in: notesString)
+    let previewCodeFont = try #require(notesText.attribute(.font, at: previewCodeLocation, effectiveRange: nil) as? NSFont)
     #expect(previewCodeFont.isFixedPitch)
-    let previewLinkRange = notesString.range(of: "release notes")
-    #expect(notesText.attribute(.link, at: previewLinkRange.location, effectiveRange: nil) as? URL == URL(string: "https://example.invalid/releases"))
+    let previewLinkLocation = try requiredLocation(of: "release notes", in: notesString)
+    #expect(notesText.attribute(.link, at: previewLinkLocation, effectiveRange: nil) as? URL == URL(string: "https://example.invalid/releases"))
     try #require(button("Install Update")).performClick(nil)
     try await Task.sleep(for: .milliseconds(250))
     try #require(button("Cancel")).performClick(nil)
