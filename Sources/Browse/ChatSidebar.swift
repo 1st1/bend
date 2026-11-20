@@ -182,7 +182,7 @@ struct ChatSidebar: View {
                         .frame(maxWidth: 235, alignment: .leading)
                 } else {
                     Button(action: settingsAction) {
-                        Text("Connect a cloud model…")
+                        Text("Configure an AI provider")
                             .font(.system(size: 11, weight: .medium))
                             .lineLimit(1)
                             .padding(.horizontal, 4)

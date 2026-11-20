@@ -496,8 +496,8 @@ struct AISettingsView: View {
     @ViewState private var key = ""
     var body: some View {
         Form {
-            Section("AI connection") {
-                Picker("Connection", selection: Binding(
+            Section("Configure an AI provider") {
+                Picker("Provider", selection: Binding(
                     get: { settings.activeConnection },
                     set: { value in
                         key = ""

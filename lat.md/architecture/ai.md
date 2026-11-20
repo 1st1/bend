@@ -60,7 +60,7 @@ Approval authorizes the website's resulting behavior, including script handlers;
 
 [[Sources/Browse/ChatComposerInput.swift#ChatComposerInput]] provides a native multiline editor with configurable Return-key actions in Settings → AI. Enter and Command-Enter send by default; Option-Enter and Shift-Enter insert a newline.
 
-When cloud AI is disconnected, a red Connect a cloud model pill opens AI settings from the model picker’s position.
+When cloud AI is disconnected, a red “Configure an AI provider” pill opens the matching section in AI settings from the model picker’s position.
 
 The editor grows from two to seven lines and then scrolls internally. It preserves native selection, editing, and input-method composition. [[Sources/Browse/ChatInputKey.swift#ChatInputKey]] maps the four exact combinations to independent persisted Send message or New line preferences. Sending is consumed when disabled; input-method composition cannot send, and native composition keeps ordinary Return handling. Unconfigured modifier combinations retain native handling. [[Sources/Browse/ChatSidebar.swift#ChatSidebar]] shares the Send button's availability with the editor and keeps Stop available during a run, including while an action awaits approval.
 
