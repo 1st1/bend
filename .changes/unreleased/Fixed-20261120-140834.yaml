@@ -1,3 +1,0 @@
-kind: Fixed
-body: Maximized panes stay maximized when switching tabs or restarting Bend, and the highlighted toolbar button restores the split layout. Pinned tabs and panes use the same accent color.
-time: 2026-11-20T14:08:34.397365-08:00

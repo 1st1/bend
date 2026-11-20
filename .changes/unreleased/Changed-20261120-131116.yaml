@@ -1,3 +1,0 @@
-kind: Changed
-body: Bend loads history in the background at startup and reuses prepared search data for faster address bar suggestions.
-time: 2026-11-20T13:11:16.085309-08:00

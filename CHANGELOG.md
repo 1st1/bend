@@ -5,6 +5,20 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.10.0
+### Added
+- AI chat responses typeset inline and display math and preserve the original LaTeX when copied.
+- Choose reasoning effort and Fast mode for supported AI models in chat, and set per-model defaults in Settings.
+- Customize keyboard shortcuts in Settings, copy the current page URL with Option-Command-C, and return a pinned tab to its saved URL from its context menu.
+### Changed
+- Find link behavior under Navigation and memory controls under General. Keep-awake exceptions cover the entered hostname and its subdomains.
+- Bend loads history in the background at startup and reuses prepared search data for faster address bar suggestions.
+- Sidebar tabs now follow the pointer while dragging, and neighboring tabs slide aside to show the new order.
+### Fixed
+- Settings opens in a separate window for smoother dragging in a regular browser window.
+- Maximized panes stay maximized when switching tabs or restarting Bend, and the highlighted toolbar button restores the split layout. Pinned tabs and panes use the same accent color.
+- Chat recognizes a saved AI Gateway connection on launch without requiring a provider switch in Settings.
+
 ## v0.9.0
 ### Added
 - Added an experimental “Sleep inactive panes” switch in Development settings. Eligible background pages release memory after 30 minutes of inactivity under normal conditions and reload when revisited. The switch is off by default.
