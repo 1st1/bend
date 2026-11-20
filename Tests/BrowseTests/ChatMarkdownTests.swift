@@ -81,3 +81,39 @@ import Testing
     #expect(storage.isEqual(to: linked))
     #expect(linked.string == "Read this comment.")
 }
+
+// @lat: [[lat.md/tests/ai-tests#Math in responses]]
+@Test @MainActor func chatMathRendering() throws {
+    let sample = "[ \\text{nth square}=n^2 ]"
+    for source in [sample, "\\(x_i^2\\)", "$\\frac{1}{2}$", "$$\n\\sqrt{x}\n$$", "\\[x^2\\]"] {
+        for streaming in [true, false] {
+            let rendered = ChatMarkdownDocument.response("🌍 " + source, streaming: streaming)
+            #expect(rendered.string == "🌍 \u{fffc}")
+            let attachment = try #require(rendered.attribute(.attachment, at: rendered.length - 1, effectiveRange: nil) as? NSTextAttachment)
+            #expect(attachment.image?.accessibilityDescription == source)
+            #expect(attachment.bounds.height > 0)
+            let narrowLine = CGRect(x: 0, y: 0, width: 12, height: 30)
+            let fitted = attachment.attachmentBounds(for: nil, proposedLineFragment: narrowLine, glyphPosition: .zero, characterIndex: 0)
+            #expect(fitted.width <= narrowLine.width + 0.01)
+        }
+    }
+    for literal in ["`$x$`", "~~~\n$x$\n~~~", "[ reference ]", "[ x^2 ](https://example.com)",
+                    "Costs $5 and $10.", "still writing $x^", "\\$x$"] {
+        let rendered = ChatMarkdownDocument.response(literal, streaming: false)
+        #expect(!rendered.string.contains("\u{fffc}"))
+    }
+    let unsupported = "$\\notARealCommand{x}$"
+    #expect(ChatMarkdownDocument.response(unsupported, streaming: false).string == unsupported)
+
+    let host = NSHostingView(rootView: ChatMarkdown(source: "Result " + sample).frame(width: 280))
+    host.layoutSubtreeIfNeeded()
+    func textView(_ view: NSView) -> NSTextView? {
+        (view as? NSTextView) ?? view.subviews.lazy.compactMap(textView).first
+    }
+    let view = try #require(textView(host))
+    view.selectAll(nil)
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    #expect(view.writeSelection(to: pasteboard, type: .string))
+    #expect(pasteboard.string(forType: .string) == "Result " + sample)
+}

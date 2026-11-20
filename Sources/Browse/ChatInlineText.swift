@@ -105,6 +105,20 @@ struct ChatInlineText: NSViewRepresentable {
 }
 
 private final class ChatLinkTextView: NSTextView {
+    override func writeSelection(to pasteboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        guard type == .string, let textStorage, textStorage.containsAttachments(in: selectedRange()) else {
+            return super.writeSelection(to: pasteboard, type: type)
+        }
+        let selection = textStorage.attributedSubstring(from: selectedRange())
+        let plain = NSMutableString(string: selection.string)
+        selection.enumerateAttribute(.attachment, in: NSRange(location: 0, length: selection.length), options: .reverse) { value, range, _ in
+            if let formula = (value as? NSTextAttachment)?.image?.accessibilityDescription {
+                plain.replaceCharacters(in: range, with: formula)
+            }
+        }
+        return pasteboard.setString(plain as String, forType: type)
+    }
+
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

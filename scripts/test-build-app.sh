@@ -10,6 +10,8 @@ cp "$(dirname "$0")/fixtures/browser-capabilities.html" "$root/scripts/fixtures/
 cp "$(dirname "$0")/Bend.entitlements" "$root/scripts/"
 cp "$(dirname "$0")/version.sh" "$root/scripts/version.sh"
 cp "$(dirname "$0")/embed-sparkle.sh" "$root/scripts/embed-sparkle.sh"
+mkdir -p "$root/bin/SwiftMath_SwiftMath.bundle" "$root/.build/checkouts/SwiftMath"
+touch "$root/bin/SwiftMath_SwiftMath.bundle/font-fixture" "$root/.build/checkouts/SwiftMath/LICENSE"
 framework="$root/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 mkdir -p "$framework/Versions/B/XPCServices/Downloader.xpc" "$framework/Versions/B/XPCServices/Installer.xpc" "$framework/Versions/B/Updater.app"
 printf 'Sparkle license fixture\n' > "$root/.build/artifacts/sparkle/Sparkle/LICENSE"
@@ -73,6 +75,8 @@ bash "$root/scripts/build-app.sh"
 [[ "$(stat -f %i "$root/dist/Bend Debug.app/Contents/MacOS/Bend")" != "$original_inode" ]]
 [[ "$(cat <&9)" == 'previous executable' ]]
 exec 9<&-
+[[ -f "$root/dist/Bend Debug.app/Contents/Resources/SwiftMath_SwiftMath.bundle/font-fixture" ]]
+[[ -f "$root/dist/Bend Debug.app/Contents/Resources/Licenses/SwiftMath.txt" ]]
 assert_media_capture() {
   python3 - "$1" "$root/signed-entitlements.plist" <<'PYMEDIA'
 import plistlib

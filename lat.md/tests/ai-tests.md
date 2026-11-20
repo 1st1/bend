@@ -74,6 +74,10 @@ The summary moves above the first response delta, remains anchored there through
 
 [[Tests/BrowseTests/AIChatTests.swift#aiPanePromptContext]] verifies placeholder expansion, active-pane identity, tool-list removal, and fresh tab-scoped metadata before successive model requests without duplicate system messages.
 
+## Math in responses
+
+[[Tests/BrowseTests/ChatMarkdownTests.swift#chatMathRendering]] verifies equation rendering in streamed and final responses, literal code and currency, unsupported commands, and copying formulas alongside prose.
+
 ## Progressive Markdown
 
 [[Tests/BrowseTests/ChatMarkdownTests.swift#progressiveChatMarkdown]] checks every streamed prefix of a pane citation hides its routing identifiers, code stays literal, and incremental native text updates retain final content and attributes.

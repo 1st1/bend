@@ -8,11 +8,19 @@ struct ChatMarkdown: View {
     var streaming = false
 
     var body: some View {
-        ChatInlineText(text: AttributedString(), document: ChatMarkdownDocument.render(ChatStreamingMarkdown.visibleSource(source, streaming: streaming)))
+        ChatInlineText(text: AttributedString(), document: ChatMarkdownDocument.response(source, streaming: streaming))
     }
 }
 
 @MainActor enum ChatMarkdownDocument {
+    static func response(_ source: String, streaming: Bool) -> NSAttributedString {
+        let math = ChatMath(source)
+        let markdown = ChatStreamingMarkdown.visibleSource(math.markdown, streaming: streaming)
+        let result = NSMutableAttributedString(attributedString: render(markdown))
+        math.typeset(in: result)
+        return result
+    }
+
     static func render(
         _ source: String,
         inlineCodeBackground: NSColor = NSColor.white.withAlphaComponent(0.08),

@@ -77,6 +77,8 @@ cp "$PWD/Assets/AppIcon.icns" "$candidate/Contents/Resources/AppIcon.icns"
 mkdir -p "$candidate/Contents/Resources/Licenses/AI"
 cp "$PWD/LICENSES/ai-swift/LICENSE" "$PWD/LICENSES/ai-swift/NOTICE" "$candidate/Contents/Resources/Licenses/AI/"
 bin_dir="$(swift build -c "$configuration" --show-bin-path)"
+cp -R "$bin_dir/SwiftMath_SwiftMath.bundle" "$candidate/Contents/Resources/"
+cp "$PWD/.build/checkouts/SwiftMath/LICENSE" "$candidate/Contents/Resources/Licenses/SwiftMath.txt"
 cp "$bin_dir/Bend" "$candidate/Contents/MacOS/Bend"
 cat > "$candidate/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
