@@ -76,7 +76,7 @@ The summary moves above the first response delta, remains anchored there through
 
 ## Math in responses
 
-[[Tests/BrowseTests/ChatMarkdownTests.swift#chatMathRendering]] verifies equation rendering in streamed and final responses, literal code and currency, unsupported commands, and copying formulas alongside prose.
+[[Tests/BrowseTests/ChatMarkdownTests.swift#chatMathRendering]] verifies named operators and fractions in streamed and final responses, literal code and currency, unsupported commands, and copying formulas alongside prose.
 
 ## Progressive Markdown
 

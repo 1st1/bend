@@ -85,7 +85,9 @@ import Testing
 // @lat: [[lat.md/tests/ai-tests#Math in responses]]
 @Test @MainActor func chatMathRendering() throws {
     let sample = "[ \\text{nth square}=n^2 ]"
-    for source in [sample, "\\(x_i^2\\)", "$\\frac{1}{2}$", "$$\n\\sqrt{x}\n$$", "\\[x^2\\]"] {
+    let criticalLine = "$$\\zeta(s)=0,\\ 0<\\operatorname{Re}(s)<1\\;\\Longrightarrow\\;\\operatorname{Re}(s)=\\tfrac12.$$"
+    let primeCount = "$$\\pi(x)=\\operatorname{Li}(x)+O\\!\\left(\\sqrt{x}\\,\\ln x\\right).$$"
+    for source in [sample, criticalLine, primeCount, "\\(x_i^2\\)", "$\\frac{1}{2}$", "$$\n\\sqrt{x}\n$$", "\\[x^2\\]"] {
         for streaming in [true, false] {
             let rendered = ChatMarkdownDocument.response("🌍 " + source, streaming: streaming)
             #expect(rendered.string == "🌍 \u{fffc}")

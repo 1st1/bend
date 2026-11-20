@@ -104,7 +104,16 @@ import SwiftMath
     private static func attachment(for formula: Formula, size: CGFloat) -> NSTextAttachment? {
         let key = "\(size) \(formula.source)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        var math = MathImage(latex: formula.latex, fontSize: formula.display ? size + 2 : size,
+        // SwiftMath lacks these amsmath commands. Translate whole TeX control sequences
+        // for display, keeping the original spelling on the attachment for copying.
+        let latex = formula.latex.replacing(/\\(?:[A-Za-z]+|.)/) { match in
+            switch match.output {
+            case "\\operatorname": "\\mathrm"
+            case "\\tfrac", "\\dfrac": "\\frac"
+            default: String(match.output)
+            }
+        }
+        var math = MathImage(latex: latex, fontSize: formula.display ? size + 2 : size,
                              textColor: .labelColor, labelMode: formula.display ? .display : .text)
         let (_, rendered, layout) = math.asImage()
         guard let image = rendered, let metrics = layout, image.size.width > 0, image.size.height > 0 else { return nil }
