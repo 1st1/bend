@@ -10,9 +10,13 @@ private typealias ViewState<Value> = SwiftUI.State<Value>
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     let window: NSWindow
     private let navigation = SettingsNavigation()
+    private let commands: () -> [PopupCommand]
+    private let shortcuts: CommandShortcuts
     private var modalStart: Timer?
     private var presentingModally = false
-    init(store: BrowserStore) {
+    init(store: BrowserStore, shortcuts: CommandShortcuts = CommandShortcuts(), commands: @escaping () -> [PopupCommand] = { [] }) {
+        self.commands = commands
+        self.shortcuts = shortcuts
         window = SettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 880, height: 680),
             styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init()
@@ -32,7 +36,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.toolbarStyle = .unified
         window.toolbar = NSToolbar(identifier: "BendSettingsTitlebar")
         window.setFrameAutosaveName(AppProfile.current.frameName("BrowseSettings"))
-        let hosting = NSHostingController(rootView: BrowserSettingsView(store: store, navigation: navigation, onClose: { [weak window] in
+        let hosting = NSHostingController(rootView: BrowserSettingsView(store: store, navigation: navigation, shortcuts: shortcuts, onClose: { [weak window] in
             window?.performClose(nil)
         }, onScrollUnderHeader: { [weak window] scrolled in
             window?.titlebarAppearsTransparent = !scrolled
@@ -49,8 +53,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.minSize = NSSize(width: 880, height: 480)
         window.maxSize = NSSize(width: 880, height: window.maxSize.height)
     }
+    func show(from browser: NSWindow?, section: SettingsSection? = nil) {
+        let sheetParent = browser?.styleMask.contains(.fullScreen) == true ? browser : nil
+        show(section: section, centeredOn: browser?.screen, attachedTo: sheetParent)
+    }
+
     func show(section: SettingsSection? = nil, centeredOn screen: NSScreen? = nil, attachedTo parent: NSWindow? = nil) {
         guard NSApp.modalWindow == nil || NSApp.modalWindow === window else { return }
+        navigation.commands = commands().map(ShortcutEntry.init)
+        if !window.isVisible { shortcuts.dismissAttemptedConflict() }
+        shortcuts.refreshConflicts()
         if let section { navigation.selection = section }
         if window.sheetParent != nil {
             window.makeKey()
@@ -142,18 +154,24 @@ private final class SettingsWindow: NSWindow {
 }
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case ui = "UI"
+    case general = "General"
+    case appearance = "Appearance"
     case search = "Search"
     case ai = "AI"
     case websites = "Websites"
     case privacy = "Privacy"
     case extensions = "Extensions"
+    case navigation = "Navigation"
+    case shortcuts = "Shortcuts"
     case development = "Development"
 
     var id: Self { self }
     var symbol: String {
         switch self {
-        case .ui: "slider.horizontal.3"
+        case .general: "gearshape"
+        case .navigation: "location"
+        case .appearance: "slider.horizontal.3"
+        case .shortcuts: "keyboard"
         case .search: "magnifyingglass"
         case .ai: "sparkles"
         case .websites: "globe"
@@ -164,7 +182,10 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     }
     var color: Color {
         switch self {
-        case .ui: .blue
+        case .general: .gray
+        case .navigation: .blue
+        case .appearance: .blue
+        case .shortcuts: .gray
         case .search: .orange
         case .ai: .indigo
         case .websites: .teal
@@ -177,13 +198,15 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
 @MainActor
 final class SettingsNavigation: ObservableObject {
-    @Published var selection: SettingsSection? = .ui
+    @Published var selection: SettingsSection? = .general
     @Published var isSheet = false
+    @Published var commands: [ShortcutEntry] = []
 }
 
 struct BrowserSettingsView: View {
-    @ObservedObject var store: BrowserStore
+    let store: BrowserStore
     @ObservedObject var navigation: SettingsNavigation
+    let shortcuts: CommandShortcuts
     var onClose: (() -> Void)? = nil
     var onScrollUnderHeader: (Bool) -> Void = { _ in }
     @ViewState<Bool> private var contentUnderHeader = false
@@ -206,13 +229,19 @@ struct BrowserSettingsView: View {
             .listStyle(.sidebar)
             .frame(width: 200)
             .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
-            .background(FixedSettingsSidebar(selection: selection?.rawValue ?? "UI"))
+            .background(FixedSettingsSidebar(selection: (selection ?? .general).rawValue))
             .toolbar(removing: .sidebarToggle)
         } detail: {
             Group {
-                switch selection ?? .ui {
-                case .ui:
-                    UISettingsView(store: store)
+                switch selection ?? .general {
+                case .general:
+                    GeneralSettingsView(store: store)
+                case .appearance:
+                    AppearanceSettingsView(store: store)
+                case .navigation:
+                    NavigationSettingsView(store: store)
+                case .shortcuts:
+                    ShortcutsSettingsView(shortcuts: shortcuts, commands: navigation.commands)
                 case .search:
                     SearchSettingsView(store: store)
                 case .ai:
@@ -229,13 +258,13 @@ struct BrowserSettingsView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 case .development:
-                    DevelopmentSettingsView(sleepPreferences: store.sleepPreferences)
+                    DevelopmentSettingsView()
                 }
             }
             .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
             .scrollContentBackground(.visible)
             .modifier(SettingsScrollEdge(contentUnderHeader: $contentUnderHeader))
-            .navigationTitle((selection ?? .ui).rawValue)
+            .navigationTitle((selection ?? .general).rawValue)
             .toolbarBackground(headerBackgroundVisibility, for: .windowToolbar)
             .toolbar {
                 if #available(macOS 26.0, *) {
@@ -257,7 +286,7 @@ struct BrowserSettingsView: View {
 
     private var sectionTitle: some ToolbarContent {
         ToolbarItem(id: "settings.sectionTitle", placement: .navigation) {
-            Text((selection ?? .ui).rawValue)
+            Text((selection ?? .general).rawValue)
                 .font(.system(size: 17, weight: .semibold))
                 .padding(.leading, selection == .extensions ? 14 : 10)
         }
@@ -290,11 +319,14 @@ private struct FixedSettingsSidebar: NSViewRepresentable {
 
     func makeNSView(context: Context) -> SidebarConstraintView { SidebarConstraintView() }
     func updateNSView(_ view: SidebarConstraintView, context: Context) {
+        guard view.selection != selection else { return }
+        view.selection = selection
         // SwiftUI updates the native split items when selection changes.
         DispatchQueue.main.async { [weak view] in view?.lockWidth() }
     }
 
     final class SidebarConstraintView: NSView {
+        var selection: String?
         private weak var sidebar: NSSplitViewItem?
         private var observations: [NSKeyValueObservation] = []
 
@@ -363,13 +395,11 @@ private struct SettingsScrollEdge: ViewModifier {
 }
 
 private struct DevelopmentSettingsView: View {
-    let sleepPreferences: PaneSleepPreferences
     @ObservedObject private var aiDebugging = AIDiagnostics.shared
     @AppStorage(InputDiagnostics.enabledPreferenceKey) private var loggingEnabled = false
 
     var body: some View {
         Form {
-            PaneSleepSettings(settings: sleepPreferences)
             Section {
                 Toggle("Input and pane logging", isOn: $loggingEnabled)
             } header: {
@@ -393,18 +423,12 @@ private struct DevelopmentSettingsView: View {
     }
 }
 
-private struct UISettingsView: View {
+private struct GeneralSettingsView: View {
     @ObservedObject var store: BrowserStore
 
     var body: some View {
         Form {
             DefaultBrowserSettingsSection()
-            Section("Sidebar") {
-                Picker("Position", selection: $store.sidebarSide) {
-                    Text("Left").tag(SidebarSide.left)
-                    Text("Right").tag(SidebarSide.right)
-                }
-            }
             Section {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -420,26 +444,66 @@ private struct UISettingsView: View {
             } header: {
                 Text("Downloads")
             }
-            Section {
-                Toggle("Close link-opened tabs when going back past the first page", isOn: $store.closeLinkTabOnBack)
-                Toggle("Close link-opened panes when going back past the first page", isOn: $store.closeLinkPaneOnBack)
+            PaneSleepSettings(settings: store.sleepPreferences)
+        }
+        .formStyle(.grouped)
+    }
+
+    private func chooseDownloadDirectory() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Download Folder"
+        panel.prompt = "Choose"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = store.downloadDirectory
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
+        store.downloadDirectory = directory
+    }
+}
+
+private struct NavigationSettingsView: View {
+    @ObservedObject var store: BrowserStore
+
+    var body: some View {
+        Form {
+            Section("Link Clicks") {
                 Picker("Command-click a link", selection: $store.commandClickDestination) {
                     Text("Always open a new pane").tag(CommandClickDestination.newPane)
                     Text("Reuse one dedicated pane per tab").tag(CommandClickDestination.dedicatedPane)
                     Text("Open in a new tab").tag(CommandClickDestination.newTab)
                 }
-                Picker("Option-click a link", selection: $store.optionClickDestination) {
-                    Text("Open in a new tab").tag(LinkOpenDestination.newTab)
-                    Text("Open in a new pane").tag(LinkOpenDestination.newPane)
-                    Text("Open in a new window").tag(LinkOpenDestination.newWindow)
+                linkPicker("Option-click a link", selection: $store.optionClickDestination)
+                linkPicker("Command-Shift-click a link", selection: $store.commandShiftClickDestination)
+            }
+            Section("Back Navigation") {
+                Toggle("Close link-opened tabs when going back past the first page", isOn: $store.closeLinkTabOnBack)
+                Toggle("Close link-opened panes when going back past the first page", isOn: $store.closeLinkPaneOnBack)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func linkPicker(_ title: String, selection: Binding<LinkOpenDestination>) -> some View {
+        Picker(title, selection: selection) {
+            Text("Open in a new tab").tag(LinkOpenDestination.newTab)
+            Text("Open in a new pane").tag(LinkOpenDestination.newPane)
+            Text("Open in a new window").tag(LinkOpenDestination.newWindow)
+        }
+    }
+}
+
+private struct AppearanceSettingsView: View {
+    @ObservedObject var store: BrowserStore
+
+    var body: some View {
+        Form {
+            Section("Sidebar") {
+                Picker("Position", selection: $store.sidebarSide) {
+                    Text("Left").tag(SidebarSide.left)
+                    Text("Right").tag(SidebarSide.right)
                 }
-                Picker("Command-Shift-click a link", selection: $store.commandShiftClickDestination) {
-                    Text("Open in a new tab").tag(LinkOpenDestination.newTab)
-                    Text("Open in a new pane").tag(LinkOpenDestination.newPane)
-                    Text("Open in a new window").tag(LinkOpenDestination.newWindow)
-                }
-            } header: {
-                Text("Links")
             }
             Section {
                 Picker("Active pane highlight", selection: $store.paneHighlight.style) {
@@ -569,19 +633,6 @@ private struct UISettingsView: View {
                     .disabled(store.aiBubbleTransparency == BrowserStore.defaultAIBubbleTransparency)
             }
         }.formStyle(.grouped)
-    }
-
-    private func chooseDownloadDirectory() {
-        let panel = NSOpenPanel()
-        panel.title = "Choose Download Folder"
-        panel.prompt = "Choose"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = store.downloadDirectory
-        guard panel.runModal() == .OK, let directory = panel.url else { return }
-        store.downloadDirectory = directory
     }
 }
 
@@ -825,7 +876,8 @@ final class SettingsTrafficLightsAnchor: NSView {
             controls.removeFromSuperview()
             return
         }
-        if controls.superview !== frameView { frameView.addSubview(controls, positioned: .above, relativeTo: nil) }
+        guard controls.superview !== frameView else { return }
+        frameView.addSubview(controls, positioned: .above, relativeTo: nil)
         controls.frame = NSRect(x: 16, y: frameView.bounds.maxY - 40, width: 68, height: 28)
         controls.autoresizingMask = [.minYMargin, .maxXMargin]
     }

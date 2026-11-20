@@ -119,7 +119,7 @@ struct WebsiteSettingsView: View {
                             .strokeBorder(filterFocused ? Color.accentColor.opacity(0.65) : .primary.opacity(0.1))
                     }
                     .frame(width: 170)
-                    .background(FilterFocusBoundary { filterFocused = false })
+                    .background(SettingsFieldFocusBoundary { filterFocused = false })
                     .onAppear {
                         // Wait for the native field to join the window's focus tree.
                         DispatchQueue.main.async {
@@ -151,7 +151,7 @@ struct WebsiteSettingsView: View {
 
 // Native controls do not ordinarily resign their field editor when blank form
 // space is clicked. Observe outside clicks without swallowing the target's event.
-private struct FilterFocusBoundary: NSViewRepresentable {
+struct SettingsFieldFocusBoundary: NSViewRepresentable {
     var onOutsideClick: () -> Void
 
     func makeNSView(context: Context) -> BoundaryView { BoundaryView() }

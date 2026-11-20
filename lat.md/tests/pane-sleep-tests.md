@@ -22,7 +22,7 @@ Navigation invalidates an outstanding check. Subsequent sweeps must eventually r
 
 ## Persistent exceptions
 
-Verify sleeping starts disabled and both the toggle and exact-host exceptions survive reopening the profile preferences.
+Verify sleeping starts disabled and the toggle and exceptions survive reopening the profile preferences. Hostnames cover all descendant labels, overlapping entries can be removed independently, and IP addresses match exactly.
 
 ## Download startup protection
 

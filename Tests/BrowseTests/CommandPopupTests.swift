@@ -30,7 +30,7 @@ import Testing
         try #require(delegate.popupCommands().first { $0.id == id })
     }
     let commands = delegate.popupCommands()
-    #expect(commands.count == 17)
+    #expect(commands.count == 21)
     #expect(!commands.first(where: { $0.id == "explainSelection" })!.isEnabled)
     #expect(!commands.first(where: { $0.id == "summarizeSelection" })!.isEnabled)
     let historyIndex = try #require(commands.firstIndex { $0.id == "history" })
@@ -66,6 +66,17 @@ import Testing
     context.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
     context.window.makeKeyAndOrderFront(nil)
     delegate.installMenus()
+    #expect(try command("copyPageURL").shortcut == "⌥⌘C")
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    delegate.writePageAddress(to: pasteboard)
+    #expect(pasteboard.string(forType: .string) == pinnedController.address)
+    store.focus(pages[1].id)
+    delegate.writePageAddress(to: pasteboard)
+    #expect(pasteboard.string(forType: .string) == pages[1].address)
+    store.focus(pages[0].id)
+    let console = try #require(NSApp.mainMenu?.item(withTitle: "Develop")?.submenu?.item(withTitle: "Show JavaScript Console"))
+    #expect(console.keyEquivalent.isEmpty)
     #expect(try command("chat").shortcut == "⇧⌘C")
     #expect(try command("close").shortcut == "⇧⌘W")
     #expect(try command("sidebar").shortcut == "⇧⌘S")
@@ -194,4 +205,82 @@ import Testing
     delegate.showCommands()
     for _ in 0..<10 { try await Task.sleep(for: .milliseconds(10)) }
     #expect(entries().allSatisfy { !$0.isEnabled })
+}
+
+// @lat: [[lat.md/tests/commands-tests#Shortcut editing]]
+@Test @MainActor func shortcutEditing() throws {
+    _ = NSApplication.shared
+    let suite = "ShortcutEditing-\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+    let windows = BrowserWindows(root: root, persistentExtensions: false)
+    windows.restore(show: false)
+    let menu = NSApp.mainMenu
+    defer {
+        NSApp.mainMenu = menu
+        windows.prepareToQuit()
+        for session in windows.windows { session.window.close() }
+        defaults.removePersistentDomain(forName: suite)
+        try? FileManager.default.removeItem(at: root)
+    }
+    let shortcuts = CommandShortcuts(defaults: defaults)
+    let delegate = AppDelegate(browserWindows: windows, shortcuts: shortcuts, focusedWindow: { nil })
+    delegate.installMenus()
+    let command = try #require(delegate.popupCommands().first { $0.id == "duplicate" })
+    for (id, key) in [("back", "["), ("forward", "]"), ("reload", "r")] {
+        let navigation = try #require(delegate.popupCommands().first { $0.id == id })
+        #expect(navigation.shortcut == "⌘" + key.uppercased())
+        #expect(shortcuts.update(id, to: CommandBinding("k", [.command, .control])) == nil)
+        #expect(navigation.shortcut == "⌃⌘K")
+        #expect(shortcuts.update(id, to: nil) == nil)
+        #expect(navigation.shortcut == "⌘" + key.uppercased())
+    }
+    let context = try #require(windows.active)
+    context.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+    context.window.makeKeyAndOrderFront(nil)
+    #expect(!delegate.shortcutCommands().contains { $0.id == "changelog" })
+    let palette = try #require(delegate.shortcutCommands().first { $0.id == "showCommands" })
+    #expect(palette.shortcut == "⇧⌘P")
+    #expect(shortcuts.update(palette.id, to: CommandBinding("l", .command))?.contains("Open Location") == true)
+    #expect(shortcuts.update(palette.id, to: CommandBinding("p", [.control, .command])) == nil)
+    let paletteKey = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.control, .command],
+        timestamp: 0, windowNumber: 0, context: nil, characters: "p", charactersIgnoringModifiers: "p", isARepeat: false, keyCode: 35))
+    #expect(try #require(NSApp.mainMenu).performKeyEquivalent(with: paletteKey))
+    #expect(context.window.childWindows?.contains { context.addressPanel.owns($0) && $0.isVisible } == true)
+    context.addressPanel.dismiss(restoreFocus: false)
+    #expect(shortcuts.update(palette.id, to: nil) == nil)
+    #expect(palette.shortcut == "⇧⌘P")
+    let id = command.id
+    let chord = CommandBinding("u", [.control, .command])
+    #expect(shortcuts.update(id, to: CommandBinding("c", [.option, .command]))?.contains("Copy Page URL") == true)
+    #expect(shortcuts.conflicts.contains { $0.source == id && $0.owner == "copyPageURL" })
+    #expect(shortcuts.update("copyPageURL", to: CommandBinding("w", [.shift, .command])) != nil)
+    #expect(shortcuts.conflicts.map(\.source) == ["copyPageURL"])
+    #expect(shortcuts.conflicts.first?.owner == "close")
+    #expect(shortcuts.update(id, to: CommandBinding("=", .command))?.contains("Zoom In") == true)
+    #expect(command.shortcut == nil)
+    #expect(shortcuts.update(id, to: chord) == nil)
+    #expect(shortcuts.conflicts.isEmpty)
+    #expect(command.shortcut == "⌃⌘U")
+    #expect(ShortcutsSettingsView.matches(ShortcutEntry(command), shortcut: command.shortcut, query: "Cmd+Ctrl+U"))
+    #expect(!ShortcutsSettingsView.matches(ShortcutEntry(command), shortcut: command.shortcut, query: "Cmd+Ctrl+C"))
+    #expect(ShortcutsSettingsView.matches(ShortcutEntry(command), shortcut: command.shortcut, query: "duplicate"))
+    #expect(!ShortcutsSettingsView.matches(ShortcutEntry(command), shortcut: command.shortcut, query: "History"))
+    let owner = windows.sharedStore.selectedTab.id
+    let key = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.control, .command],
+        timestamp: 0, windowNumber: 0, context: nil, characters: "u", charactersIgnoringModifiers: "u", isARepeat: false, keyCode: 32))
+    #expect(try #require(NSApp.mainMenu).performKeyEquivalent(with: key))
+    #expect(windows.sharedStore.selectedTab.id != owner)
+    let reopened = CommandShortcuts(defaults: defaults)
+    let next = AppDelegate(browserWindows: windows, shortcuts: reopened)
+    next.installMenus()
+    #expect(command.shortcut == "⌃⌘U")
+    #expect(reopened.update(id, to: nil) == nil)
+    #expect(command.shortcut == nil)
+    let copy = try #require(next.popupCommands().first { $0.id == "copyPageURL" })
+    #expect(reopened.update(copy.id, to: CommandBinding("", [])) == nil)
+    #expect(copy.shortcut == nil)
+    #expect(reopened.update(copy.id, to: nil) == nil)
+    #expect(copy.shortcut == "⌥⌘C")
+    #expect(CommandShortcuts(defaults: defaults).overrides.isEmpty)
 }

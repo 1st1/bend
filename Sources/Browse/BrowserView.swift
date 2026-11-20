@@ -266,6 +266,12 @@ private struct SidebarTabRow: View {
                 }.disabled(!store.canFavorite(tab))
             }
             Button(tab.isPinned ? "Unpin tab" : "Pin tab") { store.toggleTabPinned(tab.id) }
+            if tab.isPinned {
+                Button("Return to Pinned URL") {
+                    if store.session.selectedTab != tab.id { store.select(tab.id) }
+                    store.returnToPinnedURL(tab.focusedPane)
+                }.disabled(store.pinnedReturnAddress(tab.focusedPane) == nil)
+            }
             Button("Close tab") { store.closeTab(tab.id) }.disabled(tab.isPinned)
         }
     }

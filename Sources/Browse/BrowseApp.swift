@@ -44,12 +44,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var addressPanel: AddressPanelController? { browserWindows.active?.addressPanel }
     private let focusedWindow: () -> NSWindow?
 
-    init(browserWindows: BrowserWindows = BrowserWindows(), focusedWindow: @escaping () -> NSWindow? = { NSApp.keyWindow }) {
+    init(browserWindows: BrowserWindows = BrowserWindows(), shortcuts: CommandShortcuts = CommandShortcuts(), focusedWindow: @escaping () -> NSWindow? = { NSApp.keyWindow }) {
         self.browserWindows = browserWindows
+        self.shortcuts = shortcuts
         self.focusedWindow = focusedWindow
         super.init()
     }
     private var clickMonitor: Any?
+    let shortcuts: CommandShortcuts
     private var settingsWindow: SettingsWindowController?
     private(set) var printOperation: NSPrintOperation?
     private var browserWindowsReady = false
@@ -62,7 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         installMenus()
         showReleaseNotesIfUpdated()
         AppUpdater.shared.start()
-        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { event in
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            if let window = event.window, window === self?.settingsWindow?.window { return event }
             InputDiagnostics.record(.application, event: event)
             defer { InputDiagnostics.record(.applicationReturned, event: event) }
             guard event.type == .leftMouseDown else { return event }
@@ -170,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
             edit.addItem(withTitle: title, action: Selector(action), keyEquivalent: key)
         }
+        add("Copy Page URL", #selector(copyPageURL), "c", modifiers: [.command, .option], to: edit)
         edit.addItem(.separator())
         for (title, action, key, modifiers) in [
             ("Find in Page…", NSTextFinder.Action.showFindInterface, "f", NSEvent.ModifierFlags.command),
@@ -208,8 +212,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         append(history, to: main)
         let develop = NSMenu(title: "Develop")
         add("Show Web Inspector", #selector(showWebInspector), "i", modifiers: [.command, .shift], to: develop)
-        add("Show JavaScript Console", #selector(showJavaScriptConsole), "c", modifiers: [.command, .option], to: develop)
+        add("Show JavaScript Console", #selector(showJavaScriptConsole), "", to: develop)
         append(develop, to: main)
+        let commands = NSMenu(title: "Commands")
+        append(commands, to: view)
+        shortcuts.install(commands: shortcutCommands(), menu: main, extraMenu: commands, target: self)
         NSApp.mainMenu = main
     }
     private func append(_ menu: NSMenu, to main: NSMenu) {
@@ -230,9 +237,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     private func presentSettings(section: SettingsSection? = nil) {
         addressPanel?.dismiss(restoreFocus: false)
-        if settingsWindow == nil { settingsWindow = SettingsWindowController(store: browserWindows.sharedStore) }
-        settingsWindow?.show(section: section, centeredOn: browserWindows.active?.window.screen,
-                             attachedTo: browserWindows.active?.window)
+        if settingsWindow == nil {
+            settingsWindow = SettingsWindowController(store: browserWindows.sharedStore, shortcuts: shortcuts) { [weak self] in
+                self?.shortcutCommands() ?? []
+            }
+        }
+        settingsWindow?.show(from: browserWindows.active?.window, section: section)
     }
     // @lat: [[lat.md/architecture/commands#Command popup]]
     private var commandSelection: (pane: UUID, revision: UUID, text: String)?
@@ -263,9 +273,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    func shortcutCommands() -> [PopupCommand] {
+        let palette = PopupCommand(id: "showCommands", title: "Open Command Palette", detail: "Show Commands",
+            icon: "command", menuAction: #selector(showCommands)) { [weak self] in self?.showCommands() }
+        return [palette] + popupCommands().filter { $0.id != "changelog" }
+    }
+
     func popupCommands() -> [PopupCommand] {
         let store = store
         let tab = store.selectedTab
+        let page = store.existingController(for: tab.focusedPane)
         let favorite = store.favorite(for: tab)
         let selection = commandSelection.flatMap { value -> String? in
             guard value.pane == tab.focusedPane,
@@ -273,45 +290,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return value.text.isEmpty ? nil : value.text
         }
         return [
-            PopupCommand(id: "chat", title: "Chat", detail: store.isPrivate ? "Unavailable in private windows" : "Chat about the pages in this tab", icon: "bubble.left.and.bubble.right", isEnabled: !store.isPrivate, menuAction: #selector(toggleChat)) { store.showChat() },
-            PopupCommand(id: "summarize", title: "Summarize Page", detail: "Summarize the active page using Local AI", icon: "text.alignleft", isEnabled: canSummarizePage) { [weak self] in self?.summarizePage() },
-            PopupCommand(id: "explainSelection", title: "Explain Selected", detail: "Explain the selected webpage text using Local AI", icon: "text.bubble", isEnabled: selection != nil && canSummarizePage) { [weak self] in self?.discussCommandSelection(explain: true) },
-            PopupCommand(id: "summarizeSelection", title: "Summarize Selected", detail: "Summarize the selected webpage text using Local AI", icon: "text.alignleft", isEnabled: selection != nil && canSummarizePage) { [weak self] in self?.discussCommandSelection(explain: false) },
-            PopupCommand(id: "favorite", title: favorite == nil ? "Add Tab to Favorites" : "Remove Tab from Favorites",
+            PopupCommand(id: "chat", group: .ai, title: "Chat", shortcutTitle: "Toggle AI Chat", detail: store.isPrivate ? "Unavailable in private windows" : "Chat about the pages in this tab", icon: "bubble.left.and.bubble.right", isEnabled: !store.isPrivate, menuAction: #selector(toggleChat)) { store.showChat() },
+            PopupCommand(id: "summarize", group: .ai, title: "Summarize Page", detail: "Summarize the active page using Local AI", icon: "text.alignleft", isEnabled: canSummarizePage) { [weak self] in self?.summarizePage() },
+            PopupCommand(id: "explainSelection", group: .ai, title: "Explain Selected", detail: "Explain the selected webpage text using Local AI", icon: "text.bubble", isEnabled: selection != nil && canSummarizePage) { [weak self] in self?.discussCommandSelection(explain: true) },
+            PopupCommand(id: "summarizeSelection", group: .ai, title: "Summarize Selected", detail: "Summarize the selected webpage text using Local AI", icon: "text.alignleft", isEnabled: selection != nil && canSummarizePage) { [weak self] in self?.discussCommandSelection(explain: false) },
+            PopupCommand(id: "favorite", group: .tabs, title: favorite == nil ? "Add Tab to Favorites" : "Remove Tab from Favorites",
                 detail: "Save the active pane’s website", icon: "star", isEnabled: favorite != nil || store.canFavorite(tab)) {
                     if let favorite { store.removeFavorite(favorite.id) } else { store.requestFavorite(tab.id) }
                 },
-            PopupCommand(id: "duplicate", title: "Duplicate Tab", detail: "Copy all panes into a new tab", icon: "plus.square.on.square") {
+            PopupCommand(id: "duplicate", group: .tabs, title: "Duplicate Tab", detail: "Copy all panes into a new tab", icon: "plus.square.on.square") {
                 store.duplicateTab(tab.id)
             },
-            PopupCommand(id: "close", title: "Close Tab", detail: tab.isPinned ? "Unpin the tab to close it" : "Close all panes in this tab",
+            PopupCommand(id: "close", group: .tabs, title: "Close Tab", detail: tab.isPinned ? "Unpin the tab to close it" : "Close all panes in this tab",
                 icon: "xmark", isEnabled: !tab.isPinned, menuAction: #selector(closeTab)) { store.closeTab(tab.id) },
-            PopupCommand(id: "pinTab", title: tab.isPinned ? "Unpin Tab" : "Pin Tab", detail: "Protect all panes from closing", icon: "pin") {
+            PopupCommand(id: "pinTab", group: .tabs, title: tab.isPinned ? "Unpin Tab" : "Pin Tab", detail: "Protect all panes from closing", icon: "pin") {
                 store.setTabPinned(tab.id, pinned: !tab.isPinned)
             },
-            PopupCommand(id: "returnPinned", title: "Return to Pinned URL",
+            PopupCommand(id: "returnPinned", group: .panes, title: "Return to Pinned URL",
                 detail: "Open the address saved when this pane was pinned", icon: "arrow.uturn.backward",
                 isEnabled: store.pinnedReturnAddress(tab.focusedPane) != nil) {
                     store.returnToPinnedURL(tab.focusedPane)
                 },
-            PopupCommand(id: "pinPane", title: store.isPanePinned(tab.focusedPane) ? "Unpin Pane" : "Pin Pane",
+            PopupCommand(id: "pinPane", group: .panes, title: store.isPanePinned(tab.focusedPane) ? "Unpin Pane" : "Pin Pane",
                 detail: "Protect the active pane from closing", icon: "pin.fill") {
                     store.setPanePinned(tab.focusedPane, pinned: !store.isPanePinned(tab.focusedPane))
                 },
-            PopupCommand(id: "sidebar", title: store.sidebarVisible ? "Hide Sidebar" : "Show Sidebar",
+            PopupCommand(id: "sidebar", title: store.sidebarVisible ? "Hide Sidebar" : "Show Sidebar", shortcutTitle: "Toggle Sidebar",
                 detail: "Toggle sidebar", icon: "sidebar.left", menuAction: #selector(toggleSidebar)) { store.sidebarVisible.toggle() },
             PopupCommand(id: "settings", title: "Settings…", detail: "Browser preferences", icon: "gearshape", menuAction: #selector(showSettings)) { [weak self] in self?.showSettings() },
+            PopupCommand(id: "back", group: .panes, title: "Back", detail: "Go back in the active pane", icon: "chevron.left",
+                isEnabled: store.canGoBack(from: tab.focusedPane), menuAction: #selector(back)) { [weak self] in self?.back() },
+            PopupCommand(id: "forward", group: .panes, title: "Forward", detail: "Go forward in the active pane", icon: "chevron.right",
+                isEnabled: page?.canGoForward == true && page?.isStartPage == false, menuAction: #selector(forward)) { [weak self] in self?.forward() },
+            PopupCommand(id: "reload", group: .panes, title: "Reload Page", detail: "Refresh the active page", icon: "arrow.clockwise",
+                isEnabled: page?.isStartPage == false, menuAction: #selector(reload)) { [weak self] in self?.reload() },
+            PopupCommand(id: "copyPageURL", group: .panes, title: "Copy Page URL", detail: "Copy the active pane’s address to the clipboard",
+                icon: "doc.on.doc", isEnabled: currentPageAddress != nil, menuAction: #selector(copyPageURL)) { [weak self] in self?.copyPageURL() },
             PopupCommand(id: "print", title: "Print…", detail: "Print the active page", icon: "printer",
                 isEnabled: printablePage != nil, menuAction: #selector(printPage)) { [weak self] in self?.printPage() },
             PopupCommand(id: "changelog", title: "What’s New", detail: "Features, improvements, and fixes in every release", icon: "sparkles", menuAction: #selector(showChangelog)) { store.showChangelog() },
             PopupCommand(id: "history", title: "View History", detail: "Browse visited pages", icon: "clock", menuAction: #selector(showHistory)) { [weak self] in self?.showHistory() },
-            PopupCommand(id: "chat-history", title: "Show AI Chat History", detail: "Restore conversations and their pane layouts", icon: "clock.arrow.circlepath", isEnabled: !store.isPrivate) { store.showChatHistory() },
+            PopupCommand(id: "chat-history", group: .ai, title: "Show AI Chat History", detail: "Restore conversations and their pane layouts", icon: "clock.arrow.circlepath", isEnabled: !store.isPrivate) { store.showChatHistory() },
             PopupCommand(id: "devTools", title: findSurface?.isDeveloperToolsVisible == true ? "Hide Developer Tools" : "Show Developer Tools",
                 detail: "Toggle dev tools / Web Inspector", icon: "hammer", isEnabled: activeWebPage != nil, menuAction: #selector(showWebInspector)) { [weak self] in self?.showWebInspector() }
         ]
     }
 
     @objc private func openLocation() { store.requestAddress() }
+    private var currentPageAddress: String? {
+        guard let context = browserWindows.active else { return nil }
+        if let key = focusedWindow(), key !== context.window, !context.addressPanel.owns(key) { return nil }
+        let store = context.store
+        let tab = store.selectedTab
+        return store.existingController(for: tab.focusedPane)?.address ?? tab.pages.first { $0.id == tab.focusedPane }?.address
+    }
+
+    @objc private func copyPageURL() {
+        writePageAddress(to: .general)
+    }
+
+    func writePageAddress(to pasteboard: NSPasteboard) {
+        guard let address = currentPageAddress else { return }
+        pasteboard.clearContents()
+        pasteboard.setString(address, forType: .string)
+    }
+
     private var activeWebPage: PageController? {
         guard let context = browserWindows.active,
               focusedWindow() == nil || focusedWindow() === context.window || focusedWindow().map(context.addressPanel.owns) == true,
@@ -421,12 +464,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         store.reopenClosed()
         window?.makeKeyAndOrderFront(nil)
     }
+    private func shortcutCommand(_ item: NSMenuItem) -> PopupCommand? {
+        guard let id = item.representedObject as? String,
+              let context = browserWindows.active,
+              focusedWindow() == nil || focusedWindow() === context.window else { return nil }
+        return popupCommands().first { $0.id == id }
+    }
+
+    @objc func runPaletteShortcut(_ item: NSMenuItem) {
+        guard let command = shortcutCommand(item) else { return }
+        if command.id == "explainSelection" || command.id == "summarizeSelection" {
+            guard canSummarizePage, let context = browserWindows.active,
+                  let page = activeWebPage else { return }
+            let tab = context.store.selectedTab
+            let revision = page.aiNavigationRevision
+            Task {
+                guard let text = try? await page.selectedPageText(), !text.isEmpty,
+                      browserWindows.active === context, activeWebPage === page,
+                      store.selectedTab.id == tab.id, page.aiNavigationRevision == revision else { return }
+                store.showChat()
+                store.chats[tab.id]?.discussSelection(text, explain: command.id == "explainSelection")
+            }
+        } else if command.isEnabled {
+            command.perform()
+        }
+    }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(runPaletteShortcut(_:)) {
+            guard let command = shortcutCommand(menuItem) else { return false }
+            menuItem.title = command.title
+            if command.id == "explainSelection" || command.id == "summarizeSelection" {
+                return canSummarizePage && activeWebPage != nil
+            }
+            return command.isEnabled
+        }
         if menuItem.action == #selector(toggleChat) {
             guard let context = browserWindows.active else { return false }
             menuItem.title = context.store.openChats.contains(context.store.selectedTab.id) ? "Hide Chat" : "Show Chat"
             return !context.store.isPrivate
         }
+        if menuItem.action == #selector(copyPageURL) { return currentPageAddress != nil }
         if menuItem.action == #selector(printPage) { return printablePage != nil }
         if menuItem.action == #selector(showWebInspector) || menuItem.action == #selector(showJavaScriptConsole) {
             if menuItem.action == #selector(showWebInspector) {

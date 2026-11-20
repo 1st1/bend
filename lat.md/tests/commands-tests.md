@@ -12,7 +12,7 @@ See [[lat.md/architecture/commands|Architecture and behavior]].
 
 [[Tests/BrowseTests/CommandPopupTests.swift#commandPopupActions]] verifies state-aware actions, favorite and pin changes, split-tab duplication, the native command shortcut, filtering, execution, empty results, stale targets, and retention of initial blank tabs.
 
-The same test verifies Command-Shift-C chat toggling, dynamic Show/Hide menu titles, and conversation retention.
+The same test verifies Command-Shift-C chat toggling, dynamic Show/Hide menu titles, and conversation retention. It checks the Copy Page URL binding and reads back the copied address from an isolated pasteboard after switching between panes.
 
 ## Automatic command shortcuts
 
@@ -21,3 +21,7 @@ The same test verifies Command-Shift-C chat toggling, dynamic Show/Hide menu tit
 ## Selection commands
 
 [[Tests/BrowseTests/CommandPopupTests.swift#selectionCommands]] verifies both selection commands stay disabled for empty selections, become available for selected webpage text, and refresh after clearing selection and reopening the menu.
+
+## Shortcut editing
+
+[[Tests/BrowseTests/CommandPopupTests.swift#shortcutEditing]] verifies collision rejection, native key-equivalent dispatch for opening the palette and executing a palette command, filtering, persistence after menu reconstruction, clearing, and restoration of assigned and unassigned defaults.

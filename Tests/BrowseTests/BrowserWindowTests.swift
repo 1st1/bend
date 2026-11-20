@@ -16,10 +16,20 @@ import BrowseCore
     defer { keepAlive.invalidate() }
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSettingsToolbar-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
-    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let windows = BrowserWindows(root: root, persistentExtensions: false)
+    let shortcutDefaults = try #require(UserDefaults(suiteName: root.lastPathComponent))
+    let delegate = AppDelegate(browserWindows: windows, shortcuts: CommandShortcuts(defaults: shortcutDefaults))
+    let originalMenu = NSApp.mainMenu
+    delegate.installMenus()
+    defer { NSApp.mainMenu = originalMenu }
+    let store = windows.sharedStore
     store.customSearchEngine = CustomSearchEngine(name: "Example", template: "https://example.com/search?q=%s")
     store.searchEngine = .custom
-    let settings = SettingsWindowController(store: store)
+    var catalogReads = 0
+    let settings = SettingsWindowController(store: store, shortcuts: delegate.shortcuts) {
+        catalogReads += 1
+        return delegate.shortcutCommands()
+    }
     settings.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
     let initialScreen = try #require(NSScreen.main)
     settings.show(centeredOn: initialScreen)
@@ -47,6 +57,23 @@ import BrowseCore
         let title = section.rawValue
         sidebar.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
         try await Task.sleep(for: .milliseconds(200))
+        if section == .shortcuts {
+            let readsBeforeMove = catalogReads
+            let origin = settings.window.frame.origin
+            for offset in 1...20 {
+                settings.window.setFrameOrigin(NSPoint(x: origin.x + CGFloat(offset), y: origin.y))
+                settings.window.displayIfNeeded()
+            }
+            settings.window.setFrameOrigin(origin)
+            #expect(catalogReads == readsBeforeMove)
+            #expect(delegate.shortcuts.update("duplicate", to: CommandBinding("c", [.option, .command])) != nil)
+            #expect(delegate.shortcuts.conflicts.contains { $0.source == "duplicate" && $0.owner == "copyPageURL" })
+            sidebar.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+            try await Task.sleep(for: .milliseconds(200))
+            sidebar.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(delegate.shortcuts.conflicts.isEmpty)
+        }
         #expect(settings.window.title == title)
         #expect(abs(sidebar.enclosingScrollView!.frame.width - 200) < 1)
         var ancestor = sidebar.superview
@@ -846,7 +873,10 @@ import BrowseCore
     try await Task.sleep(for: .milliseconds(350))
     #expect(parent.attachedSheet == nil)
     #expect(!settings.window.isVisible)
-    settings.show()
+    settings.show(from: parent)
+    #expect(settings.window.isVisible)
+    #expect(settings.window.sheetParent == nil)
+    #expect(parent.attachedSheet == nil)
     #expect(settings.window.collectionBehavior.contains(.fullScreenNone))
     settings.window.close()
 }

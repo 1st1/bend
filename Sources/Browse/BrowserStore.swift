@@ -1083,7 +1083,7 @@ final class BrowserStore: ObservableObject {
               !linkOpeners.keys.contains(id), !linkOpeners.values.contains(id),
               let controller = browsers[id], controller.canSleep,
               let url = controller.webView.url, let host = WebsiteSettings.hostname(for: url),
-              !sleepPreferences.keepAwakeHosts.contains(host) else { return nil }
+              !sleepPreferences.keepsAwake(host) else { return nil }
         return controller
     }
 

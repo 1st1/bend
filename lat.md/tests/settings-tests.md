@@ -36,9 +36,9 @@ The test dispatches real menu key equivalents with an explicit focused-window pr
 
 ## Settings section toolbar
 
-[BrowserWindowTests.swift](../../Tests/BrowseTests/BrowserWindowTests.swift) verifies that the native Settings toolbar contains the section title and that sidebar selection updates the window title for UI, Websites, Extensions, and Development.
+[BrowserWindowTests.swift](../../Tests/BrowseTests/BrowserWindowTests.swift) verifies that the native Settings toolbar contains the section title and that sidebar selection updates the window title for Appearance, Websites, Extensions, and Development.
 
-The toolbar test verifies targeted Extensions presentation in fresh, visible, and reopened Settings windows, and that general presentation preserves the current selection. It also verifies reopening centers Settings on each available screen after moving it offscreen. It scrolls overflowing detail content beneath the stationary title and back to the top, checking that native titlebar transparency changes with the overlap. It also verifies native toolbar insets and fixed width bounds across all sections while allowing vertical resizing. The visible sidebar stays 200 points wide across section changes, including attempts to move the native divider in both directions; assertions exclude OS-dependent margins on the native split-item wrapper.
+Moving the Settings window repeatedly with Shortcuts selected reuses its command catalog. The toolbar test verifies targeted Extensions presentation in fresh, visible, and reopened Settings windows, and that general presentation preserves the current selection. It also verifies reopening centers Settings on each available screen after moving it offscreen. It scrolls overflowing detail content beneath the stationary title and back to the top, checking that native titlebar transparency changes with the overlap. It also verifies native toolbar insets and fixed width bounds across all sections while allowing vertical resizing. The visible sidebar stays 200 points wide across section changes, including attempts to move the native divider in both directions; assertions exclude OS-dependent margins on the native split-item wrapper.
 
 ## Website setting identity
 
@@ -104,4 +104,4 @@ The test also suppresses WebKit’s server-trust property after a real TLS chall
 
 [[Tests/BrowseTests/BrowserWindowTests.swift#settingsAttachedSheet]] verifies Settings attaches to the originating browser without entering an application-modal loop, preserves section navigation, and dismisses and reopens with Escape and Command-W.
 
-The upper-left sheet frame exposes native traffic lights with only Close enabled; clicking it dismisses the sheet. The same Settings window restores its standalone fullscreen policy when reopened without a parent. Physical fullscreen Space retention and the native top-edge slide require a manual check.
+The upper-left sheet frame exposes native traffic lights with only Close enabled; clicking it dismisses the sheet. The same Settings window restores its standalone fullscreen policy when reopened from a regular browser window. Physical fullscreen Space retention and the native top-edge slide require a manual check.

@@ -268,6 +268,15 @@ private func sleepLoaded(_ web: WKWebView) async throws {
 
 // @lat: [[lat.md/tests/pane-sleep-tests#Persistent exceptions]]
 @Test @MainActor func paneSleepSettingsPersistence() throws {
+    for input in ["example.com/docs", "ex%61mple.com", "https://example.com", "host:80", "a_b", "a b"] {
+        #expect(!PaneSleepSettings.allowsHostnameCharacters(input))
+        #expect(PaneSleepSettings.hostname(from: input) == nil)
+    }
+    for input in ["", ".", ".com", "a..b", "-host", "host-", String(repeating: "x", count: 64)] {
+        #expect(PaneSleepSettings.hostname(from: input) == nil)
+    }
+    #expect(PaneSleepSettings.hostname(from: "API-2.Example.COM.") == "api-2.example.com")
+    #expect(PaneSleepSettings.hostname(from: "xn--bcher-kva.example") == "xn--bcher-kva.example")
     let domain = "BendSleepPreferences-\(UUID())"
     let defaults = try #require(UserDefaults(suiteName: domain))
     defer { defaults.removePersistentDomain(forName: domain) }
@@ -278,6 +287,19 @@ private func sleepLoaded(_ web: WKWebView) async throws {
     let restored = PaneSleepPreferences(defaults: defaults)
     #expect(restored.enabled)
     #expect(restored.keepAwakeHosts == ["example.com"])
+    #expect(restored.keepsAwake("example.com"))
+    #expect(restored.keepsAwake("www.example.com"))
+    #expect(restored.keepsAwake("api.eu.example.com"))
+    #expect(!restored.keepsAwake("anotherexample.com"))
+    #expect(!restored.keepsAwake("example.com.test"))
+    restored.keepAwake("www.example.com", enabled: true)
+    restored.keepAwake("example.com", enabled: false)
+    #expect(restored.keepsAwake("assets.www.example.com"))
+    #expect(!restored.keepsAwake("example.com"))
+    #expect(!restored.keepsAwake("mail.example.com"))
+    restored.keepAwake("127.0.0.1", enabled: true)
+    #expect(restored.keepsAwake("127.0.0.1"))
+    #expect(!restored.keepsAwake("host.127.0.0.1"))
     restored.enabled = false
     #expect(!PaneSleepPreferences(defaults: defaults).enabled)
 }

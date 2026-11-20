@@ -16,7 +16,7 @@ Only one request per window may be pending; other requests are discarded rather 
 
 ## Default browser
 
-[DefaultBrowser.swift](../../Sources/Browse/DefaultBrowser.swift) adds a default-browser status and Make Default action at the top of Settings → UI, using macOS's native consent flow.
+[DefaultBrowser.swift](../../Sources/Browse/DefaultBrowser.swift) adds a default-browser status and Make Default action at the top of Settings → General, using macOS's native consent flow.
 
 Both HTTP and HTTPS must resolve to Bend's bundle identity for the status to report it as default. Status refreshes when the section appears, Bend becomes active, and a request completes. Requests use NSWorkspace's public asynchronous default-application API, rechecking each scheme so a combined system confirmation does not cause a redundant prompt. Cancellation shows no error; other failures appear inline and allow retry. The refreshed status reflects any scheme changes that completed before a cancellation or failure. Bend never requests this change automatically on launch.
 
