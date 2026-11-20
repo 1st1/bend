@@ -36,7 +36,9 @@ Both sidebar positions are covered. Disabling animations applies the final layou
 
 ## Native sidebar tab dragging
 
-[PaneTransferTests.swift](../../Tests/BrowseTests/PaneTransferTests.swift) sends window mouse events through the glass sidebar to verify repeated tab reordering, stable insertion targets, Escape and outside cancellation, selection, recovery from a missing release, and separate close-button handling.
+[PaneTransferTests.swift](../../Tests/BrowseTests/PaneTransferTests.swift) sends window mouse events through the glass sidebar to verify that dragged and neighboring rows move before the stored order changes.
+
+It covers repeated reordering, stable insertion targets, Escape and outside cancellation, selection, recovery from a missing release, and separate close-button handling.
 
 ## Sidebar overflow counts
 

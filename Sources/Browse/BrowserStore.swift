@@ -13,6 +13,7 @@ final class BrowserStore: ObservableObject {
     // Session observers can prune chats midway through a tab mutation. Only queue
     // persistence here; extension synchronization requires the completed layout.
     @Published var openChats: Set<UUID> = [] { didSet { if !windowStopped { scheduleSessionSave() } } }
+    let tabReorderPreview = TabReorderPreview()
     let chatHistory: ChatHistoryStore
 
     func showChat() {

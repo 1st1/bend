@@ -1,0 +1,3 @@
+kind: Changed
+body: Sidebar tabs now follow the pointer while dragging, and neighboring tabs slide aside to show the new order.
+time: 2026-11-20T14:36:48.502209-08:00

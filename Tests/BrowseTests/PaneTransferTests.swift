@@ -285,11 +285,32 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     try await settle()
     let frame = window.frame
     let down = try point(tabs[0].id)
-    let up = try point(tabs[2].id, below: true)
+    var up = try point(tabs[2].id, below: true)
+    up.y -= 120 // Empty sidebar space below the final row.
     try sendTransferMouse(.leftMouseDown, at: down, to: window)
     try sendTransferMouse(.leftMouseDragged, at: up, to: window)
     try await settle()
     #expect(store.session.workspaces[0].tabs.map(\.id) == tabs.map(\.id))
+    #expect(store.tabReorderPreview.offsets[tabs[1].id] == -1)
+    #expect(store.tabReorderPreview.offsets[tabs[2].id] == -1)
+    #expect(store.tabReorderPreview.draggedID == tabs[0].id)
+    let handles = descendants(TabDragSourceView.self, host)
+    func visualCenter(_ id: UUID) throws -> CGFloat {
+        let handle = try #require(handles.first { $0.tabID == id })
+        return handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.midY), to: nil).y
+    }
+    let draggedHandle = try #require(handles.first { $0.tabID == tabs[0].id })
+    let surface = try #require(draggedHandle.dragSurface)
+    let preview = try #require(surface.floatingRow)
+    #expect(preview.superview === surface)
+    #expect(abs(preview.convert(preview.bounds, to: nil).midY - up.y) < 2)
+    let sidebarEdge = try row(tabs[2].id).convert(row(tabs[2].id).bounds, to: nil).maxX
+    let nearEdge = NSPoint(x: sidebarEdge - 2, y: up.y)
+    try sendTransferMouse(.leftMouseDragged, at: nearEdge, to: window)
+    let visible = preview.convert(preview.bounds.intersection(preview.visibleRect), to: nil)
+    #expect(visible.maxX > sidebarEdge + 20)
+    #expect(abs(visible.width - preview.bounds.width) < 1)
+    #expect(abs(try visualCenter(tabs[1].id) - down.y) < 2)
     let releases = window.mouseUpCount
     try sendTransferMouse(.leftMouseUp, at: up, to: window)
     try await settle()
@@ -547,7 +568,15 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     store.toggleZoom(first.pages[0].id)
     try await settle()
     try sendTransferMouse(.leftMouseDown, at: down, to: window)
-    try sendTransferMouse(.leftMouseDragged, at: hover, to: window)
+    // Reorder past the destination, then hover its visibly shifted row.
+    let past = NSPoint(x: hover.x, y: hover.y - Chrome.sidebarTabHeight)
+    try sendTransferMouse(.leftMouseDragged, at: past, to: window)
+    try await settle(4)
+    let shifted = try #require(descendants(TabDragSourceView.self, host).first { $0.tabID == second.id })
+    let visibleCenter = shifted.convert(NSPoint(x: shifted.bounds.midX, y: shifted.bounds.midY), to: nil)
+    #expect(abs(visibleCenter.y - down.y) < 2)
+    try sendTransferMouse(.leftMouseDragged, at: visibleCenter, to: window)
+    #expect(source.dragSurface?.placement == .join(tabID: second.id))
     try await settle(11)
     #expect(store.session.selectedTab == second.id)
     #expect(store.zoomedPane == nil)

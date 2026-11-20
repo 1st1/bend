@@ -2,6 +2,52 @@ import AppKit
 import SwiftUI
 import BrowseCore
 
+@MainActor
+final class TabReorderPreview: ObservableObject {
+    @Published var draggedID: UUID?
+    @Published private(set) var offsets: [UUID: Int] = [:]
+
+    func show(tabs: [BrowserTab], source: UUID, target: UUID, after: Bool) {
+        var order = tabs.map(\.id)
+        order.removeAll { $0 == source }
+        guard let index = order.firstIndex(of: target) else { clear(); return }
+        order.insert(source, at: index + (after ? 1 : 0))
+        let original = Dictionary(uniqueKeysWithValues: tabs.enumerated().map { ($1.id, $0) })
+        var next: [UUID: Int] = [:]
+        for (index, id) in order.enumerated() {
+            if let previous = original[id], index != previous { next[id] = index - previous }
+        }
+        if offsets != next { offsets = next }
+    }
+
+    func clear() {
+        if !offsets.isEmpty { offsets = [:] }
+    }
+}
+
+private struct HiddenTabContent: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    var hidesDraggedTabContent: Bool {
+        get { self[HiddenTabContent.self] }
+        set { self[HiddenTabContent.self] = newValue }
+    }
+}
+
+struct TabReorderOffset: ViewModifier {
+    @ObservedObject var preview: TabReorderPreview
+    let id: UUID
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        let slots = preview.offsets[id, default: 0]
+        let dragging = preview.draggedID == id
+        content.environment(\.hidesDraggedTabContent, dragging)
+            .offset(y: dragging ? 0 : CGFloat(slots) * (Chrome.sidebarTabHeight + Chrome.sidebarTabSpacing))
+            .animation(reduceMotion || dragging || preview.offsets.isEmpty ? nil : .easeOut(duration: 0.15), value: slots)
+    }
+}
+
 // @lat: [[lat.md/architecture/sidebar#Sidebar tab reordering]]
 struct TabDragHandle: NSViewRepresentable {
     let store: BrowserStore
@@ -107,13 +153,15 @@ final class TabDragSourceView: NSView {
                 }
                 return
             }
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                switch placement {
-                case .reorder(let destination, let after):
-                    _ = store.reorderTab(tabID, relativeTo: destination, after: after)
-                case .join(let destination):
+            switch placement {
+            case .reorder(let destination, let after):
+                _ = store.reorderTab(tabID, relativeTo: destination, after: after)
+            case .join(let destination):
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
                     _ = store.joinTabs(tabID, into: destination)
-                case .joinAtPane(let destination, let pane, let edge):
+                }
+            case .joinAtPane(let destination, let pane, let edge):
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
                     _ = store.joinTabs(tabID, into: destination, beside: pane, edge: edge)
                 }
             }
@@ -134,10 +182,15 @@ final class TabDragSourceView: NSView {
     }
     func cancelDrag() {
         if mouseDownPoint != nil { InputDiagnostics.transition(.tabDrag, .finished, view: self, tabID: tabID) }
+        if dragSurface != nil, store?.tabReorderPreview.draggedID == tabID {
+            store?.tabReorderPreview.draggedID = nil
+        }
+        let wasDragging = dragSurface != nil
         mouseDownPoint = nil
         dragSurface?.clearPlacement()
         dragSurface?.removeFromSuperview(); dragSurface = nil
         dragPreview?.close(); dragPreview = nil
+        if wasDragging { window?.contentView?.layoutSubtreeIfNeeded() }
         if let monitor {
             NSEvent.removeMonitor(monitor); self.monitor = nil
             InputDiagnostics.transition(.tabMonitorLifetime, .removed, view: self, tabID: tabID)
@@ -154,6 +207,8 @@ final class TabDragSurface: NSView {
         case joinAtPane(tabID: UUID, paneID: UUID, edge: PaneDropEdge)
     }
     private weak var source: TabDragSourceView?
+    private(set) var floatingRow: NSView?
+    private var grabPoint: NSPoint = .zero
     private let marker = CAShapeLayer()
     private let badge = NSTextField(labelWithString: "")
     private(set) var placement: Placement? {
@@ -162,6 +217,7 @@ final class TabDragSurface: NSView {
         }
     }
     private(set) var paneTarget: PaneDropHost?
+    private weak var previewStore: BrowserStore?
     private var hoverTabID: UUID?
     private var hoverTask: Task<Void, Never>?
     var destinationStore: BrowserStore? { (window as? BrowseWindow)?.browserStore ?? source?.store }
@@ -185,6 +241,20 @@ final class TabDragSurface: NSView {
         badge.layer?.backgroundColor = NSColor(calibratedWhite: 0.18, alpha: 0.96).cgColor
         badge.layer?.cornerRadius = 12
         badge.frame.size = NSSize(width: min(240, max(100, badge.intrinsicContentSize.width + 24)), height: 26)
+        if let store = source.store, let tab = store.sidebarTabs.first(where: { $0.id == source.tabID }),
+           let row = descendants(of: PaneSidebarTargetView.self, in: content).first(where: { $0.destination == .tab(tab.id) }),
+           let down = source.mouseDownPoint {
+            let frame = row.convert(row.bounds, to: nil)
+            grabPoint = NSPoint(x: down.x - frame.minX, y: frame.maxY - down.y)
+            let preview = NSHostingView(rootView: SidebarTabRow(store: store, tab: tab, isDragPreview: true)
+                .background(.regularMaterial, in: Capsule())
+                .frame(width: frame.width, height: frame.height))
+            preview.sizingOptions = []
+            preview.frame.size = frame.size
+            floatingRow = preview
+            addSubview(preview)
+            store.tabReorderPreview.draggedID = tab.id
+        }
         addSubview(badge)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -196,8 +266,15 @@ final class TabDragSurface: NSView {
               let store = destinationStore, let content = superview else {
             isHidden = true; clearPlacement(); return
         }
+        if previewStore !== store {
+            previewStore?.tabReorderPreview.clear()
+            updateHover(nil)
+            previewStore = store
+        }
         let point = convert(windowPoint, from: nil)
-        badge.isHidden = window !== sourceWindow
+        floatingRow?.isHidden = window !== sourceWindow
+        floatingRow?.setFrameOrigin(NSPoint(x: point.x - grabPoint.x, y: point.y - grabPoint.y))
+        badge.isHidden = window !== sourceWindow || floatingRow != nil
         badge.setFrameOrigin(NSPoint(x: point.x + 12, y: point.y + 12))
         guard bounds.contains(point) else { clearPlacement(); return }
         let targets = descendants(of: PaneSidebarTargetView.self, in: content).filter { $0.store === store && !$0.isHiddenOrHasHiddenAncestor }
@@ -207,6 +284,7 @@ final class TabDragSurface: NSView {
             }
             return false
         }) else {
+            store.tabReorderPreview.clear()
             updateHover(nil)
             updatePaneTarget(at: windowPoint, content: content, store: store, sourceID: source.tabID)
             return
@@ -217,13 +295,17 @@ final class TabDragSurface: NSView {
                   !view.bounds.intersection(view.visibleRect).isEmpty else { return nil }
             return (id, convert(view.bounds.intersection(view.visibleRect), from: view))
         }.sorted { $0.1.midY < $1.1.midY }
-        guard let last = rows.last else { clearPlacement(); return }
-        // The middle of a row joins; narrow top/bottom bands keep reordering
-        // available without requiring a modifier key or a hover timer.
-        if let row = rows.first(where: { $0.1.insetBy(dx: 0, dy: $0.1.height * 0.2).contains(point) }) {
-            guard row.0 != source.tabID else { clearPlacement(); return }
+        guard !rows.isEmpty else { clearPlacement(); return }
+        // Reorder boundaries stay fixed, but a join belongs to the row the user sees.
+        let stride = Chrome.sidebarTabHeight + Chrome.sidebarTabSpacing
+        let joinRows = rows.map { id, bounds in
+            (id, bounds.offsetBy(dx: 0, dy: CGFloat(store.tabReorderPreview.offsets[id, default: 0]) * stride))
+        }
+        let center = joinRows.first { $0.0 != source.tabID && $0.1.insetBy(dx: 0, dy: $0.1.height * 0.2).contains(point) }
+        updateHover(center?.0)
+        if let row = center {
             placement = .join(tabID: row.0)
-            updateHover(row.0)
+            badge.isHidden = window !== sourceWindow
             badge.stringValue = "Join tabs"
             CATransaction.begin(); CATransaction.setDisableActions(true)
             marker.fillColor = NSColor.systemBlue.withAlphaComponent(0.22).cgColor
@@ -234,35 +316,37 @@ final class TabDragSurface: NSView {
             CATransaction.commit()
             return
         }
-        let before = rows.first { point.y < $0.1.midY }
-        let row = before ?? last
-        guard row.0 != source.tabID else { clearPlacement(); return }
-        placement = .reorder(tabID: row.0, after: before == nil)
-        updateHover(nil)
+        guard let sourceID = source.tabID else { clearPlacement(); return }
+        marker.isHidden = true
+        badge.isHidden = true
+        let candidates = rows.filter { $0.0 != sourceID }
+        guard let last = candidates.last else { placement = nil; return }
+        let before = candidates.first { point.y < $0.1.midY }
+        let target = before ?? last
+        let next = Placement.reorder(tabID: target.0, after: before == nil)
+        if placement != next {
+            store.tabReorderPreview.show(tabs: store.sidebarTabs, source: sourceID, target: target.0, after: before == nil)
+        }
+        placement = next
         badge.stringValue = source.title
-        let y = before == nil ? row.1.maxY + 3.5 : row.1.minY - 3.5
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        marker.fillColor = NSColor.systemBlue.cgColor
-        marker.strokeColor = nil
-        marker.path = CGPath(roundedRect: NSRect(x: row.1.minX, y: y - 1, width: row.1.width, height: 2),
-                             cornerWidth: 1, cornerHeight: 1, transform: nil)
-        marker.isHidden = false
-        CATransaction.commit()
     }
 
     private func updateHover(_ id: UUID?) {
         guard id != hoverTabID else { return }
         hoverTask?.cancel(); hoverTask = nil
         hoverTabID = id
-        guard let id, let store = destinationStore, store.session.selectedTab != id else { return }
+        guard let id, let store = destinationStore else { return }
         hoverTask = Task { @MainActor [weak self, weak store] in
             do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
             guard let self, let store, self.hoverTabID == id, self.source?.dragSurface === self,
                   let sourceID = self.source?.tabID,
                   self.source?.store?.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == sourceID }) == true,
                   store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == id }) else { return }
-            InputDiagnostics.transition(.tabHoverSelection, .changed, view: self.source, tabID: id)
-            store.select(id)
+            guard self.placement == .join(tabID: id) else { return }
+            if store.session.selectedTab != id {
+                InputDiagnostics.transition(.tabHoverSelection, .changed, view: self.source, tabID: id)
+                store.select(id)
+            }
             store.zoomedPane = nil
         }
     }
@@ -279,6 +363,7 @@ final class TabDragSurface: NSView {
                 y: candidate.isFlipped ? local.y - candidate.bounds.minY : candidate.bounds.maxY - local.y)
             guard let edge = PaneDropEdge.at(position, in: candidate.bounds.size) else { continue }
             placement = .joinAtPane(tabID: store.selectedTab.id, paneID: pane, edge: edge)
+            badge.isHidden = window !== source?.window
             badge.stringValue = "Join tabs"
             marker.isHidden = true
             setPaneTarget(candidate, edge: edge)
@@ -302,6 +387,8 @@ final class TabDragSurface: NSView {
         return (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(of: type, in: $0) }
     }
     func clearPlacement() {
+        previewStore?.tabReorderPreview.clear()
+        previewStore = nil
         updateHover(nil)
         setPaneTarget(nil)
         placement = nil

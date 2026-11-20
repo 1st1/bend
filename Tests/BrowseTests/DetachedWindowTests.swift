@@ -104,7 +104,7 @@ import WebKit
         try send(.leftMouseDragged, NSPoint(x: down.x + 6, y: down.y))
         #expect(preview()?.panel.isVisible == false)
         let surface = try #require(row.dragSurface)
-        #expect(surface.subviews.contains { $0 is NSTextField && !$0.isHiddenOrHasHiddenAncestor })
+        #expect(surface.floatingRow?.isHiddenOrHasHiddenAncestor == false)
     }
     let key = NSApp.keyWindow
     try send(.leftMouseDragged, drop)
@@ -140,7 +140,7 @@ import WebKit
     } else {
         #expect(!card.panel.isVisible)
         let surface = try #require(row.dragSurface)
-        #expect(surface.subviews.contains { $0 is NSTextField && !$0.isHiddenOrHasHiddenAncestor })
+        #expect(surface.floatingRow?.isHiddenOrHasHiddenAncestor == false)
         try send(.leftMouseDragged, drop)
         #expect(card.panel.isVisible)
         try send(.leftMouseDragged, down)

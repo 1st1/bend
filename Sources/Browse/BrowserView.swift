@@ -118,6 +118,9 @@ struct BrowserView: View {
                 VStack(alignment: .leading, spacing: Chrome.sidebarTabSpacing) {
                     ForEach(store.sidebarTabs) { tab in
                         SidebarTabRow(store: store, tab: tab)
+                            .modifier(TabReorderOffset(preview: store.tabReorderPreview, id: tab.id))
+                            // Hit targets stay in layout coordinates while their visible rows move.
+                            .background(PaneSidebarTarget(store: store, destination: .tab(tab.id)))
                     }
 
                 }.padding(.leading, leadingInset).padding(.trailing, trailingInset)
@@ -203,9 +206,11 @@ struct BrowserView: View {
 
 }
 
-private struct SidebarTabRow: View {
+struct SidebarTabRow: View {
     @ObservedObject var store: BrowserStore
     let tab: BrowserTab
+    var isDragPreview = false
+    @Environment(\.hidesDraggedTabContent) private var hidesContent
     @ViewState<Bool> private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -230,31 +235,34 @@ private struct SidebarTabRow: View {
                     }
                 }.frame(maxHeight: .infinity).contentShape(Rectangle())
             }.buttonStyle(.plain)
+            .opacity(hidesContent ? 0 : 1)
             .accessibilityValue(tab.pages.count > 1 ? "\(tab.pages.count) panes" : "")
             .overlay {
-                TabDragHandle(store: store, tabID: tab.id, title: tab.title, reduceMotion: reduceMotion)
-                    .accessibilityHidden(true)
+                if !isDragPreview {
+                    TabDragHandle(store: store, tabID: tab.id, title: tab.title, reduceMotion: reduceMotion)
+                        .accessibilityHidden(true)
+                }
             }
-            if selected || hovered || tab.isPinned {
+            if selected || hovered || tab.isPinned || isDragPreview {
                 PinCloseButton(pinned: tab.isPinned, tab: true,
                                setPinned: { store.setTabPinned(tab.id, pinned: $0) },
                                close: { store.closeTab(tab.id) })
+                    .opacity(hidesContent ? 0 : 1)
                     .transition(.opacity)
             }
         }
         .padding(.horizontal, 11).frame(height: Chrome.sidebarTabHeight)
         .background {
             Capsule().fill(ChromeButtonStyle.highlightBackground)
-                .opacity(hovered && !selected ? 1 : 0)
+                .opacity(!hidesContent && hovered && !selected ? 1 : 0)
         }
-        .modifier(TabSelectionMaterial(selected: selected, shape: Capsule()))
+        .modifier(TabSelectionMaterial(selected: selected && !hidesContent, shape: Capsule()))
         .contentShape(Capsule())
         .onHover { hovered = $0 }
         .onDisappear { hovered = false }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: hovered)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: selected)
         .background(WindowDragArea(excluded: true))
-        .background(PaneSidebarTarget(store: store, destination: .tab(tab.id)))
         .contextMenu {
             SidebarTabMenu(store: store, tab: tab)
         }
