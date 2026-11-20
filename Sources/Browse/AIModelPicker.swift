@@ -60,12 +60,15 @@ private struct AIModelSearch: View {
         AIModelControls(modelID: model.id, connection: connection)
     }
     private var modelList: some View {
-        VStack(spacing: 0) {
-            AIModelSearchField(text: $query, move: move, submit: {
-                if let model = matches.first(where: { $0.id == highlighted }) ?? matches.first { choose(model) }
-            }, dismiss: dismiss).frame(height: 24).padding(10)
-            Divider()
-            ScrollViewReader { proxy in
+        ScrollViewReader { proxy in
+            VStack(spacing: 0) {
+                AIModelSearchField(text: $query, move: { delta in
+                    move(delta)
+                    proxy.scrollTo(highlighted)
+                }, submit: {
+                    if let model = matches.first(where: { $0.id == highlighted }) ?? matches.first { choose(model) }
+                }, dismiss: dismiss).frame(height: 24).padding(10)
+                Divider()
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(matches) { model in
@@ -84,6 +87,9 @@ private struct AIModelSearch: View {
                             }
                             .buttonStyle(.plain)
                             .background(highlighted == model.id ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                            .onHover { inside in
+                                if inside { highlighted = model.id }
+                            }
                             .id(model.id)
                         }
                         if matches.isEmpty {
@@ -93,8 +99,10 @@ private struct AIModelSearch: View {
                     }.padding(6)
                 }.frame(height: 320)
                 .onAppear { highlighted = matches.contains(where: { $0.id == selection }) ? selection : matches.first?.id; proxy.scrollTo(highlighted, anchor: .center) }
-                .onChange(of: highlighted) { _, value in proxy.scrollTo(value, anchor: .center) }
-                .onChange(of: query) { _, _ in highlighted = matches.first?.id }
+                .onChange(of: query) { _, _ in
+                    highlighted = matches.first?.id
+                    proxy.scrollTo(highlighted, anchor: .top)
+                }
             }
         }
         .onExitCommand(perform: dismiss)
