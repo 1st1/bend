@@ -1,4 +1,5 @@
 import SwiftUI
+import AI
 
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
@@ -7,6 +8,8 @@ struct AIModelPicker: View {
     let models: [GatewayModel]
     private var availableModels: [GatewayModel] { [LocalAIProvider.catalogEntry] + models.filter { $0.id != LocalAIProvider.modelID } }
     @Binding var selection: String
+    let connection: String
+    @Binding var tuning: [String: ModelTuning]
     @ViewState private var presented = false
     private var label: String {
         availableModels.first(where: { $0.id == selection })?.name ?? (selection.isEmpty ? "Select model" : selection)
@@ -22,7 +25,7 @@ struct AIModelPicker: View {
         .accessibilityLabel("Model").accessibilityValue(label)
         .help("Choose a model")
         .popover(isPresented: $presented, arrowEdge: .bottom) {
-            AIModelSearch(models: availableModels, selection: $selection) { presented = false }
+            AIModelSearch(models: availableModels, selection: $selection, connection: connection, tuning: $tuning) { presented = false }
         }
     }
 }
@@ -30,7 +33,10 @@ struct AIModelPicker: View {
 private struct AIModelSearch: View {
     let models: [GatewayModel]
     @Binding var selection: String
+    let connection: String
+    @Binding var tuning: [String: ModelTuning]
     let dismiss: () -> Void
+    @ViewState private var detail: GatewayModel?
     @ViewState private var query = ""
     @ViewState private var highlighted: String?
     private var matches: [GatewayModel] {
@@ -40,6 +46,20 @@ private struct AIModelSearch: View {
         }
     }
     var body: some View {
+        Group {
+            if let model = detail {
+                AIModelControlPicker(model: model, controls: controls(for: model), selections: $tuning,
+                                     back: { detail = nil }, dismiss: dismiss)
+            } else {
+                modelList
+            }
+        }
+        .frame(width: 320)
+    }
+    private func controls(for model: GatewayModel) -> AIModelControls {
+        AIModelControls(modelID: model.id, connection: connection)
+    }
+    private var modelList: some View {
         VStack(spacing: 0) {
             AIModelSearchField(text: $query, move: move, submit: {
                 if let model = matches.first(where: { $0.id == highlighted }) ?? matches.first { choose(model) }
@@ -57,6 +77,9 @@ private struct AIModelSearch: View {
                                     }
                                     Spacer()
                                     if selection == model.id { Image(systemName: "checkmark").font(.system(size: 11)) }
+                                    if controls(for: model).available {
+                                        Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(.secondary)
+                                    }
                                 }.padding(8).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
@@ -74,7 +97,6 @@ private struct AIModelSearch: View {
                 .onChange(of: query) { _, _ in highlighted = matches.first?.id }
             }
         }
-        .frame(width: 320)
         .onExitCommand(perform: dismiss)
     }
     private func move(_ delta: Int) {
@@ -82,7 +104,11 @@ private struct AIModelSearch: View {
         let current = matches.firstIndex(where: { $0.id == highlighted }) ?? 0
         highlighted = matches[min(matches.count - 1, max(0, current + delta))].id
     }
-    private func choose(_ model: GatewayModel) { selection = model.id; dismiss() }
+    private func choose(_ model: GatewayModel) {
+        selection = model.id
+        if controls(for: model).available { detail = model }
+        else { dismiss() }
+    }
 }
 
 enum AIPaneTool: String, CaseIterable, Identifiable {

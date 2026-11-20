@@ -53,26 +53,76 @@ struct AIModelControls {
 }
 
 struct AIModelControlPicker: View {
-    var controls: AIModelControls
-    @Binding var tuning: ModelTuning
-
-    init(modelID: String, controls: AIModelControls, selections: Binding<[String: ModelTuning]>) {
-        self.controls = controls
-        _tuning = Binding(get: { selections.wrappedValue[modelID] ?? .init() },
-                          set: { selections.wrappedValue[modelID] = $0 })
-    }
+    let model: GatewayModel
+    let controls: AIModelControls
+    @Binding var selections: [String: ModelTuning]
+    let back: () -> Void
+    let dismiss: () -> Void
+    @FocusState private var focused: Int?
+    private var choices: [ReasoningEffort?] { [nil] + controls.efforts.map(Optional.some) }
 
     var body: some View {
-        if !controls.efforts.isEmpty {
-            Picker("Reasoning effort", selection: $tuning.effort) {
-                Text("Automatic").tag(nil as ReasoningEffort?)
-                ForEach(controls.efforts, id: \.self) { effort in
-                    Text(effort == .xhigh ? "Extra high" : effort.rawValue.capitalized).tag(Optional(effort))
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: back) {
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.left")
+                    Text(model.name ?? model.id).lineLimit(1)
+                    Spacer()
+                }.font(.system(size: 12, weight: .medium)).padding(10).contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to models")
+            Divider()
+            VStack(alignment: .leading, spacing: 2) {
+                if !controls.efforts.isEmpty {
+                    Text("Reasoning effort").font(.caption).foregroundStyle(.secondary).padding(8)
+                    ForEach(choices.indices, id: \.self) { index in
+                        let effort = choices[index]
+                        Button { choose(effort) } label: {
+                            HStack {
+                                Text(effort == .xhigh ? "Extra high" : effort?.rawValue.capitalized ?? "Automatic")
+                                Spacer()
+                                if effort == selections[model.id]?.effort { Image(systemName: "checkmark") }
+                            }
+                            .font(.system(size: 12)).padding(8).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .focused($focused, equals: index)
+                        .focusEffectDisabled()
+                        .background(focused == index ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                        .onHover { if $0 { focused = index } }
+                        .accessibilityAddTraits(effort == selections[model.id]?.effort ? .isSelected : [])
+                    }
+                }
+                if controls.fast {
+                    Divider()
+                    Toggle("Fast mode (premium pricing)", isOn: Binding(
+                        get: { selections[model.id]?.fast == true },
+                        set: { selections[model.id, default: .init()].fast = $0 }
+                    )).font(.system(size: 12)).padding(8)
+                }
+            }.padding(6)
         }
-        if controls.fast {
-            Toggle("Fast mode (premium pricing)", isOn: $tuning.fast)
+        .onAppear { focused = choices.firstIndex(of: selections[model.id]?.effort) }
+        .onKeyPress(.downArrow) { moveFocus(1) }
+        .onKeyPress(.upArrow) { moveFocus(-1) }
+        .onKeyPress(.return) {
+            guard let index = focused else { return .ignored }
+            choose(choices[index])
+            return .handled
         }
+        .onKeyPress(.leftArrow) { back(); return .handled }
+        .onExitCommand(perform: back)
     }
+    private func choose(_ effort: ReasoningEffort?) {
+        selections[model.id, default: .init()].effort = effort
+        dismiss()
+    }
+
+    private func moveFocus(_ delta: Int) -> KeyPress.Result {
+        guard let index = focused else { return .ignored }
+        focused = min(choices.count - 1, max(0, index + delta))
+        return .handled
+    }
+
 }

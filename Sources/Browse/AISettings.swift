@@ -568,9 +568,8 @@ struct AISettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Preferred model") {
-                AIModelPicker(models: settings.models, selection: $settings.modelID)
-                let controls = AIModelControls(modelID: settings.modelID, connection: settings.activeConnection)
-                AIModelControlPicker(modelID: settings.modelID, controls: controls, selections: $settings.modelDefaults)
+                AIModelPicker(models: settings.models, selection: $settings.modelID,
+                              connection: settings.activeConnection, tuning: $settings.modelDefaults)
                 Text("New chats start with these settings. You can change them in each chat.")
                     .font(.callout).foregroundStyle(.secondary)
                 Button("Refresh models") { Task { await settings.refreshModels() } }

@@ -177,16 +177,9 @@ struct ChatSidebar: View {
             if !settings.connected {
                 Button("Connect a cloud model…", action: settingsAction).font(.caption).buttonStyle(.plain)
             }
-            let controls = AIModelControls(modelID: chat.modelID, connection: settings.activeConnection)
-            if controls.available {
-                VStack(alignment: .leading, spacing: 4) {
-                    AIModelControlPicker(modelID: chat.modelID, controls: controls, selections: $chat.modelTuning)
-                }
-                .controlSize(.small)
-                .disabled(chat.running)
-            }
             HStack {
-                AIModelPicker(models: settings.models, selection: $chat.modelID)
+                AIModelPicker(models: settings.models, selection: $chat.modelID,
+                              connection: settings.activeConnection, tuning: $chat.modelTuning)
                     .disabled(chat.running)
                     .frame(maxWidth: 235, alignment: .leading)
                 Spacer()
