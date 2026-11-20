@@ -37,6 +37,8 @@ private struct AIModelSearch: View {
     @Binding var tuning: [String: ModelTuning]
     let dismiss: () -> Void
     @ViewState private var detail: GatewayModel?
+    @ViewState private var focusDetail = false
+    @ViewState private var hoverTarget: String?
     @ViewState private var query = ""
     @ViewState private var highlighted: String?
     private var matches: [GatewayModel] {
@@ -46,18 +48,21 @@ private struct AIModelSearch: View {
         }
     }
     var body: some View {
-        Group {
+        HStack(alignment: .top, spacing: 0) {
+            modelList.frame(width: 320)
             if let model = detail {
+                Divider()
                 AIModelControlPicker(model: model, controls: controls(for: model), selections: $tuning,
-                                     back: { detail = nil }, dismiss: dismiss)
-            } else {
-                modelList
+                                     focusOnSelection: focusDetail, back: { detail = nil },
+                                     selectModel: { selection = model.id }, dismiss: dismiss)
+                    .frame(width: 190)
+                    .id(model.id)
             }
         }
-        .frame(width: 320)
+        .fixedSize(horizontal: true, vertical: true)
     }
     private func controls(for model: GatewayModel) -> AIModelControls {
-        AIModelControls(modelID: model.id, connection: connection)
+        AIModelControls(modelID: model.id, connection: connection, advertisedEfforts: model.advertisedEfforts)
     }
     private var modelList: some View {
         ScrollViewReader { proxy in
@@ -88,7 +93,12 @@ private struct AIModelSearch: View {
                             .buttonStyle(.plain)
                             .background(highlighted == model.id ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 6))
                             .onHover { inside in
-                                if inside { highlighted = model.id }
+                                if inside {
+                                    highlighted = model.id
+                                    hoverTarget = model.id
+                                } else if hoverTarget == model.id {
+                                    hoverTarget = nil
+                                }
                             }
                             .id(model.id)
                         }
@@ -100,19 +110,31 @@ private struct AIModelSearch: View {
                 }.frame(height: 320)
                 .onAppear { highlighted = matches.contains(where: { $0.id == selection }) ? selection : matches.first?.id; proxy.scrollTo(highlighted, anchor: .center) }
                 .onChange(of: query) { _, _ in
+                    hoverTarget = nil
+                    detail = nil
                     highlighted = matches.first?.id
                     proxy.scrollTo(highlighted, anchor: .top)
                 }
             }
         }
+        .task(id: hoverTarget) {
+            guard let id = hoverTarget, let model = models.first(where: { $0.id == id }) else { return }
+            do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+            focusDetail = false
+            detail = controls(for: model).available ? model : nil
+        }
         .onExitCommand(perform: dismiss)
     }
     private func move(_ delta: Int) {
         guard !matches.isEmpty else { highlighted = nil; return }
+        hoverTarget = nil
+        detail = nil
         let current = matches.firstIndex(where: { $0.id == highlighted }) ?? 0
         highlighted = matches[min(matches.count - 1, max(0, current + delta))].id
     }
     private func choose(_ model: GatewayModel) {
+        hoverTarget = nil
+        focusDetail = true
         selection = model.id
         if controls(for: model).available { detail = model }
         else { dismiss() }

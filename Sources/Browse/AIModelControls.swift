@@ -1,13 +1,20 @@
 import SwiftUI
 import AI
 
+private typealias ControlState<Value> = SwiftUI.State<Value>
+
 /// Catalog IDs can be vendor-qualified and direct API snapshots carry a release date.
 struct AIModelControls {
     var efforts: [ReasoningEffort] = []
     var fast = false
     var available: Bool { fast || !efforts.isEmpty }
 
-    init(modelID: String, connection: String) {
+    init(modelID: String, connection: String, advertisedEfforts: [ReasoningEffort]? = nil) {
+        if connection == "gateway" || connection == "vercel" {
+            efforts = advertisedEfforts ?? []
+            return
+        }
+        defer { if let advertisedEfforts { efforts = advertisedEfforts } }
         let parts = modelID.split(separator: "/")
         guard let slug = parts.last else { return }
         let direct = parts.count == 1
@@ -56,9 +63,12 @@ struct AIModelControlPicker: View {
     let model: GatewayModel
     let controls: AIModelControls
     @Binding var selections: [String: ModelTuning]
+    let focusOnSelection: Bool
     let back: () -> Void
+    let selectModel: () -> Void
     let dismiss: () -> Void
     @FocusState private var focused: Int?
+    @ControlState<Int?> private var hovered = nil
     private var choices: [ReasoningEffort?] { [nil] + controls.efforts.map(Optional.some) }
 
     var body: some View {
@@ -89,8 +99,11 @@ struct AIModelControlPicker: View {
                         .buttonStyle(.plain)
                         .focused($focused, equals: index)
                         .focusEffectDisabled()
-                        .background(focused == index ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 6))
-                        .onHover { if $0 { focused = index } }
+                        .background((hovered ?? focused) == index ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                        .onHover { inside in
+                            if inside { hovered = index }
+                            else if hovered == index { hovered = nil }
+                        }
                         .accessibilityAddTraits(effort == selections[model.id]?.effort ? .isSelected : [])
                     }
                 }
@@ -98,16 +111,18 @@ struct AIModelControlPicker: View {
                     Divider()
                     Toggle("Fast mode (premium pricing)", isOn: Binding(
                         get: { selections[model.id]?.fast == true },
-                        set: { selections[model.id, default: .init()].fast = $0 }
+                        set: { selections[model.id, default: .init()].fast = $0; selectModel() }
                     )).font(.system(size: 12)).padding(8)
                 }
             }.padding(6)
         }
-        .onAppear { focused = choices.firstIndex(of: selections[model.id]?.effort) }
+        .onChange(of: focusOnSelection, initial: true) { _, focus in
+            if focus { focused = choices.firstIndex(of: selections[model.id]?.effort) }
+        }
         .onKeyPress(.downArrow) { moveFocus(1) }
         .onKeyPress(.upArrow) { moveFocus(-1) }
         .onKeyPress(.return) {
-            guard let index = focused else { return .ignored }
+            guard let index = hovered ?? focused else { return .ignored }
             choose(choices[index])
             return .handled
         }
@@ -116,11 +131,13 @@ struct AIModelControlPicker: View {
     }
     private func choose(_ effort: ReasoningEffort?) {
         selections[model.id, default: .init()].effort = effort
+        selectModel()
         dismiss()
     }
 
     private func moveFocus(_ delta: Int) -> KeyPress.Result {
-        guard let index = focused else { return .ignored }
+        guard let index = hovered ?? focused else { return .ignored }
+        hovered = nil
         focused = min(choices.count - 1, max(0, index + delta))
         return .handled
     }

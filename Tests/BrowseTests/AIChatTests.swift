@@ -130,7 +130,7 @@ private struct GatewayFixtureTransport: HTTPTransport {
             continuation.yield(.response(status: status))
             if request.url?.lastPathComponent == "models" {
                 continuation.yield(.data(Data("""
-                {"data":[{"id":"test/chat","type":"language","tags":["tool-use"]},{"id":"test/image","type":"image"},{"id":"test/chat-batch","type":"language","tags":["tool-use"]}]}
+                {"data":[{"id":"test/chat","type":"language","tags":["tool-use"],"reasoning_options":[{"type":"effort","values":["low","high","future"]}]},{"id":"test/image","type":"image"},{"id":"test/chat-batch","type":"language","tags":["tool-use"]}]}
                 """.utf8)))
             } else {
                 continuation.yield(.data(Data("""
@@ -170,7 +170,7 @@ private struct GatewayFixtureTransport: HTTPTransport {
     let defaults = try #require(UserDefaults(suiteName: domain))
     defer { defaults.removePersistentDomain(forName: domain) }
     let settings = AISettings(transport: GatewayFixtureTransport(), credential: MemoryGatewayCredential(), defaults: defaults)
-    let model = "openai/gpt-6-astra"
+    let model = "test/chat"
     settings.modelDefaults[model] = .init(effort: .low)
     settings.modelID = "preferred/model"
     await settings.refreshModels()
@@ -203,9 +203,10 @@ private struct GatewayFixtureTransport: HTTPTransport {
     chat.restore(saved)
     #expect(chat.modelTuning[model] == .init(effort: .high, fast: true))
     #expect(AIModelControls(modelID: "gpt-6-astra", connection: "openaiKey").fast)
-    let sonnet = AIModelControls(modelID: "anthropic/claude-sonnet-5.5", connection: "gateway")
-    #expect(sonnet.efforts == [.low, .medium, .high, .xhigh, .max])
-    #expect(!sonnet.fast)
+    let catalogModel = try #require(settings.models.first { $0.id == model })
+    let controls = AIModelControls(modelID: model, connection: "gateway", advertisedEfforts: catalogModel.advertisedEfforts)
+    #expect(controls.efforts == [.low, .high, .init(rawValue: "future")])
+    #expect(!controls.fast)
     #expect(!AIModelControls(modelID: LocalAIProvider.modelID, connection: "openaiKey").available)
 
     let tools = PaneChatTools(store: store, tabID: store.selectedTab.id, settings: settings)
@@ -415,7 +416,7 @@ private struct DirectKeyFixture: HTTPTransport {
                         if request.url?.query?.contains("after_id") == true {
                             data = #"{"data":[{"id":"claude-haiku-4-5","display_name":"Claude Haiku"}],"has_more":false}"#
                         } else {
-                            data = #"{"data":[{"id":"claude-sonnet-4-6","display_name":"Claude Sonnet"}],"has_more":true,"last_id":"claude-sonnet-4-6"}"#
+                            data = #"{"data":[{"id":"claude-sonnet-4-6","display_name":"Claude Sonnet","capabilities":{"effort":{"supported":true,"high":{"supported":false},"max":{"supported":true}}}}],"has_more":true,"last_id":"claude-sonnet-4-6"}"#
                         }
                     } else {
                         data = #"{"data":[{"id":"gpt-4.1"},{"id":"text-embedding-3-small"},{"id":"whisper-5"},{"id":"gpt-4o-audio-preview"}]}"#
@@ -462,6 +463,7 @@ private struct DirectKeyFixture: HTTPTransport {
     #expect(!settings.connected && settings.models.isEmpty)
     await settings.connectSelectedKey("anthropic-secret")
     #expect(settings.models.map(\.id) == ["claude-sonnet-4-6", "claude-haiku-4-5"])
+    #expect(settings.models.first?.advertisedEfforts == [.max])
     #expect(openai.value == "openai-secret" && gateway.value == nil)
     model = try settings.model(settings.modelID)
     let anthropicStream = model.provider.stream(.init(modelID: model.id, messages: [.user("test")]))

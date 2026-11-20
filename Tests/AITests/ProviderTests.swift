@@ -98,13 +98,14 @@ import Testing
             subagentMessages: [.user("private child history")])
         ]),
       ], tools: [.init(name: "lookup", description: "Look it up", parameters: emptySchema)],
-      options: .init(temperature: 0, maxCompletionTokens: 42)))
+      options: .init(temperature: 0, maxCompletionTokens: 42, tuning: .init(effort: .init(rawValue: "minimal")))))
   #expect(request.url?.absoluteString == "https://example.invalid/v1/chat/completions")
   #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
   let data = try #require(request.httpBody)
   let body = try JSONDecoder().decode(JSONValue.self, from: data)
   #expect(body["model"] == .string("creator/model"))
   #expect(body["max_completion_tokens"] == .integer(42))
+  #expect(body["reasoning"]?["effort"] == .string("minimal"))
   #expect(body["stream"] == .bool(true))
   #expect(!String(decoding: data, as: UTF8.self).contains("private child history"))
   guard case .array(let messages) = body["messages"] else {

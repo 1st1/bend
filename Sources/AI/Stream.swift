@@ -77,8 +77,16 @@ public struct Model: Sendable {
   }
 }
 
-public enum ReasoningEffort: String, Codable, Sendable {
-  case none, low, medium, high, xhigh, max
+public struct ReasoningEffort: RawRepresentable, Codable, Hashable, Sendable {
+  public let rawValue: String
+  public init(rawValue: String) { self.rawValue = rawValue }
+
+  public static let none = Self(rawValue: "none")
+  public static let low = Self(rawValue: "low")
+  public static let medium = Self(rawValue: "medium")
+  public static let high = Self(rawValue: "high")
+  public static let xhigh = Self(rawValue: "xhigh")
+  public static let max = Self(rawValue: "max")
 }
 
 public struct ModelTuning: Codable, Equatable, Sendable {

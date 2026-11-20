@@ -132,6 +132,9 @@ public struct OpenAICompatibleProvider: Provider {
           ])
         })
     }
+    if let effort = request.options.tuning.effort {
+      body["reasoning"] = .object(["effort": .string(effort.rawValue)])
+    }
     if request.options.gatewayWebSearch {
       guard !request.tools.contains(where: { $0.name == "perplexity_search" }) else {
         throw AIError.configuration("perplexity_search is reserved for Gateway web search.")

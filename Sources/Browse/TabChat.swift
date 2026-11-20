@@ -137,7 +137,8 @@ struct ChatBubble: Identifiable, Codable {
             let token = generation
             let responseStart = bubbles.count
             let messages = history + [.user(prompt)]
-            let controls = AIModelControls(modelID: model.id, connection: settings.activeConnection)
+            let entry = settings.models.first { $0.id == model.id }
+            let controls = AIModelControls(modelID: model.id, connection: settings.activeConnection, advertisedEfforts: entry?.advertisedEfforts)
             var tuning = modelTuning[model.id] ?? .init()
             if let effort = tuning.effort, !controls.efforts.contains(effort) { tuning.effort = nil }
             tuning.fast = tuning.fast && controls.fast
