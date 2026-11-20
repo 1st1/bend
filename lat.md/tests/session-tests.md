@@ -69,3 +69,7 @@ Normal `./scripts/test.sh` runs discover `TabPerformanceTests/speed` as a declar
 Find reports keystroke dispatch timings and elapsed time from the final keystroke until the expected match count appears. A missing result times out. Drag samples require visible movement of the sidebar edge at the midpoint and at least one measured drag frame.
 
 It prints the `BEND_TAB_SPEED` JSON marker (`schemaVersion = 3`) and writes `BEND_SPEED_OUT` when set. CI runs it in the same `RUN_TAB_PERF == 'true'` shard-1 path as the scaling and memory benchmarks, and `scripts/report-tab-performance.py` summarizes `speed.json` into `tab-perf/summary.md`.
+
+## Per-tab pane maximization
+
+[[Tests/BrowseTests/ReopenTests.swift#paneMaximizationAcrossTabSwitches]] verifies two split tabs retain independent maximized panes across tab switches and session restoration, restoring one leaves the other maximized, and closing a maximized pane in a background tab clears its zoom.

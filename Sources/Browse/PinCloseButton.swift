@@ -63,9 +63,9 @@ struct PinCloseButton: View {
 
     var body: some View {
         if tab {
-            button.font(.system(size: 9)).buttonStyle(.plain).foregroundStyle(Chrome.muted)
+            button.font(.system(size: 9)).buttonStyle(.plain).foregroundStyle(pinned ? Color.accentColor : Chrome.muted)
         } else {
-            button.buttonStyle(ChromeButtonStyle())
+            button.buttonStyle(ChromeButtonStyle(foregroundColor: pinned ? .accentColor : nil))
         }
     }
 }

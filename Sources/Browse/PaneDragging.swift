@@ -309,6 +309,7 @@ final class PaneDragSurface: NSView {
                           store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == id }) else { return }
                     InputDiagnostics.transition(.paneHoverSelection, .changed, view: self.source, tabID: id)
                     store.select(id)
+                    store.zoomedPane = nil
                 }
             }
         }

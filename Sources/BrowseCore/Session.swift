@@ -245,6 +245,7 @@ public struct BrowserSession: Codable, Sendable {
     public var paneHighlight: PaneHighlight?
     public var downloadDirectory: String?
     public var favorites: [SidebarFavorite]?
+    public var zoomedPanes: [UUID: UUID]?
     public var openChatTabs: [UUID]?
     public var activeChatIDs: [UUID: UUID]?
 

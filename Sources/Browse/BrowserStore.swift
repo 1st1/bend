@@ -35,7 +35,13 @@ final class BrowserStore: ObservableObject {
     }
     @Published var sidebarFloating = false
     @Published var isFullScreen = false
-    @Published var zoomedPane: UUID?
+    @Published private(set) var zoomedPanes: [UUID: UUID] = [:] {
+        didSet { if zoomedPanes != oldValue { scheduleSessionSave() } }
+    }
+    var zoomedPane: UUID? {
+        get { zoomedPanes[session.selectedTab] }
+        set { zoomedPanes[session.selectedTab] = newValue }
+    }
     let mediaCoordinator = WindowMediaCoordinator()
     let mediaPlaybackFocus: MediaPlaybackFocus
     let downloads: BrowserDownloads
@@ -148,6 +154,13 @@ final class BrowserStore: ObservableObject {
         if !isPrivate, let data = try? Data(contentsOf: self.sessionFile),
            let restored = try? JSONDecoder().decode(BrowserSession.self, from: data), restored.isValid {
             session = restored
+            if let savedZoom = restored.zoomedPanes {
+                for tab in restored.workspaces.flatMap(\.tabs) where tab.pages.count > 1 {
+                    if let pane = savedZoom[tab.id], tab.pages.contains(where: { $0.id == pane }) {
+                        zoomedPanes[tab.id] = pane
+                    }
+                }
+            }
         } else { session = BrowserSession() }
         for wi in session.workspaces.indices {
             for ti in session.workspaces[wi].tabs.indices where session.workspaces[wi].tabs[ti].title == "New tab" {
@@ -486,7 +499,7 @@ final class BrowserStore: ObservableObject {
 
     func select(_ id: UUID) {
         InputDiagnostics.transition(.storeSelection, session.selectedTab == id ? .unchanged : .changed, tabID: id)
-        session.selectedTab = id; zoomedPane = nil; saveSoon()
+        session.selectedTab = id; saveSoon()
     }
     private func linkTabToCloseOnBack(for pageID: UUID) -> BrowserTab? {
         guard closeLinkTabOnBack,
@@ -537,6 +550,7 @@ final class BrowserStore: ObservableObject {
     func focus(_ id: UUID) {
         InputDiagnostics.transition(.storeFocus, selectedTab.focusedPane == id ? .unchanged : .requested, paneID: id)
         guard selectedTab.focusedPane != id, selectedTab.pages.contains(where: { $0.id == id }) else { return }
+        if let zoomedPane, zoomedPane != id { self.zoomedPane = nil }
         editTab { $0.focusedPane = id }
         InputDiagnostics.transition(.storeFocus, .changed, paneID: id)
     }
@@ -559,6 +573,7 @@ final class BrowserStore: ObservableObject {
     func openPane(address: String, toRightOf source: UUID, fromMainFrame: Bool = true) {
         guard let tab = session.workspaces.flatMap(\.tabs).first(where: { $0.pages.contains { $0.id == source } }) else { return }
         select(tab.id)
+        zoomedPane = nil
         editTab(tab.id) {
             $0.split(axis: .horizontal, after: source, address: address)
             let destination = $0.focusedPane
@@ -575,6 +590,7 @@ final class BrowserStore: ObservableObject {
             return
         }
         select(tab.id)
+        if let zoomedPane, zoomedPane != targetID { self.zoomedPane = nil }
         if fromMainFrame && source != targetID { linkOpeners[targetID] = source }
         else { linkOpeners[targetID] = nil }
         var destination = page
@@ -596,6 +612,7 @@ final class BrowserStore: ObservableObject {
         if let sourceTabID, sourceTabID != tabID {
             var next = session
             guard next.transferPane(source, from: sourceTabID, beside: target, in: tabID, edge: edge) else { return false }
+            zoomedPanes[sourceTabID] = nil
             refreshTransferredTitles(&next)
             session = next
             saveSoon()
@@ -623,7 +640,7 @@ final class BrowserStore: ObservableObject {
         guard let firstDestination else { return }
         next.selectedTab = firstDestination
         refreshTransferredTitles(&next)
-        zoomedPane = nil
+        zoomedPanes[tabID] = nil
         session = next
         paneMoveRevision += 1
         saveSoon()
@@ -635,7 +652,7 @@ final class BrowserStore: ObservableObject {
         let title = browsers[source]?.title ?? session.workspaces.flatMap(\.tabs)
             .first(where: { $0.id == sourceTabID })?.title ?? "New tab"
         guard next.detachPane(source, from: sourceTabID, into: workspaceID, title: title) != nil else { return false }
-        zoomedPane = nil
+        zoomedPanes[sourceTabID] = nil
         refreshTransferredTitles(&next)
         session = next
         saveSoon()
@@ -651,7 +668,8 @@ final class BrowserStore: ObservableObject {
         guard let destination = next.workspaces.flatMap(\.tabs).first(where: { $0.id == destinationID }),
               next.transferPane(source, from: sourceTabID, beside: destination.focusedPane,
                                 in: destinationID, edge: .right) else { return false }
-        zoomedPane = nil
+        zoomedPanes[sourceTabID] = nil
+        zoomedPanes[destinationID] = nil
         refreshTransferredTitles(&next)
         session = next
         saveSoon()
@@ -667,7 +685,8 @@ final class BrowserStore: ObservableObject {
         let panes = session.workspaces.flatMap(\.tabs).first(where: { $0.id == sourceID })?.pages ?? []
         var next = session
         guard next.joinTabs(sourceID, into: destinationID, beside: target, edge: edge) else { return false }
-        zoomedPane = nil
+        zoomedPanes[sourceID] = nil
+        zoomedPanes[destinationID] = nil
         session = next
         saveSoon()
         for pane in panes {
@@ -695,7 +714,7 @@ final class BrowserStore: ObservableObject {
     func newTab(in workspace: UUID? = nil, address: String = "bend://start", linkOpener: UUID? = nil, originPageID: UUID? = nil,
                 closeIfDownload: Bool = false, afterCurrent: Bool = false, inBackground: Bool = false) {
         let address = AddressResolver.canonicalAddress(address)
-        let previousTabID = session.selectedTab, previousZoom = zoomedPane
+        let previousTabID = session.selectedTab
         let index = session.workspaces.firstIndex { $0.id == workspace }
             ?? session.workspaces.firstIndex { $0.tabs.contains { $0.id == session.selectedTab } } ?? 0
         let title = address == "bend://start" ? "New tab" : AddressResolver.nativePageTitle(address) ?? "New tab"
@@ -712,15 +731,14 @@ final class BrowserStore: ObservableObject {
         } else {
             select(tab.id)
             pendingAddressEntry = address == "bend://start" ? PendingAddressEntry(tabID: tab.id, paneID: tab.pages[0].id,
-                kind: .tab(previousTabID: previousTabID), previousZoom: previousZoom) : nil
+                kind: .tab(previousTabID: previousTabID), previousZoom: nil) : nil
             if address == "bend://start" { requestAddress() }
         }
         // Background tabs have no mounted view yet, but should start loading now.
         if inBackground { _ = controller(for: tab.pages[0]) }
         if closeIfDownload {
             controller(for: tab.pages[0]).onInitialDownload = { [weak self] in
-                self?.discardDownloadTab(tab.id, paneID: tab.pages[0].id, previousTabID: previousTabID,
-                                         previousZoom: previousZoom)
+                self?.discardDownloadTab(tab.id, paneID: tab.pages[0].id, previousTabID: previousTabID)
             }
         }
     }
@@ -748,18 +766,18 @@ final class BrowserStore: ObservableObject {
         select(tab.id)
     }
 
-    private func discardDownloadTab(_ tabID: UUID, paneID: UUID, previousTabID: UUID, previousZoom: UUID?) {
+    private func discardDownloadTab(_ tabID: UUID, paneID: UUID, previousTabID: UUID) {
         guard let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == tabID } }),
               let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == tabID }),
               session.workspaces[wi].tabs[ti].pages.map(\.id) == [paneID],
               !session.workspaces[wi].tabs[ti].isPinned,
               session.workspaces[wi].tabs.count > 1 else { return }
+        zoomedPanes[tabID] = nil
         removeController(paneID)
         session.workspaces[wi].tabs.remove(at: ti)
         if session.selectedTab == tabID {
             let previous = session.workspaces.flatMap(\.tabs).first { $0.id == previousTabID }
             select(previous?.id ?? session.workspaces[wi].tabs[min(ti, session.workspaces[wi].tabs.count - 1)].id)
-            if let previousZoom, selectedTab.pages.contains(where: { $0.id == previousZoom }) { zoomedPane = previousZoom }
         }
         // This tab never displayed a document; it must not enter closed-tab history.
         saveSoon()
@@ -788,6 +806,7 @@ final class BrowserStore: ObservableObject {
         removeController(paneID)
         switch pending.kind {
         case .tab(let previousTabID):
+            zoomedPanes[tab.id] = nil
             session.workspaces[wi].tabs.remove(at: ti)
             let previous = session.workspaces.flatMap(\.tabs).first { $0.id == previousTabID }
             select(previous?.id ?? session.workspaces[wi].tabs[min(ti, session.workspaces[wi].tabs.count - 1)].id)
@@ -981,6 +1000,7 @@ final class BrowserStore: ObservableObject {
 
     func closeTab(_ id: UUID) {
         guard session.workspaces.flatMap(\.tabs).first(where: { $0.id == id })?.isPinned == false else { return }
+        zoomedPanes[id] = nil
         if pendingAddressEntry?.tabID == id { pendingAddressEntry = nil }
         for wi in session.workspaces.indices {
             guard let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == id }) else { continue }
@@ -1053,6 +1073,7 @@ final class BrowserStore: ObservableObject {
             session.workspaces[wi].tabs.insert(item.tab, at: min(item.tabIndex, session.workspaces[wi].tabs.count))
         }
         select(item.tab.id)
+        zoomedPane = nil
     }
 
     // @lat: [[lat.md/architecture/privacy#Private windows]]
@@ -1305,8 +1326,8 @@ final class BrowserStore: ObservableObject {
             }
         }
         if let pendingAddressEntry, movedIDs.contains(pendingAddressEntry.paneID) { self.pendingAddressEntry = nil }
-        if let zoomedPane, movedIDs.contains(zoomedPane) { self.zoomedPane = nil }
-        destination.zoomedPane = nil
+        zoomedPanes[tabID] = nil
+        destination.zoomedPanes[nextDestination.selectedTab] = nil
         refreshTransferredTitles(&nextSource)
         session = nextSource
         // Publish source membership before retiring views: AppKit can request
@@ -1345,7 +1366,7 @@ final class BrowserStore: ObservableObject {
         cleared.selectedTab = tab.id
         cleared.openChatTabs = []; cleared.activeChatIDs = [:]
         session = cleared
-        closedItems.removeAll(); pendingAddressEntry = nil; linkOpeners.removeAll(); zoomedPane = nil
+        closedItems.removeAll(); pendingAddressEntry = nil; linkOpeners.removeAll(); zoomedPanes.removeAll()
         save()
     }
 
@@ -1395,7 +1416,7 @@ final class BrowserStore: ObservableObject {
         if tab.pages.count == 1 { closeTab(tab.id); return }
         rememberClosed(.init(tab: snapshot(tab), workspaceID: session.workspaces[wi].id, tabIndex: ti, paneID: id, replacementID: nil))
         editTab(tab.id) { $0.closePane(id) }
-        if zoomedPane == id { zoomedPane = nil }
+        if zoomedPanes[tab.id] == id || tab.pages.count == 2 { zoomedPanes[tab.id] = nil }
         removeController(id)
     }
 
@@ -1443,6 +1464,7 @@ final class BrowserStore: ObservableObject {
                 saved.activeChatIDs = chats.mapValues(\.conversationID)
                 session = saved
             }
+            saved.zoomedPanes = zoomedPanes.isEmpty ? nil : zoomedPanes
             try JSONEncoder().encode(saved).write(to: sessionFile, options: .atomic)
             persistenceError = nil
         } catch { persistenceError = "Session could not be saved: \(error.localizedDescription)" }

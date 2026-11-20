@@ -326,7 +326,7 @@ private struct PaneCanvas: View {
     private var animation: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
 
     var body: some View {
-        let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
+        let zoomed = store.zoomedPanes[tab.id]
         let layout = zoomed.map(PaneLayout.pane) ?? tab.layout
         let geometry = PaneGeometry(layout: layout, viewport: viewport)
         let clipped = geometry.clippedPaneIDs(in: viewport)
@@ -568,7 +568,7 @@ private struct BrowserPane: View {
             store.openChats.contains(tab.id) && store.chats[tab.id] != nil
     }
     private var hostsWindowControls: Bool {
-        let zoomed = tab.id == store.session.selectedTab ? store.zoomedPane : nil
+        let zoomed = store.zoomedPanes[tab.id]
         return (!store.sidebarVisible || store.sidebarSide == .right) && pageID == (zoomed ?? tab.layout.paneIDs.first)
     }
 
@@ -683,14 +683,15 @@ private struct BrowserPane: View {
                                 store.focus(pageID); controller.webView.goForward()
                             }.disabled(controller.isStartPage || !controller.canGoForward)
                         }
-                        iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
-                            store.focus(pageID)
-                            if controller.isLoading { controller.webView.stopLoading() }
-                            else if !controller.isStartPage { controller.webView.reload() }
-                        }.disabled(controller.isStartPage)
                         HStack(spacing: 0) {
-                            if tab.pages.count > 1 {
-                                iconButton(store.zoomedPane == pageID ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", "Zoom pane · ⌘⇧↩") { store.toggleZoom(pageID) }
+                            iconButton(controller.isLoading ? "xmark" : "arrow.clockwise", controller.isLoading ? "Stop loading" : "Reload · ⌘R") {
+                                store.focus(pageID)
+                                if controller.isLoading { controller.webView.stopLoading() }
+                                else if !controller.isStartPage { controller.webView.reload() }
+                            }.disabled(controller.isStartPage)
+                            WebsitePermissionMenu(page: controller, settings: store.websiteSettings,
+                                                  extensions: store.extensions, pageID: pageID) {
+                                store.focus(pageID); store.onSettingsRequested?(.extensions)
                             }
                         }
                     }
@@ -701,16 +702,14 @@ private struct BrowserPane: View {
                     .background {
                         if focused || paneHovered { WindowDragArea(excluded: true, identifier: "paneNavigationControls") }
                     }
-                    if let address = store.pinnedReturnAddress(pageID) {
-                        iconButton("arrow.uturn.backward", "Return to Pinned URL") {
-                            store.returnToPinnedURL(pageID)
+                    HStack(spacing: 0) {
+                        if tab.pages.count > 1 {
+                            let maximized = store.zoomedPanes[tab.id] == pageID
+                            iconButton(maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                                       maximized ? "Restore split layout · ⌘⇧↩" : "Maximize pane · ⌘⇧↩",
+                                       foregroundColor: maximized ? .accentColor : nil) { store.toggleZoom(pageID) }
+                                .accessibilityAddTraits(maximized ? .isSelected : [])
                         }
-                        .help("Return to Pinned URL: \(address)")
-                        .background(WindowDragArea(excluded: true, identifier: "pinnedReturnControl"))
-                    }
-                    WebsitePermissionMenu(page: controller, settings: store.websiteSettings,
-                                          extensions: store.extensions, pageID: pageID) {
-                        store.focus(pageID); store.onSettingsRequested?(.extensions)
                     }
                     .opacity(focused || paneHovered ? 1 : 0)
                     .allowsHitTesting(focused || paneHovered)
@@ -718,6 +717,13 @@ private struct BrowserPane: View {
                     .animation(reduceMotion ? nil : .easeInOut(duration: 0.1), value: focused || paneHovered)
                     .background {
                         if focused || paneHovered { WindowDragArea(excluded: true) }
+                    }
+                    if let address = store.pinnedReturnAddress(pageID) {
+                        iconButton("arrow.uturn.backward", "Return to Pinned URL", foregroundColor: .accentColor) {
+                            store.returnToPinnedURL(pageID)
+                        }
+                        .help("Return to Pinned URL: \(address)")
+                        .background(WindowDragArea(excluded: true, identifier: "pinnedReturnControl"))
                     }
                     PinCloseButton(pinned: pinned, setPinned: { store.setPanePinned(pageID, pinned: $0) },
                                    close: { store.closePane(pageID) })
@@ -1039,7 +1045,7 @@ private struct StartPage: View {
 }
 
 @MainActor
-private func iconButton(_ symbol: String, _ help: String, prominent: Bool = false, action: @escaping () -> Void) -> some View {
+private func iconButton(_ symbol: String, _ help: String, prominent: Bool = false, foregroundColor: Color? = nil, action: @escaping () -> Void) -> some View {
     Button(action: action) { Image(systemName: symbol) }
-        .buttonStyle(ChromeButtonStyle(prominent: prominent)).help(help).accessibilityLabel(help)
+        .buttonStyle(ChromeButtonStyle(prominent: prominent, foregroundColor: foregroundColor)).help(help).accessibilityLabel(help)
 }
