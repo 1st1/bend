@@ -36,7 +36,7 @@ Control-Tab and Control-Shift-Tab choose among the window's tabs in most-recentl
 
 ### Tab switcher popup
 
-[[Sources/Browse/TabSwitcherPanel.swift#TabSwitcherPanel]] lists the cycle's tabs in the location popup's glass shell and row style, highlighting the current target, with each tab's title, focused pane address, and pane count.
+[[Sources/Browse/TabSwitcherPanel.swift#TabSwitcherPanel]] lists the cycle's tabs in the shared [[Sources/Browse/PopupList.swift#PopupGlassShell]] and [[Sources/Browse/PopupList.swift#PopupResultCell]] rows used by the location popup, highlighting the current target, with each tab's title, focused pane address, and pane count.
 
 It appears only once Control has been held for [[Sources/Browse/TabSwitcherPanel.swift#TabSwitcherPanel#presentationDelay|a brief delay]], so a quick tap switches without flashing it. The panel never becomes key, leaving keyboard handling with the browser window. Clicking a row, including with Control held, selects that tab and ends the cycle. It sits one-fifth down the window, centered, showing up to ten rows before scrolling, and hides whenever the cycle ends.
 

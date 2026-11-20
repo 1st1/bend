@@ -11,95 +11,12 @@ private final class AddressResultsTable: NSTableView {
     override var acceptsFirstResponder: Bool { false }
 }
 
-enum AddressPopupLayout {
-    static let rowHeight: CGFloat = 42
-    static let chromeHeight: CGFloat = 80
-}
-
-final class AddressResultCell: NSTableCellView {
-    let icon = NSImageView()
-    let title = NSTextField(labelWithString: "")
-    let detail = NSTextField(labelWithString: "")
-    let remove = NSButton()
-    let shortcut = NSTextField(labelWithString: "")
-    var hasFavicon = false
-    var titleMatches: [NSRange] = []
-    var detailMatches: [NSRange] = []
-
-    func setSelected(_ selected: Bool) {
-        title.textColor = selected ? .alternateSelectedControlTextColor : .labelColor
-        let secondary = selected ? NSColor.alternateSelectedControlTextColor : .secondaryLabelColor
-        detail.textColor = secondary
-        shortcut.textColor = secondary
-        icon.contentTintColor = hasFavicon ? nil : secondary
-        remove.contentTintColor = secondary
-        highlight(title, ranges: titleMatches, color: title.textColor!, selected: selected)
-        highlight(detail, ranges: detailMatches, color: secondary, selected: selected)
-    }
-
-    private func highlight(_ field: NSTextField, ranges: [NSRange], color: NSColor, selected: Bool) {
-        let font = NSFont.systemFont(ofSize: field === title ? 14 : 11)
-        let baseColor = selected && (!titleMatches.isEmpty || !detailMatches.isEmpty) ? color.withAlphaComponent(0.8) : color
-        let value = NSMutableAttributedString(string: field.stringValue, attributes: [.font: font, .foregroundColor: baseColor])
-        for range in ranges where NSMaxRange(range) <= value.length {
-            value.addAttributes([.font: NSFont.systemFont(ofSize: font.pointSize, weight: .bold),
-                                 .foregroundColor: selected ? color : NSColor.controlAccentColor], range: range)
-        }
-        field.attributedStringValue = value
-    }
-}
-
-final class AddressResultRow: NSTableRowView {
-    override var isSelected: Bool {
-        didSet {
-            needsDisplay = true
-            for case let cell as AddressResultCell in subviews { cell.setSelected(isSelected) }
-        }
-    }
-
-    override func didAddSubview(_ subview: NSView) {
-        super.didAddSubview(subview)
-        (subview as? AddressResultCell)?.setSelected(isSelected)
-    }
-
-    override var interiorBackgroundStyle: NSView.BackgroundStyle { isSelected ? .emphasized : .normal }
-
-    override func drawSelection(in dirtyRect: NSRect) {
-        NSColor.selectedContentBackgroundColor.setFill()
-        NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 2), xRadius: 12, yRadius: 12).fill()
-    }
-}
-
 private struct AddressResult {
     let title: String
     let detail: String
     let address: String
     let history: HistorySuggestion?
     var command: PopupCommand? = nil
-}
-
-/// Wraps popup content in the shared Liquid Glass shell used by browser popups.
-@MainActor
-func popupGlassShell(containing content: NSView) -> NSView {
-    let glass = NSGlassEffectView()
-    glass.style = .regular
-    glass.cornerRadius = 18
-    glass.contentView = content
-    // Clip the complete glass compositor, including its outer decoration.
-    // A bare glass view at the window edge can leave a rectangular rim.
-    let clip = NSView()
-    clip.wantsLayer = true
-    clip.layer?.cornerRadius = glass.cornerRadius
-    clip.layer?.masksToBounds = true
-    glass.translatesAutoresizingMaskIntoConstraints = false
-    clip.addSubview(glass)
-    NSLayoutConstraint.activate([
-        glass.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
-        glass.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
-        glass.topAnchor.constraint(equalTo: clip.topAnchor),
-        glass.bottomAnchor.constraint(equalTo: clip.bottomAnchor)
-    ])
-    return clip
 }
 
 // @lat: [[lat.md/architecture/address-entry#Location popup]]
@@ -145,7 +62,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         panel.title = "Open Location"
 
         let background = NSView()
-        panel.contentView = popupGlassShell(containing: background)
+        panel.contentView = PopupGlassShell(content: background)
 
         input.font = .systemFont(ofSize: 14)
         input.placeholderAttributedString = NSAttributedString(string: "Search or enter address", attributes: [
@@ -219,7 +136,7 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         resultsTable.style = .plain
         resultsTable.headerView = nil
         resultsTable.backgroundColor = .clear
-        resultsTable.rowHeight = AddressPopupLayout.rowHeight
+        resultsTable.rowHeight = PopupLayout.rowHeight
         resultsTable.intercellSpacing = .zero
         resultsTable.dataSource = self
         resultsTable.delegate = self
@@ -478,11 +395,11 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         let top = parentWindow.frame.maxY - topInsetFromWindow!
         let errorHeight: CGFloat = errorLabel.isHidden ? 0 : 20
         resultsTop.constant = 8 + errorHeight
-        let rowHeight = min(CGFloat(results.count) * AddressPopupLayout.rowHeight,
-            max(0, top - max(anchor.minY, windowBounds.minY) - margin - AddressPopupLayout.chromeHeight - errorHeight))
+        let rowHeight = min(CGFloat(results.count) * PopupLayout.rowHeight,
+            max(0, top - max(anchor.minY, windowBounds.minY) - margin - PopupLayout.chromeHeight - errorHeight))
         resultsHeight.constant = results.isEmpty ? 0 : rowHeight
         resultsScroll.isHidden = results.isEmpty
-        let height = AddressPopupLayout.chromeHeight + rowHeight + errorHeight
+        let height = PopupLayout.chromeHeight + rowHeight + errorHeight
         let width = min(480, max(280, anchor.width - 2 * margin), windowBounds.width - 2 * margin)
         let x = min(max(anchor.midX - width / 2, windowBounds.minX + margin), windowBounds.maxX - width - margin)
         panel.setFrame(NSRect(x: x.rounded(), y: top - height, width: width, height: height), display: true)
@@ -528,30 +445,13 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     func numberOfRows(in tableView: NSTableView) -> Int { results.count }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        AddressResultRow()
+        PopupResultRow()
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let result = results[row]
-        let view = AddressResultCell()
-        let icon = view.icon
+        let view = PopupResultCell()
         let favicon = result.history.flatMap { store.faviconCache?.image(for: URL(string: $0.url)) }
-        view.hasFavicon = favicon != nil
-        icon.image = favicon ?? NSImage(systemSymbolName: result.command?.icon ?? (result.history == nil ? "magnifyingglass" : "clock"), accessibilityDescription: nil)
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        icon.contentTintColor = view.hasFavicon ? nil : .secondaryLabelColor
-        icon.wantsLayer = true
-        icon.layer?.cornerRadius = Chrome.faviconCornerRadius
-        icon.layer?.masksToBounds = true
-        let title = view.title
-        title.stringValue = result.title
-        title.font = .systemFont(ofSize: 14)
-        title.lineBreakMode = .byTruncatingTail
-        let detail = view.detail
-        detail.stringValue = result.detail
-        detail.font = .systemFont(ofSize: 11)
-        detail.textColor = .secondaryLabelColor
-        detail.lineBreakMode = .byTruncatingMiddle
         if result.history != nil, !showingFrequent {
             view.titleMatches = FuzzyMatch.ranges(typedQuery, in: result.title)
             view.detailMatches = FuzzyMatch.ranges(typedQuery, in: result.detail)
@@ -561,7 +461,6 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         remove.target = self
         remove.action = #selector(removeHistoryResult(_:))
         remove.isBordered = false
-        remove.contentTintColor = .secondaryLabelColor
         remove.identifier = NSUserInterfaceItemIdentifier(result.address)
         remove.toolTip = "Remove from history"
         remove.setAccessibilityLabel("Remove \(result.title) from history")
@@ -573,30 +472,23 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         shortcut.setContentCompressionResistancePriority(.required, for: .horizontal)
         shortcut.setContentHuggingPriority(.required, for: .horizontal)
         shortcut.setAccessibilityLabel(shortcut.stringValue.isEmpty ? "" : "Keyboard shortcut \(shortcut.stringValue)")
-        for child in [icon, title, detail, remove, shortcut] {
+        for child in [remove, shortcut] {
             child.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(child)
         }
+        view.configure(
+            image: favicon ?? NSImage(systemSymbolName: result.command?.icon ?? (result.history == nil ? "magnifyingglass" : "clock"), accessibilityDescription: nil),
+            hasFavicon: favicon != nil, title: result.title, detail: result.detail,
+            before: result.command == nil ? remove : shortcut)
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            icon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 16),
-            icon.heightAnchor.constraint(equalToConstant: 16),
-            title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-            title.trailingAnchor.constraint(equalTo: result.command == nil ? remove.leadingAnchor : shortcut.leadingAnchor, constant: -8),
             shortcut.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
             shortcut.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            title.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
-            detail.leadingAnchor.constraint(equalTo: title.leadingAnchor),
-            detail.trailingAnchor.constraint(equalTo: title.trailingAnchor),
-            detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),
             remove.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
             remove.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             remove.widthAnchor.constraint(equalToConstant: 24),
             remove.heightAnchor.constraint(equalToConstant: 24)
         ])
         view.alphaValue = result.command?.isEnabled == false ? 0.4 : 1
-        view.textField = title
         view.setSelected(row == selectedResult)
         return view
     }

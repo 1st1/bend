@@ -57,13 +57,13 @@ final class TabSwitcherPanel: NSObject, NSTableViewDataSource, NSTableViewDelega
         panel.title = "Switch Tabs"
 
         let background = NSView()
-        panel.contentView = popupGlassShell(containing: background)
+        panel.contentView = PopupGlassShell(content: background)
         table.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("tab")))
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.style = .plain
         table.headerView = nil
         table.backgroundColor = .clear
-        table.rowHeight = AddressPopupLayout.rowHeight
+        table.rowHeight = PopupLayout.rowHeight
         table.intercellSpacing = .zero
         table.dataSource = self
         table.delegate = self
@@ -132,7 +132,7 @@ final class TabSwitcherPanel: NSObject, NSTableViewDataSource, NSTableViewDelega
         let margin: CGFloat = 16
         let top = (bounds.maxY - bounds.height / 5).rounded()
         let rows = min(tabs.count, Self.maxVisibleRows)
-        let height = min(CGFloat(rows) * AddressPopupLayout.rowHeight + 2 * Self.padding, top - bounds.minY - margin)
+        let height = min(CGFloat(rows) * PopupLayout.rowHeight + 2 * Self.padding, top - bounds.minY - margin)
         let width = min(480, bounds.width - 2 * margin)
         panel.setFrame(NSRect(x: (bounds.midX - width / 2).rounded(), y: top - height, width: width, height: height), display: true)
         panel.invalidateShadow()
@@ -140,44 +140,18 @@ final class TabSwitcherPanel: NSObject, NSTableViewDataSource, NSTableViewDelega
 
     func numberOfRows(in tableView: NSTableView) -> Int { tabs.count }
 
-    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { AddressResultRow() }
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { PopupResultRow() }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let tab = tabs[row]
         let page = tab.pages.first { $0.id == tab.focusedPane } ?? tab.pages[0]
         let controller = store.existingController(for: page.id)
-        let view = AddressResultCell()
+        let view = PopupResultCell()
         let favicon = store.favicon(for: page)
-        view.hasFavicon = favicon != nil
-        view.icon.image = favicon ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
-        view.icon.imageScaling = .scaleProportionallyUpOrDown
-        view.icon.wantsLayer = true
-        view.icon.layer?.cornerRadius = Chrome.faviconCornerRadius
-        view.icon.layer?.masksToBounds = true
-        view.title.stringValue = tab.title
-        view.title.font = .systemFont(ofSize: 14)
-        view.title.lineBreakMode = .byTruncatingTail
         let address = controller?.isStartPage == true ? "Start Page" : (controller?.address ?? page.address)
-        view.detail.stringValue = tab.pages.count > 1 ? "\(address) · \(tab.pages.count) panes" : address
-        view.detail.font = .systemFont(ofSize: 11)
-        view.detail.lineBreakMode = .byTruncatingMiddle
-        for child in [view.icon, view.title, view.detail] as [NSView] {
-            child.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(child)
-        }
-        NSLayoutConstraint.activate([
-            view.icon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            view.icon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            view.icon.widthAnchor.constraint(equalToConstant: 16),
-            view.icon.heightAnchor.constraint(equalToConstant: 16),
-            view.title.leadingAnchor.constraint(equalTo: view.icon.trailingAnchor, constant: 8),
-            view.title.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            view.title.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
-            view.detail.leadingAnchor.constraint(equalTo: view.title.leadingAnchor),
-            view.detail.trailingAnchor.constraint(equalTo: view.title.trailingAnchor),
-            view.detail.topAnchor.constraint(equalTo: view.title.bottomAnchor, constant: 2)
-        ])
-        view.textField = view.title
+        view.configure(image: favicon ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil),
+            hasFavicon: favicon != nil, title: tab.title,
+            detail: tab.pages.count > 1 ? "\(address) · \(tab.pages.count) panes" : address)
         view.setSelected(row == store.tabCycle?.index)
         return view
     }
