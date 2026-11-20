@@ -25,11 +25,16 @@ class BrowseWindow: NSWindow {
     private weak var chatHeaderPress: ChatHeaderNativeButton?
 
     // @lat: [[lat.md/architecture/session#Session lifecycle#Recent tab switching]]
-    /// AppKit offers key equivalents to the window's views before the main menu. Focused
-    /// web content claims them for the page, so Control-Tab goes to the menu first.
+    /// Handles Control-Tab; the argument is true for Control-Shift-Tab.
+    var onRecentTabShortcut: ((_ backward: Bool) -> Void)?
+
+    /// AppKit offers key equivalents to the window's views first, and focused
+    /// web content claims them for the page, so Control-Tab is taken here.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.keyCode == 48, event.modifierFlags.intersection([.command, .option, .control]) == .control,
-           NSApp.mainMenu?.performKeyEquivalent(with: event) == true { return true }
+        if let backward = event.recentTabShortcutIsBackward, let onRecentTabShortcut {
+            onRecentTabShortcut(backward)
+            return true
+        }
         return super.performKeyEquivalent(with: event)
     }
 
@@ -227,5 +232,14 @@ final class PaneMouseTargetView: NSView {
     }
     override func mouseUp(with event: NSEvent) {
         (window as? BrowseWindow)?.endPaneGesture(with: event)
+    }
+}
+
+extension NSEvent {
+    /// For Control-Tab, whether Shift reverses the recent-tab cycle; nil for any other key.
+    var recentTabShortcutIsBackward: Bool? {
+        guard type == .keyDown, keyCode == 48,
+              modifierFlags.intersection([.command, .option, .control]) == .control else { return nil }
+        return modifierFlags.contains(.shift)
     }
 }

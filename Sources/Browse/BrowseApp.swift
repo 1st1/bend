@@ -193,13 +193,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         add("Back", #selector(back), "[", to: view)
         add("Forward", #selector(forward), "]", to: view)
         view.addItem(.separator())
-        add("Show Next Tab", #selector(nextRecentTab), "\t", modifiers: .control, to: view)
-        add("Show Previous Tab", #selector(previousRecentTab), "\t", modifiers: [.control, .shift], to: view)
-        // Shift-Tab arrives as the backtab character, which does not match "\t" plus Shift.
-        add("Show Previous Tab", #selector(previousRecentTab), "\u{19}", modifiers: [.control, .shift], to: view)
-        view.items.last?.isHidden = true
-        view.items.last?.allowsKeyEquivalentWhenHidden = true
-        view.addItem(.separator())
         for (title, key, direction) in [("Zoom In", "+", 1), ("Zoom Out", "-", -1), ("Actual Size", "0", 0)] {
             add(title, #selector(zoomPage(_:)), key, to: view)
             view.items.last?.tag = direction
@@ -233,8 +226,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func newPrivateWindow() { browserWindows.newPrivateWindow() }
     @objc private func newTab() { store.newTab() }
     // The browser window must be key to observe Control release and Escape.
-    @objc private func nextRecentTab() { addressPanel?.dismiss(restoreFocus: true); store.cycleRecentTabs() }
-    @objc private func previousRecentTab() { addressPanel?.dismiss(restoreFocus: true); store.cycleRecentTabs(backward: true) }
     @objc private func showSettings() {
         presentSettings()
     }

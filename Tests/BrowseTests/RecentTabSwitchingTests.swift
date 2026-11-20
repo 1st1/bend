@@ -6,19 +6,14 @@ import BrowseCore
 @MainActor private final class RecentTabFixture {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseRecentTabs-\(UUID())")
     let owner: BrowserWindows
-    let delegate: AppDelegate
-    let previousMenu: NSMenu?
     let context: BrowserWindowSession
     let ids: [UUID]
     var store: BrowserStore { context.store }
 
     init() throws {
         _ = NSApplication.shared
-        previousMenu = NSApp.mainMenu
         owner = BrowserWindows(root: root, persistentExtensions: false)
         owner.restore(show: false)
-        delegate = AppDelegate(browserWindows: owner)
-        delegate.installMenus()
         context = try #require(owner.active)
         context.addressPanel.dismiss(restoreFocus: false)
         context.window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
@@ -29,18 +24,20 @@ import BrowseCore
     }
 
     func tearDown() {
-        NSApp.mainMenu = previousMenu
         owner.prepareToQuit(); for context in owner.windows { context.window.close() }
         try? FileManager.default.removeItem(at: root)
     }
 
-    func press(shift: Bool = false) throws {
+    /// Presses Control-Tab, or Control-Shift-Tab, in `window` (the browser window by default).
+    func press(shift: Bool = false, in window: NSWindow? = nil) throws {
+        let window = window ?? context.window
+        // Shift-Tab arrives as the backtab character.
         let character = shift ? "\u{19}" : "\t"
         let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero,
             modifierFlags: shift ? [.control, .shift] : .control, timestamp: 0,
-            windowNumber: context.window.windowNumber, context: nil,
+            windowNumber: window.windowNumber, context: nil,
             characters: character, charactersIgnoringModifiers: character, isARepeat: false, keyCode: 48))
-        #expect(try #require(NSApp.mainMenu).performKeyEquivalent(with: event))
+        #expect(window.performKeyEquivalent(with: event))
     }
 
     func send(_ type: NSEvent.EventType, keyCode: UInt16, flags: NSEvent.ModifierFlags = []) {
@@ -83,6 +80,16 @@ import BrowseCore
     fixture.releaseControl()
     #expect(store.selectedTab.id == a)
     #expect(Array(store.recentTabs.prefix(4)) == [a, d, c, b])
+
+    // Control-Tab from the location popup closes it and cycles.
+    fixture.context.window.orderFront(nil)
+    fixture.context.addressPanel.show(for: store.selectedTab.focusedPane)
+    let popup = try #require(NSApp.windows.first { fixture.context.addressPanel.owns($0) })
+    #expect(popup.isVisible)
+    try fixture.press(in: popup)
+    #expect(!popup.isVisible)
+    #expect(store.tabCycle?.target == d)
+    fixture.send(.keyDown, keyCode: 53, flags: .control)
 
     // Escape cancels without switching.
     try fixture.press()
@@ -142,6 +149,44 @@ import BrowseCore
     #expect(store.tabCycle == nil)
     #expect(!switcher.isVisible)
     #expect(store.selectedTab.id == a)
+}
+
+// @lat: [[lat.md/tests/session-tests#Tab switcher matches the location popup]]
+@Test @MainActor func tabSwitcherMatchesLocationPopup() throws {
+    _ = NSApplication.shared
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendSwitcherPlacement-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    let tabs = (1...3).map { BrowserTab(title: "Tab \($0)", pages: [Page(address: "about:blank")]) }
+    store.session.workspaces = [Workspace(name: "Test", tabs: tabs)]
+    for tab in tabs { store.select(tab.id) }
+    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1200, height: 800),
+        styleMask: [.borderless], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    let content = NSView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800))
+    window.contentView = content
+    // A pane beside a sidebar: popups center on the pane, not the whole window.
+    let pane = PaneDropHost(frame: NSRect(x: 300, y: 20, width: 880, height: 760))
+    pane.store = store; pane.tabID = store.selectedTab.id; pane.pageID = store.selectedTab.focusedPane
+    content.addSubview(pane)
+    window.orderFront(nil)
+    let address = AddressPanelController(store: store, parentWindow: window)
+    let switcher = TabSwitcherPanel(store: store, parentWindow: window)
+    defer { address.dismiss(restoreFocus: false); store.cancelTabCycle(); switcher.dismiss(); window.close() }
+
+    address.show(for: store.selectedTab.focusedPane)
+    let addressFrame = try #require(window.childWindows?.first { address.owns($0) }).frame
+    address.dismiss(restoreFocus: false)
+    store.cycleRecentTabs()
+    switcher.update()
+    switcher.present()
+    let switcherFrame = try #require(window.childWindows?.first { switcher.owns($0) }).frame
+    let paneFrame = window.convertToScreen(pane.convert(pane.visibleRect, to: nil))
+    #expect(abs(switcherFrame.midX - paneFrame.midX) <= 1)
+    #expect(switcherFrame.midX == addressFrame.midX)
+    #expect(switcherFrame.maxY == addressFrame.maxY)
+    #expect(switcherFrame.width == addressFrame.width)
+    #expect(switcherFrame.height == 3 * PopupLayout.rowHeight + 2 * PopupLayout.inset)
 }
 
 /// Stands in for focused web content, which claims key equivalents for the page.

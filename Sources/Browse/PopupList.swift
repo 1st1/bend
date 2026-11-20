@@ -1,10 +1,50 @@
 import AppKit
 
-/// Shared measurements for list popups such as the location popup and tab switcher.
+/// Shared measurements and placement for list popups such as the location popup and tab switcher.
 enum PopupLayout {
     static let rowHeight: CGFloat = 42
     /// The location popup's fixed height outside its result rows.
     static let chromeHeight: CGFloat = 80
+    /// Inset between the glass edge and the popup's content.
+    static let inset: CGFloat = 6
+    /// Minimum distance from the window's content edges.
+    static let margin: CGFloat = 16
+
+    /// Screen bounds of the window's content and the visible bounds of the pane a popup centers on.
+    /// Falls back to the content bounds until the pane is mounted.
+    @MainActor
+    static func anchor(in window: NSWindow, pageID: UUID?, tabID: UUID) -> (window: NSRect, anchor: NSRect, pane: PaneDropHost?)? {
+        guard let content = window.contentView else { return nil }
+        content.layoutSubtreeIfNeeded()
+        let windowBounds = window.convertToScreen(content.convert(content.bounds, to: nil))
+        let pane = pageID.flatMap { paneView(in: content, pageID: $0, tabID: tabID) }
+        let anchor = pane.map { window.convertToScreen($0.convert($0.visibleRect, to: nil)) } ?? windowBounds
+        return (windowBounds, anchor, pane)
+    }
+
+    /// Popups open with their top edge one-fifth down the anchor.
+    static func top(of anchor: NSRect) -> CGFloat { (anchor.maxY - anchor.height / 5).rounded() }
+
+    /// Room left for rows below `top`, after the popup's fixed `chrome` height.
+    static func rowSpace(below top: CGFloat, anchor: NSRect, windowBounds: NSRect, chrome: CGFloat) -> CGFloat {
+        max(0, top - max(anchor.minY, windowBounds.minY) - margin - chrome)
+    }
+
+    /// Centers a popup of `height` on the anchor, with a readable width kept inside the window.
+    static func frame(top: CGFloat, height: CGFloat, anchor: NSRect, windowBounds: NSRect) -> NSRect {
+        let width = min(480, max(280, anchor.width - 2 * margin), windowBounds.width - 2 * margin)
+        let x = min(max(anchor.midX - width / 2, windowBounds.minX + margin), windowBounds.maxX - width - margin)
+        return NSRect(x: x.rounded(), y: top - height, width: width, height: height)
+    }
+
+    @MainActor
+    private static func paneView(in view: NSView, pageID: UUID, tabID: UUID) -> PaneDropHost? {
+        guard !view.isHiddenOrHasHiddenAncestor else { return nil }
+        if let pane = view as? PaneDropHost, pane.pageID == pageID, pane.tabID == tabID, !pane.visibleRect.isEmpty {
+            return pane
+        }
+        return view.subviews.lazy.compactMap { paneView(in: $0, pageID: pageID, tabID: tabID) }.first
+    }
 }
 
 /// Wraps popup content in the shared Liquid Glass shell used by browser popups.

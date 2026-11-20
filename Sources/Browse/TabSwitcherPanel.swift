@@ -27,7 +27,8 @@ final class TabSwitcherPanel: NSObject, NSTableViewDataSource, NSTableViewDelega
     /// A quick Control-Tab tap switches without flashing the popup.
     static let presentationDelay: TimeInterval = 0.12
     private static let maxVisibleRows = 10
-    private static let padding: CGFloat = 6
+    /// Fixed height around the rows: the glass insets.
+    private static let chromeHeight = 2 * PopupLayout.inset
 
     private let store: BrowserStore
     private weak var parentWindow: NSWindow?
@@ -41,6 +42,7 @@ final class TabSwitcherPanel: NSObject, NSTableViewDataSource, NSTableViewDelega
     var isVisible: Bool { panel.isVisible }
     var rowTabIDs: [UUID] { tabs.map(\.id) }
     var highlightedRow: Int { table.selectedRow }
+    func owns(_ window: NSWindow) -> Bool { window === panel }
 
     init(store: BrowserStore, parentWindow: NSWindow) {
         self.store = store
@@ -74,7 +76,7 @@ final class TabSwitcherPanel: NSObject, NSTableViewDataSource, NSTableViewDelega
         scroll.hasVerticalScroller = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(scroll)
-        let inset = Self.padding
+        let inset = PopupLayout.inset
         NSLayoutConstraint.activate([
             scroll.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: inset),
             scroll.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -inset),
@@ -126,15 +128,16 @@ final class TabSwitcherPanel: NSObject, NSTableViewDataSource, NSTableViewDelega
         store.endTabCycle()
     }
 
+    /// Matches the location popup: centered on the focused pane, top edge one-fifth down it.
     private func layout() {
-        guard let parentWindow, let content = parentWindow.contentView else { return }
-        let bounds = parentWindow.convertToScreen(content.convert(content.bounds, to: nil))
-        let margin: CGFloat = 16
-        let top = (bounds.maxY - bounds.height / 5).rounded()
-        let rows = min(tabs.count, Self.maxVisibleRows)
-        let height = min(CGFloat(rows) * PopupLayout.rowHeight + 2 * Self.padding, top - bounds.minY - margin)
-        let width = min(480, bounds.width - 2 * margin)
-        panel.setFrame(NSRect(x: (bounds.midX - width / 2).rounded(), y: top - height, width: width, height: height), display: true)
+        guard let parentWindow, let placement = PopupLayout.anchor(in: parentWindow,
+            pageID: store.selectedTab.focusedPane, tabID: store.selectedTab.id) else { return }
+        let top = PopupLayout.top(of: placement.anchor)
+        let rows = CGFloat(min(tabs.count, Self.maxVisibleRows)) * PopupLayout.rowHeight
+        let height = min(rows, PopupLayout.rowSpace(below: top, anchor: placement.anchor,
+            windowBounds: placement.window, chrome: Self.chromeHeight)) + Self.chromeHeight
+        panel.setFrame(PopupLayout.frame(top: top, height: height, anchor: placement.anchor,
+            windowBounds: placement.window), display: true)
         panel.invalidateShadow()
     }
 

@@ -3,8 +3,16 @@ import Combine
 import BrowseCore
 
 private final class AddressEntryPanel: NSPanel {
+    var onRecentTabShortcut: ((_ backward: Bool) -> Void)?
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let backward = event.recentTabShortcutIsBackward, let onRecentTabShortcut {
+            onRecentTabShortcut(backward)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }
 
 private final class AddressResultsTable: NSTableView {
@@ -25,6 +33,11 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     private let store: BrowserStore
     private weak var parentWindow: NSWindow?
     func owns(_ window: NSWindow) -> Bool { window === panel }
+    /// Control-Tab while the popup has focus; the argument is true for Control-Shift-Tab.
+    var onRecentTabShortcut: ((_ backward: Bool) -> Void)? {
+        get { panel.onRecentTabShortcut }
+        set { panel.onRecentTabShortcut = newValue }
+    }
 
     private let panel = AddressEntryPanel(contentRect: .zero,
         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -378,41 +391,27 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     }
 
     private func layoutPanel() {
-        guard let parentWindow, let content = parentWindow.contentView, targetPane != nil, !isLayingOut else { return }
+        guard let parentWindow, targetPane != nil, !isLayingOut,
+              let placement = PopupLayout.anchor(in: parentWindow, pageID: targetPane, tabID: store.selectedTab.id) else { return }
         isLayingOut = true
         defer { isLayingOut = false }
-        content.layoutSubtreeIfNeeded()
-        let windowBounds = parentWindow.convertToScreen(content.convert(content.bounds, to: nil))
-        let pane = targetPaneView(in: content)
-        pane?.postsFrameChangedNotifications = true
-        let anchor = pane.map { parentWindow.convertToScreen($0.convert($0.visibleRect, to: nil)) } ?? windowBounds
-        let margin: CGFloat = 16
+        let (windowBounds, anchor) = (placement.window, placement.anchor)
+        placement.pane?.postsFrameChangedNotifications = true
         // Anchor the top once per presentation. Results, validation messages,
         // and later pane geometry changes must not move the input vertically.
         if topInsetFromWindow == nil {
-            topInsetFromWindow = parentWindow.frame.maxY - (anchor.maxY - anchor.height / 5).rounded()
+            topInsetFromWindow = parentWindow.frame.maxY - PopupLayout.top(of: anchor)
         }
         let top = parentWindow.frame.maxY - topInsetFromWindow!
         let errorHeight: CGFloat = errorLabel.isHidden ? 0 : 20
         resultsTop.constant = 8 + errorHeight
-        let rowHeight = min(CGFloat(results.count) * PopupLayout.rowHeight,
-            max(0, top - max(anchor.minY, windowBounds.minY) - margin - PopupLayout.chromeHeight - errorHeight))
+        let rowHeight = min(CGFloat(results.count) * PopupLayout.rowHeight, PopupLayout.rowSpace(below: top,
+            anchor: anchor, windowBounds: windowBounds, chrome: PopupLayout.chromeHeight + errorHeight))
         resultsHeight.constant = results.isEmpty ? 0 : rowHeight
         resultsScroll.isHidden = results.isEmpty
         let height = PopupLayout.chromeHeight + rowHeight + errorHeight
-        let width = min(480, max(280, anchor.width - 2 * margin), windowBounds.width - 2 * margin)
-        let x = min(max(anchor.midX - width / 2, windowBounds.minX + margin), windowBounds.maxX - width - margin)
-        panel.setFrame(NSRect(x: x.rounded(), y: top - height, width: width, height: height), display: true)
+        panel.setFrame(PopupLayout.frame(top: top, height: height, anchor: anchor, windowBounds: windowBounds), display: true)
         panel.invalidateShadow()
-    }
-
-    private func targetPaneView(in view: NSView) -> PaneDropHost? {
-        guard !view.isHiddenOrHasHiddenAncestor else { return nil }
-        if let pane = view as? PaneDropHost, pane.pageID == targetPane,
-           pane.tabID == store.selectedTab.id, !pane.visibleRect.isEmpty {
-            return pane
-        }
-        return view.subviews.lazy.compactMap { self.targetPaneView(in: $0) }.first
     }
 
     @objc private func parentGeometryDidChange(_ notification: Notification) {

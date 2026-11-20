@@ -194,7 +194,16 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
         store.onAddressRequested = { [weak self] paneID in self?.addressPanel.show(for: paneID) }
         tabSwitcher = TabSwitcherPanel(store: store, parentWindow: window)
         store.onTabCycleChanged = { [weak self] in self?.tabSwitcher.update() }
+        let cycle: (Bool) -> Void = { [weak self] backward in self?.cycleRecentTabs(backward: backward) }
+        window.onRecentTabShortcut = cycle
+        addressPanel.onRecentTabShortcut = cycle
         InputDiagnostics.transition(.windowOpen, .created, window: window)
+    }
+
+    /// Control-Tab: closes the location popup, since Control release is only observed by this window.
+    func cycleRecentTabs(backward: Bool) {
+        addressPanel.dismiss(restoreFocus: true)
+        store.cycleRecentTabs(backward: backward)
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
