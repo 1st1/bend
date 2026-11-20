@@ -84,7 +84,7 @@ private struct OAuthFixture: HTTPTransport {
                 if request.url!.path == "/v1/models" {
                     continuation.yield(.response(status: 200))
                     let body = request.url?.host == "api.openai.com"
-                        ? #"{"models":[{"slug":"gpt-6-astra","display_name":"Astra","visibility":"list"},{"slug":"hidden","display_name":"Hidden","visibility":"hide"}]}"#
+                        ? #"{"models":[{"slug":"gpt-6-astra","display_name":"Astra","visibility":"list","supported_reasoning_levels":[{"effort":"low"}]},{"slug":"hidden","display_name":"Hidden","visibility":"hide"}]}"#
                         : #"{"data":[{"id":"openai/gpt-6-astra","name":"Astra","type":"language","tags":["tool-use"]}]}"#
                     continuation.yield(.data(Data(body.utf8)))
                 } else if request.url!.path == "/v1/responses" {
@@ -223,6 +223,7 @@ private struct OAuthFixture: HTTPTransport {
     await settings.restore()
     #expect(settings.connected)
     #expect(settings.models.map(\.id) == ["gpt-6-astra"])
+    #expect(settings.models.first?.advertisedEfforts == [.low])
     #expect(settings.accountEmails["openai"] == "test@example.com")
     let discoveryCount = await requests.values.count
     await settings.restore()

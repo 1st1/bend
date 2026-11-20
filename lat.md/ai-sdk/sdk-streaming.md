@@ -8,7 +8,7 @@ Model selection is explicit: callers supply a provider or use the Gateway conven
 
 [[Sources/AI/Stream.swift#Model#gateway]] uses an explicit API key or the AI_GATEWAY_API_KEY environment variable and rejects missing or empty credentials. It selects the [[lat.md/ai-sdk/sdk-provider#Native Gateway adapters|native adapters]] for Anthropic and OpenAI IDs and uses Chat Completions for other models. Model identifiers pass through unchanged; there is no model registry or capability lookup.
 
-[[Sources/AI/Stream.swift#ModelRequest]] carries the model ID, messages, tool definitions, and [[Sources/AI/Stream.swift#ModelOptions]]. Options expose temperature, a completion-token limit, and whether to request usage. The free [[Sources/AI/Stream.swift#stream]] function makes one provider call; tool definitions advertise capabilities but do not execute functions. [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Agent behavior#Direct streaming]] protects this separation.
+[[Sources/AI/Stream.swift#ModelRequest]] carries the model ID, messages, tool definitions, and [[Sources/AI/Stream.swift#ModelOptions]]. Options expose temperature, a completion-token limit, and whether to request usage. Native adapters also accept [[Sources/AI/Stream.swift#ModelTuning]] for reasoning effort and faster inference. The free [[Sources/AI/Stream.swift#stream]] function makes one provider call; tool definitions advertise capabilities but do not execute functions. [[lat.md/ai-sdk/sdk-tests#Behavior specifications#Agent behavior#Direct streaming]] protects this separation.
 
 ## Stream ownership
 

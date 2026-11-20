@@ -99,6 +99,16 @@ private func nativeFixture(_ events: [String]) -> FixtureTransport {
     #expect(body["thinking"]?["display"] == .string("summarized"))
   }
   let provider = try OpenAIResponsesProvider(apiKey: "test")
+  let options = ModelOptions(includeReasoning: true, tuning: .init(effort: .low, fast: true))
+  let fast = try provider.wire.makeRequest(.init(modelID: "gpt-6-astra", messages: [], options: options))
+  let fastBody = try JSONDecoder().decode(JSONValue.self, from: #require(fast.httpBody))
+  #expect(fastBody["reasoning"] == .object(["summary": .string("auto"), "effort": .string("low")]))
+  #expect(fastBody["service_tier"] == .string("priority"))
+  let claude = try AnthropicMessagesProvider(apiKey: "test").wire.makeRequest(
+    .init(modelID: "claude-opus-5-5", messages: [], options: options))
+  let claudeBody = try JSONDecoder().decode(JSONValue.self, from: #require(claude.httpBody))
+  #expect(claudeBody["output_config"]?["effort"] == .string("low"))
+  #expect(claudeBody["speed"] == .string("fast"))
   let disabled = try provider.wire.makeRequest(.init(modelID: "openai/gpt-6-astra", messages: []))
   let disabledBody = try JSONDecoder().decode(JSONValue.self, from: #require(disabled.httpBody))
   #expect(disabledBody["reasoning"] == nil)

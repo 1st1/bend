@@ -174,13 +174,22 @@ struct ChatSidebar: View {
                 Text("On-device · Browser tools · Actions require approval")
                     .font(.caption2).foregroundStyle(.secondary)
             }
-            if !settings.connected {
-                Button("Connect a cloud model…", action: settingsAction).font(.caption).buttonStyle(.plain)
-            }
             HStack {
-                AIModelPicker(models: settings.models, selection: $chat.modelID)
-                    .disabled(chat.running)
-                    .frame(maxWidth: 235, alignment: .leading)
+                if settings.connected {
+                    AIModelPicker(models: settings.models, selection: $chat.modelID,
+                                  connection: settings.activeConnection, tuning: $chat.modelTuning)
+                        .disabled(chat.running)
+                        .frame(maxWidth: 235, alignment: .leading)
+                } else {
+                    Button(action: settingsAction) {
+                        Text("Configure an AI provider")
+                            .font(.system(size: 11, weight: .medium))
+                            .lineLimit(1)
+                            .padding(.horizontal, 4)
+                    }
+                    .buttonStyle(ChromeButtonStyle(pill: true, foregroundColor: .red))
+                    .background(.red.opacity(0.10), in: Capsule())
+                }
                 Spacer()
                 if chat.running {
                     Button("Stop", systemImage: "stop.fill") { chat.stop() }

@@ -23,6 +23,7 @@ import AI
     let chat = try #require(first.chats[tab.id])
     chat.bubbles = [ChatBubble(isUser: true, text: "Compare these pages"),
         ChatBubble(isUser: false, text: "Read [this](\(ChatPageLinks.citation(pane: tab.pages[0].id, address: tab.pages[0].address))).")]
+    chat.modelTuning["gpt-6-astra"] = .init(effort: .max, fast: true)
     chat.input = "And what about…"
     let id = chat.conversationID
     first.stopWindow()
@@ -33,6 +34,7 @@ import AI
     let resumed = try #require(next.chats[tab.id])
     #expect(resumed.conversationID == id)
     #expect(resumed.bubbles.map(\.text) == chat.bubbles.map(\.text))
+    #expect(resumed.modelTuning["gpt-6-astra"] == .init(effort: .max, fast: true))
     #expect(resumed.input == "And what about…")
     #expect(resumed.history.count == 2)
     #expect(next.selectedTab.layout == tab.layout)

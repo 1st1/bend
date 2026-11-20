@@ -1,4 +1,5 @@
 import SwiftUI
+import AI
 
 private typealias ViewState<Value> = SwiftUI.State<Value>
 
@@ -7,22 +8,35 @@ struct AIModelPicker: View {
     let models: [GatewayModel]
     private var availableModels: [GatewayModel] { [LocalAIProvider.catalogEntry] + models.filter { $0.id != LocalAIProvider.modelID } }
     @Binding var selection: String
+    let connection: String
+    @Binding var tuning: [String: ModelTuning]
     @ViewState private var presented = false
     private var label: String {
-        availableModels.first(where: { $0.id == selection })?.name ?? (selection.isEmpty ? "Select model" : selection)
+        guard !selection.isEmpty else { return "Select model" }
+        let model = availableModels.first { $0.id == selection }
+        let controls = AIModelControls(modelID: selection, connection: connection, advertisedEfforts: model?.advertisedEfforts)
+        let options = tuning[selection] ?? .init()
+        var title = (model?.name ?? selection).replacingOccurrences(
+            of: #" \(([^()]+)\)$"#, with: " / $1", options: .regularExpression)
+        if controls.fast && options.fast { title += " / Fast" }
+        if !controls.efforts.isEmpty {
+            let effort = options.effort.flatMap { controls.efforts.contains($0) ? $0 : nil }
+            title += " · " + AIModelControls.effortTitle(effort)
+        }
+        return title
     }
     var body: some View {
         Button { presented = true } label: {
             HStack(spacing: 5) {
-                Text(label).lineLimit(1).truncationMode(.tail)
+                Text(label).lineLimit(1).truncationMode(.middle)
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
             }.font(.system(size: 11)).padding(.horizontal, 5).frame(height: 24)
         }
         .buttonStyle(ChromeButtonStyle(pill: true))
         .accessibilityLabel("Model").accessibilityValue(label)
-        .help("Choose a model")
+        .help(label)
         .popover(isPresented: $presented, arrowEdge: .bottom) {
-            AIModelSearch(models: availableModels, selection: $selection) { presented = false }
+            AIModelSearch(models: availableModels, selection: $selection, connection: connection, tuning: $tuning) { presented = false }
         }
     }
 }
@@ -30,7 +44,12 @@ struct AIModelPicker: View {
 private struct AIModelSearch: View {
     let models: [GatewayModel]
     @Binding var selection: String
+    let connection: String
+    @Binding var tuning: [String: ModelTuning]
     let dismiss: () -> Void
+    @ViewState private var detail: GatewayModel?
+    @ViewState private var focusDetail = false
+    @ViewState private var hoverTarget: String?
     @ViewState private var query = ""
     @ViewState private var highlighted: String?
     private var matches: [GatewayModel] {
@@ -40,12 +59,32 @@ private struct AIModelSearch: View {
         }
     }
     var body: some View {
-        VStack(spacing: 0) {
-            AIModelSearchField(text: $query, move: move, submit: {
-                if let model = matches.first(where: { $0.id == highlighted }) ?? matches.first { choose(model) }
-            }, dismiss: dismiss).frame(height: 24).padding(10)
-            Divider()
-            ScrollViewReader { proxy in
+        HStack(alignment: .top, spacing: 0) {
+            modelList.frame(width: 320)
+            if let model = detail {
+                Divider()
+                AIModelControlPicker(model: model, controls: controls(for: model), selections: $tuning,
+                                     focusOnSelection: focusDetail, back: { detail = nil },
+                                     selectModel: { selection = model.id }, dismiss: dismiss)
+                    .frame(width: 190)
+                    .id(model.id)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: true)
+    }
+    private func controls(for model: GatewayModel) -> AIModelControls {
+        AIModelControls(modelID: model.id, connection: connection, advertisedEfforts: model.advertisedEfforts)
+    }
+    private var modelList: some View {
+        ScrollViewReader { proxy in
+            VStack(spacing: 0) {
+                AIModelSearchField(text: $query, move: { delta in
+                    move(delta)
+                    proxy.scrollTo(highlighted)
+                }, submit: {
+                    if let model = matches.first(where: { $0.id == highlighted }) ?? matches.first { choose(model) }
+                }, dismiss: dismiss).frame(height: 24).padding(10)
+                Divider()
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(matches) { model in
@@ -57,10 +96,21 @@ private struct AIModelSearch: View {
                                     }
                                     Spacer()
                                     if selection == model.id { Image(systemName: "checkmark").font(.system(size: 11)) }
+                                    if controls(for: model).available {
+                                        Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(.secondary)
+                                    }
                                 }.padding(8).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .background(highlighted == model.id ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                            .onHover { inside in
+                                if inside {
+                                    highlighted = model.id
+                                    hoverTarget = model.id
+                                } else if hoverTarget == model.id {
+                                    hoverTarget = nil
+                                }
+                            }
                             .id(model.id)
                         }
                         if matches.isEmpty {
@@ -70,19 +120,36 @@ private struct AIModelSearch: View {
                     }.padding(6)
                 }.frame(height: 320)
                 .onAppear { highlighted = matches.contains(where: { $0.id == selection }) ? selection : matches.first?.id; proxy.scrollTo(highlighted, anchor: .center) }
-                .onChange(of: highlighted) { _, value in proxy.scrollTo(value, anchor: .center) }
-                .onChange(of: query) { _, _ in highlighted = matches.first?.id }
+                .onChange(of: query) { _, _ in
+                    hoverTarget = nil
+                    detail = nil
+                    highlighted = matches.first?.id
+                    proxy.scrollTo(highlighted, anchor: .top)
+                }
             }
         }
-        .frame(width: 320)
+        .task(id: hoverTarget) {
+            guard let id = hoverTarget, let model = models.first(where: { $0.id == id }) else { return }
+            do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+            focusDetail = false
+            detail = controls(for: model).available ? model : nil
+        }
         .onExitCommand(perform: dismiss)
     }
     private func move(_ delta: Int) {
         guard !matches.isEmpty else { highlighted = nil; return }
+        hoverTarget = nil
+        detail = nil
         let current = matches.firstIndex(where: { $0.id == highlighted }) ?? 0
         highlighted = matches[min(matches.count - 1, max(0, current + delta))].id
     }
-    private func choose(_ model: GatewayModel) { selection = model.id; dismiss() }
+    private func choose(_ model: GatewayModel) {
+        hoverTarget = nil
+        focusDetail = true
+        selection = model.id
+        if controls(for: model).available { detail = model }
+        else { dismiss() }
+    }
 }
 
 enum AIPaneTool: String, CaseIterable, Identifiable {

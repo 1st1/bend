@@ -22,6 +22,14 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     let name: String?
     let type: String?
     let tags: [String]?
+    struct ReasoningOption: Decodable, Sendable {
+        let type: String
+        let values: [ReasoningEffort]?
+    }
+    var reasoning_options: [ReasoningOption]? = nil
+    var advertisedEfforts: [ReasoningEffort]? {
+        reasoning_options.map { $0.first { $0.type == "effort" }?.values ?? [] }
+    }
 }
 
 // @lat: [[lat.md/architecture/ai#Gateway connection]]
@@ -51,6 +59,9 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     private var restoring = false
     @Published private(set) var models: [GatewayModel] = []
     @Published var error: String?
+    @Published var modelDefaults: [String: ModelTuning] {
+        didSet { defaults.set(try? JSONEncoder().encode(modelDefaults), forKey: "ai.modelDefaults") }
+    }
     @Published var modelID: String {
         didSet { defaults.set(modelID, forKey: "ai.model"); if oldValue != modelID { resetConnectionTest() } }
     }
@@ -102,6 +113,9 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
         disabledTools = Set(defaults.stringArray(forKey: "ai.disabledTools") ?? [])
         self.transport = transport
         self.credential = credential
+        modelDefaults = defaults.data(forKey: "ai.modelDefaults").flatMap {
+            try? JSONDecoder().decode([String: ModelTuning].self, from: $0)
+        } ?? [:]
         modelID = defaults.string(forKey: "ai.model") ?? ""
         // Keychain is read only when AI UI is opened, not on browser launch.
     }
@@ -239,7 +253,19 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     private func directModels(_ connection: String, key: String) async throws -> [GatewayModel] {
         let anthropic = connection == "anthropicKey"
         let base = anthropic ? "https://api.anthropic.com/v1/models" : "https://api.openai.com/v1/models"
-        struct Item: Decodable { let id: String; let display_name: String? }
+        struct Item: Decodable {
+            let id: String
+            let display_name: String?
+            let capabilities: JSONValue?
+            var reasoningOptions: [GatewayModel.ReasoningOption]? {
+                guard case .object(let effort) = capabilities?["effort"] else { return nil }
+                let order = ["low", "medium", "high", "xhigh", "max"]
+                let available = effort.keys.filter { effort[$0]?["supported"] == .bool(true) }
+                let values = effort["supported"] == .bool(false) ? [] :
+                    order.filter(available.contains) + available.filter { !order.contains($0) }.sorted()
+                return [.init(type: "effort", values: values.map(ReasoningEffort.init(rawValue:)))]
+            }
+        }
         struct Catalog: Decodable { let data: [Item]; let has_more: Bool?; let last_id: String? }
         var models: [GatewayModel] = []
         var cursor: String?
@@ -264,7 +290,7 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
                 let modernGPT = id.hasPrefix("gpt-") && generation >= 5
                 return (id.hasPrefix("gpt-4o") || id.hasPrefix("gpt-4.1") || modernGPT || id.hasPrefix("o3") || id.hasPrefix("o4"))
                     && !["audio", "realtime", "transcribe", "tts", "image", "instruct", "search", "deep-research"].contains(where: id.contains)
-            }.map { GatewayModel(id: $0.id, name: $0.display_name, type: "language", tags: ["tool-use"]) }
+            }.map { GatewayModel(id: $0.id, name: $0.display_name, type: "language", tags: ["tool-use"], reasoning_options: $0.reasoningOptions) }
             if anthropic && catalog.has_more == true {
                 guard let next = catalog.last_id, seen.insert(next).inserted, seen.count < 100 else {
                     throw AIError.invalidResponse("Invalid model pagination")
@@ -374,11 +400,18 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
             if connection == "openai" {
                 let token = try await accounts.accessToken(.openai)
                 let data = try await accounts.request("https://api.openai.com/v1/models", bearer: token)
-                struct OpenAIModel: Decodable { let slug: String; let display_name: String; let visibility: String }
+                struct OpenAIModel: Decodable {
+                    struct Level: Decodable { let effort: ReasoningEffort }
+                    let slug: String
+                    let display_name: String
+                    let visibility: String
+                    let supported_reasoning_levels: [Level]?
+                }
                 struct OpenAICatalog: Decodable { let models: [OpenAIModel] }
                 let catalog = try JSONDecoder().decode(OpenAICatalog.self, from: data)
                 guard activeConnection == connection, connectionGeneration == generation else { return }
-                models = catalog.models.filter { $0.visibility == "list" }.map { GatewayModel(id: $0.slug, name: $0.display_name, type: "language", tags: ["tool-use"]) }
+                models = catalog.models.filter { $0.visibility == "list" }.map { GatewayModel(id: $0.slug, name: $0.display_name, type: "language", tags: ["tool-use"],
+                    reasoning_options: $0.supported_reasoning_levels.map { [.init(type: "effort", values: $0.map(\.effort))] }) }
                 if modelID.isEmpty { modelID = models.first?.id ?? "" }
                 return
             }
@@ -490,8 +523,8 @@ struct AISettingsView: View {
     @ViewState private var key = ""
     var body: some View {
         Form {
-            Section("AI connection") {
-                Picker("Connection", selection: Binding(
+            Section("Configure an AI provider") {
+                Picker("Provider", selection: Binding(
                     get: { settings.activeConnection },
                     set: { value in
                         key = ""
@@ -562,8 +595,9 @@ struct AISettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Preferred model") {
-                AIModelPicker(models: settings.models, selection: $settings.modelID)
-                Text("Used for new chats. You can choose another model in each chat.")
+                AIModelPicker(models: settings.models, selection: $settings.modelID,
+                              connection: settings.activeConnection, tuning: $settings.modelDefaults)
+                Text("New chats start with these settings. You can change them in each chat.")
                     .font(.callout).foregroundStyle(.secondary)
                 Button("Refresh models") { Task { await settings.refreshModels() } }
             }

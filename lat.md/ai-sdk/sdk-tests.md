@@ -162,7 +162,9 @@ Cancelling a live stream must fail its result with CancellationError and close t
 
 ## Thinking summary options
 
-[[Tests/AITests/NativeProviderTests.swift#nativeThinkingOptions]] verifies model-specific summary requests, legacy Claude budgets, date-suffixed models, and omission for non-reasoning OpenAI models. Astra requests high effort only when reasoning summaries are enabled.
+[[Tests/AITests/NativeProviderTests.swift#nativeThinkingOptions]] verifies model-specific summary requests, legacy Claude budgets, date-suffixed models, and omission for non-reasoning OpenAI models.
+
+Automatic Astra requests use high effort with summaries. Explicit effort overrides this default, and fast requests use the provider-specific speed field.
 
 ## Responses completed item retention
 
