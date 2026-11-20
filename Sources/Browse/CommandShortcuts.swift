@@ -18,6 +18,17 @@ struct CommandBinding: Codable, Equatable {
         MenuShortcut.label(key: key, modifiers: NSEvent.ModifierFlags(rawValue: flags))
     }
 
+    var keyboardShortcut: KeyboardShortcut? {
+        guard key.count == 1, let character = key.first else { return nil }
+        let mask = NSEvent.ModifierFlags(rawValue: flags)
+        var modifiers: EventModifiers = []
+        if mask.contains(.command) { modifiers.insert(.command) }
+        if mask.contains(.option) { modifiers.insert(.option) }
+        if mask.contains(.control) { modifiers.insert(.control) }
+        if mask.contains(.shift) { modifiers.insert(.shift) }
+        return KeyboardShortcut(KeyEquivalent(character), modifiers: modifiers, localization: .custom)
+    }
+
     @MainActor init(_ item: NSMenuItem) {
         self.init(item.keyEquivalent, item.keyEquivalentModifierMask)
     }
@@ -85,9 +96,17 @@ final class CommandShortcuts: ObservableObject {
 
     @Published private(set) var conflicts: [Conflict] = []
 
-    func label(for id: String) -> String? {
+    var newTabBinding: CommandBinding? {
+        MenuShortcut.items(in: menu).first { !$0.isHidden && $0.action == #selector(AppDelegate.newTab) }.map(CommandBinding.init)
+    }
+
+    func binding(for id: String) -> CommandBinding? {
         guard let item = items[id], !item.keyEquivalent.isEmpty else { return nil }
-        return CommandBinding(item).label
+        return CommandBinding(item)
+    }
+
+    func label(for id: String) -> String? {
+        binding(for: id)?.label
     }
 
     func dismissAttemptedConflict() {

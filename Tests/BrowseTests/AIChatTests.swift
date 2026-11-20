@@ -120,7 +120,8 @@ private struct WaitingChatProvider: Provider {
 @MainActor private final class MemoryGatewayCredential: AICredentialStore {
     var value: String?
     func read() -> String? { value }
-    func save(_ key: String) { value = key }
+    private(set) var saves = 0
+    func save(_ key: String) { saves += 1; value = key }
     func delete() { value = nil }
 }
 private struct GatewayFixtureTransport: HTTPTransport {
@@ -153,6 +154,16 @@ private struct GatewayFixtureTransport: HTTPTransport {
     #expect(settings.connected && credential.value == "test-key")
     #expect(settings.models.map(\.id) == ["test/chat"])
     #expect(settings.modelID == "test/chat")
+    // A previously validated key should restore even if model discovery is unavailable.
+    let restarted = AISettings(transport: GatewayFixtureTransport(status: 503), credential: credential, defaults: defaults)
+    #expect(restarted.checkingSavedConnection)
+    let firstChat = Task { await restarted.restore() }
+    firstChat.cancel()
+    await restarted.restore()
+    await firstChat.value
+    #expect(restarted.connected && !restarted.checkingSavedConnection)
+    #expect(restarted.activeConnection == "gateway" && restarted.modelID == "test/chat")
+    #expect(restarted.error != nil && credential.saves == 1)
     settings.disconnect()
     #expect(!settings.connected && credential.value == nil)
     #expect(throws: Error.self) { try settings.model("test/chat") }

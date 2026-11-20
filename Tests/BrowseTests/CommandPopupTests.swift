@@ -1,5 +1,6 @@
 import AppKit
 import BrowseCore
+import SwiftUI
 import Testing
 @testable import Browse
 
@@ -261,6 +262,12 @@ import Testing
     #expect(command.shortcut == nil)
     #expect(shortcuts.update(id, to: chord) == nil)
     #expect(shortcuts.conflicts.isEmpty)
+    let tabMenu = NSHostingMenu(rootView: SidebarTabMenu(store: context.store, tab: context.store.selectedTab, shortcuts: shortcuts))
+    tabMenu.update()
+    #expect(try CommandBinding(#require(tabMenu.item(withTitle: "Duplicate tab"))) == chord)
+    #expect(try CommandBinding(#require(tabMenu.item(withTitle: "New tab"))) == CommandBinding("t", .command))
+    #expect(try CommandBinding(#require(tabMenu.item(withTitle: "Close tab"))) == CommandBinding("w", [.shift, .command]))
+    #expect(try #require(tabMenu.item(withTitle: "Pin tab")).keyEquivalent.isEmpty)
     #expect(command.shortcut == "⌃⌘U")
     #expect(ShortcutsSettingsView.matches(ShortcutEntry(command), shortcut: command.shortcut, query: "Cmd+Ctrl+U"))
     #expect(!ShortcutsSettingsView.matches(ShortcutEntry(command), shortcut: command.shortcut, query: "Cmd+Ctrl+C"))

@@ -47,8 +47,16 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     """
 
     @Published private(set) var connected = false
+    @Published private(set) var checkingSavedConnection = true
     @Published private(set) var busy = false
-    @Published private(set) var connectionGeneration = 0 { didSet { resetConnectionTest() } }
+    @Published private(set) var connectionGeneration = 0 {
+        didSet {
+            restoreTask?.cancel()
+            restoreTask = nil
+            checkingSavedConnection = false
+            resetConnectionTest()
+        }
+    }
     @Published private(set) var accountEmails: [String: String] = [:]
     @Published private(set) var activeConnection = "gateway"
     @Published var vercelClientID: String { didSet { defaults.set(vercelClientID, forKey: "ai.vercel.clientID") } }
@@ -56,7 +64,7 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     private let accounts: AIOAuthAccounts
     private var loginTask: Task<Void, Never>?
     private var accountsRestored = false
-    private var restoring = false
+    private var restoreTask: Task<Void, Never>?
     @Published private(set) var models: [GatewayModel] = []
     @Published var error: String?
     @Published var modelDefaults: [String: ModelTuning] {
@@ -121,36 +129,56 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     }
 
     func restore() async {
-        guard !busy, !restoring else { return }
-        restoring = true
+        guard !busy else { return }
+        await restoreSelectedConnection()
+    }
+
+    private func restoreSelectedConnection() async {
+        if let restoreTask { await restoreTask.value; return }
+        let connection = activeConnection
         let generation = connectionGeneration
-        defer { restoring = false }
-        do {
-            if !accountsRestored {
-                try await accounts.restore()
-                try Task.checkCancellation()
-                guard connectionGeneration == generation else { return }
-                accountsRestored = true
-                updateAccounts()
-            }
-            if isDirectKey(activeConnection) {
-                let connection = activeConnection
-                if directKeys[connection] == nil, let saved = try await directCredentials[connection]?.readAsync() {
-                    guard connectionGeneration == generation else { return }
-                    directKeys[connection] = saved
+        // Chat and Settings can appear concurrently or disappear during a Keychain read.
+        // The settings object owns this task so either view can await the same result.
+        let task = Task {
+            guard generation == connectionGeneration else { return }
+            defer {
+                if generation == connectionGeneration {
+                    checkingSavedConnection = false
+                    restoreTask = nil
                 }
-                connected = directKeys[connection] != nil
-                if connected && models.isEmpty { await refreshModels() }
-            } else if activeConnection != "gateway" {
-                connected = accountEmails[activeConnection] != nil
-                if connected && models.isEmpty { await refreshModels() }
-            } else if key == nil, let saved = try await credential.readAsync() {
-                try Task.checkCancellation()
-                guard connectionGeneration == generation else { return }
-                await connect(saved)
             }
-        } catch is CancellationError {
-        } catch { if connectionGeneration == generation { self.error = "Could not read AI credentials from Keychain." } }
+            do {
+                if connection == "gateway" {
+                    if key == nil {
+                        let saved = try await credential.readAsync()
+                        guard generation == connectionGeneration else { return }
+                        key = saved
+                    }
+                    connected = key != nil
+                } else if isDirectKey(connection) {
+                    if directKeys[connection] == nil {
+                        let saved = try await directCredentials[connection]?.readAsync()
+                        guard generation == connectionGeneration else { return }
+                        directKeys[connection] = saved
+                    }
+                    connected = directKeys[connection] != nil
+                } else {
+                    if !accountsRestored {
+                        try await accounts.restore()
+                        guard generation == connectionGeneration else { return }
+                        accountsRestored = true
+                        updateAccounts()
+                    }
+                    connected = accountEmails[connection] != nil
+                }
+                checkingSavedConnection = false
+                if connected && models.isEmpty { await refreshModels() }
+            } catch {
+                if generation == connectionGeneration { self.error = "Could not read AI credentials from Keychain." }
+            }
+        }
+        restoreTask = task
+        await task.value
     }
 
     private func updateAccounts() {
@@ -180,24 +208,12 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
         guard AIConnection(rawValue: value) != nil || value == "vercel" else { return }
         revision += 1
         connectionGeneration += 1
-        let generation = connectionGeneration
         error = nil
         activeConnection = value; defaults.set(value, forKey: "ai.connection")
-        connected = value == "gateway" ? key != nil : accountEmails[value] != nil
+        connected = false
+        checkingSavedConnection = true
         models = []; modelID = ""
-        if value == "gateway", key == nil, let saved = try? await credential.readAsync() {
-            guard connectionGeneration == generation else { return }
-            key = saved; connected = true
-        }
-        if isDirectKey(value) {
-            if directKeys[value] == nil, let saved = try? await directCredentials[value]?.readAsync() {
-                guard connectionGeneration == generation else { return }
-                directKeys[value] = saved
-            }
-            connected = directKeys[value] != nil
-        }
-        guard connectionGeneration == generation else { return }
-        await refreshModels()
+        await restoreSelectedConnection()
     }
 
     func logout(_ provider: AIAccountProvider) async {
@@ -536,7 +552,9 @@ struct AISettingsView: View {
                     }
                 }.disabled(settings.busy)
 
-                if settings.activeConnection == "openai" {
+                if settings.checkingSavedConnection {
+                    ProgressView("Checking saved connection…").controlSize(.small)
+                } else if settings.activeConnection == "openai" {
                     if let email = settings.accountEmails["openai"] {
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {

@@ -238,7 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     @objc func newWindow() { browserWindows.newWindow() }
     @objc func newPrivateWindow() { browserWindows.newPrivateWindow() }
-    @objc private func newTab() { store.newTab() }
+    @objc func newTab() { store.newTab() }
     @objc private func showSettings() {
         presentSettings()
     }

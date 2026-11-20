@@ -180,6 +180,8 @@ struct ChatSidebar: View {
                                   connection: settings.activeConnection, tuning: $chat.modelTuning)
                         .disabled(chat.running)
                         .frame(maxWidth: 235, alignment: .leading)
+                } else if settings.checkingSavedConnection {
+                    ProgressView().controlSize(.small).accessibilityLabel("Checking saved AI connection")
                 } else {
                     Button(action: settingsAction) {
                         Text("Configure an AI provider")

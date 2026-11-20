@@ -256,26 +256,52 @@ private struct SidebarTabRow: View {
         .background(WindowDragArea(excluded: true))
         .background(PaneSidebarTarget(store: store, destination: .tab(tab.id)))
         .contextMenu {
-            Button("New tab") { store.newTab() }
-            Button("Duplicate tab") { store.duplicateTab(tab.id) }
-            if let favorite = store.favorite(for: tab) {
-                Button("Remove from Favorites") { store.removeFavorite(favorite.id) }
-            } else if !store.isPrivate {
-                Button(store.favorites.count >= SidebarFavorite.limit ? "Add to Favorites (9 maximum)" : "Add to Favorites") {
-                    store.requestFavorite(tab.id)
-                }.disabled(!store.canFavorite(tab))
-            }
-            Button(tab.isPinned ? "Unpin tab" : "Pin tab") { store.toggleTabPinned(tab.id) }
-            if tab.isPinned {
-                Button("Return to Pinned URL") {
-                    if store.session.selectedTab != tab.id { store.select(tab.id) }
-                    store.returnToPinnedURL(tab.focusedPane)
-                }.disabled(store.pinnedReturnAddress(tab.focusedPane) == nil)
-            }
-            Button("Close tab") { store.closeTab(tab.id) }.disabled(tab.isPinned)
+            SidebarTabMenu(store: store, tab: tab)
         }
     }
 
+}
+
+struct SidebarTabMenu: View {
+    @ObservedObject var store: BrowserStore
+    let tab: BrowserTab
+    @ObservedObject private var shortcuts: CommandShortcuts
+
+    init(store: BrowserStore, tab: BrowserTab, shortcuts: CommandShortcuts? = nil) {
+        self.store = store
+        self.tab = tab
+        self.shortcuts = shortcuts ?? (NSApp.delegate as? AppDelegate)?.shortcuts ?? Self.fallbackShortcuts
+    }
+
+    private static let fallbackShortcuts = CommandShortcuts()
+
+    var body: some View {
+        Button("New tab") { store.newTab() }
+            .keyboardShortcut(shortcuts.newTabBinding?.keyboardShortcut)
+        Button("Duplicate tab") { store.duplicateTab(tab.id) }
+            .keyboardShortcut(shortcuts.binding(for: "duplicate")?.keyboardShortcut)
+        if let favorite = store.favorite(for: tab) {
+            Button("Remove from Favorites") { store.removeFavorite(favorite.id) }
+                .keyboardShortcut(shortcuts.binding(for: "favorite")?.keyboardShortcut)
+        } else if !store.isPrivate {
+            Button(store.favorites.count >= SidebarFavorite.limit ? "Add to Favorites (9 maximum)" : "Add to Favorites") {
+                store.requestFavorite(tab.id)
+            }.keyboardShortcut(shortcuts.binding(for: "favorite")?.keyboardShortcut)
+                .disabled(!store.canFavorite(tab))
+        }
+        Button(tab.isPinned ? "Unpin tab" : "Pin tab") { store.toggleTabPinned(tab.id) }
+            .keyboardShortcut(shortcuts.binding(for: "pinTab")?.keyboardShortcut)
+        if tab.isPinned {
+            Button("Return to Pinned URL") {
+                if store.session.selectedTab != tab.id { store.select(tab.id) }
+                store.returnToPinnedURL(tab.focusedPane)
+            }.keyboardShortcut(shortcuts.binding(for: "returnPinned")?.keyboardShortcut)
+                .disabled(store.pinnedReturnAddress(tab.focusedPane) == nil)
+        }
+        Button("Close tab") { store.closeTab(tab.id) }
+            .keyboardShortcut(shortcuts.binding(for: "close")?.keyboardShortcut)
+            .disabled(tab.isPinned)
+    }
 }
 
 private struct FadingTabTitle: View {

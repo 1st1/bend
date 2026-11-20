@@ -20,6 +20,8 @@ Queries match words across action titles and descriptions without address autoco
 
 [[Sources/Browse/PopupCommand.swift#PopupCommand]] associates menu-backed commands with their selectors rather than copying shortcut strings. The popup renders a trailing shortcut label, including on disabled commands, and removes manual shortcut text from descriptions. New commands with a menu action automatically reflect that action's current binding; missing bindings and hidden aliases produce no label. Selector tags distinguish actions such as zoom directions.
 
+The [[Sources/Browse/BrowserView.swift#SidebarTabMenu|sidebar tab context menu]] displays each action’s current native shortcut when assigned. Its actions target the tab that opened the menu.
+
 Settings → Shortcuts lists customizable commands from [[Sources/Browse/BrowseApp.swift#AppDelegate#popupCommands]], including unavailable commands and those with no assigned binding. Back, Forward, and Reload Page share their editable bindings with the View menu. What’s New is available from the app menu and palette without a shortcut editor entry. Copy Page URL (Option-Command-C) copies the focused pane’s address as plain text from the Edit menu or command popup.
 
 [[Sources/Browse/CommandShortcuts.swift#CommandShortcuts]] captures menu defaults before applying profile-specific overrides. Edits update native key equivalents immediately. Conflicts with other menu commands, including active hidden aliases, preserve the previous binding. Leaving Shortcuts or reopening Settings dismisses the warning for a rejected binding. Commands without a dedicated selector use View → Commands and resolve availability against the current browser context. Selection shortcuts read the focused page’s selection at invocation.

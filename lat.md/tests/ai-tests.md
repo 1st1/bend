@@ -16,7 +16,9 @@ Tests exercise [[lat.md/architecture/ai|native chat]] with scripted model provid
 
 ## Gateway connection state
 
-[[Tests/BrowseTests/AIChatTests.swift#aiGatewayConnectionState]] verifies key validation precedes credential storage, disconnect removes credentials, model discovery filters unsupported types, and authentication failures do not expose the supplied key.
+[[Tests/BrowseTests/AIChatTests.swift#aiGatewayConnectionState]] verifies that cold restore keeps the saved Gateway connection and model during a catalog outage.
+
+It also checks validation before storage, credential removal on disconnect, model filtering, and key redaction on authentication failures.
 
 ## Empty tool arguments
 
