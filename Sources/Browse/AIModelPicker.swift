@@ -12,18 +12,29 @@ struct AIModelPicker: View {
     @Binding var tuning: [String: ModelTuning]
     @ViewState private var presented = false
     private var label: String {
-        availableModels.first(where: { $0.id == selection })?.name ?? (selection.isEmpty ? "Select model" : selection)
+        guard !selection.isEmpty else { return "Select model" }
+        let model = availableModels.first { $0.id == selection }
+        let controls = AIModelControls(modelID: selection, connection: connection, advertisedEfforts: model?.advertisedEfforts)
+        let options = tuning[selection] ?? .init()
+        var title = (model?.name ?? selection).replacingOccurrences(
+            of: #" \(([^()]+)\)$"#, with: " / $1", options: .regularExpression)
+        if controls.fast && options.fast { title += " / Fast" }
+        if !controls.efforts.isEmpty {
+            let effort = options.effort.flatMap { controls.efforts.contains($0) ? $0 : nil }
+            title += " · " + AIModelControls.effortTitle(effort)
+        }
+        return title
     }
     var body: some View {
         Button { presented = true } label: {
             HStack(spacing: 5) {
-                Text(label).lineLimit(1).truncationMode(.tail)
+                Text(label).lineLimit(1).truncationMode(.middle)
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
             }.font(.system(size: 11)).padding(.horizontal, 5).frame(height: 24)
         }
         .buttonStyle(ChromeButtonStyle(pill: true))
         .accessibilityLabel("Model").accessibilityValue(label)
-        .help("Choose a model")
+        .help(label)
         .popover(isPresented: $presented, arrowEdge: .bottom) {
             AIModelSearch(models: availableModels, selection: $selection, connection: connection, tuning: $tuning) { presented = false }
         }

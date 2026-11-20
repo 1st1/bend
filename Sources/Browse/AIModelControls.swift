@@ -9,6 +9,10 @@ struct AIModelControls {
     var fast = false
     var available: Bool { fast || !efforts.isEmpty }
 
+    static func effortTitle(_ effort: ReasoningEffort?) -> String {
+        effort == .xhigh ? "Extra high" : effort?.rawValue.capitalized ?? "Auto"
+    }
+
     init(modelID: String, connection: String, advertisedEfforts: [ReasoningEffort]? = nil) {
         if connection == "gateway" || connection == "vercel" {
             efforts = advertisedEfforts ?? []
@@ -90,7 +94,7 @@ struct AIModelControlPicker: View {
                         let effort = choices[index]
                         Button { choose(effort) } label: {
                             HStack {
-                                Text(effort == .xhigh ? "Extra high" : effort?.rawValue.capitalized ?? "Automatic")
+                                Text(AIModelControls.effortTitle(effort))
                                 Spacer()
                                 if effort == selections[model.id]?.effort { Image(systemName: "checkmark") }
                             }
