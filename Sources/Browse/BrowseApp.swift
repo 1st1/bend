@@ -136,6 +136,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         browserWindows.prepareToQuit()
+        if let load = browserWindows.sharedStore.historyLoad {
+            Task {
+                await load.value
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
+        }
         return .terminateNow
     }
 

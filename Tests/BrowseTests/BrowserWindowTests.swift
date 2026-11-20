@@ -316,7 +316,7 @@ import BrowseCore
 }
 
 // @lat: [[lat.md/tests/windows-tests#Browser window restoration]]
-@Test @MainActor func browserWindowRestoration() throws {
+@Test @MainActor func browserWindowRestoration() async throws {
     _ = NSApplication.shared
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseWindowsRestore-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -327,6 +327,7 @@ import BrowseCore
     second.store.split(.vertical)
     second.store.commandClickDestination = .newTab
     second.store.recordVisit(url: "https://example.com/", title: "Example")
+    await owner.sharedStore.historyLoad?.value
     let savedLayout = second.store.selectedTab.layout
     let savedSelection = second.store.session.selectedTab
     owner.prepareToQuit()
@@ -338,6 +339,7 @@ import BrowseCore
     #expect(restoredSecond.store.session.selectedTab == savedSelection)
     #expect(restoredSecond.store.selectedTab.layout == savedLayout)
     #expect(restoredSecond.store.commandClickDestination == .newTab)
+    await restored.sharedStore.historyLoad?.value
     #expect(restoredSecond.store.history.visits.count == 1)
     restored.windows[0].window.close()
     // Closing one window removes it from the next launch, but closing the final
@@ -684,6 +686,7 @@ import BrowseCore
     #expect(store.history.visits.isEmpty)
     #expect(second.store.history.visits.isEmpty)
     let restored = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), persistentExtensions: false)
+    await restored.historyLoad?.value
     #expect(restored.history.visits.count == 1)
     #expect(restored.history.visits[0].title == "Regular")
     regular.window.close()

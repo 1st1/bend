@@ -48,11 +48,93 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
     public private(set) var visits: [HistoryVisit] = []
     var choices: [HistoryChoice] = []
 
+    // Derived data belongs to this snapshot and never enters SQLite or legacy JSON.
+    private struct SearchText: Sendable {
+        let title: FuzzyMatch.Candidate
+        let fullURL: FuzzyMatch.Candidate
+        let displayURL: FuzzyMatch.Candidate
+        let literal: String
+        let asciiLiteral: Data?
+        let foldedURL: String
+        let host: String
+        let bareHost: String
+        let display: String
+        let bareDisplay: String
+        let ipv4: Bool
+        let homePage: Bool
+
+        init(_ suggestion: HistorySuggestion) {
+            let url = suggestion.url
+            let components = URLComponents(string: url)
+            let displayURL = suggestion.displayURL
+            title = FuzzyMatch.Candidate(suggestion.title)
+            self.displayURL = FuzzyMatch.Candidate(displayURL.removingPercentEncoding ?? displayURL)
+            let decodedURL = url.removingPercentEncoding ?? url
+            fullURL = FuzzyMatch.Candidate(decodedURL)
+            literal = fold(suggestion.title + " " + decodedURL)
+            asciiLiteral = literal.utf8.allSatisfy { $0 < 128 } ? Data(literal.utf8) : nil
+            foldedURL = fold(url)
+            host = fold(components?.host ?? "")
+            bareHost = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+            display = fold(displayURL)
+            bareDisplay = fold(suggestion.displayURLWithoutWWW)
+            ipv4 = isIPv4(components?.host ?? "", partial: false)
+            homePage = (components?.path.isEmpty == true || components?.path == "/")
+                && components?.query == nil && components?.fragment == nil
+        }
+    }
+
+    private struct SearchRecord: Sendable {
+        let suggestion: HistorySuggestion
+        let text: SearchText
+        let dates: [Date]
+
+        init(visits: [HistoryVisit], latest: HistoryVisit, reusing previous: SearchRecord? = nil) {
+            suggestion = HistorySuggestion(url: latest.url, title: latest.title, lastVisited: latest.date, visitCount: visits.count)
+            if let previous, previous.suggestion.title.utf8.elementsEqual(latest.title.utf8) {
+                text = previous.text
+            } else {
+                text = SearchText(suggestion)
+            }
+            dates = visits.map(\.date)
+        }
+    }
+
+    private var records: [String: SearchRecord] = [:]
+    private enum CodingKeys: String, CodingKey { case visits, choices }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(visits: container.decode([HistoryVisit].self, forKey: .visits),
+                      choices: container.decode([HistoryChoice].self, forKey: .choices))
+    }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.visits == rhs.visits && lhs.choices == rhs.choices
+    }
+
     public init() {}
 
     init(visits: [HistoryVisit], choices: [HistoryChoice]) {
         self.visits = visits
         self.choices = choices
+        rebuildRecords()
+    }
+
+    private mutating func rebuildRecords() {
+        records = Dictionary(grouping: visits, by: \.url).compactMapValues { group in
+            guard let latest = group.max(by: { $0.date < $1.date }) else { return nil }
+            return SearchRecord(visits: group, latest: latest, reusing: records[latest.url])
+        }
+    }
+
+    private mutating func refreshRecord(for url: String) {
+        let group = visits.filter { $0.url == url }
+        if let latest = group.max(by: { $0.date < $1.date }) {
+            records[url] = SearchRecord(visits: group, latest: latest, reusing: records[url])
+        } else {
+            records.removeValue(forKey: url)
+        }
     }
 
     public var isValid: Bool {
@@ -87,8 +169,18 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
         } else {
             let index = visits.firstIndex(where: { $0.date < date }) ?? visits.endIndex
             visits.insert(HistoryVisit(id: UUID(), url: url, title: title.isEmpty ? url : title, date: date), at: index)
-            if visits.count > Self.maximumVisits { visits.removeLast(visits.count - Self.maximumVisits) }
+            if visits.count <= Self.maximumVisits, records[url] == nil {
+                let visit = visits[index]
+                records[url] = SearchRecord(visits: [visit], latest: visit)
+                return true
+            }
+            if visits.count > Self.maximumVisits {
+                let evicted = visits.suffix(from: Self.maximumVisits).map(\.url)
+                visits.removeLast(evicted.count)
+                for removed in Set(evicted) where removed != url { refreshRecord(for: removed) }
+            }
         }
+        refreshRecord(for: url)
         return true
     }
 
@@ -96,20 +188,23 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
         guard !title.isEmpty, let url = Self.webAddress(address),
               let index = visits.firstIndex(where: { $0.url == url }) else { return }
         visits[index].title = title
+        refreshRecord(for: url)
     }
 
     public mutating func remove(url: String) {
         visits.removeAll { $0.url == url }
         choices.removeAll { $0.url == url }
+        records.removeValue(forKey: url)
     }
 
     public mutating func clear(since cutoff: Date) {
         visits.removeAll { $0.date >= cutoff }
-        let retained = Set(visits.map(\.url))
+        rebuildRecords()
+        let retained = records.keys
         choices.removeAll { $0.date >= cutoff || !retained.contains($0.url) }
     }
 
-    public mutating func clear() { visits.removeAll(); choices.removeAll() }
+    public mutating func clear() { visits.removeAll(); choices.removeAll(); records.removeAll() }
 
     public func matching(_ query: String) -> [HistoryVisit] {
         visits.filter { Self.matches(query, title: $0.title, url: $0.url) }
@@ -135,7 +230,9 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
         let addressQuery = query.replacingOccurrences(of: "^https?://", with: "", options: .regularExpression)
         let queryHost = String(addressQuery.prefix { !"/:?#".contains($0) })
         let ipv4Prefix = Self.isIPv4(queryHost, partial: true) && !query.contains(where: \.isWhitespace)
-        let grouped = Dictionary(grouping: visits, by: \.url)
+        let hasScheme = query.contains("://")
+        let preparedWords = words.map(FuzzyMatch.Word.init)
+        let fuzzyWords = words.joined().count <= 128 ? preparedWords : []
         var adaptiveScores: [String: Double] = [:]
         if !query.isEmpty {
             for choice in choices where choice.query.hasPrefix(query) {
@@ -144,36 +241,39 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
                 adaptiveScores[choice.url] = max(adaptiveScores[choice.url] ?? 0, score)
             }
         }
-        let ranked = grouped.compactMap { url, visits -> (HistorySuggestion, Int, Int, Double)? in
-            guard let latest = visits.max(by: { $0.date < $1.date }) else { return nil }
-            var suggestion = HistorySuggestion(url: url, title: latest.title, lastVisited: latest.date, visitCount: visits.count)
-            let searchableURL = query.contains("://") ? url : suggestion.displayURL
-            let components = URLComponents(string: url)
-            // Numeric address prefixes match actual IPv4 hosts from their start,
-            // never numbers in page titles, paths, or unrelated fuzzy matches.
+        let ranked = records.values.compactMap { record -> (HistorySuggestion, Int, Int, Double)? in
+            var suggestion = record.suggestion
+            let text = record.text
             if ipv4Prefix {
-                guard Self.isIPv4(components?.host ?? "", partial: false),
-                      Self.fold(searchableURL).hasPrefix(query) else { return nil }
+                guard text.ipv4, (hasScheme ? text.foldedURL : text.display).hasPrefix(query) else { return nil }
             }
-            let literal = ipv4Prefix || Self.matches(query, title: latest.title, url: url)
-            let fuzzy = literal ? 0 : FuzzyMatch.score(words: words, title: latest.title,
-                url: searchableURL.removingPercentEncoding ?? searchableURL)
-            guard let fuzzy else { return nil }
-            suggestion.isFuzzyMatch = !literal
-            let adaptive = adaptiveScores[url] ?? 0
-            let host = Self.fold(components?.host ?? "")
-            let bareHost = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-            let display = Self.fold(suggestion.displayURL)
-            let bareDisplay = Self.fold(suggestion.displayURLWithoutWWW)
-            var match = query.isEmpty ? 0 : (host == query || bareHost == query || Self.fold(url) == query ? 3
-                : (host.hasPrefix(query) || bareHost.hasPrefix(query) || display.hasPrefix(query)
-                    || bareDisplay.hasPrefix(query) || Self.fold(url).hasPrefix(query) ? 2 : 1))
-            // A host prefix should favor its visited home page over a deep link.
-            let isHomePage = (components?.path.isEmpty == true || components?.path == "/")
-                && components?.query == nil && components?.fragment == nil
-            if isHomePage, match >= 2 { match += 1 }
-            if !literal { match = 0 }
-            let frecency = visits.reduce(0.0) { $0 + pow(0.5, max(0, now.timeIntervalSince($1.date)) / (30 * 86400)) }
+            let literal = ipv4Prefix || preparedWords.allSatisfy { word in
+                if let haystack = text.asciiLiteral, let needle = word.asciiData {
+                    return haystack.range(of: needle) != nil
+                }
+                return text.literal.contains(word.text)
+            }
+            var fuzzy = 0
+            if !literal {
+                let url = hasScheme ? text.fullURL : text.displayURL
+                guard let score = FuzzyMatch.score(words: fuzzyWords, title: text.title, url: url) else { return nil }
+                fuzzy = score
+                suggestion.isFuzzyMatch = true
+            }
+            let adaptive = adaptiveScores[suggestion.url] ?? 0
+            var match = 0
+            if literal && !query.isEmpty {
+                if text.host == query || text.bareHost == query || text.foldedURL == query {
+                    match = 3
+                } else if text.host.hasPrefix(query) || text.bareHost.hasPrefix(query) || text.display.hasPrefix(query)
+                    || text.bareDisplay.hasPrefix(query) || text.foldedURL.hasPrefix(query) {
+                    match = 2
+                } else {
+                    match = 1
+                }
+                if text.homePage, match >= 2 { match += 1 }
+            }
+            let frecency = record.dates.reduce(0.0) { $0 + pow(0.5, max(0, now.timeIntervalSince($1)) / (30 * 86400)) }
             // Learned choices help break ties, but cannot permanently override
             // stronger URL matches or an accumulating history of other visits.
             return (suggestion, match, fuzzy, frecency + min(6, adaptive * 3))

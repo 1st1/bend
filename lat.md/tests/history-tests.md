@@ -30,6 +30,10 @@ Regression coverage includes bare-host completion of www. URLs, typed-case prese
 
 [HistoryStoreTests.swift](../../Tests/BrowseTests/HistoryStoreTests.swift) verifies that visits and learned choices survive reloading, that secondary windows share the root database, and that removal and clearing persist independently of session data.
 
+## History during launch
+
+[[Tests/BrowseTests/HistoryStoreTests.swift#historyDuringLaunch]] opens a tab while SQLite is locked, checks that startup visits and deletions merge with saved history, then clears history during another launch and verifies only subsequent visits survive.
+
 ## Unreadable history preservation
 
 [HistoryStoreTests.swift](../../Tests/BrowseTests/HistoryStoreTests.swift) verifies that corrupt JSON or SQLite history is reported and preserved during ordinary saves. Explicit clearing permits an empty database to replace it.

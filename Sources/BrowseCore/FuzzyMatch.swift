@@ -6,7 +6,7 @@ public enum FuzzyMatch {
     // consecutive runs and word/path boundaries, penalize gaps. Two DP rows
     // find the best alignment without exponential backtracking.
     static func score(_ query: String, in text: String) -> Int? {
-        match(query, in: text, positions: false)?.score
+        match(Word(query), in: Candidate(text), positions: false)?.score
     }
 
     /// UTF-16 ranges in the original displayed text, suitable for attributed strings.
@@ -15,7 +15,7 @@ public enum FuzzyMatch {
         for word in query.split(whereSeparator: \.isWhitespace).map(String.init) {
             if let literal = text.range(of: word, options: [.caseInsensitive, .diacriticInsensitive]) {
                 result.append(NSRange(literal, in: text))
-            } else if let match = match(word, in: text, positions: true),
+            } else if let match = match(Word(word), in: Candidate(text, positions: true), positions: true),
                       match.score >= minimumScore(for: word) {
                 result += match.ranges
             }
@@ -23,35 +23,72 @@ public enum FuzzyMatch {
         return Array(Set(result)).sorted { $0.location < $1.location }
     }
 
-    private static func match(_ query: String, in text: String, positions: Bool) -> (score: Int, ranges: [NSRange])? {
-        let pattern = Array(normalize(query))
-        guard !pattern.isEmpty, pattern.count <= 128 else { return nil }
-        var target: [String] = []
-        var sourceRanges: [NSRange] = []
-        var bonuses: [Int] = []
-        var offset = 0
-        var before: Character?
-        for character in text.prefix(2048) {
-            let length = String(character).utf16.count
-            let range = NSRange(location: offset, length: length)
-            let bonus: Int
-            if before == nil { bonus = 18 }
-            else if !before!.isLetter && !before!.isNumber { bonus = 14 }
-            else if before!.isLowercase && character.isUppercase { bonus = 12 }
-            else { bonus = 0 }
-            let folded: String
-            if let ascii = character.asciiValue {
-                folded = String(UnicodeScalar((65...90).contains(ascii) ? ascii + 32 : ascii))
-            } else { folded = normalize(String(character)) }
-            for (index, unit) in folded.enumerated() {
-                target.append(String(unit))
-                sourceRanges.append(range)
-                bonuses.append(index == 0 ? bonus : 0)
+    struct Candidate: Sendable {
+        let text: String
+        fileprivate var ascii: [UInt8]?
+        fileprivate var asciiLiteral: Data?
+        fileprivate var target: [Character] = []
+        fileprivate var bonuses: [UInt8] = []
+        fileprivate var sourceRanges: [NSRange] = []
+
+        init(_ text: String, positions: Bool = false) {
+            self.text = text
+            // ASCII byte positions are also UTF-16 positions. CRLF forms one
+            // grapheme, so let the Character path handle it when present.
+            if text.utf8.allSatisfy({ $0 < 128 && $0 != 13 }) {
+                var units: [UInt8] = []
+                var previousIsAlphanumeric = false
+                var previousIsLowercase = false
+                for byte in text.utf8.prefix(2048) {
+                    let uppercase = (65...90).contains(byte)
+                    let lowercase = (97...122).contains(byte)
+                    let boundary: UInt8 = units.isEmpty ? 18 : (!previousIsAlphanumeric ? 14 : 0)
+                    bonuses.append(uppercase && previousIsLowercase ? 12 : boundary)
+                    if positions { sourceRanges.append(NSRange(location: units.count, length: 1)) }
+                    units.append(uppercase ? byte + 32 : byte)
+                    previousIsAlphanumeric = uppercase || lowercase || (48...57).contains(byte)
+                    previousIsLowercase = lowercase
+                }
+                asciiLiteral = text.utf8.count > units.count ? Data(text.lowercased().utf8) : Data(units)
+                ascii = units
+                return
             }
-            offset += length
-            before = character
+            var offset = 0
+            var before: Character?
+            for character in text.prefix(2048) {
+                let length = positions ? String(character).utf16.count : 0
+                let range = NSRange(location: offset, length: length)
+                let bonus: UInt8
+                if before == nil { bonus = 18 }
+                else if !before!.isLetter && !before!.isNumber { bonus = 14 }
+                else if before!.isLowercase && character.isUppercase { bonus = 12 }
+                else { bonus = 0 }
+                let folded: String
+                if let ascii = character.asciiValue {
+                    folded = String(UnicodeScalar((65...90).contains(ascii) ? ascii + 32 : ascii))
+                } else { folded = normalize(String(character)) }
+                for (index, unit) in folded.enumerated() {
+                    target.append(unit)
+                    if positions { sourceRanges.append(range) }
+                    bonuses.append(index == 0 ? bonus : 0)
+                }
+                offset += length
+                before = character
+            }
         }
-        let wanted = pattern.map(String.init)
+    }
+
+    private static func match(_ word: Word, in candidate: Candidate, positions: Bool) -> (score: Int, ranges: [NSRange])? {
+        guard !word.pattern.isEmpty, word.pattern.count <= 128 else { return nil }
+        if let target = candidate.ascii {
+            guard let wanted = word.ascii else { return nil }
+            return matchUnits(wanted, target, candidate, positions: positions)
+        }
+        return matchUnits(word.pattern, candidate.target, candidate, positions: positions)
+    }
+
+    private static func matchUnits<Unit: Equatable>(_ wanted: [Unit], _ target: [Unit], _ candidate: Candidate,
+                                                    positions: Bool) -> (score: Int, ranges: [NSRange])? {
         var next = 0
         for character in target where character == wanted[next] {
             next += 1
@@ -71,7 +108,7 @@ public enum FuzzyMatch {
                     bestGapIndex = column - 2
                 }
                 guard target[column] == wanted[row] else { continue }
-                let base = 10 + bonuses[column]
+                let base = 10 + Int(candidate.bonuses[column])
                 if row == 0 {
                     current[column] = base - min(column, 30)
                 } else {
@@ -90,7 +127,7 @@ public enum FuzzyMatch {
         var ranges: [NSRange] = []
         if positions, var column = previous.firstIndex(of: score) {
             for row in wanted.indices.reversed() {
-                ranges.append(sourceRanges[column])
+                ranges.append(candidate.sourceRanges[column])
                 if row > 0 { column = parents[row * target.count + column] }
             }
         }
@@ -107,17 +144,35 @@ public enum FuzzyMatch {
         normalize(word).count * 12
     }
 
-    private static func qualifiedScore(_ word: String, in text: String) -> Int? {
-        guard let value = score(word, in: text) else { return nil }
-        if text.range(of: word, options: [.caseInsensitive, .diacriticInsensitive]) != nil { return value }
-        return value >= minimumScore(for: word) ? value : nil
+    struct Word {
+        let text: String
+        let pattern: [Character]
+        let ascii: [UInt8]?
+        let asciiData: Data?
+
+        init(_ text: String) {
+            self.text = text
+            let normalized = normalize(text)
+            pattern = Array(normalized)
+            ascii = normalized.utf8.allSatisfy { $0 < 128 } ? Array(normalized.utf8) : nil
+            asciiData = ascii.map { Data($0) }
+        }
+
+        func qualifiedScore(in candidate: Candidate) -> Int? {
+            guard let value = match(self, in: candidate, positions: false)?.score else { return nil }
+            if value >= pattern.count * 12 { return value }
+            if let haystack = candidate.asciiLiteral, let needle = asciiData {
+                return haystack.range(of: needle) == nil ? nil : value
+            }
+            return candidate.text.range(of: text, options: [.caseInsensitive, .diacriticInsensitive]) == nil ? nil : value
+        }
     }
 
-    static func score(words: [String], title: String, url: String) -> Int? {
-        guard !words.isEmpty, words.joined().count <= 128 else { return nil }
+    static func score(words: [Word], title: Candidate, url: Candidate) -> Int? {
+        guard !words.isEmpty else { return nil }
         var total = 0
         for word in words {
-            guard let best = [qualifiedScore(word, in: title), qualifiedScore(word, in: url)].compactMap({ $0 }).max() else { return nil }
+            guard let best = [word.qualifiedScore(in: title), word.qualifiedScore(in: url)].compactMap({ $0 }).max() else { return nil }
             total += best
         }
         return total

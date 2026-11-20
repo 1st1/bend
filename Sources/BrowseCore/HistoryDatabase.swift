@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 // @lat: [[lat.md/architecture/history#History database]]
-// One connection owned by the root BrowserStore, used on its main actor.
+// The startup worker opens the connection and transfers exclusive ownership to the root BrowserStore.
 public final class HistoryDatabase {
     private var connection: OpaquePointer?
     private var saved = BrowsingHistory()

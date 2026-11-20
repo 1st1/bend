@@ -1,17 +1,19 @@
 import AppKit
 import Foundation
+import SQLite3
 import Testing
 import WebKit
 @testable import Browse
 
 // @lat: [[lat.md/tests/history-tests#History persistence and clearing]]
-@Test @MainActor func historyPersistence() throws {
+@Test @MainActor func historyPersistence() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseHistory-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     let file = root.appendingPathComponent("session.json")
     let store = BrowserStore(sessionFile: file)
     store.recordVisit(url: "https://example.com/page", title: "Example")
     store.recordHistoryChoice(url: "https://example.com/page", query: "example")
+    await store.historyLoad?.value
     store.saveHistory()
     let secondary = BrowserStore(sessionFile: root.appendingPathComponent("Windows/secondary.json"), sharedStore: store)
     #expect(secondary.history == store.history)
@@ -21,19 +23,66 @@ import WebKit
     #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Windows/History.db").path))
     secondary.removeHistory(url: "https://example.com/from-second-window")
     let restored = BrowserStore(sessionFile: file)
+    await restored.historyLoad?.value
     #expect(restored.history == store.history)
     #expect(restored.historyError == nil)
     restored.removeHistory(url: "https://example.com/page")
-    #expect(BrowserStore(sessionFile: file).history.visits.isEmpty)
+    let afterRemoval = BrowserStore(sessionFile: file)
+    await afterRemoval.historyLoad?.value
+    #expect(afterRemoval.history.visits.isEmpty)
     restored.recordVisit(url: "https://example.com/another", title: "Another")
     restored.clearHistory()
     restored.saveHistory()
-    #expect(BrowserStore(sessionFile: file).history.visits.isEmpty)
+    let afterClear = BrowserStore(sessionFile: file)
+    await afterClear.historyLoad?.value
+    #expect(afterClear.history.visits.isEmpty)
     #expect(!FileManager.default.fileExists(atPath: file.path))
 }
 
+// @lat: [[lat.md/tests/history-tests#History during launch]]
+@Test @MainActor func historyDuringLaunch() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("BendHistoryLaunch-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("session.json")
+    let keep = "https://example.com/keep", remove = "https://example.com/remove"
+    let fresh = "https://example.com/fresh"
+    do {
+        let seed = BrowserStore(sessionFile: file, persistentExtensions: false)
+        await seed.historyLoad?.value
+        seed.recordVisit(url: keep, title: "Saved")
+        seed.recordVisit(url: remove, title: "Removed during startup")
+        seed.saveHistory()
+    }
+
+    // Hold a real exclusive SQLite lock until the new store can open a tab.
+    var locker: OpaquePointer?
+    try #require(sqlite3_open(root.appendingPathComponent("History.db").path, &locker) == SQLITE_OK)
+    defer { sqlite3_close(locker) }
+    try #require(sqlite3_exec(locker, "PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE", nil, nil, nil) == SQLITE_OK)
+    let store = BrowserStore(sessionFile: file, persistentExtensions: false)
+    let load = try #require(store.historyLoad)
+    await Task.yield()
+    store.newTab()
+    store.removeHistory(url: remove)
+    store.recordVisit(url: fresh, title: "During startup")
+    #expect(store.history.suggestions(for: "fresh").first?.url == fresh)
+    try #require(sqlite3_exec(locker, "COMMIT", nil, nil, nil) == SQLITE_OK)
+    await load.value
+    #expect(store.historyError == nil)
+    #expect(Set(store.history.visits.map(\.url)) == [keep, fresh])
+    #expect(store.history.suggestions(for: "saved").first?.url == keep)
+
+    let reopening = BrowserStore(sessionFile: file, persistentExtensions: false)
+    reopening.clearHistory()
+    reopening.recordVisit(url: fresh, title: "After clearing")
+    await reopening.historyLoad?.value
+    let restored = BrowserStore(sessionFile: file, persistentExtensions: false)
+    await restored.historyLoad?.value
+    #expect(restored.history.visits.map(\.title) == ["After clearing"])
+}
+
 // @lat: [[lat.md/tests/history-tests#Unreadable history preservation]]
-@Test(arguments: ["history.json", "History.db"]) @MainActor func unreadableHistory(fileName: String) throws {
+@Test(arguments: ["history.json", "History.db"]) @MainActor func unreadableHistory(fileName: String) async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("BrowseHistory-\(UUID())")
     defer { try? FileManager.default.removeItem(at: root) }
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -41,13 +90,16 @@ import WebKit
     let original = Data("broken history".utf8)
     try original.write(to: file)
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"))
+    await store.historyLoad?.value
     #expect(store.historyError != nil)
     store.recordVisit(url: "https://example.com/", title: "Example")
     store.saveHistory()
     #expect(try Data(contentsOf: file) == original)
     store.clearHistory()
     #expect(store.historyError == nil)
-    #expect(BrowserStore(sessionFile: root.appendingPathComponent("session.json")).history.visits.isEmpty)
+    let reopened = BrowserStore(sessionFile: root.appendingPathComponent("session.json"))
+    await reopened.historyLoad?.value
+    #expect(reopened.history.visits.isEmpty)
 }
 
 @MainActor

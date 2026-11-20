@@ -116,6 +116,9 @@ final class BrowserStore: ObservableObject {
     private let historyFile: URL
     private let legacyHistoryFile: URL
     private var historyDatabase: HistoryDatabase?
+    private(set) var historyLoad: Task<Void, Never>?
+    private var startupHistoryEdits: [(inout BrowsingHistory) -> Void] = []
+    private var resetHistoryOnLoadFailure = false
     private var pendingHistorySave: Task<Void, Never>?
     private var historyDirty = false
     private var historyWritable = true
@@ -181,13 +184,14 @@ final class BrowserStore: ObservableObject {
             }
         }
         if sharedStore == nil && !isPrivate {
-            do {
-                let database = try HistoryDatabase(file: historyFile, legacyFile: legacyHistoryFile)
-                historyDatabase = database
-                history = database.load()
-            } catch {
-                historyWritable = false
-                historyError = "Saved history could not be read. Clear history to reset it."
+            historyLoad = Task { [weak self, historyFile, legacyHistoryFile] in
+                guard let self else { return }
+                do {
+                    let database = try await Self.openHistory(file: historyFile, legacy: legacyHistoryFile)
+                    self.finishHistoryLoad(database)
+                } catch {
+                    self.finishHistoryLoad(nil)
+                }
             }
         }
         if !isPrivate {
@@ -821,22 +825,52 @@ final class BrowserStore: ObservableObject {
         newTab(address: "bend://history")
     }
 
+    // Opening SQLite also restores visits and prepares the suggestion index.
+    // Transfer the finished connection to the main actor for subsequent saves.
+    @concurrent private static func openHistory(file: URL, legacy: URL) async throws -> sending HistoryDatabase {
+        try HistoryDatabase(file: file, legacyFile: legacy)
+    }
+
+    private func finishHistoryLoad(_ database: HistoryDatabase?) {
+        historyLoad = nil
+        historyDatabase = database
+        if let database {
+            var restored = database.load()
+            for edit in startupHistoryEdits { edit(&restored) }
+            history = restored
+        } else {
+            historyWritable = false
+            historyError = "Saved history could not be read. Clear history to reset it."
+            if resetHistoryOnLoadFailure { resetUnreadableHistory() }
+        }
+        startupHistoryEdits.removeAll()
+        resetHistoryOnLoadFailure = false
+        saveHistory()
+    }
+
+    private func editHistory<Value>(_ edit: @escaping (inout BrowsingHistory) -> Value) -> Value {
+        if historyLoad != nil { startupHistoryEdits.append { _ = edit(&$0) } }
+        return edit(&history)
+    }
+
     func recordVisit(url: String, title: String, at date: Date = Date()) {
         if historyOwner !== self { historyOwner.recordVisit(url: url, title: title, at: date); return }
-        guard (!isPrivate || !windowStopped), history.record(url: url, title: title, at: date) else { return }
-        saveHistorySoon()
+        guard !isPrivate || !windowStopped else { return }
+        let recorded = editHistory { $0.record(url: url, title: title, at: date) }
+        if recorded { saveHistorySoon() }
     }
 
     func recordHistoryChoice(url: String, query: String) {
         guard !isPrivate || !windowStopped else { return }
         if historyOwner !== self { historyOwner.recordHistoryChoice(url: url, query: query); return }
-        history.recordChoice(url: url, query: query)
+        let date = Date()
+        editHistory { $0.recordChoice(url: url, query: query, at: date) }
         saveHistorySoon()
     }
 
     func removeHistory(url: String) {
         if historyOwner !== self { historyOwner.removeHistory(url: url); return }
-        history.remove(url: url)
+        editHistory { $0.remove(url: url) }
         historyDirty = true
         saveHistory()
     }
@@ -845,32 +879,38 @@ final class BrowserStore: ObservableObject {
         if historyOwner !== self { historyOwner.clearHistory(since: cutoff); return }
         if cutoff == .distantPast { clearHistory(); return }
         guard historyWritable else { historyError = "Saved history cannot be read. Choose All to reset it."; return }
-        history.clear(since: cutoff)
+        editHistory { $0.clear(since: cutoff) }
         historyDirty = true; saveHistory()
     }
 
     func clearHistory() {
         if historyOwner !== self { historyOwner.clearHistory(); return }
         faviconCache?.clear()
-        history.clear()
-        if !historyWritable {
-            do {
-                historyDatabase = nil
-                // Explicit Clear History is the only operation allowed to discard unreadable storage.
-                for file in [legacyHistoryFile, historyFile,
-                             URL(fileURLWithPath: historyFile.path + "-wal"),
-                             URL(fileURLWithPath: historyFile.path + "-shm")] {
-                    if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
-                }
-                historyDatabase = try HistoryDatabase(file: historyFile)
-                historyWritable = true
-            } catch {
-                historyError = "History could not be cleared: \(error.localizedDescription)"
-                return
-            }
+        if historyLoad != nil {
+            startupHistoryEdits.removeAll()
+            resetHistoryOnLoadFailure = true
         }
+        editHistory { $0.clear() }
+        if !historyWritable { resetUnreadableHistory() }
         historyDirty = true
         saveHistory()
+    }
+
+    private func resetUnreadableHistory() {
+        do {
+            historyDatabase = nil
+            // Explicit Clear History is the only operation allowed to discard unreadable storage.
+            for file in [legacyHistoryFile, historyFile,
+                         URL(fileURLWithPath: historyFile.path + "-wal"),
+                         URL(fileURLWithPath: historyFile.path + "-shm")] {
+                if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
+            }
+            historyDatabase = try HistoryDatabase(file: historyFile)
+            historyWritable = true
+        } catch {
+            historyError = "History could not be cleared: \(error.localizedDescription)"
+            return
+        }
     }
 
     private func saveHistorySoon() {
@@ -1162,7 +1202,7 @@ final class BrowserStore: ObservableObject {
         controller.onHistoryTitleChanged = { [weak self] url, title in
             guard let self, !self.isPrivate || !self.windowStopped else { return }
             let owner = self.historyOwner
-            owner.history.updateTitle(title, for: url)
+            owner.editHistory { $0.updateTitle(title, for: url) }
             owner.saveHistorySoon()
         }
     }

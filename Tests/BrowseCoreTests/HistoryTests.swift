@@ -81,6 +81,11 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     let restored = try JSONDecoder().decode(BrowsingHistory.self, from: JSONEncoder().encode(history))
     #expect(restored == history)
     #expect(restored.isValid)
+    #expect(restored.suggestions(for: "final title").first?.visitCount == 2)
+    history.clear(since: historyNow.addingTimeInterval(30))
+    #expect(history.suggestions(for: "final title").isEmpty)
+    #expect(history.suggestions(for: "updated").first?.visitCount == 1)
+    #expect(restored.suggestions(for: "final title").first?.visitCount == 2)
 }
 
 // @lat: [[lat.md/tests/history-tests#History matching and completion]]
@@ -141,6 +146,7 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     }
     #expect(history.visits.count == BrowsingHistory.maximumVisits)
     #expect(!history.visits.contains { $0.url == "https://example.com/0" })
+    #expect(!history.suggestions(for: "example.com/0", limit: 20_000).contains { $0.url == "https://example.com/0" })
     let url = history.visits[0].url
     history.recordChoice(url: url, query: "page")
     history.remove(url: url)
