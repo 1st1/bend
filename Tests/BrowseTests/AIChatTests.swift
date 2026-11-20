@@ -203,6 +203,9 @@ private struct GatewayFixtureTransport: HTTPTransport {
     chat.restore(saved)
     #expect(chat.modelTuning[model] == .init(effort: .high, fast: true))
     #expect(AIModelControls(modelID: "gpt-6-astra", connection: "openaiKey").fast)
+    let sonnet = AIModelControls(modelID: "anthropic/claude-sonnet-5.5", connection: "gateway")
+    #expect(sonnet.efforts == [.low, .medium, .high, .xhigh, .max])
+    #expect(!sonnet.fast)
     #expect(!AIModelControls(modelID: LocalAIProvider.modelID, connection: "openaiKey").available)
 
     let tools = PaneChatTools(store: store, tabID: store.selectedTab.id, settings: settings)

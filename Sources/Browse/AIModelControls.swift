@@ -38,7 +38,7 @@ struct AIModelControls {
             case "claude-opus-5-5", "claude-fable-5-2", "claude-mythos-5-2":
                 fast = direct
                 efforts = common + [.xhigh, .max]
-            case "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7":
+            case "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7":
                 efforts = common + [.xhigh, .max]
             case "claude-opus-4-6":
                 efforts = common + [.max]
