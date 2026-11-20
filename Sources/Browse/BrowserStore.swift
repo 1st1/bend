@@ -7,7 +7,7 @@ import WebKitFindSupport
 @MainActor
 final class BrowserStore: ObservableObject {
     @Published var session: BrowserSession {
-        didSet { pruneChats(); sleepCoordinator?.noteVisible(previous: oldValue) }
+        didSet { pruneChats(); noteTabSelection(); sleepCoordinator?.noteVisible(previous: oldValue) }
     }
     @Published var chats: [UUID: TabChat] = [:]
     // Session observers can prune chats midway through a tab mutation. Only queue
@@ -24,6 +24,13 @@ final class BrowserStore: ObservableObject {
 
     private func pruneChats() {
         let ids = Set(session.workspaces.flatMap(\.tabs).map(\.id))
+        if recentTabs.contains(where: { !ids.contains($0) }) { recentTabs.removeAll { !ids.contains($0) } }
+        // Closed tabs leave an in-progress cycle; the highlight stays on its tab when possible.
+        if let cycle = tabCycle, cycle.order.contains(where: { !ids.contains($0) }) {
+            let order = cycle.order.filter(ids.contains)
+            tabCycle = order.count > 1 ? TabCycle(order: order,
+                index: order.firstIndex(of: cycle.target) ?? min(cycle.index, order.count - 1)) : nil
+        }
         for id in Array(chats.keys) where !ids.contains(id) {
             chats.removeValue(forKey: id)?.stop()
             openChats.remove(id)
@@ -479,6 +486,57 @@ final class BrowserStore: ObservableObject {
         saveSoon()
         return true
     }
+
+    // @lat: [[lat.md/architecture/session#Session lifecycle#Recent tab switching]]
+    /// Tab IDs ordered from most to least recently selected.
+    private(set) var recentTabs: [UUID] = []
+    /// An in-progress Control-Tab selection. The highlighted tab is selected on commit.
+    struct TabCycle: Equatable {
+        var order: [UUID]
+        var index: Int
+        var target: UUID { order[index] }
+    }
+    private(set) var tabCycle: TabCycle? {
+        didSet { if tabCycle != oldValue { onTabCycleChanged?() } }
+    }
+    var onTabCycleChanged: (() -> Void)?
+
+    private func noteTabSelection() {
+        guard recentTabs.first != session.selectedTab else { return }
+        recentTabs.removeAll { $0 == session.selectedTab }
+        recentTabs.insert(session.selectedTab, at: 0)
+    }
+
+    /// Moves the highlight through tabs in most-recently-used order without selecting them.
+    /// The order is frozen for the cycle so repeated presses reach older tabs.
+    func cycleRecentTabs(backward: Bool = false) {
+        let ids = session.workspaces.flatMap(\.tabs).map(\.id), existing = Set(ids)
+        var cycle: TabCycle
+        if let current = tabCycle {
+            cycle = current
+        } else {
+            let known = recentTabs.filter(existing.contains), knownSet = Set(known)
+            cycle = TabCycle(order: known + ids.filter { !knownSet.contains($0) }, index: 0)
+        }
+        guard cycle.order.count > 1 else { tabCycle = nil; return }
+        cycle.index = (cycle.index + (backward ? -1 : 1) + cycle.order.count) % cycle.order.count
+        tabCycle = cycle
+    }
+
+    func highlightTabInCycle(at index: Int) {
+        guard var cycle = tabCycle, cycle.order.indices.contains(index) else { return }
+        cycle.index = index
+        tabCycle = cycle
+    }
+
+    /// Selects the highlighted tab, making it most recent.
+    func endTabCycle() {
+        guard let target = tabCycle?.target else { return }
+        tabCycle = nil
+        if session.workspaces.contains(where: { $0.tabs.contains { $0.id == target } }) { select(target) }
+    }
+
+    func cancelTabCycle() { tabCycle = nil }
 
     func select(_ id: UUID) {
         InputDiagnostics.transition(.storeSelection, session.selectedTab == id ? .unchanged : .changed, tabID: id)

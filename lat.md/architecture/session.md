@@ -26,6 +26,24 @@ Tab and pane hosting views disable inherited safe-area regions: the window shell
 
 Session restoration creates controllers lazily on selection. Opening a new tab in the background starts its controller immediately and defers mounting its canvas until selection. The [[lat.md/tests/session-tests#Tab performance baselines]] track native work as visited tabs accumulate.
 
+## Recent tab switching
+
+Control-Tab and Control-Shift-Tab choose among the window's tabs in most-recently-used order. They are handled by the windows directly, with no menu commands.
+
+[[Sources/Browse/BrowserStore.swift#BrowserStore#cycleRecentTabs]] snapshots the recent order on the first press and moves a highlight without selecting tabs, so held Control reaches older tabs; Shift reverses and both directions wrap. Tabs never selected follow in sidebar order. [[Sources/Browse/BrowseWindow.swift#BrowseWindow#performKeyEquivalent]] takes Control-Tab before the window's views, because focused web content otherwise claims key equivalents for the page. The location popup's panel does the same, so the shortcut works while it has focus. Both call [[Sources/Browse/BrowserWindows.swift#BrowserWindowSession#cycleRecentTabs]], which closes the location popup and starts or advances the cycle.
+
+[[Sources/Browse/BrowseWindow.swift#BrowseWindow#sendEvent]] calls [[Sources/Browse/BrowserStore.swift#BrowserStore#endTabCycle]] when Control is released, selecting the highlighted tab and making it most recent. Escape cancels without switching. Losing key status also cancels, because Control release is only observed by the key browser window; starting a cycle dismisses the location popup for the same reason. Closing a tab mid-cycle removes it while keeping the highlight on its tab when possible. The order is per window and in memory only.
+
+### Tab switcher popup
+
+[[Sources/Browse/TabSwitcherPanel.swift#TabSwitcherPanel]] lists the cycle's tabs in the shared [[Sources/Browse/PopupList.swift#PopupGlassShell]] and [[Sources/Browse/PopupList.swift#PopupResultCell]] rows used by the location popup, highlighting the current target, with each tab's title, focused pane address, and pane count.
+
+It appears only once Control has been held for [[Sources/Browse/TabSwitcherPanel.swift#TabSwitcherPanel#presentationDelay|a brief delay]], so a quick tap switches without flashing it. Clicking a row, including with Control held, selects that tab and ends the cycle. It shows up to ten rows before scrolling, and hides whenever the cycle ends.
+
+To feel connected to the location popup, it shares its placement through [[Sources/Browse/PopupList.swift#PopupLayout]]: centered on the selected tab's focused pane, top edge one-fifth down it, same width.
+
+The panel never becomes key, leaving Control release and Escape with the browser window.
+
 ## Session restoration
 
 [BrowserStore.swift](../../Sources/Browse/BrowserStore.swift) debounces atomic JSON saves to the app’s Application Support directory and saves on normal termination. [Session.swift](../../Sources/BrowseCore/Session.swift) checks restored tab, focus, and pane identity consistency before accepting state.

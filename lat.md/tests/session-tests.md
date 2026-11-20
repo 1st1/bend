@@ -69,3 +69,27 @@ Normal `./scripts/test.sh` runs discover `TabPerformanceTests/speed` as a declar
 Find reports keystroke dispatch timings and elapsed time from the final keystroke until the expected match count appears. A missing result times out. Drag samples require visible movement of the sidebar edge at the midpoint and at least one measured drag frame.
 
 It prints the `BEND_TAB_SPEED` JSON marker (`schemaVersion = 3`) and writes `BEND_SPEED_OUT` when set. CI runs it in the same `RUN_TAB_PERF == 'true'` shard-1 path as the scaling and memory benchmarks, and `scripts/report-tab-performance.py` summarizes `speed.json` into `tab-perf/summary.md`.
+
+## Recent tab switching
+
+[[Tests/BrowseTests/RecentTabSwitchingTests.swift#recentTabSwitching]] dispatches Control-Tab and Control-Shift-Tab to the browser window and verifies most-recently-used ordering.
+
+It checks presses move only the highlight, a single press and release toggles between the two latest tabs, held Control walks deeper and wraps in both directions, releasing Control commits, Control-Tab from the location popup closes it and cycles, Escape cancels, and closing a tab mid-cycle removes it.
+
+## Recent tab shortcuts from focused content
+
+[[Tests/BrowseTests/RecentTabSwitchingTests.swift#recentTabShortcutsFromFocusedContent]] focuses a view that claims every key equivalent, as web content does, and verifies Control-Tab and Control-Shift-Tab still cycle tabs.
+
+It also checks other key equivalents still reach the focused view first.
+
+## Tab switcher popup
+
+[[Tests/BrowseTests/RecentTabSwitchingTests.swift#tabSwitcherPopup]] verifies the switcher stays hidden for a quick tap and appears while Control is held.
+
+It checks rows follow recent order with the target highlighted, Shift moves the highlight, a Control-click on a row selects that tab and dismisses the popup, and losing key status cancels the cycle without switching.
+
+## Tab switcher matches the location popup
+
+[[Tests/BrowseTests/RecentTabSwitchingTests.swift#tabSwitcherMatchesLocationPopup]] verifies the switcher shares the location popup's placement for a pane beside a sidebar.
+
+Both popups center on the focused pane rather than the window, with the same top edge and width; the switcher's height is its rows plus the glass insets.

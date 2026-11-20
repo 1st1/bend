@@ -23,6 +23,21 @@ class BrowseWindow: NSWindow {
     }
 
     private weak var chatHeaderPress: ChatHeaderNativeButton?
+
+    // @lat: [[lat.md/architecture/session#Session lifecycle#Recent tab switching]]
+    /// Handles Control-Tab; the argument is true for Control-Shift-Tab.
+    var onRecentTabShortcut: ((_ backward: Bool) -> Void)?
+
+    /// AppKit offers key equivalents to the window's views first, and focused
+    /// web content claims them for the page, so Control-Tab is taken here.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let backward = event.recentTabShortcutIsBackward, let onRecentTabShortcut {
+            onRecentTabShortcut(backward)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown,
            let button = contentView?.superview?.subviews.compactMap({ $0 as? ChatHeaderNativeButton }).last(where: {
@@ -41,6 +56,7 @@ class BrowseWindow: NSWindow {
             }
         }
         InputDiagnostics.record(.window, event: event)
+        if event.type == .flagsChanged, !event.modifierFlags.contains(.control) { browserStore?.endTabCycle() }
         switch event.type {
         case .leftMouseDown:
             cancelPaneDrag()
@@ -69,6 +85,9 @@ class BrowseWindow: NSWindow {
                 forwardToAppKit(event)
                 return
             }
+        case .keyDown where event.keyCode == 53 && browserStore?.tabCycle != nil:
+            browserStore?.cancelTabCycle()
+            return
         case .keyDown where event.keyCode == 53 && capturesPaneGesture:
             cancelPaneDrag()
             return
@@ -213,5 +232,14 @@ final class PaneMouseTargetView: NSView {
     }
     override func mouseUp(with event: NSEvent) {
         (window as? BrowseWindow)?.endPaneGesture(with: event)
+    }
+}
+
+extension NSEvent {
+    /// For Control-Tab, whether Shift reverses the recent-tab cycle; nil for any other key.
+    var recentTabShortcutIsBackward: Bool? {
+        guard type == .keyDown, keyCode == 48,
+              modifierFlags.intersection([.command, .option, .control]) == .control else { return nil }
+        return modifierFlags.contains(.shift)
     }
 }

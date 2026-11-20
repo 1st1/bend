@@ -225,6 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func newWindow() { browserWindows.newWindow() }
     @objc func newPrivateWindow() { browserWindows.newPrivateWindow() }
     @objc private func newTab() { store.newTab() }
+    // The browser window must be key to observe Control release and Escape.
     @objc private func showSettings() {
         presentSettings()
     }
