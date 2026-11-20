@@ -170,6 +170,8 @@ private struct GatewayFixtureTransport: HTTPTransport {
     let defaults = try #require(UserDefaults(suiteName: domain))
     defer { defaults.removePersistentDomain(forName: domain) }
     let settings = AISettings(transport: GatewayFixtureTransport(), credential: MemoryGatewayCredential(), defaults: defaults)
+    let model = "openai/gpt-6-astra"
+    settings.modelDefaults[model] = .init(effort: .low)
     settings.modelID = "preferred/model"
     await settings.refreshModels()
     #expect(settings.modelID == "preferred/model") // Catalog refresh must not overwrite a preference.
@@ -185,6 +187,24 @@ private struct GatewayFixtureTransport: HTTPTransport {
     chat.clear()
     #expect(chat.modelID == "preferred/new")
 
+    #expect(chat.modelTuning == settings.modelDefaults)
+    chat.modelID = model
+    chat.modelTuning[model] = .init(effort: .high, fast: true)
+    let script = ChatScript()
+    chat.input = "Read"
+    chat.send(model: Model(model, provider: ChatProvider(script: script)))
+    for _ in 0..<200 where chat.running { try await Task.sleep(for: .milliseconds(10)) }
+    let requests = await script.requests
+    #expect(requests.count == 2)
+    #expect(requests.allSatisfy { $0.options.tuning == .init(effort: .high, fast: false) })
+    let saved = try #require(store.chatHistory.records.first)
+    chat.clear()
+    #expect(chat.modelTuning[model] == .init(effort: .low))
+    chat.restore(saved)
+    #expect(chat.modelTuning[model] == .init(effort: .high, fast: true))
+    #expect(AIModelControls(modelID: "gpt-6-astra", connection: "openaiKey").fast)
+    #expect(!AIModelControls(modelID: LocalAIProvider.modelID, connection: "openaiKey").available)
+
     let tools = PaneChatTools(store: store, tabID: store.selectedTab.id, settings: settings)
     #expect(Set(tools.tools().map { $0.definition.name }) == Set(AIPaneTool.allCases.map(\.rawValue)))
     let advertisedBeforeDisable = tools.tools()
@@ -199,6 +219,7 @@ private struct GatewayFixtureTransport: HTTPTransport {
     #expect(tools.tools().isEmpty)
     let restored = AISettings(transport: GatewayFixtureTransport(), credential: MemoryGatewayCredential(), defaults: defaults)
     #expect(restored.modelID == "preferred/new")
+    #expect(restored.modelDefaults[model] == .init(effort: .low))
     #expect(restored.disabledTools == Set(AIPaneTool.allCases.map(\.rawValue)))
     settings.setToolEnabled("read_pane", enabled: true)
     #expect(try tools.paneContext().jsonString().contains(store.selectedTab.focusedPane.uuidString))

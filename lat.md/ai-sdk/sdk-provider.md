@@ -54,7 +54,7 @@ URLSession delegate callbacks deliver chunks on Linux without waiting for the fu
 
 A terminal Messages stop or completed Responses event is required. Incomplete Responses and in-band errors fail the stream; unfinished local calls are never executed. Anthropic pause_turn continues within the agent's existing step limit. [[lat.md/ai-sdk/sdk-tests#Native Gateway adapters]] and [[lat.md/ai-sdk/sdk-tests#Native stream completion]] cover the wire and orchestration contracts; [[lat.md/ai-sdk/sdk-tests#Mocked native Gateway search]] exercises full agent turns with scripted HTTP responses.
 
-When reasoning display is requested through [[Sources/AI/Stream.swift#ModelOptions]], known Claude 4.6+ models use adaptive summarized thinking, Claude 4 models use a 1,024-token budget, and supported OpenAI reasoning models request automatic summaries. Astra explicitly uses high effort when summaries are requested: Gateway can return empty summaries at its default and medium effort. This can increase latency and token use. Unknown model families retain their defaults. Only provider-returned summary text is emitted; encrypted reasoning stays opaque.
+When reasoning display is requested through [[Sources/AI/Stream.swift#ModelOptions]], known Claude 4.6+ models use adaptive summarized thinking, Claude 4 models use a 1,024-token budget, and supported OpenAI reasoning models request automatic summaries. Astra defaults to high effort for summaries because Gateway can return empty summaries at its default and medium effort. An explicit effort selection takes precedence. This can increase latency and token use. Unknown model families retain their defaults. Only provider-returned summary text is emitted; encrypted reasoning stays opaque.
 
 ## Tool images
 

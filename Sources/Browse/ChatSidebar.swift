@@ -181,6 +181,17 @@ struct ChatSidebar: View {
                 AIModelPicker(models: settings.models, selection: $chat.modelID)
                     .disabled(chat.running)
                     .frame(maxWidth: 235, alignment: .leading)
+                let controls = AIModelControls(modelID: chat.modelID, connection: settings.activeConnection)
+                if controls.available {
+                    Menu {
+                        AIModelControlPicker(modelID: chat.modelID, controls: controls, selections: $chat.modelTuning)
+                    } label: {
+                        Label("Model options", systemImage: "slider.horizontal.3")
+                    }
+                    .labelStyle(.iconOnly)
+                    .help("Model options")
+                    .disabled(chat.running)
+                }
                 Spacer()
                 if chat.running {
                     Button("Stop", systemImage: "stop.fill") { chat.stop() }

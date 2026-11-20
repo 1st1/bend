@@ -51,6 +51,9 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     private var restoring = false
     @Published private(set) var models: [GatewayModel] = []
     @Published var error: String?
+    @Published var modelDefaults: [String: ModelTuning] {
+        didSet { defaults.set(try? JSONEncoder().encode(modelDefaults), forKey: "ai.modelDefaults") }
+    }
     @Published var modelID: String {
         didSet { defaults.set(modelID, forKey: "ai.model"); if oldValue != modelID { resetConnectionTest() } }
     }
@@ -102,6 +105,9 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
         disabledTools = Set(defaults.stringArray(forKey: "ai.disabledTools") ?? [])
         self.transport = transport
         self.credential = credential
+        modelDefaults = defaults.data(forKey: "ai.modelDefaults").flatMap {
+            try? JSONDecoder().decode([String: ModelTuning].self, from: $0)
+        } ?? [:]
         modelID = defaults.string(forKey: "ai.model") ?? ""
         // Keychain is read only when AI UI is opened, not on browser launch.
     }
@@ -563,7 +569,9 @@ struct AISettingsView: View {
             }
             Section("Preferred model") {
                 AIModelPicker(models: settings.models, selection: $settings.modelID)
-                Text("Used for new chats. You can choose another model in each chat.")
+                let controls = AIModelControls(modelID: settings.modelID, connection: settings.activeConnection)
+                AIModelControlPicker(modelID: settings.modelID, controls: controls, selections: $settings.modelDefaults)
+                Text("New chats start with these settings. You can change them in each chat.")
                     .font(.callout).foregroundStyle(.secondary)
                 Button("Refresh models") { Task { await settings.refreshModels() } }
             }

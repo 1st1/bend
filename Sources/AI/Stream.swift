@@ -77,7 +77,22 @@ public struct Model: Sendable {
   }
 }
 
+public enum ReasoningEffort: String, Codable, Sendable {
+  case none, low, medium, high, xhigh, max
+}
+
+public struct ModelTuning: Codable, Equatable, Sendable {
+  public var effort: ReasoningEffort?
+  public var fast: Bool
+
+  public init(effort: ReasoningEffort? = nil, fast: Bool = false) {
+    self.effort = effort
+    self.fast = fast
+  }
+}
+
 public struct ModelOptions: Sendable, Equatable {
+  public var tuning: ModelTuning
   public var temperature: Double?
   public var maxCompletionTokens: Int?
   /// Enable native search for Anthropic/OpenAI, or Gateway-hosted Perplexity search for other models.
@@ -87,8 +102,10 @@ public struct ModelOptions: Sendable, Equatable {
 
   public init(
     temperature: Double? = nil, maxCompletionTokens: Int? = nil,
-    includeUsage: Bool = true, gatewayWebSearch: Bool = false, includeReasoning: Bool = false
+    includeUsage: Bool = true, gatewayWebSearch: Bool = false, includeReasoning: Bool = false,
+    tuning: ModelTuning = .init()
   ) {
+    self.tuning = tuning
     self.temperature = temperature
     self.maxCompletionTokens = maxCompletionTokens
     self.includeUsage = includeUsage

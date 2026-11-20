@@ -101,6 +101,7 @@ struct NativeGatewayWire: Sendable {
     }
     if !definitions.isEmpty { body["tools"] = .array(definitions) }
     if let temperature = request.options.temperature { body["temperature"] = .number(temperature) }
+    var reasoning: [String: JSONValue] = [:]
     if request.options.includeReasoning {
       let id = request.modelID.lowercased()
       if api == .anthropic {
@@ -115,11 +116,22 @@ struct NativeGatewayWire: Sendable {
           }
         }
       } else if !id.contains("-chat"), !id.contains("o3-mini"), id.range(of: #"(?:^|/)(?:gpt-[56](?:[.\-]|$)|o[34](?:-|$))"#, options: .regularExpression) != nil {
-        var reasoning: [String: JSONValue] = ["summary": .string("auto")]
+        reasoning["summary"] = .string("auto")
         // Astra can return empty summaries at default/medium effort.
         if id.split(separator: "/").last == "gpt-6-astra" { reasoning["effort"] = .string("high") }
-        body["reasoning"] = .object(reasoning)
       }
+    }
+    if let effort = request.options.tuning.effort {
+      if api == .anthropic {
+        body["output_config"] = .object(["effort": .string(effort.rawValue)])
+      } else {
+        reasoning["effort"] = .string(effort.rawValue)
+      }
+    }
+    if !reasoning.isEmpty { body["reasoning"] = .object(reasoning) }
+    if request.options.tuning.fast {
+      if api == .anthropic { body["speed"] = .string("fast") }
+      else { body["service_tier"] = .string("priority") }
     }
     if api == .anthropic {
       body["messages"] = .array(history); body["max_tokens"] = .integer(Int64(limit))

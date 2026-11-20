@@ -1,3 +1,4 @@
+import AI
 import Foundation
 import Combine
 import BrowseCore
@@ -9,6 +10,7 @@ struct SavedChat: Codable, Identifiable {
     var tab: BrowserTab
     var bubbles: [ChatBubble]
     var modelID: String
+    var modelTuning: [String: ModelTuning]?
     var draft: String
     var thinkingSummary: String
     var thinkingSummaryBeforeBubbleID: UUID?

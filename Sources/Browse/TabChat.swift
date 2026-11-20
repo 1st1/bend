@@ -41,6 +41,9 @@ struct ChatBubble: Identifiable, Codable {
     @Published var bubbles: [ChatBubble] = []
     @Published var input = "" { didSet { if input != oldValue { updatedAt = Date(); schedulePersistence() } } }
     @Published var modelID = ""
+    @Published var modelTuning: [String: ModelTuning] = [:] {
+        didSet { if modelTuning != oldValue { schedulePersistence() } }
+    }
     @Published private(set) var running = false
     @Published private(set) var status = ""
     @Published private(set) var thinkingSummary = ""
@@ -63,6 +66,7 @@ struct ChatBubble: Identifiable, Codable {
         self.settings = settings
         approvalObservation = actionApproval.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         modelID = settings.modelID.isEmpty ? LocalAIProvider.modelID : settings.modelID
+        modelTuning = settings.modelDefaults
         savedTab = store.session.workspaces.flatMap(\.tabs).first { $0.id == tabID }
         clearObservation = store.chatHistory.clearRequests.sink { [weak self] cutoff in
             guard let self, self.updatedAt >= cutoff else { return }
@@ -133,8 +137,12 @@ struct ChatBubble: Identifiable, Codable {
             let token = generation
             let responseStart = bubbles.count
             let messages = history + [.user(prompt)]
+            let controls = AIModelControls(modelID: model.id, connection: settings.activeConnection)
+            var tuning = modelTuning[model.id] ?? .init()
+            if let effort = tuning.effort, !controls.efforts.contains(effort) { tuning.effort = nil }
+            tuning.fast = tuning.fast && controls.fast
             let run = agent.run(model, messages: [.system(template)] + messages,
-                                options: .init(gatewayWebSearch: !isLocal && settings.webSearchEnabled, includeReasoning: !isLocal))
+                                options: .init(gatewayWebSearch: !isLocal && settings.webSearchEnabled, includeReasoning: !isLocal, tuning: tuning))
             self.run = run
             task = Task { [weak self] in
                 defer { run.cancel() }
@@ -418,13 +426,14 @@ struct ChatBubble: Identifiable, Codable {
         }
         guard let tab = savedTab, !bubbles.isEmpty || !input.isEmpty else { return }
         store.chatHistory.save(SavedChat(id: conversationID, createdAt: createdAt, updatedAt: updatedAt,
-            tab: tab, bubbles: bubbles, modelID: modelID, draft: input,
+            tab: tab, bubbles: bubbles, modelID: modelID, modelTuning: modelTuning, draft: input,
             thinkingSummary: thinkingSummary, thinkingSummaryBeforeBubbleID: thinkingSummaryBeforeBubbleID))
     }
 
     func restore(_ record: SavedChat) {
         conversationID = record.id; createdAt = record.createdAt; updatedAt = record.updatedAt
         savedTab = record.tab; bubbles = record.bubbles; modelID = record.modelID; input = record.draft
+        modelTuning = record.modelTuning ?? [:]
         updatedAt = record.updatedAt
         thinkingSummary = record.thinkingSummary; thinkingSummaryBeforeBubbleID = record.thinkingSummaryBeforeBubbleID
         for i in bubbles.indices where bubbles[i].state == "Running" { bubbles[i].state = "Stopped" }
@@ -448,6 +457,7 @@ struct ChatBubble: Identifiable, Codable {
         conversationID = UUID(); createdAt = Date(); updatedAt = createdAt
         history = []; bubbles = []; input = ""; thinkingText = ""; thinkingSummary = ""
         thinkingSummaryBeforeBubbleID = nil; error = nil; modelID = settings.modelID.isEmpty ? LocalAIProvider.modelID : settings.modelID
+        modelTuning = settings.modelDefaults
         store?.saveSoon()
     }
     func clear() { guard !running else { return }; persist(); resetConversation() }
