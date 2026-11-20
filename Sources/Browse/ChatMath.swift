@@ -49,21 +49,23 @@ import SwiftMath
         // Match within prose blocks only. Code, HTML, and link destinations have their own grammar.
         var ranges = [NSRange]()
         func visit(_ node: any Markup) {
-            if node is Paragraph || node is Heading || node is Markdown.Table.Cell {
+            switch node {
+            case is Paragraph, is Heading, is Markdown.Table.Cell:
                 guard let bounds = range(node) else { return }
                 var cursor = bounds.location
                 func skipLiterals(_ child: any Markup) {
-                    if child is InlineCode || child is InlineHTML || child is Markdown.Link || child is Markdown.Image {
+                    switch child {
+                    case is InlineCode, is InlineHTML, is Markdown.Link, is Markdown.Image:
                         guard let literal = range(child), NSLocationInRange(literal.location, bounds) else { return }
                         if literal.location > cursor { ranges.append(NSRange(location: cursor, length: literal.location - cursor)) }
                         cursor = max(cursor, NSMaxRange(literal))
-                    } else {
+                    default:
                         for nested in child.children { skipLiterals(nested) }
                     }
                 }
                 skipLiterals(node)
                 if cursor < NSMaxRange(bounds) { ranges.append(NSRange(location: cursor, length: NSMaxRange(bounds) - cursor)) }
-            } else {
+            default:
                 for child in node.children { visit(child) }
             }
         }
