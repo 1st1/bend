@@ -6,6 +6,15 @@ import BrowseCore
 @MainActor
 enum BrowseApp {
     static func main() {
+        if CommandLine.arguments.dropFirst().elementsEqual(["--verify-chat-math"]) {
+            let math = ChatMath("$x^2$")
+            let text = NSMutableAttributedString(string: math.markdown)
+            math.typeset(in: text)
+            guard text.length == 1,
+                  let attachment = text.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment,
+                  attachment.image != nil else { exit(EXIT_FAILURE) }
+            return
+        }
         if CommandLine.arguments.dropFirst().elementsEqual(["--print-build-profile"]) {
             let profile = AppProfile.current
             let fields = ["profile": profile.rawValue, "name": profile.name,

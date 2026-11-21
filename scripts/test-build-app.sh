@@ -58,20 +58,24 @@ printf 'removed build search path\n' >> "$BROWSE_BUILD_TEST_ROOT/rpath-removal"
 SH
 chmod +x "$root/bin/swift" "$root/bin/codesign" "$root/bin/otool" "$root/bin/install_name_tool"
 printf 'previous executable\n' > "$root/dist/Bend Debug.app/Contents/MacOS/Bend"
-printf 'new executable\n' > "$root/bin/Bend"
+cat > "$root/bin/Bend" <<'SH'
+#!/bin/bash
+[[ "$1" == --verify-chat-math && "${BROWSE_BUILD_TEST_FAIL:-}" != math ]]
+SH
+chmod +x "$root/bin/Bend"
 original_inode="$(stat -f %i "$root/dist/Bend Debug.app/Contents/MacOS/Bend")"
 # An open descriptor models a running process retaining the old executable.
 exec 9< "$root/dist/Bend Debug.app/Contents/MacOS/Bend"
-for failure in --force --verify; do
+for failure in --force --verify math; do
   if BROWSE_BUILD_TEST_FAIL="$failure" bash "$root/scripts/build-app.sh"; then
-    printf 'Expected signing/verification failure\n' >&2
+    printf 'Expected packaging failure\n' >&2
     exit 1
   fi
   [[ "$(stat -f %i "$root/dist/Bend Debug.app/Contents/MacOS/Bend")" == "$original_inode" ]]
   [[ "$(cat "$root/dist/Bend Debug.app/Contents/MacOS/Bend")" == 'previous executable' ]]
 done
 bash "$root/scripts/build-app.sh"
-[[ "$(cat "$root/dist/Bend Debug.app/Contents/MacOS/Bend")" == 'new executable' ]]
+cmp "$root/bin/Bend" "$root/dist/Bend Debug.app/Contents/MacOS/Bend"
 [[ "$(stat -f %i "$root/dist/Bend Debug.app/Contents/MacOS/Bend")" != "$original_inode" ]]
 [[ "$(cat <&9)" == 'previous executable' ]]
 exec 9<&-

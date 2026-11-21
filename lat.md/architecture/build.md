@@ -28,6 +28,8 @@ The build explicitly supplies the installed SDK version to the linker while reta
 
 The script enables Hardened Runtime and verifies the signature before reporting success and does not fall back to ad-hoc or self-signed signing. Apple-issued development or Developer ID signing uses a stable team partition for Keychain access; switching identities can still require one new approval. A self-signed identity supplied explicitly through the override does not prevent recurring WebCrypto prompts because macOS assigns it a per-build code-hash partition. The build does not alter Keychain access lists or key data.
 
+Packaging uses the Swift Build engine so SwiftMath can find its fonts in the app’s Resources directory. After signing, the build runs the packaged executable and requires the [chat math renderer](../../Sources/Browse/ChatMath.swift) to produce an image attachment for a sample formula. A crash or a plain-text fallback blocks publication.
+
 Packaging creates a separate bundle in a temporary directory under `dist`, then signs and verifies it before replacing the installed bundle by rename. It does not overwrite the executable mapped by a running Bend process. Signing or verification failure leaves the previous build intact; publication failure restores the previous bundle. The script leaves Bend running and asks for a restart to use the new build. Extension packages, enablement, grants, and WebKit data remain outside the app bundle.
 
 ## Camera and microphone access

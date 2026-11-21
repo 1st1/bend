@@ -56,7 +56,8 @@ app="$(cd "$(dirname "$app")" && pwd)/$(basename "$app")"
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache"
 # Retain the real linked SDK while deploying to macOS 26.
 sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
-swift build -c "$configuration" --disable-sandbox "${compiler_flags[@]}" \
+# Swift Build generates a Bundle.module accessor that searches Contents/Resources.
+swift build --build-system swiftbuild -c "$configuration" --disable-sandbox "${compiler_flags[@]}" \
   -Xlinker -platform_version -Xlinker macos -Xlinker 26.0 -Xlinker "$sdk_version"
 mkdir -p "$PWD/dist"
 staging="$(mktemp -d "$(dirname "$app")/.build-app.XXXXXX")"
@@ -76,7 +77,7 @@ cp "$PWD/.changes/release-dates.json" "$candidate/Contents/Resources/release-dat
 cp "$PWD/Assets/AppIcon.icns" "$candidate/Contents/Resources/AppIcon.icns"
 mkdir -p "$candidate/Contents/Resources/Licenses/AI"
 cp "$PWD/LICENSES/ai-swift/LICENSE" "$PWD/LICENSES/ai-swift/NOTICE" "$candidate/Contents/Resources/Licenses/AI/"
-bin_dir="$(swift build -c "$configuration" --show-bin-path)"
+bin_dir="$(swift build --build-system swiftbuild -c "$configuration" --show-bin-path)"
 cp -R "$bin_dir/SwiftMath_SwiftMath.bundle" "$candidate/Contents/Resources/"
 cp "$PWD/.build/checkouts/SwiftMath/LICENSE" "$candidate/Contents/Resources/Licenses/SwiftMath.txt"
 cp "$bin_dir/Bend" "$candidate/Contents/MacOS/Bend"
@@ -122,9 +123,14 @@ cat > "$candidate/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 # @lat: [[lat.md/architecture/build#Development signing]]
-./scripts/embed-sparkle.sh "$candidate" "${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}"
-codesign --force --options runtime --sign "${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}" --entitlements scripts/Bend.entitlements "$candidate"
+identity="${BEND_SIGNING_IDENTITY:-${BROWSE_SIGNING_IDENTITY:-Developer ID Application: Yury Selivanov (QA7X6JBN4H)}}"
+./scripts/embed-sparkle.sh "$candidate" "$identity"
+# Ad-hoc CI signatures have no team ID for hardened runtime library validation.
+sign_options=(--force)
+if [[ "$identity" != - ]]; then sign_options+=(--options runtime); fi
+codesign "${sign_options[@]}" --sign "$identity" --entitlements scripts/Bend.entitlements "$candidate"
 codesign --verify --strict "$candidate"
+env -u PACKAGE_RESOURCE_BUNDLE_PATH -u PACKAGE_RESOURCE_BUNDLE_URL "$candidate/Contents/MacOS/Bend" --verify-chat-math
 # Never overwrite or re-sign files mapped by a running Bend process.
 # Publish only after signing succeeds; keep the old bundle for rollback.
 if [[ -e "$app" ]]; then mv "$app" "$staging/Previous.app"; fi

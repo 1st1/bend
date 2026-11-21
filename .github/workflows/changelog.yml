@@ -75,13 +75,11 @@ jobs:
         run: |
           bash scripts/test-build-app.sh
           bash scripts/test-build-prod.sh
-      - name: Compile production
+      - name: Package production and verify chat math
         if: matrix.shard == 0
-        run: |
-          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
-          swift build -c release --disable-sandbox -Xswiftc -DBEND_PRODUCTION \
-            -Xlinker -platform_version -Xlinker macos -Xlinker 26.0 -Xlinker "$sdk_version" \
-            2>&1 | tee ci-logs/build.log
+        env:
+          BEND_SIGNING_IDENTITY: '-'
+        run: ./scripts/build-app.sh --production 2>&1 | tee ci-logs/build.log
       - name: Test signed update feed and tamper rejection
         if: matrix.shard == 0
         run: python3 scripts/test-update-feed.py

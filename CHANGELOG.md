@@ -5,6 +5,10 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.10.1
+### Fixed
+- Fixed a crash when AI chat displayed a formula in the installed app.
+
 ## v0.10.0
 ### Added
 - AI chat typesets inline and display math in prose, leaves code samples untouched, and preserves the original LaTeX when copied.
