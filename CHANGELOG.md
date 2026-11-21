@@ -7,7 +7,7 @@ Earlier prototype builds used the version `0.1` without a versioned changelog; `
 
 ## v0.10.1
 ### Fixed
-- Fixed a crash when AI chat displayed a formula in the installed app.
+- Fixed a crash when AI chat displayed a formula in a new or reopened conversation.
 
 ## v0.10.0
 ### Added

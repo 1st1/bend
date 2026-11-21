@@ -144,7 +144,7 @@ assert_media_capture "$plist"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$plist")" == Bend ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == dev.yury.browse.prototype ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :BendBuildProfile' "$plist")" == production ]]
-grep -q -- '-c release --disable-sandbox -Xswiftc -DBEND_PRODUCTION' "$root/swift-arguments"
+grep -q -- "--arch $(uname -m) -c release --disable-sandbox -Xswiftc -DBEND_PRODUCTION" "$root/swift-arguments"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$plist")" == https://github.com/1st1/bend/releases/latest/download/appcast.xml ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :SURequireSignedFeed' "$plist")" == true ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUScheduledCheckInterval' "$plist")" == 3600 ]]

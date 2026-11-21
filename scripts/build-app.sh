@@ -57,7 +57,8 @@ export CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache"
 # Retain the real linked SDK while deploying to macOS 26.
 sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
 # Swift Build generates a Bundle.module accessor that searches Contents/Resources.
-swift build --build-system swiftbuild -c "$configuration" --disable-sandbox "${compiler_flags[@]}" \
+host_arch="$(uname -m)"
+swift build --build-system swiftbuild --arch "$host_arch" -c "$configuration" --disable-sandbox "${compiler_flags[@]}" \
   -Xlinker -platform_version -Xlinker macos -Xlinker 26.0 -Xlinker "$sdk_version"
 mkdir -p "$PWD/dist"
 staging="$(mktemp -d "$(dirname "$app")/.build-app.XXXXXX")"
@@ -77,7 +78,7 @@ cp "$PWD/.changes/release-dates.json" "$candidate/Contents/Resources/release-dat
 cp "$PWD/Assets/AppIcon.icns" "$candidate/Contents/Resources/AppIcon.icns"
 mkdir -p "$candidate/Contents/Resources/Licenses/AI"
 cp "$PWD/LICENSES/ai-swift/LICENSE" "$PWD/LICENSES/ai-swift/NOTICE" "$candidate/Contents/Resources/Licenses/AI/"
-bin_dir="$(swift build --build-system swiftbuild -c "$configuration" --show-bin-path)"
+bin_dir="$(swift build --build-system swiftbuild --arch "$host_arch" -c "$configuration" --show-bin-path)"
 cp -R "$bin_dir/SwiftMath_SwiftMath.bundle" "$candidate/Contents/Resources/"
 cp "$PWD/.build/checkouts/SwiftMath/LICENSE" "$candidate/Contents/Resources/Licenses/SwiftMath.txt"
 cp "$bin_dir/Bend" "$candidate/Contents/MacOS/Bend"
