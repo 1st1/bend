@@ -32,7 +32,7 @@ Regression coverage includes bare-host completion of www. URLs, typed-case prese
 
 ## History during launch
 
-[[Tests/BrowseTests/HistoryStoreTests.swift#historyDuringLaunch]] opens a tab while SQLite is locked, checks that startup visits and deletions merge with saved history, then clears history during another launch and verifies only subsequent visits survive.
+[[Tests/BrowseTests/HistoryStoreTests.swift#historyDuringLaunch]] opens a tab while the background SQLite load is held pending, checks that startup visits and deletions merge with saved history, then clears history during another launch and verifies only subsequent visits survive.
 
 ## Unreadable history preservation
 

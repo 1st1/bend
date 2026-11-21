@@ -130,7 +130,8 @@ final class BrowserStore: ObservableObject {
     private var historyDirty = false
     private var historyWritable = true
 
-    init(sessionFile: URL? = nil, persistentExtensions: Bool = true, extensionManager: AnyObject? = nil, sharedStore: BrowserStore? = nil, isPrivate: Bool = false, sleepPreferences: PaneSleepPreferences? = nil) {
+    init(sessionFile: URL? = nil, persistentExtensions: Bool = true, extensionManager: AnyObject? = nil, sharedStore: BrowserStore? = nil, isPrivate: Bool = false, sleepPreferences: PaneSleepPreferences? = nil,
+         historyQueue: DispatchQueue = .global(qos: .utility)) {
         self.sleepPreferences = sleepPreferences ?? sharedStore?.sleepPreferences ?? .shared
         self.isPrivate = isPrivate
         self.sharedStore = sharedStore
@@ -201,7 +202,7 @@ final class BrowserStore: ObservableObject {
             historyLoad = Task { [weak self, historyFile, legacyHistoryFile] in
                 guard let self else { return }
                 do {
-                    let database = try await Self.openHistory(file: historyFile, legacy: legacyHistoryFile)
+                    let database = try await Self.openHistory(file: historyFile, legacy: legacyHistoryFile, on: historyQueue)
                     self.finishHistoryLoad(database)
                 } catch {
                     self.finishHistoryLoad(nil)
@@ -847,8 +848,13 @@ final class BrowserStore: ObservableObject {
 
     // Opening SQLite also restores visits and prepares the suggestion index.
     // Transfer the finished connection to the main actor for subsequent saves.
-    @concurrent private static func openHistory(file: URL, legacy: URL) async throws -> sending HistoryDatabase {
-        try HistoryDatabase(file: file, legacyFile: legacy)
+    private static func openHistory(file: URL, legacy: URL, on queue: DispatchQueue) async throws -> sending HistoryDatabase {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                do { continuation.resume(returning: try HistoryDatabase(file: file, legacyFile: legacy)) }
+                catch { continuation.resume(throwing: error) }
+            }
+        }
     }
 
     private func finishHistoryLoad(_ database: HistoryDatabase?) {

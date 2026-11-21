@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import SQLite3
 import Testing
 import WebKit
 @testable import Browse
@@ -54,20 +53,19 @@ import WebKit
         seed.saveHistory()
     }
 
-    // Hold a real exclusive SQLite lock until the new store can open a tab.
-    var locker: OpaquePointer?
-    try #require(sqlite3_open(root.appendingPathComponent("History.db").path, &locker) == SQLITE_OK)
-    defer { sqlite3_close(locker) }
-    try #require(sqlite3_exec(locker, "PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE", nil, nil, nil) == SQLITE_OK)
-    let store = BrowserStore(sessionFile: file, persistentExtensions: false)
-    let load = try #require(store.historyLoad)
+    // Hold the history worker until tab creation and provisional edits finish.
+    let historyQueue = DispatchQueue(label: "historyDuringLaunch")
+    historyQueue.suspend()
+    let store = BrowserStore(sessionFile: file, persistentExtensions: false, historyQueue: historyQueue)
+    let load = store.historyLoad
+    #expect(load != nil)
     await Task.yield()
     store.newTab()
     store.removeHistory(url: remove)
     store.recordVisit(url: fresh, title: "During startup")
     #expect(store.history.suggestions(for: "fresh").first?.url == fresh)
-    try #require(sqlite3_exec(locker, "COMMIT", nil, nil, nil) == SQLITE_OK)
-    await load.value
+    historyQueue.resume()
+    await load?.value
     #expect(store.historyError == nil)
     #expect(Set(store.history.visits.map(\.url)) == [keep, fresh])
     #expect(store.history.suggestions(for: "saved").first?.url == keep)
