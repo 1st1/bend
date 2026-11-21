@@ -4,6 +4,12 @@ Navigation recording, local persistence, history browsing, and suggestion rankin
 
 See [[lat.md/tests/history-tests|Test coverage]].
 
+## Corpus explorer
+
+[[scripts/address-corpus.py#load_sources]] reads available Bend, Bend Debug, and Safari histories in read-only transactions on each launch. [[scripts/address-corpus/Matcher.swift#CorpusMatcher]] ranks the combined visits in memory using the production matcher.
+
+The terminal displays five matches as you type. Ctrl-R samples ten distinct URLs. Ctrl-G saves the current query and chosen ranking to a private JSON Lines file in the user’s temporary directory. The --cases option prints those saved examples.
+
 ## Browsing history
 
 [History.swift](../../Sources/BrowseCore/History.swift) models a bounded, serializable collection of web visits. It normalizes HTTP and HTTPS addresses, strips embedded credentials, and combines rapid consecutive visits to the same URL.
