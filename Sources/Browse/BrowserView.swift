@@ -195,8 +195,11 @@ struct BrowserView: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sidebarHeaderHeight = $0 }
         }
         .overlay(WindowDragArea())
-        .background(PaneSidebarTarget(store: store, destination: .workspace(
-            store.session.workspaces.first(where: { $0.tabs.contains { $0.id == store.session.selectedTab } })!.id)))
+        .background {
+            if let workspace = store.session.workspaces.first(where: { $0.tabs.contains { $0.id == store.session.selectedTab } }) {
+                PaneSidebarTarget(store: store, destination: .workspace(workspace.id))
+            }
+        }
         .background {
             if #unavailable(macOS 26.0) {
                 if !floating { WindowMaterial(material: .sidebar).allowsHitTesting(false) }
@@ -899,7 +902,7 @@ final class ClippedPaneHost: PaneDropHost {
         addSubview(content)
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

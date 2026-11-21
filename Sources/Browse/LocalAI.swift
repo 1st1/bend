@@ -50,8 +50,8 @@ struct LocalAIProvider: Provider {
                 // Leave the final user message to streamResponse; after a tool result,
                 // append a short continuation prompt without flattening tool history into text.
                 let prompt: String
-                if messages.last?.role == .user {
-                    prompt = messages.last!.text
+                if let last = messages.last, last.role == .user {
+                    prompt = last.text
                     entries.removeLast()
                 } else { prompt = "Continue from the tool results. Do not repeat completed actions." }
                 let session = LanguageModelSession(tools: tools, transcript: Transcript(entries: entries))

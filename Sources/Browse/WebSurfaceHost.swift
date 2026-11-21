@@ -316,7 +316,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         activeHeaderTintView.autoresizingMask = [.width, .height]
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 
     func update(webView: WKWebView, topContentInset: CGFloat, headerAppearance: GlassAppearance? = nil,
                 topRimClipping: CGFloat = BrowserStore.defaultHeaderTopRimClipping,
@@ -491,7 +491,7 @@ private final class FindSearchField: NSSearchField {
         addSubview(matchCountLabel)
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 
     override var focusRingMaskBounds: NSRect { bounds }
 
@@ -547,7 +547,7 @@ private final class PaneHeaderGlass: NSView {
         chromeContent.addSubview(scrim)
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 
     func apply(_ appearance: GlassAppearance, topRimClipping: CGFloat, bottomRimClipping: CGFloat) {
         glass.isHidden = appearance.style == .solid

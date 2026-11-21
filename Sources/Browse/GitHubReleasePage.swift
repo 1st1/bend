@@ -34,6 +34,7 @@ enum GitHubReleasePage {
         guard hash.count == 64, hash.allSatisfy({ "0123456789abcdef".contains($0) }) else {
             throw CatalogError.invalidResponse
         }
-        return CatalogDownload(version: version, url: URL(string: "https://github.com" + path)!, sha256: hash)
+        guard let url = URL(string: "https://github.com" + path) else { throw CatalogError.invalidResponse }
+        return CatalogDownload(version: version, url: url, sha256: hash)
     }
 }

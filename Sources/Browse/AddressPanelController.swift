@@ -27,13 +27,14 @@ private final class AddressResultCell: NSTableCellView {
     var detailMatches: [NSRange] = []
 
     func setSelected(_ selected: Bool) {
-        title.textColor = selected ? .alternateSelectedControlTextColor : .labelColor
+        let primary: NSColor = selected ? .alternateSelectedControlTextColor : .labelColor
+        title.textColor = primary
         let secondary = selected ? NSColor.alternateSelectedControlTextColor : .secondaryLabelColor
         detail.textColor = secondary
         shortcut.textColor = secondary
         icon.contentTintColor = hasFavicon ? nil : secondary
         remove.contentTintColor = secondary
-        highlight(title, ranges: titleMatches, color: title.textColor!, selected: selected)
+        highlight(title, ranges: titleMatches, color: primary, selected: selected)
         highlight(detail, ranges: detailMatches, color: secondary, selected: selected)
     }
 
@@ -93,8 +94,8 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     private var targetPane: UUID?
     private let resultsTable = AddressResultsTable()
     private let resultsScroll = NSScrollView()
-    private var resultsHeight: NSLayoutConstraint!
-    private var resultsTop: NSLayoutConstraint!
+    private let resultsHeight: NSLayoutConstraint
+    private let resultsTop: NSLayoutConstraint
     private var results: [AddressResult] = []
     private var typedQuery = ""
     private var selectedResult = -1
@@ -108,6 +109,9 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
     init(store: BrowserStore, parentWindow: NSWindow) {
         self.store = store
         self.parentWindow = parentWindow
+        let searchField = NSView()
+        resultsHeight = resultsScroll.heightAnchor.constraint(equalToConstant: 0)
+        resultsTop = resultsScroll.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 8)
         super.init()
         panel.delegate = self
         panel.isReleasedWhenClosed = false
@@ -157,7 +161,8 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         input.setAccessibilityLabel("Search or enter address")
         input.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let searchIcon = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!)
+        let searchIcon = NSImageView()
+        searchIcon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
         searchIcon.contentTintColor = .secondaryLabelColor
         let row = NSStackView(views: [searchIcon, input])
         row.orientation = .horizontal
@@ -165,7 +170,6 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         row.spacing = 8
         searchIcon.widthAnchor.constraint(equalToConstant: 15).isActive = true
         searchIcon.heightAnchor.constraint(equalToConstant: 15).isActive = true
-        let searchField = NSView()
         searchField.wantsLayer = true
         searchField.layer?.cornerRadius = 12
         searchField.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.09).cgColor
@@ -225,8 +229,6 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         resultsScroll.hasVerticalScroller = true
         resultsScroll.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(resultsScroll)
-        resultsHeight = resultsScroll.heightAnchor.constraint(equalToConstant: 0)
-        resultsTop = resultsScroll.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 8)
         NSLayoutConstraint.activate([
             searchField.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 6),
             searchField.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -6),
@@ -381,7 +383,9 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         panel.orderOut(nil)
         if restoreFocus, let parentWindow {
             parentWindow.makeKeyAndOrderFront(nil)
-            let page = store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }!
+            guard let page = store.selectedTab.pages.first(where: { $0.id == store.selectedTab.focusedPane }) else {
+                parentWindow.makeFirstResponder(parentWindow.contentView); return
+            }
             let controller = store.controller(for: page)
             parentWindow.makeFirstResponder(controller.isStartPage ? parentWindow.contentView : controller.webView)
         }
@@ -466,10 +470,9 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         let margin: CGFloat = 16
         // Anchor the top once per presentation. Results, validation messages,
         // and later pane geometry changes must not move the input vertically.
-        if topInsetFromWindow == nil {
-            topInsetFromWindow = parentWindow.frame.maxY - (anchor.maxY - anchor.height / 5).rounded()
-        }
-        let top = parentWindow.frame.maxY - topInsetFromWindow!
+        let inset = topInsetFromWindow ?? (parentWindow.frame.maxY - (anchor.maxY - anchor.height / 5).rounded())
+        topInsetFromWindow = inset
+        let top = parentWindow.frame.maxY - inset
         let errorHeight: CGFloat = errorLabel.isHidden ? 0 : 20
         resultsTop.constant = 8 + errorHeight
         let rowHeight = min(CGFloat(results.count) * AddressPopupLayout.rowHeight,

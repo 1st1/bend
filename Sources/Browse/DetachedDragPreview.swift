@@ -204,7 +204,7 @@ final class DragPreviewCanvas: NSView {
         wantsLayer = true; layer?.cornerRadius = 5; layer?.masksToBounds = true
         layerContentsRedrawPolicy = .duringViewResize
     }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         needsDisplay = true

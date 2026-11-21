@@ -39,14 +39,14 @@ final class ExternalApplicationLinks {
     @discardableResult
     func request(_ url: URL, source: URL?, in window: NSWindow) -> Task<Void, Never>? {
         let windowID = ObjectIdentifier(window)
-        guard Self.isExternal(url), window.isVisible, window.attachedSheet == nil,
+        guard let scheme = url.scheme?.lowercased(), Self.isExternal(url), window.isVisible, window.attachedSheet == nil,
               pendingWindows.insert(windowID).inserted else { return nil }
         // Reserve the window synchronously, before either WebKit callback can
         // enqueue a second request. Never queue launches behind another prompt.
         return Task { @MainActor in
             defer { pendingWindows.remove(windowID) }
             guard let application = resolve(url) else {
-                _ = await confirm(.unavailable(scheme: url.scheme!.lowercased()), window)
+                _ = await confirm(.unavailable(scheme: scheme), window)
                 return
             }
             guard await confirm(.open(application, source: source), window), window.isVisible else { return }

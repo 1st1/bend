@@ -772,6 +772,16 @@ final class ExtensionHTTPFixture: @unchecked Sendable {
     }
 }
 
+// @lat: [[lat.md/tests/build-tests#Production Swift lint]]
+@Test func productionSwiftLint() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let process = Process()
+    process.executableURL = root.appendingPathComponent("scripts/test-swiftlint.sh")
+    try process.run()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0)
+}
+
 // @lat: [[lat.md/tests/build-tests#Build bundle publication]]
 @Test func buildBundlePublication() throws {
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

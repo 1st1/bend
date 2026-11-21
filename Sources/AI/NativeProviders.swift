@@ -6,7 +6,10 @@ import FoundationNetworking
 /// Anthropic Messages wire format, routed through Gateway by default.
 public struct AnthropicMessagesProvider: Provider {
   let wire: NativeGatewayWire
-  public init(apiKey: String, baseURL: URL = URL(string: "https://ai-gateway.vercel.sh/v1")!, transport: any HTTPTransport = URLSessionTransport()) throws {
+  public init(apiKey: String, transport: any HTTPTransport = URLSessionTransport()) throws {
+    try self.init(apiKey: apiKey, baseURL: URL("https://ai-gateway.vercel.sh/v1", strategy: .url), transport: transport)
+  }
+  public init(apiKey: String, baseURL: URL, transport: any HTTPTransport = URLSessionTransport()) throws {
     wire = try NativeGatewayWire(api: .anthropic, apiKey: apiKey, baseURL: baseURL, transport: transport)
   }
   public func stream(_ request: ModelRequest) -> Stream<ModelResponse> { wire.stream(request) }
@@ -15,7 +18,10 @@ public struct AnthropicMessagesProvider: Provider {
 /// OpenAI Responses wire format, routed through Gateway by default.
 public struct OpenAIResponsesProvider: Provider {
   let wire: NativeGatewayWire
-  public init(apiKey: String, baseURL: URL = URL(string: "https://ai-gateway.vercel.sh/v1")!, transport: any HTTPTransport = URLSessionTransport()) throws {
+  public init(apiKey: String, transport: any HTTPTransport = URLSessionTransport()) throws {
+    try self.init(apiKey: apiKey, baseURL: URL("https://ai-gateway.vercel.sh/v1", strategy: .url), transport: transport)
+  }
+  public init(apiKey: String, baseURL: URL, transport: any HTTPTransport = URLSessionTransport()) throws {
     wire = try NativeGatewayWire(api: .openai, apiKey: apiKey, baseURL: baseURL, transport: transport)
   }
   public func stream(_ request: ModelRequest) -> Stream<ModelResponse> { wire.stream(request) }

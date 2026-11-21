@@ -257,7 +257,7 @@ final class TabDragSurface: NSView {
         }
         addSubview(badge)
     }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 
     func update(at windowPoint: NSPoint) {
         guard let source, let sourceStore = source.store, let sourceWindow = source.window,

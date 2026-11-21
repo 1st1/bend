@@ -226,7 +226,7 @@ class PaneDropHost: NSView {
         preview.isHidden = true
         layer?.addSublayer(preview)
     }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 
     func validSource(_ source: PaneDragSourceView) -> UUID? {
         guard let store, let sourceStore = source.store, sourceStore.preferencesStore === store.preferencesStore,
@@ -276,7 +276,7 @@ final class PaneDragSurface: NSView {
         autoresizingMask = [.width, .height]
         wantsLayer = true
     }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 
     func update(at windowPoint: NSPoint) {
         guard let source, let sourceWindow = source.window, let sourceStore = source.store,
@@ -389,7 +389,7 @@ struct PaneSidebarTarget: NSViewRepresentable {
         preview.isHidden = true
         layer?.addSublayer(preview)
     }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     func showPreview(_ visible: Bool, at point: NSPoint = .zero) {
         let rect: NSRect

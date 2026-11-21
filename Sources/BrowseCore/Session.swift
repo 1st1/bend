@@ -16,6 +16,15 @@ public indirect enum PaneLayout: Codable, Equatable, Sendable {
         }
     }
 
+    public func remappingPanes(_ ids: [UUID: UUID]) -> Self? {
+        switch self {
+        case .pane(let id): return ids[id].map(Self.pane)
+        case .split(_, let axis, let fraction, let first, let second, let automatic):
+            guard let a = first.remappingPanes(ids), let b = second.remappingPanes(ids) else { return nil }
+            return .split(id: UUID(), axis: axis, fraction: fraction, first: a, second: b, isAutomatic: automatic)
+        }
+    }
+
     public func splitting(_ target: UUID, with newID: UUID, axis: SplitAxis) -> Self {
         switch self {
         case .pane(let id):
@@ -172,6 +181,13 @@ public struct BrowserTab: Codable, Identifiable, Sendable {
     public var focusedPane: UUID
     public var commandClickPaneID: UUID?
     public var originTabID: UUID?
+    public var hasValidLayout: Bool {
+        let paneIDs = layout.paneIDs
+        let pageIDs = Set(pages.map(\.id))
+        return !pages.isEmpty && pageIDs.count == pages.count && paneIDs.count == pages.count
+            && Set(paneIDs) == pageIDs && pageIDs.contains(focusedPane)
+    }
+
     public var isPinned: Bool { pages.contains { $0.isPinned } }
 
     public init(title: String = "New tab", pages: [Page] = [Page()]) {
@@ -336,11 +352,7 @@ public struct BrowserSession: Codable, Sendable {
             && Set(tabs.map(\.id)).count == tabs.count
             && Set(pages.map(\.id)).count == pages.count
             && tabs.contains { $0.id == selectedTab }
-            && tabs.allSatisfy { tab in
-                !tab.pages.isEmpty && tab.layout.paneIDs.count == tab.pages.count
-                && Set(tab.layout.paneIDs) == Set(tab.pages.map(\.id))
-                && tab.layout.paneIDs.contains(tab.focusedPane)
-            }
+            && tabs.allSatisfy(\.hasValidLayout)
     }
 }
 

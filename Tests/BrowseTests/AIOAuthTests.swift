@@ -8,7 +8,7 @@ import AI
 @Test func aiOAuthValidation() throws {
     let attempt = try AIOAuthAttempt()
     let redirect = URL(string: "http://127.0.0.1:17849/auth/callback")!
-    let authorize = attempt.authorizationURL(provider: .openai, clientID: "dynamic_agent_client", redirect: redirect, hostID: "urn:uuid:test")
+    let authorize = try attempt.authorizationURL(provider: .openai, clientID: "dynamic_agent_client", redirect: redirect, hostID: "urn:uuid:test")
     let fields = Dictionary(uniqueKeysWithValues: URLComponents(url: authorize, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
     #expect(fields["code_challenge_method"] == "S256")
     #expect(fields["code_challenge"] == attempt.challenge)

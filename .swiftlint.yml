@@ -1,0 +1,28 @@
+included:
+  - Sources
+
+only_rules:
+  - force_cast
+  - force_try
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - unowned_variable_capture
+  - identical_operands
+  - duplicate_conditions
+  - custom_rules
+
+force_unwrapping:
+  severity: error
+  ignored_literal_argument_functions: []
+
+implicitly_unwrapped_optional:
+  mode: all
+
+custom_rules:
+  no_fatal_error:
+    name: "Fatal error"
+    regex: '\bfatalError\b'
+    match_kinds:
+      - identifier
+    message: "Handle the failure or propagate it to the caller."
+    severity: error

@@ -247,7 +247,19 @@ final class BrowserStore: ObservableObject {
     }
 
     var selectedTab: BrowserTab {
-        session.workspaces.flatMap(\.tabs).first { $0.id == session.selectedTab }!
+        let tabs = session.workspaces.flatMap(\.tabs)
+        if let selected = tabs.first(where: { $0.id == session.selectedTab }) { return selected }
+        if let first = tabs.first {
+            session.selectedTab = first.id
+            return first
+        }
+        let tab = BrowserTab()
+        var repaired = session
+        if repaired.workspaces.isEmpty { repaired.workspaces = [Workspace(name: "Tabs", tabs: [tab])] }
+        else { repaired.workspaces[0].tabs.append(tab) }
+        repaired.selectedTab = tab.id
+        session = repaired
+        return tab
     }
 
     func editTab(_ id: UUID? = nil, _ change: (inout BrowserTab) -> Void) {
@@ -749,19 +761,14 @@ final class BrowserStore: ObservableObject {
         guard let wi = session.workspaces.firstIndex(where: { $0.tabs.contains { $0.id == id } }),
               let ti = session.workspaces[wi].tabs.firstIndex(where: { $0.id == id }) else { return }
         let source = session.workspaces[wi].tabs[ti]
+        guard source.hasValidLayout else { return }
         let pages = source.pages.map { Page(address: existingController(for: $0.id)?.address ?? $0.address) }
-        let ids = Dictionary(uniqueKeysWithValues: zip(source.pages, pages).map { ($0.id, $1.id) })
-        func copyLayout(_ layout: PaneLayout) -> PaneLayout {
-            switch layout {
-            case .pane(let id): return .pane(ids[id]!)
-            case .split(_, let axis, let fraction, let first, let second, let automatic):
-                return .split(id: UUID(), axis: axis, fraction: fraction, first: copyLayout(first),
-                              second: copyLayout(second), isAutomatic: automatic)
-            }
-        }
+        let ids = Dictionary(uniqueKeysWithValues: zip(source.pages.map(\.id), pages.map(\.id)))
+        guard let layout = source.layout.remappingPanes(ids),
+              let focus = ids[source.focusedPane] else { return }
         var tab = BrowserTab(title: source.title, pages: pages)
-        tab.layout = copyLayout(source.layout)
-        tab.focusedPane = ids[source.focusedPane]!
+        tab.layout = layout
+        tab.focusedPane = focus
         tab.commandClickPaneID = source.commandClickPaneID.flatMap { ids[$0] }
         session.workspaces[wi].tabs.insert(tab, at: ti + 1)
         pendingAddressEntry = nil
@@ -1525,7 +1532,7 @@ class FocusWebView: WKWebView {
         BendInspectorSupport.enable(for: self)
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 
     var onDialogInvalidated: (() -> Void)?
     override func viewDidHide() {
@@ -1942,8 +1949,8 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
             title = address == "bend://start" ? "New tab" : AddressResolver.nativePageTitle(address) ?? "New tab"
             reportNavigation()
         } else {
-            if seedCloseHistory, closeHistoryURL == nil, webView.backForwardList.currentItem == nil {
-                let marker = URL(string: "bend://close/" + UUID().uuidString)!
+            if seedCloseHistory, closeHistoryURL == nil, webView.backForwardList.currentItem == nil,
+               let marker = URL(string: "bend://close/" + UUID().uuidString) {
                 closeHistoryURL = marker
                 pendingCloseHistoryDestination = url
                 webView.load(URLRequest(url: marker))
@@ -1971,7 +1978,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
                 discardFavicon(ifLeaving: url)
                 address = url.absoluteString
             }
-            title = webView.title?.isEmpty == false ? webView.title! : (webView.url?.host ?? "New tab")
+            title = webView.title.flatMap { $0.isEmpty ? nil : $0 } ?? webView.url?.host ?? "New tab"
             reportNavigation()
             if let completedAddress, !isLoading, error == nil {
                 if completedAddress != address {
@@ -2000,7 +2007,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         onVisit?(url.absoluteString, title)
     }
 
-    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
         aiNavigationRevision = UUID()
         javaScriptDialogs.cancel(for: webView)
         permissionPrompt.cancel()
@@ -2015,10 +2022,10 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         certificateFailure = nil
         if !isStartPage { error = nil }
     }
-    func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation?) {
         resetFavicon(for: webView.url)
     }
-    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation?) {
         if let marker = closeHistoryURL, webView.url == marker { return }
         aiNavigationRevision = UUID()
         onInitialDownload = nil
@@ -2031,7 +2038,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         // Subframe navigation never changes the top-level website's preference.
         if !isStartPage, let url = webView.url { applyWebsiteZoom(for: url) }
     }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
         wakeSnapshot = nil
         if let marker = closeHistoryURL, webView.url == marker,
            let destination = pendingCloseHistoryDestination {
@@ -2085,8 +2092,8 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     }
 
     deinit { faviconTask?.cancel() }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { show(error) }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { show(error) }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: Error) { show(error) }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation?, withError error: Error) { show(error) }
     func show(_ failure: Error) {
         wakeSnapshot = nil
         InputDiagnostics.transition(.webLoad, .cancelled, view: webView)

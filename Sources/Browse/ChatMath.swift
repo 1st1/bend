@@ -11,7 +11,7 @@ import SwiftMath
     }
 
     // Each capture contains the TeX body, in delimiter order.
-    private static let delimiters: NSRegularExpression = {
+    private static let delimiters: NSRegularExpression? = {
         let alternatives = [
             "\\$\\$([\\s\\S]+?)\\$\\$",
             "\\\\\\[([\\s\\S]+?)\\\\\\]",
@@ -19,7 +19,7 @@ import SwiftMath
             "\\$(?![\\s$])((?:\\\\.|[^\\\\$\\n])+?)(?<!\\s)\\$(?![\\d$])",
             "\\[\\s+([^\\[\\]\\\\^_=]*[\\\\^_=][^\\[\\]]*?)\\s+\\](?![\\[(])",
         ].joined(separator: "|")
-        return try! NSRegularExpression(pattern: "(?<![\\\\$])(?:" + alternatives + ")")
+        return try? NSRegularExpression(pattern: "(?<![\\\\$])(?:" + alternatives + ")")
     }()
     private static let cache: NSCache<NSString, NSTextAttachment> = {
         let cache = NSCache<NSString, NSTextAttachment>()
@@ -32,7 +32,7 @@ import SwiftMath
 
     init(_ source: String) {
         markdown = source
-        guard source.contains("$") || source.contains("\\") || source.contains("[ ") else { return }
+        guard let delimiters = Self.delimiters, source.contains("$") || source.contains("\\") || source.contains("[ ") else { return }
         let bytes = source.utf8
         var lines = [bytes.startIndex]
         for index in bytes.indices where bytes[index] == 10 { lines.append(bytes.index(after: index)) }
@@ -73,7 +73,7 @@ import SwiftMath
         let original = source as NSString
         let result = NSMutableString(string: source)
         for range in ranges.reversed() {
-            for match in Self.delimiters.matches(in: source, range: range).reversed() {
+            for match in delimiters.matches(in: source, range: range).reversed() {
                 guard let group = (1..<match.numberOfRanges).first(where: { match.range(at: $0).location != NSNotFound }) else { continue }
                 let latex = original.substring(with: match.range(at: group)).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !latex.isEmpty else { continue }
@@ -87,18 +87,20 @@ import SwiftMath
 
     func typeset(in text: NSMutableAttributedString) {
         guard !formulas.isEmpty else { return }
-        let tokens = try! NSRegularExpression(pattern: prefix + "X(\\d+)Z")
-        let string = text.string as NSString
-        for match in tokens.matches(in: text.string, range: NSRange(location: 0, length: text.length)).reversed() {
-            let formula = formulas[Int(string.substring(with: match.range(at: 1)))!]
-            let attrs = text.attributes(at: match.range.location, effectiveRange: nil)
+        let content = text.string
+        for token in content.matches(of: /BendMath[0-9A-Fa-f-]+X([0-9]+)Z/).reversed() {
+            guard token.output.0.hasPrefix(prefix + "X"), let index = Int(token.output.1),
+                  formulas.indices.contains(index) else { continue }
+            let formula = formulas[index]
+            let range = NSRange(token.range, in: content)
+            let attrs = text.attributes(at: range.location, effectiveRange: nil)
             let size = (attrs[.font] as? NSFont)?.pointSize ?? 13
             if let attachment = Self.attachment(for: formula, size: size) {
                 let value = NSMutableAttributedString(attributedString: NSAttributedString(attachment: attachment))
                 value.addAttributes(attrs, range: NSRange(location: 0, length: value.length))
-                text.replaceCharacters(in: match.range, with: value)
+                text.replaceCharacters(in: range, with: value)
             } else {
-                text.replaceCharacters(in: match.range, with: formula.source)
+                text.replaceCharacters(in: range, with: formula.source)
             }
         }
     }

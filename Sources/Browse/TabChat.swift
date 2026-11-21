@@ -373,12 +373,11 @@ struct ChatBubble: Identifiable, Codable {
             return [ChatArgumentField(label: "Arguments", value: "Unable to display arguments")]
         }
         let order = ["pane", "url", "query", "cursor", "selector", "text"]
-        return values.keys.sorted {
-            let a = order.firstIndex(of: $0) ?? order.count
-            let b = order.firstIndex(of: $1) ?? order.count
-            return a == b ? $0 < $1 : a < b
-        }.map { key in
-            let value = values[key]!
+        return values.sorted {
+            let a = order.firstIndex(of: $0.key) ?? order.count
+            let b = order.firstIndex(of: $1.key) ?? order.count
+            return a == b ? $0.key < $1.key : a < b
+        }.map { key, value in
             if key == "pane" {
                 let page = store?.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID })?
                     .pages.first(where: { $0.id.uuidString.lowercased() == (value as? String)?.lowercased() })
@@ -644,7 +643,8 @@ struct ChatBubble: Identifiable, Codable {
                 result = .object(["text": .string(try await controller.selectedPageText()), "url": .string(url.absoluteString),
                     "citation": .string(ChatPageLinks.citation(pane: id, address: url.absoluteString))])
             } else {
-                result = .object(["image": .string(screenshot!.base64EncodedString())])
+                guard let screenshot else { throw AIError.configuration("No screenshot is available.") }
+                result = .object(["image": .string(screenshot.base64EncodedString())])
             }
             try revalidate()
             guard store.selectedTab.id == tabID else { throw AIError.configuration("The selected tab changed.") }

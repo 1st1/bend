@@ -37,7 +37,7 @@ final class MountedTabHost: NSView {
         clipsToBounds = true
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 
     func update(store: BrowserStore, environment: EnvironmentValues) {
         let tabs = store.session.workspaces.flatMap(\.tabs)

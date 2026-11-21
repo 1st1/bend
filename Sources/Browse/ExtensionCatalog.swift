@@ -25,36 +25,36 @@ struct CatalogExtension: Identifiable, Sendable {
     }
 
     static let curated: [CatalogExtension] = [
-        .init(id: "ublock-lite", name: "uBlock Origin Lite", publisher: "Raymond Hill", category: "Privacy",
+        try? CatalogExtension(id: "ublock-lite", name: "uBlock Origin Lite", publisher: "Raymond Hill", category: "Privacy",
             summary: "An efficient content blocker. Blocks ads, trackers, miners, and more immediately upon installation.",
             experimental: false, symbol: "shield.lefthalf.filled",
             packageIdentifier: "safari:net.raymondhill.uBlock-Origin-Lite.Extension",
-            website: URL(string: "https://github.com/uBlockOrigin/uBOL-home")!,
+            website: URL("https://github.com/uBlockOrigin/uBOL-home", strategy: .url),
             download: .init(version: "2026.1103.1743",
-                url: URL(string: "https://github.com/uBlockOrigin/uBOL-home/releases/download/2026.1103.1743/uBOLite_2026.1103.1743.safari.zip")!,
+                url: URL("https://github.com/uBlockOrigin/uBOL-home/releases/download/2026.1103.1743/uBOLite_2026.1103.1743.safari.zip", strategy: .url),
                 sha256: "7be53009c38dd47726ce26b3fa02e93ac93e77ac5d276543e855997650128a9c"),
             updateSource: .uBlockSafari),
-        .init(id: "1password", name: "1Password", publisher: "1Password", category: "Passwords",
+        try? CatalogExtension(id: "1password", name: "1Password", publisher: "1Password", category: "Passwords",
             summary: "The best way to experience 1Password in your browser. Easily sign in to sites, generate passwords, and store secure information.",
             experimental: true, symbol: "key.fill",
             packageIdentifier: "gecko:{d634138d-c276-4fc8-924b-40a0ea21d284}",
-            website: URL(string: "https://addons.mozilla.org/firefox/addon/1password-x-password-manager/")!,
+            website: URL("https://addons.mozilla.org/firefox/addon/1password-x-password-manager/", strategy: .url),
             download: .init(version: "8.12.41.1",
-                url: URL(string: "https://addons.mozilla.org/firefox/downloads/file/5097307/1password_x_password_manager-8.12.41.1.xpi")!,
+                url: URL("https://addons.mozilla.org/firefox/downloads/file/5097307/1password_x_password_manager-8.12.41.1.xpi", strategy: .url),
                 sha256: "6b00acff73253865303af49e99329245a940348484cbd931ea39f9fa215134f5"),
             updateSource: .mozilla(slug: "1password-x-password-manager"),
             settingsPage: "app/app.html#/page/settings"),
-        .init(id: "dark-reader", name: "Dark Reader", publisher: "Dark Reader Ltd", category: "Appearance",
+        try? CatalogExtension(id: "dark-reader", name: "Dark Reader", publisher: "Dark Reader Ltd", category: "Appearance",
             summary: "Dark mode for every website. Take care of your eyes, use dark theme for night and daily browsing.",
             experimental: true, symbol: "moon.fill",
             packageIdentifier: "gecko:addon@darkreader.org",
-            website: URL(string: "https://darkreader.org/")!,
+            website: URL("https://darkreader.org/", strategy: .url),
             download: .init(version: "4.9.134",
-                url: URL(string: "https://addons.mozilla.org/firefox/downloads/file/5175215/darkreader-4.9.134.xpi")!,
+                url: URL("https://addons.mozilla.org/firefox/downloads/file/5175215/darkreader-4.9.134.xpi", strategy: .url),
                 sha256: "700633395aa2f639a1bed4253e27309eb676f346d599b0ae2b7a0453232e0aec"),
             updateSource: .mozilla(slug: "darkreader"),
             settingsPage: "ui/options/index.html")
-    ]
+    ].compactMap { $0 }
 }
 
 struct CatalogDownload: Codable, Sendable {

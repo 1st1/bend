@@ -242,8 +242,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let item = menu.addItem(withTitle: title, action: action, keyEquivalent: key)
         item.target = self; item.keyEquivalentModifierMask = modifiers
     }
-    private var focused: PageController {
-        store.controller(for: store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }!)
+    private var focused: PageController? {
+        store.selectedTab.pages.first { $0.id == store.selectedTab.focusedPane }.map { store.controller(for: $0) }
     }
     @objc func newWindow() { browserWindows.newWindow() }
     @objc func newPrivateWindow() { browserWindows.newPrivateWindow() }
@@ -427,8 +427,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private static let pageZoomLevels = PageZoom.levels.map { CGFloat($0) }
 
     private func pageZoomLevel(_ direction: Int, current: CGFloat) -> CGFloat {
-        if direction > 0 { return Self.pageZoomLevels.first { $0 > current + 0.001 } ?? Self.pageZoomLevels.last! }
-        if direction < 0 { return Self.pageZoomLevels.last { $0 < current - 0.001 } ?? Self.pageZoomLevels.first! }
+        if direction > 0 { return Self.pageZoomLevels.first { $0 > current + 0.001 } ?? Self.pageZoomLevels.last ?? current }
+        if direction < 0 { return Self.pageZoomLevels.last { $0 < current - 0.001 } ?? Self.pageZoomLevels.first ?? current }
         return 1
     }
 
@@ -573,9 +573,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         else { store.showChat() }
     }
     @objc private func toggleSidebar() { store.sidebarVisible.toggle() }
-    @objc private func reload() { if !focused.isStartPage { focused.webView.reload() } }
+    @objc private func reload() { if let focused, !focused.isStartPage { focused.webView.reload() } }
     @objc private func back() { store.goBack(from: store.selectedTab.focusedPane) }
-    @objc private func forward() { focused.webView.goForward() }
+    @objc private func forward() { focused?.webView.goForward() }
     @objc private func about() {
         NSApp.orderFrontStandardAboutPanel(options: [.applicationName: AppProfile.current.name,
             .credits: NSAttributedString(string: "A native, tiled WebKit browser. Inspired by Rex.")])

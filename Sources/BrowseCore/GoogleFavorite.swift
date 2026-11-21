@@ -41,19 +41,19 @@ public enum GoogleFavoriteService: String, Sendable, CaseIterable {
     }
 
     public func accountAddress(email: String) -> String {
-        var url = URLComponents(string: home)!
+        guard var url = URLComponents(string: home) else { return home }
         url.queryItems = [URLQueryItem(name: "authuser", value: email)]
         // A literal plus is commonly decoded as a form-space by Google's endpoints.
         url.percentEncodedQuery = url.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-        return url.url!.absoluteString
+        return url.url?.absoluteString ?? home
     }
 
     public func launchAddress(email: String) -> String {
-        var url = URLComponents(string: "https://accounts.google.com/AccountChooser")!
+        guard var url = URLComponents(string: "https://accounts.google.com/AccountChooser") else { return home }
         url.queryItems = [URLQueryItem(name: "Email", value: email),
                           URLQueryItem(name: "continue", value: accountAddress(email: email))]
         url.percentEncodedQuery = url.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-        return url.url!.absoluteString
+        return url.url?.absoluteString ?? home
     }
 
     public static func suggestedEmail(address: String) -> String? {

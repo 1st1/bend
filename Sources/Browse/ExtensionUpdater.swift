@@ -6,10 +6,10 @@ enum ExtensionUpdateSource: Sendable {
     case mozilla(slug: String)
     case uBlockSafari
 
-    var metadataURL: URL {
+    var metadataURL: URL? {
         switch self {
-        case .mozilla(let slug): URL(string: "https://addons.mozilla.org/api/v5/addons/addon/\(slug)/")!
-        case .uBlockSafari: URL(string: "https://github.com/uBlockOrigin/uBOL-home/releases/latest")!
+        case .mozilla(let slug): URL(string: "https://addons.mozilla.org/api/v5/addons/addon/\(slug)/")
+        case .uBlockSafari: URL(string: "https://github.com/uBlockOrigin/uBOL-home/releases/latest")
         }
     }
 
@@ -20,13 +20,14 @@ enum ExtensionUpdateSource: Sendable {
         configuration.timeoutIntervalForResource = 45
         let session = URLSession(configuration: configuration)
         defer { session.invalidateAndCancel() }
+        guard let metadataURL else { throw CatalogError.invalidResponse }
         let (data, url) = try await fetchMetadata(metadataURL, session: session)
         switch self {
         case .mozilla:
             return try parse(data, packageIdentifier: packageIdentifier)
         case .uBlockSafari:
             let version = try GitHubReleasePage.version(from: url)
-            let assetsURL = URL(string: "https://github.com/uBlockOrigin/uBOL-home/releases/expanded_assets/\(version)")!
+            guard let assetsURL = URL(string: "https://github.com/uBlockOrigin/uBOL-home/releases/expanded_assets/\(version)") else { throw CatalogError.invalidResponse }
             let (assets, finalURL) = try await fetchMetadata(assetsURL, session: session)
             guard finalURL == assetsURL else { throw CatalogError.invalidResponse }
             return try GitHubReleasePage.download(from: assets, version: version, packageIdentifier: packageIdentifier)
@@ -198,7 +199,7 @@ final class ExtensionUpdater: ObservableObject {
     }
 
     func checkIfDue(now: Date = Date()) {
-        guard startupCheckPending || lastChecked == nil || now.timeIntervalSince(lastChecked!) >= Self.checkInterval else { return }
+        if !startupCheckPending, let lastChecked, now.timeIntervalSince(lastChecked) < Self.checkInterval { return }
         check(force: false, now: now)
     }
 

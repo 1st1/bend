@@ -33,7 +33,8 @@ final class ExtensionManager: NSObject, ObservableObject {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: "tw.mares.gestures-by-petr")
     }
     var openMouseGesturesStore: () -> Bool = {
-        NSWorkspace.shared.open(URL(string: "macappstore://apps.apple.com/app/id1618804075")!)
+        guard let url = URL(string: "macappstore://apps.apple.com/app/id1618804075") else { return false }
+        return NSWorkspace.shared.open(url)
     }
     lazy var updates = ExtensionUpdater(manager: self)
     @Published var error: String?
@@ -142,7 +143,10 @@ final class ExtensionManager: NSObject, ObservableObject {
                             let context = try await makeContext(record)
                             record.packageIdentifier = packageIdentifier(record, extension: context.webExtension)
                             var next = records
-                            next[next.firstIndex(where: { $0.id == record.id })!] = record
+                            guard let index = next.firstIndex(where: { $0.id == record.id }) else {
+                                throw failure("The extension was removed during restoration.")
+                            }
+                            next[index] = record
                             try persist(next)
                         } catch { discardPackage(copy, id: record.id); throw error }
                     }
@@ -184,7 +188,10 @@ final class ExtensionManager: NSObject, ObservableObject {
         if scheme == "safari-web-extension" {
             WKWebExtension.MatchPattern.registerCustomURLScheme(scheme)
         }
-        context.baseURL = URL(string: "\(scheme)://\(record.id.uuidString.lowercased())/")!
+        guard let baseURL = URL(string: "\(scheme)://\(record.id.uuidString.lowercased())/") else {
+            throw failure("Invalid extension origin.")
+        }
+        context.baseURL = baseURL
         context.unsupportedAPIs = ["browser.windows.create", "browser.tabs.move", "browser.tabs.group", "browser.tabs.ungroup"]
         for permission in record.permissions {
             context.setPermissionStatus(.grantedExplicitly, for: WKWebExtension.Permission(rawValue: permission))

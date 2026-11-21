@@ -29,7 +29,7 @@ struct ChangelogView: View {
                                 }
                                 if let date = release.date {
                                     Text(date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted,
-                                        calendar: Calendar(identifier: .gregorian), timeZone: TimeZone(secondsFromGMT: 0)!)))
+                                        calendar: Calendar(identifier: .gregorian), timeZone: .gmt)))
                                         .font(.system(size: 13)).foregroundStyle(.secondary)
                                 }
                             }

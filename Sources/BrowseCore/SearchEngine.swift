@@ -21,11 +21,11 @@ public enum SearchEngine: String, Codable, CaseIterable, Sendable {
         case .kagi: endpoint = "https://kagi.com/search"
         case .custom: return custom?.searchURL(for: query)
         }
-        var components = URLComponents(string: endpoint)!
+        guard var components = URLComponents(string: endpoint) else { return nil }
         components.queryItems = [URLQueryItem(name: "q", value: query)]
         // Search providers decode query strings as form data, where a bare + is a space.
         components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-        return components.url!
+        return components.url
     }
 }
 

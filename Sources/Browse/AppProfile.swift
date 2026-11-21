@@ -33,10 +33,10 @@ enum AppProfile: String, Sendable {
         self == .debug ? "BendDebug-" + productionName : productionName
     }
     var websiteStorageIdentifier: UUID? {
-        self == .debug ? UUID(uuidString: "B160C74D-C950-491F-91FD-5997CEB63F1A")! : nil
+        self == .debug ? UUID(uuidString: "B160C74D-C950-491F-91FD-5997CEB63F1A") : nil
     }
     var extensionStorageIdentifier: UUID? {
-        self == .debug ? UUID(uuidString: "30291E68-4698-4493-A545-4187EC33BF71")! : nil
+        self == .debug ? UUID(uuidString: "30291E68-4698-4493-A545-4187EC33BF71") : nil
     }
     @MainActor var websiteDataStore: WKWebsiteDataStore {
         if let id = websiteStorageIdentifier { return WKWebsiteDataStore(forIdentifier: id) }

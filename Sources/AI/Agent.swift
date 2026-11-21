@@ -121,7 +121,8 @@ public struct Agent: Sendable {
         }
       }
       // Events arrive in completion order; history stays in the model's original call order.
-      return calls.indices.map { results[$0]! }
+      guard results.count == calls.count else { throw AIError.incompleteResponse }
+      return results.sorted { $0.key < $1.key }.map(\.value)
     }
   }
 

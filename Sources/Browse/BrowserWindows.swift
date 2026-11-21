@@ -157,7 +157,7 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
     let id: String
     let store: BrowserStore
     let window: BrowseWindow
-    private(set) var addressPanel: AddressPanelController!
+    let addressPanel: AddressPanelController
     var onFocus: (() -> Void)?
     var onClose: (() -> Void)?
 
@@ -165,6 +165,7 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
         self.id = id; self.store = store
         window = BrowseWindow(contentRect: NSRect(x: 0, y: 0, width: 1420, height: 880),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        addressPanel = AddressPanelController(store: store, parentWindow: window)
         super.init()
         window.browserStore = store
         window.title = AppProfile.current.name + (store.isPrivate ? " — Private Browsing" : "")
@@ -189,7 +190,6 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
         let content = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
         if #available(macOS 26.0, *) { window.contentView = BrowserWindowGlass(store: store, content: content) }
         else { window.contentView = content }
-        addressPanel = AddressPanelController(store: store, parentWindow: window)
         store.onAddressRequested = { [weak self] paneID in self?.addressPanel.show(for: paneID) }
         InputDiagnostics.transition(.windowOpen, .created, window: window)
     }

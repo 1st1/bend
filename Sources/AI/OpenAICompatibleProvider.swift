@@ -263,8 +263,7 @@ private struct CompletionAccumulator {
   mutating func finish(emit: EventSink) throws -> ModelResponse {
     guard let finishReason else { throw AIError.incompleteResponse }
     var ids = Set<String>()
-    for index in calls.keys.sorted() {
-      let call = calls[index]!
+    for (_, call) in calls.sorted(by: { $0.key < $1.key }) {
       guard !call.id.isEmpty, !call.name.isEmpty, ids.insert(call.id).inserted else {
         throw AIError.invalidResponse("Missing or duplicate tool identity.")
       }

@@ -29,8 +29,8 @@ final class DefaultBrowser: ObservableObject {
     }
 
     private func handles(_ scheme: String) -> Bool {
-        guard let bundleIdentifier else { return false }
-        return handler(URL(string: "\(scheme)://example.com")!) == bundleIdentifier
+        guard let bundleIdentifier, let url = URL(string: "\(scheme)://example.com") else { return false }
+        return handler(url) == bundleIdentifier
     }
 
     func refresh() {

@@ -59,10 +59,11 @@ public enum FuzzyMatch {
                 let length = positions ? String(character).utf16.count : 0
                 let range = NSRange(location: offset, length: length)
                 let bonus: UInt8
-                if before == nil { bonus = 18 }
-                else if !before!.isLetter && !before!.isNumber { bonus = 14 }
-                else if before!.isLowercase && character.isUppercase { bonus = 12 }
-                else { bonus = 0 }
+                if let before {
+                    if !before.isLetter && !before.isNumber { bonus = 14 }
+                    else if before.isLowercase && character.isUppercase { bonus = 12 }
+                    else { bonus = 0 }
+                } else { bonus = 18 }
                 let folded: String
                 if let ascii = character.asciiValue {
                     folded = String(UnicodeScalar((65...90).contains(ascii) ? ascii + 32 : ascii))

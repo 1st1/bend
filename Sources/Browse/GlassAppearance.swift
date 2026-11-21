@@ -36,7 +36,7 @@ final class BrowserWindowGlass: NSGlassEffectView {
             }
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 }
 
 // Both native and SwiftUI headers use these opaque sRGB gradient endpoints.

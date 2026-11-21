@@ -92,7 +92,7 @@ final class LinkHoverPreview: NSView {
         isHidden = true
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 
     func place(in bounds: NSRect, avoiding pointer: NSPoint? = nil) {
         let available = bounds.insetBy(dx: min(8, bounds.width / 2), dy: 0)

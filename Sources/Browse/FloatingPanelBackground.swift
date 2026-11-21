@@ -28,7 +28,7 @@ final class FloatingPanelGlassView: NSGlassEffectView {
         cornerRadius = 12
         style = .regular
     }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     // Empty panel space must not activate links or tabs underneath it.

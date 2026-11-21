@@ -86,7 +86,7 @@ final class ExtensionCompatibility: NSObject, WKScriptMessageHandlerWithReply {
             }
             // Finite metadata combinations only, once per context/run. No URLs,
             // module bytes, export names, error prose, or stacks cross the bridge.
-            let key = "wasm:" + fields.keys.sorted().map { $0 + "=" + fields[$0]! }.joined(separator: ",")
+            let key = "wasm:" + fields.sorted { $0.key < $1.key }.map { $0.key + "=" + $0.value }.joined(separator: ",")
             if manager?.diagnosticErrors[id, default: []].insert(key).inserted == true {
                 manager?.diagnostics.record(.wasmOperation, extensionID: id, fields: fields)
             }

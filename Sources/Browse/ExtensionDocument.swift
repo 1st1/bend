@@ -51,15 +51,17 @@ final class ExtensionDocument: NSObject, WKWebExtensionTab, WKWebExtensionWindow
         if isExtension { destination = extensionWeb }
         else {
             guard ["http", "https"].contains(url.scheme ?? "") else { return }
-            if websiteWeb == nil {
+            if let websiteWeb {
+                destination = websiteWeb
+            } else {
                 let configuration = WKWebViewConfiguration()
                 configuration.websiteDataStore = extensionWeb.configuration.websiteDataStore
                 manager?.configure(configuration)
                 let view = WKWebView(frame: web.frame, configuration: configuration)
                 view.navigationDelegate = self; view.uiDelegate = self
                 websiteWeb = view
+                destination = view
             }
-            destination = websiteWeb!
         }
         if web !== destination {
             web.stopLoading()
@@ -85,13 +87,13 @@ final class ExtensionDocument: NSObject, WKWebExtensionTab, WKWebExtensionWindow
     }
     func windowDidBecomeKey(_ notification: Notification) { manager?.controller.didFocusWindow(self) }
 
-    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation?) {
         guard webView === web else { return }
         nativeWindow.title = webView.url?.scheme == context.baseURL.scheme
             ? (context.webExtension.displayName ?? "Extension") : (webView.url?.host ?? "Web page")
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
         guard webView === web else { return }
         manager?.controller.didChangeTabProperties([.URL, .title, .loading], for: self)
     }

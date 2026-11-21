@@ -46,9 +46,8 @@ struct SavedChat: Codable, Identifiable {
     }
 
     func save(_ record: SavedChat) {
-        guard directory != nil, !deleted.contains(record.id) else { return }
+        guard let directory, !deleted.contains(record.id) else { return }
         do {
-            let directory = directory!
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let file = directory.appendingPathComponent(record.id.uuidString + ".json")
             try JSONEncoder().encode(record).write(to: file, options: .atomic)
@@ -57,6 +56,10 @@ struct SavedChat: Codable, Identifiable {
             records.append(record)
             records.sort { $0.updatedAt > $1.updatedAt }
         } catch { self.error = "Chat history could not be saved: \(error.localizedDescription)" }
+    }
+
+    func reportInvalidLayout() {
+        error = "This conversation could not be reopened because its saved pane layout is invalid."
     }
 
     @discardableResult func remove(_ ids: Set<UUID>) -> Bool {
@@ -98,22 +101,21 @@ extension BrowserStore {
     func restoreChat(_ record: SavedChat) {
         guard !isPrivate else { return }
         // New pane identities keep an archived layout independent of every live tab.
+        guard record.tab.hasValidLayout else { chatHistory.reportInvalidLayout(); return }
         var restored = record
-        let mapping = Dictionary(uniqueKeysWithValues: record.tab.pages.map { ($0.id, UUID()) })
-        func layout(_ node: PaneLayout) -> PaneLayout {
-            switch node {
-            case .pane(let id): return .pane(mapping[id]!)
-            case .split(_, let axis, let fraction, let a, let b, let automatic):
-                return .split(id: UUID(), axis: axis, fraction: fraction, first: layout(a), second: layout(b), isAutomatic: automatic)
-            }
-        }
-        restored.tab.id = UUID()
-        restored.tab.layout = layout(record.tab.layout)
-        restored.tab.focusedPane = mapping[record.tab.focusedPane]!
-        restored.tab.commandClickPaneID = record.tab.commandClickPaneID.flatMap { mapping[$0] }
+        var mapping = [UUID: UUID]()
         for i in restored.tab.pages.indices {
-            restored.tab.pages[i].id = mapping[record.tab.pages[i].id]!
+            let old = restored.tab.pages[i].id
+            let new = UUID()
+            mapping[old] = new
+            restored.tab.pages[i].id = new
         }
+        guard let layout = record.tab.layout.remappingPanes(mapping),
+              let focus = mapping[record.tab.focusedPane] else { chatHistory.reportInvalidLayout(); return }
+        restored.tab.id = UUID()
+        restored.tab.layout = layout
+        restored.tab.focusedPane = focus
+        restored.tab.commandClickPaneID = record.tab.commandClickPaneID.flatMap { mapping[$0] }
         func remap(_ text: String) -> String {
             mapping.reduce(text) { $0.replacingOccurrences(of: $1.key.uuidString, with: $1.value.uuidString, options: .caseInsensitive) }
         }

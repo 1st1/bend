@@ -109,9 +109,11 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
         }
         // Safari extensions use this URL for their default new-tab gesture.
         let requestedURL = configuration.url
-        let url = requestedURL?.absoluteString == "favorites://"
-            ? URL(string: "bend://start")!
-            : requestedURL ?? URL(string: "bend://start")!
+        guard let url = requestedURL?.absoluteString == "favorites://"
+            ? URL(string: "bend://start")
+            : requestedURL ?? URL(string: "bend://start") else {
+            completionHandler(nil, failure("Invalid start page URL.")); return
+        }
         if url.scheme == context.baseURL.scheme, url.host == context.baseURL.host {
             guard !store.isPrivate else {
                 completionHandler(nil, failure(PageController.privateExtensionPageError)); return

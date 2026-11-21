@@ -51,7 +51,7 @@ struct AIOAuthAttempt {
     }
     var challenge: String { Data(SHA256.hash(data: Data(verifier.utf8))).oauthBase64 }
 
-    func authorizationURL(provider: AIAccountProvider, clientID: String, redirect: URL, hostID: String) -> URL {
+    func authorizationURL(provider: AIAccountProvider, clientID: String, redirect: URL, hostID: String) throws -> URL {
         var fields = ["client_id": clientID, "redirect_uri": redirect.absoluteString, "response_type": "code",
                       "state": state, "nonce": nonce, "code_challenge": challenge, "code_challenge_method": "S256",
                       "scope": "openid email profile offline_access"]
@@ -61,9 +61,10 @@ struct AIOAuthAttempt {
             fields["ext_agent_host_id"] = hostID
             if clientID == "dynamic_agent_client" { fields["agent_name_hint"] = "Bend" }
         }
-        var url = URLComponents(string: provider.authorize)!
+        guard var url = URLComponents(string: provider.authorize) else { throw URLError(.badURL) }
         url.queryItems = fields.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
-        return url.url!
+        guard let address = url.url else { throw URLError(.badURL) }
+        return address
     }
 
     func callback(_ url: URL, redirect: URL, clientID: String) throws -> (code: String, clientID: String) {
@@ -130,7 +131,7 @@ extension Data {
         let hostID = defaults.string(forKey: "ai.openai.host") ?? "urn:uuid:" + UUID().uuidString.lowercased()
         defaults.set(hostID, forKey: "ai.openai.host")
         let browser = AIOAuthBrowser(anchor: anchor)
-        let authorizationURL = attempt.authorizationURL(provider: provider, clientID: clientID, redirect: redirect, hostID: hostID)
+        let authorizationURL = try attempt.authorizationURL(provider: provider, clientID: clientID, redirect: redirect, hostID: hostID)
         let response = try await browser.authenticate(url: authorizationURL, callback: callback, redirect: redirect)
         let result = try attempt.callback(response, redirect: redirect, clientID: clientID)
         try Task.checkCancellation()
@@ -206,15 +207,21 @@ extension Data {
     }
 
     func request(_ address: String, fields: [String: String]? = nil, bearer: String? = nil) async throws -> Data {
-        var request = URLRequest(url: URL(string: address)!)
+        guard let url = URL(string: address) else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
         request.timeoutInterval = 30
         if let fields {
             request.httpMethod = "POST"
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
-            request.httpBody = Data(fields.sorted { $0.key < $1.key }.map {
-                $0.key.addingPercentEncoding(withAllowedCharacters: allowed)! + "=" + $0.value.addingPercentEncoding(withAllowedCharacters: allowed)!
-            }.joined(separator: "&").utf8)
+            let encoded = try fields.sorted { $0.key < $1.key }.map { field in
+                guard let key = field.key.addingPercentEncoding(withAllowedCharacters: allowed),
+                      let value = field.value.addingPercentEncoding(withAllowedCharacters: allowed) else {
+                    throw AIOAuthError.invalid("Could not encode the sign-in request.")
+                }
+                return key + "=" + value
+            }
+            request.httpBody = Data(encoded.joined(separator: "&").utf8)
         }
         if let bearer { request.setValue("Bearer " + bearer, forHTTPHeaderField: "Authorization") }
         var data = Data(); var status = 0
@@ -306,7 +313,8 @@ enum OAuthIdentity {
     func start(port: UInt16, state: String) async throws -> URL {
         self.state = state
         let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!)
+        guard let endpointPort = NWEndpoint.Port(rawValue: port) else { throw URLError(.badURL) }
+        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: endpointPort)
         let listener = try NWListener(using: parameters)
         self.listener = listener
         listener.stateUpdateHandler = { [weak self] update in
@@ -314,8 +322,10 @@ enum OAuthIdentity {
                 guard let self else { return }
                 switch update {
                 case .ready:
-                    guard let port = self.listener?.port else { return }
-                    let url = URL(string: "http://127.0.0.1:\(port.rawValue)/auth/callback")!
+                    guard let port = self.listener?.port,
+                          let url = URL(string: "http://127.0.0.1:\(port.rawValue)/auth/callback") else {
+                        self.finish(.failure(URLError(.badURL))); return
+                    }
                     self.redirect = url; self.ready?.resume(returning: url); self.ready = nil
                 case .failed: self.finish(.failure(AIOAuthError.invalid("Could not start the local sign-in callback. Close other sign-in attempts and retry.")))
                 default: break

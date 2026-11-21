@@ -91,7 +91,7 @@ struct WhatsNewTracker {
         guard enabled, let current else { return false }
         let saved = defaults.dictionary(forKey: Self.preferenceKey)
         let previous = InstalledRelease(version: saved?["version"] as? String, build: saved?["build"] as? String)
-        guard previous == nil || current.isNewer(than: previous!) else { return false }
+        if let previous, !current.isNewer(than: previous) { return false }
         defaults.set(["version": current.version, "build": current.build], forKey: Self.preferenceKey)
         return previous != nil
     }

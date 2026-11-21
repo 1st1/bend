@@ -73,7 +73,7 @@ public struct Model: Sendable {
     return .init(
       id,
       provider: try OpenAICompatibleProvider(
-        baseURL: URL(string: "https://ai-gateway.vercel.sh/v1")!, apiKey: key))
+        baseURL: URL("https://ai-gateway.vercel.sh/v1", strategy: .url), apiKey: key))
   }
 }
 

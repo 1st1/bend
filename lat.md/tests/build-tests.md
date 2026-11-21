@@ -8,6 +8,12 @@ Tests verify development builds, distribution signing, and isolated application 
 
 See [[lat.md/architecture/build|Architecture and behavior]].
 
+## Production Swift lint
+
+[test-swiftlint.sh](../../scripts/test-swiftlint.sh) checks all Swift code under [Sources](../../Sources) for explicit and implicit forced unwraps, forced tries, forced casts, and explicit fatal errors.
+
+The full local suite and native CI discover the lint test through Swift Testing. It uses the pinned SwiftLint version and [the SwiftLint configuration](../../.swiftlint.yml).
+
 ## Build bundle publication
 
 [test-build-app.sh](../../scripts/test-build-app.sh) runs the packaging script with isolated compiler and signing stand-ins, verifying failure preservation and replacement without changing an open descriptor to the previous executable.

@@ -54,6 +54,14 @@ import AI
     next.showChatHistory()
     #expect(next.session.workspaces[0].tabs.count == count)
     #expect(next.selectedTab.title == "AI Chat History")
+    var broken = saved
+    broken.tab.layout = .pane(UUID())
+    let previousSelection = next.session.selectedTab
+    next.restoreChat(broken)
+    #expect(next.chatHistory.error != nil)
+    #expect(next.session.selectedTab == previousSelection)
+    #expect(next.session.workspaces[0].tabs.count == count)
+    #expect(next.chatHistory.records.contains { $0.id == saved.id })
     next.restoreChat(saved)
     let restored = next.selectedTab
     #expect(restored.id != tab.id)

@@ -103,7 +103,7 @@ import WebKit
         navigationAction.request.url.map(allowsNavigation(to:)) == true ? .allow : .cancel
     }
 
-    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation?) {
         if let url = webView.url, let host = url.host {
             webView.window?.title = "Sign in — \(host)"
         }
@@ -124,11 +124,11 @@ import WebKit
 
     func webViewDidClose(_ webView: WKWebView) { webView.window?.close() }
 
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation?, withError error: Error) {
         navigationFailed(error)
     }
 
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: Error) {
         navigationFailed(error)
     }
 

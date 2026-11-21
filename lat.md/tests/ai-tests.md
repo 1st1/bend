@@ -124,6 +124,8 @@ The connection-test fixture in [[Tests/BrowseTests/AIChatTests.swift]] verifies 
 
 [[Tests/BrowseTests/ChatHistoryTests.swift#savedChatRestoration]] verifies messages, drafts, panel visibility, and layout survive closing and reopening, and history restoration creates independent panes with remapped citations and retained split fractions.
 
+A malformed pane layout reports an error and preserves the current selection, tab count, and saved conversation.
+
 Opening or reusing chat history gives its sidebar tab the AI Chat History title. Restoring an older session with the generic New tab label repairs that title before the page mounts.
 
 ## Deleting saved conversations

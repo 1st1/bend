@@ -287,12 +287,13 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
         var cursor: String?
         var seen = Set<String>()
         repeat {
-            var components = URLComponents(string: base)!
+            guard var components = URLComponents(string: base) else { throw URLError(.badURL) }
             if anthropic {
                 components.queryItems = [URLQueryItem(name: "limit", value: "100")]
                 if let cursor { components.queryItems?.append(URLQueryItem(name: "after_id", value: cursor)) }
             }
-            var request = URLRequest(url: components.url!)
+            guard let url = components.url else { throw URLError(.badURL) }
+            var request = URLRequest(url: url)
             request.timeoutInterval = 30
             if anthropic {
                 request.setValue(key, forHTTPHeaderField: "x-api-key")
@@ -448,9 +449,9 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
         if isDirectKey(activeConnection) {
             guard let key = directKeys[activeConnection] else { throw AIError.configuration("Connect an API key in Settings → AI.") }
             if activeConnection == "openaiKey" {
-                return Model(id, provider: try OpenAIResponsesProvider(apiKey: key, baseURL: URL(string: "https://api.openai.com/v1")!, transport: transport))
+                return Model(id, provider: try OpenAIResponsesProvider(apiKey: key, baseURL: URL("https://api.openai.com/v1", strategy: .url), transport: transport))
             }
-            return Model(id, provider: try AnthropicMessagesProvider(apiKey: key, baseURL: URL(string: "https://api.anthropic.com/v1")!,
+            return Model(id, provider: try AnthropicMessagesProvider(apiKey: key, baseURL: URL("https://api.anthropic.com/v1", strategy: .url),
                 transport: AnthropicKeyTransport(base: transport)))
         }
         if let provider = AIAccountProvider(rawValue: activeConnection) {
@@ -464,11 +465,11 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
             }, host: provider == .openai ? "api.openai.com" : "ai-gateway.vercel.sh",
                team: provider == .vercel ? vercelTeam.trimmingCharacters(in: .whitespacesAndNewlines) : nil)
             if provider == .openai {
-                return Model(id, provider: try OpenAIResponsesProvider(apiKey: "oauth", baseURL: URL(string: "https://api.openai.com/v1")!, transport: authenticated))
+                return Model(id, provider: try OpenAIResponsesProvider(apiKey: "oauth", baseURL: URL("https://api.openai.com/v1", strategy: .url), transport: authenticated))
             }
             if id.hasPrefix("anthropic/") { return Model(id, provider: try AnthropicMessagesProvider(apiKey: "oauth", transport: authenticated)) }
             if id.hasPrefix("openai/") { return Model(id, provider: try OpenAIResponsesProvider(apiKey: "oauth", transport: authenticated)) }
-            return Model(id, provider: try OpenAICompatibleProvider(baseURL: URL(string: "https://ai-gateway.vercel.sh/v1")!, apiKey: "oauth", transport: authenticated))
+            return Model(id, provider: try OpenAICompatibleProvider(baseURL: URL("https://ai-gateway.vercel.sh/v1", strategy: .url), apiKey: "oauth", transport: authenticated))
         }
         guard let key else { throw AIError.configuration("Connect your Gateway API key in Settings → AI.") }
         return try Model.gateway(id, apiKey: key)
@@ -482,7 +483,8 @@ struct GatewayModel: Decodable, Identifiable, Sendable {
     }
 
     private func request(_ path: String, key: String?) async throws -> Data {
-        var request = URLRequest(url: URL(string: "https://ai-gateway.vercel.sh/v1/\(path)")!)
+        guard let url = URL(string: "https://ai-gateway.vercel.sh/v1/\(path)") else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
         request.timeoutInterval = 30
         if let key { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         return try await responseData(request)

@@ -1,0 +1,3 @@
+kind: Fixed
+body: Reopening a conversation with an invalid pane layout now reports an error and preserves the saved chat.
+time: 2026-11-21T10:17:47.954488-08:00

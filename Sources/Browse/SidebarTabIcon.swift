@@ -102,7 +102,7 @@ final class SidebarTabIconView: NSView {
         backIcon.isHidden = true
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) { return nil }
 
     override func layout() {
         super.layout()

@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import WebKitFindSupport
 
 // @lat: [[lat.md/architecture/web-pages#Web pages#Certificate exceptions]]
 struct CertificateException: Hashable {
@@ -22,10 +23,8 @@ struct CertificateException: Hashable {
                NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorServerCertificateNotYetValid].contains(error.code),
               let url = error.userInfo[NSURLErrorFailingURLErrorKey] as? URL
                 ?? (error.userInfo[NSURLErrorFailingURLStringErrorKey] as? String).flatMap(URL.init(string:)),
-              let value = error.userInfo[NSURLErrorFailingURLPeerTrustErrorKey],
-              CFGetTypeID(value as CFTypeRef) == SecTrustGetTypeID() else { return nil }
-        let trust = value as! SecTrust
-        guard let exception = CertificateException(url: url, trust: trust) else { return nil }
+              let trust = BendPeerTrust(error),
+              let exception = CertificateException(url: url, trust: trust) else { return nil }
         return (url, exception)
     }
 }

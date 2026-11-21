@@ -11,6 +11,8 @@ lat check
 
 [[scripts/test.sh]] compiles with BEND_TESTING to replace AI Keychain access with process-local memory, preventing password prompts and access to saved accounts. It uses the installed SDK's version in the linked binary, matching the app and CI. Plain SwiftPM linking can select older AppKit compatibility behavior, including different sidebar constraints. With no arguments, [[scripts/test-all.py]] discovers the full inventory, runs core tests together, SDK tests together, and runs each native test in a fresh process. This isolates AppKit's global menus, focus, and animation workers; accumulated native animations can exhaust dispatch workers in a long-lived test host. Every discovered test must report a result or its declared skip, and failed or timed-out processes fail the run. A crashed process, missing result, or unmatched filter is recorded as a failure while all later groups still execute; the final summary lists every failed group. Arguments such as `--filter` run a focused selection directly.
 
+Run [test-swiftlint.sh](../../scripts/test-swiftlint.sh) to check production Swift on its own. [[lat.md/tests/build-tests#Production Swift lint]] describes the rules enforced by the full local suite and native CI.
+
 Set `BEND_TEST_SHARD_INDEX` (zero-based) and `BEND_TEST_SHARD_COUNT` together to run one part of the full suite. The runner validates the full inventory, then sorts and partitions execution groups round-robin so shards are disjoint and the model and SDK groups stay intact.
 
 - [[build-tests|Build and signing]] — Development builds, distribution signing, and isolated application profiles.

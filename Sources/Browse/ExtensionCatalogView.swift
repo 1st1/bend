@@ -43,7 +43,9 @@ struct ExtensionCatalogView: View {
             Text("If needed, installation opens the App Store. Get the app there, then return to Bend to finish. You don’t need to enable it in Safari.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
-                Link("View in App Store ↗", destination: URL(string: "https://apps.apple.com/app/id1618804075")!)
+                if let url = URL(string: "https://apps.apple.com/app/id1618804075") {
+                    Link("View in App Store ↗", destination: url)
+                }
                 Spacer()
                 if manager.waitingForMouseGesturesApp {
                     Text("Waiting for App Store installation…").font(.callout).foregroundStyle(.secondary)
