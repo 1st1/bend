@@ -8,11 +8,11 @@ import WebKitFindSupport
 @MainActor private final class LinkMenuProbe: BendContextMenuDelegate, WKUIDelegate {
     var controller: PageController?
     var menus: [(NSMenu, URL, Bool)] = []
-    override func contextMenu(_ menu: NSMenu, forLinkURL url: URL, fromMainFrame mainFrame: Bool) -> NSMenu {
+    override func contextMenu(_ menu: NSMenu, forLinkURL url: URL, fromMainFrame mainFrame: Bool) -> NSMenu? {
         let customized = controller?.contextMenu(menu, forLinkURL: url, fromMainFrame: mainFrame) ?? menu
         menus.append((customized, url, mainFrame))
         // Capture the real WebKit menu without starting a modal menu-tracking loop.
-        return NSMenu()
+        return nil
     }
 }
 
@@ -46,10 +46,17 @@ import WebKitFindSupport
         <a href="../top?q=one%20two#anchor"><span>Top link</span></a>
         <iframe srcdoc="<style>body{margin:0}a{display:block;height:80px}</style><a href='http://127.0.0.1:9/frame?q=three#part'>Frame link</a>"></iframe>
         """, baseURL: URL(string: "http://127.0.0.1:9/folder/page"))
-    for _ in 0..<100 {
-        if (try? await web.evaluateJavaScript("document.querySelector('iframe')?.contentDocument?.querySelector('a') != null")) as? Bool == true { break }
+    var linksReady = false
+    for _ in 0..<250 {
+        linksReady = (try? await web.evaluateJavaScript("""
+            document.readyState === 'complete' &&
+            !!document.elementFromPoint(30, 30)?.closest('a') &&
+            !!document.querySelector('iframe')?.contentDocument?.elementFromPoint(30, 30)?.closest('a')
+            """)) as? Bool == true
+        if linksReady { break }
         try await Task.sleep(for: .milliseconds(20))
     }
+    try #require(linksReady)
     func menu(at point: NSPoint) async throws -> (NSMenu, URL, Bool) {
         let count = probe.menus.count
         let event = try #require(NSEvent.mouseEvent(with: .rightMouseDown, location: point,
