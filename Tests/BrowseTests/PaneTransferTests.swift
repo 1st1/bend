@@ -310,7 +310,14 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     let visible = preview.convert(preview.bounds.intersection(preview.visibleRect), to: nil)
     #expect(visible.maxX > sidebarEdge + 20)
     #expect(abs(visible.width - preview.bounds.width) < 1)
-    #expect(abs(try visualCenter(tabs[1].id) - down.y) < 2)
+    // The native row position updates on the display clock after SwiftUI starts its animation.
+    for _ in 0..<50 {
+        if abs(try visualCenter(tabs[1].id) - down.y) < 2 { break }
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    let neighborCenter = try visualCenter(tabs[1].id)
+    #expect(abs(neighborCenter - down.y) < 2, "Expected neighbor at \(down.y), got \(neighborCenter)")
     let releases = window.mouseUpCount
     try sendTransferMouse(.leftMouseUp, at: up, to: window)
     try await settle()
