@@ -15,9 +15,9 @@ struct PaneSleepPolicy {
 }
 
 @MainActor
-struct SleepingPane {
+struct PaneRestorationState {
     let interactionState: Any
-    let snapshot: Data
+    let snapshot: Data?
     let address: String
     let title: String
     let zoom: CGFloat
@@ -168,10 +168,8 @@ final class PaneSleepCoordinator {
               let data = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.65]),
               await playbackIsIdle(web), eligible(),
               await PaneSleepProbe.check(web) == document, eligible(),
-              let interactionState = web.interactionState else { return }
-        store.finishSleeping(id, controller: controller, state: SleepingPane(
-            interactionState: interactionState, snapshot: data, address: controller.address,
-            title: controller.title, zoom: web.pageZoom, closeHistoryURL: controller.closeHistoryURL))
+              let state = controller.restorationState(snapshot: data) else { return }
+        store.finishSleeping(id, controller: controller, state: state)
     }
 
     private func playbackIsIdle(_ web: WKWebView) async -> Bool {

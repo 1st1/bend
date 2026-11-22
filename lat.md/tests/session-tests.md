@@ -34,6 +34,10 @@ Restoration uses the nearest surviving ancestor when the original sibling is gon
 
 Closing a pane and then its tab reopens them in reverse order without duplicate pages or blank replacement tabs. Reopened layouts persist as valid sessions; closed-item history does not persist.
 
+## Reopened WebKit navigation history
+
+Closing a tab or pane in the middle of its navigation list and reopening it restores the current page. Back and Forward on the replacement WebView reach the original neighboring pages.
+
 ## Reopen boundaries and background closures
 
 [ReopenTests.swift](../../Tests/BrowseTests/ReopenTests.swift) checks background extension closures, final-pane tab closure, invalid pane IDs, preservation of navigated replacement tabs, and the fifty-entry history limit.

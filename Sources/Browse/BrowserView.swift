@@ -377,7 +377,7 @@ private struct PaneCanvas: View {
                     let frame = hidden ? placement.frame : visibleFrame
                     Group {
                         if let sleeping = store.sleepingPanes[page.id], tab.id != store.session.selectedTab {
-                            if let image = NSImage(data: sleeping.snapshot) {
+                            if let data = sleeping.snapshot, let image = NSImage(data: data) {
                                 Image(nsImage: image).resizable().scaledToFit().accessibilityHidden(true)
                             } else { Color.clear }
                         } else {

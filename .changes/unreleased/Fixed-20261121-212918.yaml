@@ -1,0 +1,3 @@
+kind: Fixed
+body: Reopening a closed tab or pane with Command-Shift-T restores its Back and Forward history.
+time: 2026-11-21T21:29:18.347956-08:00
