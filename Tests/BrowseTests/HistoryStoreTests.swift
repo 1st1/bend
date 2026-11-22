@@ -218,6 +218,35 @@ private final class HistoryWebView: FocusWebView {
     let searchRow = try #require(searchTable.view(atColumn: 0, row: 0, makeIfNecessary: true))
     #expect(descendants(NSTextField.self, searchRow).contains { $0.stringValue == "Search for “karpathy mini ll”" })
     #expect(field.stringValue == "karpathy mini ll")
+    store.recordVisit(url: "https://news.ycombinator.com/from?site=math216.wordpress.com",
+                      title: "Submissions from math216.wordpress.com | Hacker News")
+    store.recordVisit(url: "https://www.chess.com/play", title: "Play chess")
+    field.stringValue = "chess.com"
+    editor.string = field.stringValue
+    editor.setSelectedRange(NSRange(location: field.stringValue.utf16.count, length: 0))
+    panel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+    #expect(searchTable.numberOfRows == 2)
+    #expect(searchTable.selectedRow == 0)
+    let domainRow = try #require(searchTable.view(atColumn: 0, row: 0, makeIfNecessary: true))
+    #expect(descendants(NSTextField.self, domainRow).contains { $0.stringValue == "Visit chess.com" })
+    #expect(field.stringValue == "chess.com")
+
+    for (input, expectedRow) in [
+        ("nnn.y", "Search for “nnn.y”"), ("nnn.y:123/p", "Search for “nnn.y:123/p”"),
+        ("localhost:123", "Visit localhost:123"), ("blakh.localhost:123/sad", "Visit blakh.localhost:123/sad"),
+        ("10.0.0.1", "Visit 10.0.0.1"), ("[::1]:123/p", "Visit [::1]:123/p")
+    ] {
+        store.recordVisit(url: "https://example.com/", title: input)
+        field.stringValue = input
+        editor.string = input
+        editor.setSelectedRange(NSRange(location: input.utf16.count, length: 0))
+        panel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        #expect(searchTable.selectedRow == 0)
+        let row = try #require(searchTable.view(atColumn: 0, row: 0, makeIfNecessary: true))
+        #expect(descendants(NSTextField.self, row).contains { $0.stringValue == expectedRow })
+        #expect(field.stringValue == input)
+    }
+
     field.stringValue = "github/jit"
     editor.string = field.stringValue
     editor.setSelectedRange(NSRange(location: field.stringValue.utf16.count, length: 0))

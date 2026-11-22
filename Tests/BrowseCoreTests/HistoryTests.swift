@@ -104,8 +104,8 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
 
     history.record(url: "https://www.nytimes.com/", title: "The New York Times", at: historyNow)
     let times = history.suggestions(for: "nytim", now: historyNow).first!
-    #expect(times.completion(for: "nytim") == "nytimes.com/")
-    #expect(times.completion(for: "NYtim") == "NYtimes.com/")
+    #expect(times.completion(for: "nytim") == nil)
+    #expect(times.completion(for: "WWW.NYtim") == "WWW.NYtimes.com/")
     #expect(times.completion(for: "www.nytim") == "www.nytimes.com/")
     #expect(times.completion(for: "https://www.nytim") == times.url)
     #expect(times.completion(for: "https://nytim") == nil)
@@ -157,6 +157,22 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(history.isValid)
 }
 
+// @lat: [[lat.md/tests/history-tests#Domain address suggestions]]
+@Test func domainAddressSuggestions() {
+    var history = BrowsingHistory()
+    history.record(url: "https://news.ycombinator.com/from?site=math216.wordpress.com",
+                   title: "Submissions from math216.wordpress.com | Hacker News")
+    history.record(url: "https://example.org/?site=chess.com", title: "Review of chess.com")
+    #expect(history.suggestions(for: "chess.com").isEmpty)
+    let page = "https://www.chess.com/play"
+    history.record(url: page, title: "Play")
+    for query in ["CHESS.COM", "chess.co", "www.chess.com", "https://www.chess.com"] {
+        #expect(history.suggestions(for: query).map(\.url) == [page])
+    }
+    #expect(history.suggestions(for: "http://www.chess.com").isEmpty)
+    #expect(history.suggestions(for: "review chess.com").first?.title == "Review of chess.com")
+}
+
 // @lat: [[lat.md/tests/history-tests#Home page suggestion ranking]]
 @Test func homePageSuggestionRanking() {
     var history = BrowsingHistory()
@@ -196,7 +212,7 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     }
     let pathMatch = history.suggestions(for: "nytimes.com/int", now: historyNow).first
     #expect(pathMatch?.url == timesArticle)
-    #expect(pathMatch?.completion(for: "nytimes.com/int") == "nytimes.com/international/story")
+    #expect(pathMatch?.completion(for: "nytimes.com/int") == nil)
 }
 
 // @lat: [[lat.md/tests/history-tests#Matched address characters]]
@@ -249,4 +265,38 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(!history.suggestions(for: "2610.21375", now: historyNow).isEmpty)
     #expect(!history.suggestions(for: "10.23 router", now: historyNow).isEmpty)
     #expect(history.matching("10.23").contains { $0.url == "https://example.com/" })
+}
+
+// @lat: [[lat.md/tests/history-tests#Address matching corpus]]
+@Test func addressMatchingCorpus() throws {
+    let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Fixtures/address-matching.txt")
+    let lines = try String(contentsOf: fixture, encoding: .utf8).components(separatedBy: .newlines)
+    let header = try #require(lines.firstIndex { $0.hasPrefix("QUERY ") })
+    let cases = lines.dropFirst(header + 1).split(whereSeparator: { $0.isEmpty })
+    #expect(!cases.isEmpty)
+    for rows in cases {
+        var history = BrowsingHistory()
+        var expected: [String] = []
+        var query: String?
+        for row in rows {
+            let fields = row.components(separatedBy: "  ").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            try #require(fields.count == 5, "Malformed corpus row: \(row)")
+            let visits = try #require(Int(fields[2]))
+            let url = fields[3].contains("://") ? fields[3] : "https://" + fields[3]
+            #expect(query == nil || query == fields[0])
+            query = fields[0]
+            for visit in 0..<visits {
+                history.record(url: url, title: fields[4] == "." ? url : fields[4],
+                               at: historyNow.addingTimeInterval(Double(-60 * visit)))
+            }
+            if fields[1] != "-" {
+                #expect(Int(fields[1]) == expected.count + 1)
+                expected.append(url)
+            }
+        }
+        let input = try #require(query)
+        let actual = history.suggestions(for: input, limit: rows.count, now: historyNow).map(\.url)
+        #expect(actual == expected, "Query: \(input)")
+    }
 }

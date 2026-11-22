@@ -16,7 +16,7 @@ See [[lat.md/architecture/history|Architecture and behavior]].
 
 [HistoryTests.swift](../../Tests/BrowseCoreTests/HistoryTests.swift) checks case- and accent-insensitive matching across titles and decoded URLs. Prefix completion handles explicit schemes and declines short, complete, or multiword queries.
 
-Regression coverage includes bare-host completion of www. URLs, typed-case preservation, explicit www./scheme prefixes, unchanged navigation URLs, and retaining other subdomains.
+Regression coverage includes completing the recorded hostname, typed-case preservation, explicit www./scheme prefixes, unchanged navigation URLs, and retaining other subdomains.
 
 ## History ranking and learned choices
 
@@ -58,7 +58,7 @@ Regression coverage includes bare-host completion of www. URLs, typed-case prese
 
 [HistoryTests.swift](../../Tests/BrowseCoreTests/HistoryTests.swift) reproduces a deep link with one learned choice competing with 35 home-page visits. Host prefixes prefer the home page, path searches retain deep links, and frequent visits can outweigh learned choices.
 
-Bare-host prefixes also prefer a www. home page over a much more frequently visited article; omitting www. from a path query still finds and completes the deep link.
+Bare-host prefixes also prefer a www. home page over a much more frequently visited article; a path query starting at an inner hostname label can find the deep link.
 
 ## Remove address suggestion
 
@@ -74,6 +74,8 @@ Low-signal multiword searches exclude unrelated election results; a strong liter
 
 [[Tests/BrowseTests/HistoryStoreTests.swift#fuzzyAddressQuickOpen]] types github/jit into the native address popup and verifies the best history URL is selected without altering the input and Return navigates to the original URL.
 
+Typing chess.com leaves Visit selected and the input intact even with a visited chess.com page and an unrelated Hacker News submission in history.
+
 It also checks that a low-signal history match leaves only the search action and preserves the typed query. It verifies cached favicon rendering without selection tint, and fallback refresh when the cache clears without changing the query. It also checks bold emphasis covers exactly the matched URL characters and selected rows use fully opaque matches with 80% opacity for unmatched text and no underlines, including after selection moves.
 
 ## Matched address characters
@@ -85,3 +87,11 @@ It also checks that a low-signal history match leaves only the search action and
 [[Tests/BrowseCoreTests/HistoryTests.swift#ipv4AddressSuggestions]] verifies numeric address prefixes only match real IPv4 hosts, excluding fuzzy numbers, unrelated titles, URL paths, and numeric domain labels.
 
 Coverage includes trailing dots, explicit schemes, ports and paths, home-page ranking, inline completion, no-match inputs, and preserving ordinary numeric/text searches and history-page filtering.
+
+## Domain address suggestions
+
+[[Tests/BrowseCoreTests/HistoryTests.swift#domainAddressSuggestions]] verifies that a domain typed alone matches a hostname prefix, even when an unrelated page mentions the domain or contains its letters in order. Multiword searches still include title and URL matches.
+
+## Address matching corpus
+
+[[Tests/BrowseCoreTests/HistoryTests.swift#addressMatchingCorpus]] loads [[Tests/Fixtures/address-matching.txt]], records each block as a separate history, and compares every returned URL with the listed order and exclusions.

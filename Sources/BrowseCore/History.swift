@@ -14,22 +14,16 @@ public struct HistorySuggestion: Identifiable, Equatable, Sendable {
     public let lastVisited: Date
     public let visitCount: Int
     public var isFuzzyMatch = false
+    public var isPathMatch = false
 
     public var displayURL: String {
         url.replacingOccurrences(of: "^https?://", with: "", options: .regularExpression)
     }
 
-    fileprivate var displayURLWithoutWWW: String {
-        let display = displayURL
-        return display.lowercased().hasPrefix("www.") ? String(display.dropFirst(4)) : display
-    }
-
     public func completion(for query: String) -> String? {
         guard query.count >= 2, !query.contains(where: \.isWhitespace) else { return nil }
-        let candidates = query.contains("://") ? [url] : [displayURL, displayURLWithoutWWW]
-        guard let candidate = candidates.first(where: {
-            $0.lowercased().hasPrefix(query.lowercased()) && $0.count > query.count
-        }) else { return nil }
+        let candidate = query.contains("://") ? url : displayURL
+        guard candidate.count > query.count, candidate.lowercased().hasPrefix(query.lowercased()) else { return nil }
         return String(candidate.prefix(query.count)) == query
             ? candidate : query + candidate.dropFirst(query.count)
     }
@@ -57,9 +51,8 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
         let asciiLiteral: Data?
         let foldedURL: String
         let host: String
-        let bareHost: String
         let display: String
-        let bareDisplay: String
+        let pathGroups: [String]
         let ipv4: Bool
         let homePage: Bool
 
@@ -75,9 +68,10 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
             asciiLiteral = literal.utf8.allSatisfy { $0 < 128 } ? Data(literal.utf8) : nil
             foldedURL = fold(url)
             host = fold(components?.host ?? "")
-            bareHost = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
             display = fold(displayURL)
-            bareDisplay = fold(suggestion.displayURLWithoutWWW)
+            // Split before decoding so an escaped slash stays inside its path component.
+            let path = components?.percentEncodedPath.prefix(2048) ?? ""
+            pathGroups = [host] + path.split(separator: "/").map { fold($0.removingPercentEncoding ?? String($0)) }
             ipv4 = isIPv4(components?.host ?? "", partial: false)
             homePage = (components?.path.isEmpty == true || components?.path == "/")
                 && components?.query == nil && components?.fragment == nil
@@ -223,6 +217,98 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
         if choices.count > 1_000 { choices.removeLast(choices.count - 1_000) }
     }
 
+    /// Host-only input can be a partial domain. Numeric dotted searches have separate IPv4 rules.
+    private static func isDomainQuery(_ query: String) -> Bool {
+        var host = query[...]
+        for scheme in ["https://", "http://"] where host.lowercased().hasPrefix(scheme) {
+            host = host.dropFirst(scheme.count)
+            break
+        }
+        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.count >= 2, labels.last?.first?.isLetter == true else { return false }
+        return labels.allSatisfy { label in
+            !label.isEmpty && label.first != "-" && label.last != "-" &&
+                label.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" }
+        }
+    }
+
+    /// A dot advances to the next hostname label even when the previous label is incomplete.
+    private static func matchesHostLabels(_ prefixes: [Substring], host: String) -> Bool {
+        guard let first = prefixes.first else { return false }
+        let labels = host.split(separator: ".")
+        guard prefixes.count <= labels.count else { return false }
+        for start in 0...(labels.count - prefixes.count) where labels[start].hasPrefix(first) {
+            if zip(labels.dropFirst(start), prefixes).allSatisfy({ $0.hasPrefix($1) }) { return true }
+        }
+        return false
+    }
+
+    private struct PathQuery {
+        let groups: [FuzzyMatch.Word]
+        let scheme: String?
+        let hostPrefixes: [Substring]
+
+        init?(_ word: String) {
+            let scheme = ["https://", "http://"].first(where: { word.hasPrefix($0) })
+            let path = word.dropFirst(scheme?.count ?? 0)
+            guard path.count <= 128, !path.contains("?"), !path.contains("#") else { return nil }
+            let groups = path.split(separator: "/")
+            guard groups.count >= 2 else { return nil }
+            self.groups = groups.map { FuzzyMatch.Word(String($0)) }
+            hostPrefixes = groups.first.map { isDomainQuery(String($0)) ? $0.split(separator: ".") : [] } ?? []
+            self.scheme = scheme
+        }
+
+        /// Every slash advances exactly one component, starting at the hostname.
+        func matchesLeadingComponents(_ components: [String]) -> Bool {
+            guard groups.count <= components.count, let first = groups.first, let host = components.first,
+                  host.hasPrefix(first.text) || matchesHostLabels(hostPrefixes, host: host) else { return false }
+            return zip(groups.dropFirst(), components.dropFirst()).allSatisfy { $1.hasPrefix($0.text) }
+        }
+
+        /// Best ordered assignment of query groups to distinct host or path components.
+        func score(in components: [String], anchored: Bool) -> Int? {
+            guard groups.count <= components.count else { return nil }
+            if anchored {
+                // Score the components actually typed, so /1 cannot jump forward to /photo/1.
+                var score = 8
+                for (group, component) in zip(groups, components) {
+                    score += component == group.text ? 100 : 70
+                }
+                return score + (groups.count == components.count ? 6 : 0)
+            }
+            var previous = [Int?](repeating: nil, count: components.count)
+            for (row, group) in groups.enumerated() {
+                var current = [Int?](repeating: nil, count: components.count)
+                var preceding: Int?
+                for (index, component) in components.enumerated() {
+                    if index > 0 {
+                        // Moving one component farther costs four points per skipped component.
+                        preceding = preceding.map { $0 - 4 }
+                        if let adjacent = previous[index - 1], adjacent > (preceding ?? Int.min) {
+                            preceding = adjacent
+                        }
+                    }
+                    guard let start = row == 0 ? 0 : preceding else { continue }
+                    let quality: Int
+                    if component == group.text { quality = 100 }
+                    else if component.hasPrefix(group.text) { quality = 70 }
+                    else if row == 0, index == 0, matchesHostLabels(hostPrefixes, host: component) { quality = 65 }
+                    else if component.contains(group.text) { quality = 45 }
+                    else if let first = group.pattern.first, component.contains(first),
+                            group.qualifiedScore(in: FuzzyMatch.Candidate(component)) != nil { quality = 25 }
+                    else { continue }
+                    let hostBonus = index == 0 ? 8 : 0
+                    let finalBonus = row == groups.count - 1 && index == components.count - 1 ? 6 : 0
+                    current[index] = start + quality + hostBonus + finalBonus
+                }
+                guard current.contains(where: { $0 != nil }) else { return nil }
+                previous = current
+            }
+            return previous.compactMap { $0 }.max()
+        }
+    }
+
     // @lat: [[lat.md/architecture/history#History suggestions]]
     public func suggestions(for query: String, limit: Int = 6, now: Date = Date()) -> [HistorySuggestion] {
         let query = Self.fold(query).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -230,8 +316,12 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
         let addressQuery = query.replacingOccurrences(of: "^https?://", with: "", options: .regularExpression)
         let queryHost = String(addressQuery.prefix { !"/:?#".contains($0) })
         let ipv4Prefix = Self.isIPv4(queryHost, partial: true) && !query.contains(where: \.isWhitespace)
+        let domainQuery = Self.isDomainQuery(query)
+        let hostPrefixes = queryHost.split(separator: ".")
+        let onlyHost = addressQuery == queryHost || addressQuery == queryHost + "/"
         let hasScheme = query.contains("://")
         let preparedWords = words.map(FuzzyMatch.Word.init)
+        let pathQuery = words.first.flatMap(PathQuery.init)
         let fuzzyWords = words.joined().count <= 128 ? preparedWords : []
         var adaptiveScores: [String: Double] = [:]
         if !query.isEmpty {
@@ -246,36 +336,67 @@ public struct BrowsingHistory: Codable, Equatable, Sendable {
             let text = record.text
             if ipv4Prefix {
                 guard text.ipv4, (hasScheme ? text.foldedURL : text.display).hasPrefix(query) else { return nil }
+            } else if domainQuery {
+                let prefixMatches = hasScheme ? text.foldedURL.hasPrefix(query)
+                    : text.host.hasPrefix(query)
+                if !prefixMatches {
+                    guard (!hasScheme || text.foldedURL.hasPrefix(query.prefix { $0 != ":" } + "://")),
+                          Self.matchesHostLabels(hostPrefixes, host: text.host) else { return nil }
+                    suggestion.isFuzzyMatch = true
+                }
             }
-            let literal = ipv4Prefix || preparedWords.allSatisfy { word in
+            let literal = ipv4Prefix || domainQuery || preparedWords.allSatisfy { word in
                 if let haystack = text.asciiLiteral, let needle = word.asciiData {
                     return haystack.range(of: needle) != nil
                 }
                 return text.literal.contains(word.text)
             }
             var fuzzy = 0
-            if !literal {
+            var pathTier = 0
+            if let pathQuery {
+                if let scheme = pathQuery.scheme, !text.foldedURL.hasPrefix(scheme) { return nil }
+                let addressPrefix = text.display.hasPrefix(query) || text.foldedURL.hasPrefix(query)
+                let anchored = addressPrefix || pathQuery.matchesLeadingComponents(text.pathGroups)
+                if let groupScore = pathQuery.score(in: text.pathGroups, anchored: anchored) {
+                    pathTier = addressPrefix ? 7 : (anchored ? 6 : 5)
+                    let extraWords = Array(preparedWords.dropFirst())
+                    if extraWords.isEmpty {
+                        fuzzy = groupScore
+                    } else {
+                        guard !fuzzyWords.isEmpty, let score = FuzzyMatch.score(words: extraWords, title: text.title, url: text.displayURL)
+                        else { return nil }
+                        fuzzy = groupScore + score
+                    }
+                    suggestion.isPathMatch = true
+                    suggestion.isFuzzyMatch = !literal
+                } else if !literal { return nil }
+            } else if !literal {
                 let url = hasScheme ? text.fullURL : text.displayURL
                 guard let score = FuzzyMatch.score(words: fuzzyWords, title: text.title, url: url) else { return nil }
                 fuzzy = score
                 suggestion.isFuzzyMatch = true
             }
+            if domainQuery && suggestion.isFuzzyMatch && text.homePage { fuzzy = 1 }
             let adaptive = adaptiveScores[suggestion.url] ?? 0
             var match = 0
-            if literal && !query.isEmpty {
-                if text.host == query || text.bareHost == query || text.foldedURL == query {
+            if literal && !suggestion.isFuzzyMatch && !query.isEmpty {
+                if text.host == query || text.foldedURL == query {
                     match = 3
-                } else if text.host.hasPrefix(query) || text.bareHost.hasPrefix(query) || text.display.hasPrefix(query)
-                    || text.bareDisplay.hasPrefix(query) || text.foldedURL.hasPrefix(query) {
+                } else if text.host.hasPrefix(query) || text.display.hasPrefix(query)
+                    || text.foldedURL.hasPrefix(query) {
                     match = 2
                 } else {
                     match = 1
+                }
+                if match == 1, onlyHost, !hasScheme, Self.matchesHostLabels(hostPrefixes, host: text.host) {
+                    match = 2
                 }
                 if text.homePage, match >= 2 { match += 1 }
             }
             let frecency = record.dates.reduce(0.0) { $0 + pow(0.5, max(0, now.timeIntervalSince($1)) / (30 * 86400)) }
             // Learned choices help break ties, but cannot permanently override
             // stronger URL matches or an accumulating history of other visits.
+            if suggestion.isPathMatch { match = pathTier }
             return (suggestion, match, fuzzy, frecency + min(6, adaptive * 3))
         }
         return ranked.sorted {

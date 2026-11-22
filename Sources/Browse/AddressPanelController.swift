@@ -418,21 +418,30 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         let query = showingFrequent ? "" : typedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         let suggestions = (history ?? store.history).suggestions(for: query)
         results = suggestions.map { AddressResult(title: $0.title, detail: $0.displayURL, address: $0.url, history: $0) }
-        if let address = AddressResolver.resolve(query, searchEngine: store.searchEngine, customSearchEngine: store.customSearchEngine) {
-            let isSearch = address == store.searchEngine.searchURL(for: query, custom: store.customSearchEngine)
+        let intent = AddressResolver.classify(query)
+        var canPromoteHistory = false
+        if let intent, intent.destination(searchEngine: store.searchEngine, customSearchEngine: store.customSearchEngine, query: query) != nil {
+            let isSearch: Bool
+            switch intent {
+            case .visit:
+                isSearch = false
+            case .search(let prefersDirectAction):
+                isSearch = true
+                canPromoteHistory = allowAutofill && !prefersDirectAction
+            }
             results.insert(AddressResult(title: isSearch ? "Search for “\(query)”" : "Visit \(query)",
                 detail: isSearch ? "Search with \(store.searchEngineName)" : "Open address", address: query, history: nil), at: 0)
             selectedResult = 0
         } else { selectedResult = -1 }
         // Fuzzy quick-open selects the best result without replacing what was
         // typed. A non-prefix completion cannot safely be inserted inline.
-        if allowAutofill, suggestions.first?.isFuzzyMatch == true,
-           let index = results.firstIndex(where: { $0.history?.url == suggestions.first?.url }) {
+        if canPromoteHistory, let first = suggestions.first, first.isFuzzyMatch || first.isPathMatch,
+           let index = results.firstIndex(where: { $0.history?.url == first.url }) {
             let topHit = results.remove(at: index)
             results.insert(topHit, at: 0)
             selectedResult = 0
         }
-        if allowAutofill, let suggestion = suggestions.first,
+        if canPromoteHistory, let suggestion = suggestions.first,
            let completion = suggestion.completion(for: typedQuery),
            let index = results.firstIndex(where: { $0.history?.url == suggestion.url }) {
             let topHit = results.remove(at: index)

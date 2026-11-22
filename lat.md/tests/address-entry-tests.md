@@ -12,6 +12,8 @@ See [[lat.md/architecture/address-entry|Architecture and behavior]].
 
 Hostnames, HTTPS, localhost, internal pages, and searches resolve correctly. Empty input and explicit non-web schemes are rejected. Google, DuckDuckGo, and Kagi preserve query punctuation, literal plus signs, and Unicode.
 
+Domain cases include known, unknown, internationalized and absolute DNS names, invalid hosts and ports, and explicit private URLs. Local navigation covers IPv4, IPv6 and localhost subdomains with ports and paths.
+
 ## Location popup requests
 
 [AddressRequestTests.swift](../../Tests/BrowseTests/AddressRequestTests.swift) verifies that explicit location requests target the chosen pane, new blank panes prompt after focus changes, and link destinations do not prompt. Invalid pane IDs are ignored.

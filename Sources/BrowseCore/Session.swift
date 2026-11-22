@@ -1,4 +1,6 @@
+import Darwin
 import Foundation
+import Network
 
 public enum SplitAxis: String, Codable, Sendable { case horizontal, vertical }
 public enum CommandClickDestination: String, Codable, Sendable { case newPane, dedicatedPane, newTab }
@@ -379,19 +381,66 @@ public enum AddressResolver {
         }
     }
 
-    public static func resolve(_ input: String, searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil) -> URL? {
+    public enum Input {
+        case visit(URL)
+        case search(prefersDirectAction: Bool)
+
+        public func destination(searchEngine: SearchEngine, customSearchEngine: CustomSearchEngine?, query: String) -> URL? {
+            switch self {
+            case .visit(let url): return url
+            case .search: return searchEngine.searchURL(for: query, custom: customSearchEngine)
+            }
+        }
+    }
+
+    /// Classify a bare authority separately from ordinary text and fuzzy path abbreviations.
+    private static func hostInput(_ text: String) -> Input? {
+        guard !text.contains(where: \.isWhitespace) else { return nil }
+        let authority = text.prefix { !"/?#".contains($0) }
+        let bareIPv6 = authority.contains(":") && IPv6Address(String(authority)) != nil
+        let name = authority.prefix { $0 != ":" }.lowercased()
+        guard bareIPv6 || authority.hasPrefix("[") || name.contains(".") || name == "localhost" else { return nil }
+        let address = bareIPv6 ? "[" + authority + "]" + text.dropFirst(authority.count) : text
+        guard !authority.contains("@"), let url = URL(string: "https://" + address),
+              var host = url.host(percentEncoded: false)?.lowercased(), !host.isEmpty else { return .search(prefersDirectAction: true) }
+        if !bareIPv6, let colon = authority.lastIndex(of: ":"), !authority[colon...].contains("]"),
+           UInt16(authority[authority.index(after: colon)...]) == nil { return .search(prefersDirectAction: true) }
+        if host.hasSuffix(".") { host.removeLast() }
+        var ipv4 = in_addr()
+        let isIPv4 = inet_pton(AF_INET, host, &ipv4) == 1
+        let ipv6 = host.contains(":") ? IPv6Address(host) : nil
+        if !isIPv4 && ipv6 == nil {
+            let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+            guard host.utf8.count <= 253, labels.allSatisfy({ label in
+                (1...63).contains(label.utf8.count) && label.first != "-" && label.last != "-" &&
+                    label.utf8.allSatisfy { (97...122).contains($0) || (48...57).contains($0) || $0 == 45 }
+            }), let suffix = labels.last,
+                suffix == "localhost" || (labels.count >= 2 && TopLevelDomains.delegated.contains(suffix))
+            else { return .search(prefersDirectAction: true) }
+        }
+        if host == "localhost" || host.hasSuffix(".localhost") || (isIPv4 && host.hasPrefix("127.")) ||
+            ipv6?.isLoopback == true {
+            guard let localURL = URL(string: "http://" + address) else { return .search(prefersDirectAction: true) }
+            return .visit(localURL)
+        }
+        return .visit(url)
+    }
+
+    public static func classify(_ input: String) -> Input? {
         let text = canonicalAddress(input.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty else { return nil }
-        if ["bend://start", "bend://guide", "bend://history", "bend://chats", "bend://log"].contains(text) { return URL(string: text) }
-        if text.contains("://") {
-            guard let url = URL(string: text), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
+        if let separator = text.range(of: "://"), !text[..<separator.lowerBound].contains(where: { "/?#".contains($0) }) {
+            guard let url = URL(string: text) else { return nil }
+            if nativePageTitle(text) != nil { return .visit(url) }
+            guard ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
                   let host = url.host, !host.isEmpty else { return nil }
-            return url
+            return .visit(url)
         }
-        let host = String(text.split(separator: "/").first ?? "")
-        if !text.contains(where: \.isWhitespace) && (host.contains(".") || host == "localhost" || host.hasPrefix("localhost:")) {
-            return URL(string: (host.hasPrefix("localhost") || host.hasPrefix("127.0.0.1") ? "http://" : "https://") + text)
-        }
-        return searchEngine.searchURL(for: text, custom: customSearchEngine)
+        return hostInput(text) ?? .search(prefersDirectAction: false)
+    }
+
+    public static func resolve(_ input: String, searchEngine: SearchEngine = .google, customSearchEngine: CustomSearchEngine? = nil) -> URL? {
+        let query = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        return classify(query)?.destination(searchEngine: searchEngine, customSearchEngine: customSearchEngine, query: query)
     }
 }

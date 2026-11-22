@@ -1,0 +1,3 @@
+kind: Changed
+body: Search unknown domain suffixes by default and visit recognized domains, IP addresses, and localhost subdomains.
+time: 2026-11-21T10:58:19.782525-08:00

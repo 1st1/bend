@@ -10,7 +10,9 @@ See [[lat.md/tests/address-entry-tests|Test coverage]].
 
 Native pages include `bend://start`, `bend://guide`, `bend://history`, `bend://chats`, and [[lat.md/architecture/updates#What's New page|bend://log]]. [[Sources/BrowseCore/Session.swift#AddressResolver#canonicalAddress]] accepts their legacy `browse://` aliases; page decoding migrates saved addresses and pinned destinations. Tool details display native page names rather than URLs.
 
-Bare hostnames containing dots use HTTPS, while localhost and loopback IPv4 addresses use HTTP. [BrowserStore.swift](../../Sources/Browse/BrowserStore.swift) also limits WebKit navigation to web URLs and internal blank documents.
+[[Sources/BrowseCore/Session.swift#AddressResolver#classify]] gives the popup and navigation the same decision. A bare domain defaults to Visit when its final label appears in the compiled [[Sources/BrowseCore/TopLevelDomains.swift|IANA root-zone snapshot]]. Internationalized domains use their ASCII DNS representation. Unknown suffixes default to the configured search engine. Explicit HTTP(S) addresses can visit private suffixes.
+
+IPv4 and IPv6 literals, localhost, and names under .localhost default to Visit, including ports and paths. Loopback and localhost destinations default to HTTP and other hosts to HTTPS. A bracketed IPv6 literal may include a port. [BrowserStore.swift](../../Sources/Browse/BrowserStore.swift) also limits WebKit navigation to web URLs and internal blank documents.
 
 ## Location popup
 

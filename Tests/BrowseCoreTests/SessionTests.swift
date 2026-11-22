@@ -91,6 +91,21 @@ import Testing
 
     #expect(AddressResolver.resolve(" example.com/path ")?.absoluteString == "https://example.com/path")
     #expect(AddressResolver.resolve("localhost:8080")?.absoluteString == "http://localhost:8080")
+    for input in ["nnn.y", "nnn.y:123/path?q=1", "invalid..com", "256.1.2.3", "site.com:65536"] {
+        #expect(AddressResolver.resolve(input, searchEngine: .kagi) == SearchEngine.kagi.searchURL(for: input))
+    }
+    for (input, expected) in [
+        ("chess.com", "https://chess.com"), ("shop.example.photography:8443/p", "https://shop.example.photography:8443/p"),
+        ("例子.中国", "https://xn--fsqu00a.xn--fiqs8s"), ("example.CoM./p", "https://example.CoM./p"),
+        ("localhost/?q=https://example.com", "http://localhost/?q=https://example.com"),
+        ("localhost", "http://localhost"), ("blah.localhost", "http://blah.localhost"),
+        ("blakh.localhost:123/sad", "http://blakh.localhost:123/sad"),
+        ("127.0.0.2:123/a", "http://127.0.0.2:123/a"), ("192.168.0.1", "https://192.168.0.1"),
+        ("::1", "http://[::1]"), ("[::1]:123/p", "http://[::1]:123/p"),
+        ("2001:db8::1", "https://[2001:db8::1]"), ("https://nnn.y", "https://nnn.y")
+    ] {
+        #expect(AddressResolver.resolve(input)?.absoluteString == expected)
+    }
     #expect(AddressResolver.resolve("https://swift.org")?.host == "swift.org")
     #expect(AddressResolver.resolve("bend://start")?.scheme == "bend")
     #expect(AddressResolver.resolve("bend://history")?.absoluteString == "bend://history")

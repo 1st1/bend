@@ -1,0 +1,141 @@
+Bend address-bar history ranking
+
+Each block is an independent history. Read down for the expected order.
+A dash means the URL must be absent. URLs default to HTTPS. Visits are one minute apart.
+A dot in TITLE means the page title is its URL.
+
+QUERY                 RANK  VISITS  URL                                                   TITLE
+
+github/jit               1      1  github.com/1st1/jit                                   .
+github/jit               2     20  github.com/1st1/jit-lat                               .
+github/jit               3     10  news.example.org/post                                 github/jit
+
+gh/jit                   1      1  github.com/1st1/jit                                   .
+gh/jit                   2      5  github.com/1st1/just-in-time                          .
+gh/jit                   -      9  g.example/h/jit                                       .
+
+github/jit-l             1      1  github.com/1st1/jit-lat                               .
+github/jit-l             -     20  github.com/1st1/jit                                   .
+
+docs/api                 1      1  docs.example.org/api                                  .
+docs/api                 2     10  docs.example.org/reference/api                        .
+docs/api                 3     20  docs.example.org/reference/api-reference              .
+
+guide/install            1      1  example.com/guide/install                             .
+guide/install            2      8  example.com/guide/v2/install                          .
+guide/install            -     15  example.com/install/guide                             .
+
+org/repo/issues          1      1  code.com/org/repo/issues                              .
+org/repo/issues          2      8  code.com/org/repo/archive/issues                      .
+org/repo/issues          -     20  code.com/org/issues/repo                              .
+
+go/go                    1      1  example.com/go/go                                     .
+go/go                    -      8  example.com/go                                        .
+
+ab/cd                    1      1  example.com/ab/cd                                     .
+ab/cd                    -     12  example.com/a/b/c/d                                   .
+ab/cd                    -      8  example.com/abcd                                      .
+
+docs/api                 1      1  docs.net/api                                          .
+docs/api                 2     20  example.com/post?q=docs/api                           .
+docs/api                 -      9  docs.net/search?q=api                                 .
+
+guide/install            1      1  example.com/guide/install                             .
+guide/install            2      1  example.com/guide%2Finstall-more                      .
+guide/install            -      9  example.com/guide#install                             .
+
+cafe/menu                1      1  example.com/caf%C3%A9/menu                            .
+cafe/menu                -      4  example.com/menu/cafe                                 .
+
+GITHUB/JIT               1      1  github.com/1st1/jit                                   .
+GITHUB/JIT               -      2  github.com/1st1/zip                                   .
+
+https://gh/jit           1      1  github.com/1st1/jit                                   .
+https://gh/jit           -      5  http://github.com/other/jit                           .
+
+docs/ap                  1      1  docs.net/ap                                           .
+docs/ap                  2     12  docs.net/api                                          .
+
+foo/bar                  1      1  example.com/foo/x/foo/bar                             .
+foo/bar                  2      9  example.com/foo/x/bar                                 .
+
+api/v2/users             1      1  api.example.com/v2/users                              .
+api/v2/users             -      9  api.example.com/v1/users                              .
+
+lib/ref                  1     15  code.com/lib/ref                                      .
+lib/ref                  2      2  docs.com/lib/ref                                      .
+
+chess.com                1      1  www.chess.com/play                                    .
+chess.com                -     20  news.ycombinator.com/from?site=math216.wordpress.com  Submissions from math216.wordpress.com | Hacker News
+
+10.23                    1      1  10.23.4.1/admin                                       .
+10.23                    -     10  example.com/10.23                                     .
+
+NullPointer              1      1  example.com/errors                                    NullPointerException
+NullPointer              -     12  example.org/index                                     .
+
+gh/jit compiler          1      1  github.com/1st1/jit                                   JIT compiler
+gh/jit compiler          -      3  github.com/1st1/jit-lat                               Notes
+
+github/missing           -      1  github.com/1st1/jit                                   .
+github/missing           -      2  example.com/missing                                   .
+
+docs/api                 1      1  docs.net/api                                          .
+docs/api                 2     12  docs.net/api/legacy                                   .
+docs/api                 3     20  docs.net/archived-api-guide                           .
+
+github.com/jit           1      1  github.com/jit                                        .
+github.com/jit           2     15  code.net/github.com/jit                               .
+
+new.yc                   1      1  new.yc.example                                        .
+new.yc                   2      1  news.ycombinator.com/                                 .
+new.yc                   3     15  news.ycombinator.com/item                             .
+new.yc                   -     15  example.com/new.yc                                    .
+new.yc                   -      9  newsyc.com/                                           .
+new.yc                   -      4  ycombinator.news.com/                                 .
+new.yc                   -      2  news.other.ycombinator.com/                           .
+
+NEW.YC                   1      1  www.news.ycombinator.com/                             .
+NEW.YC                   -      8  renew.ycombinator.com/                                .
+
+https://new.yc           1      2  news.ycombinator.com/                                 .
+https://new.yc           -      5  http://news.ycombinator.com/                          .
+
+new.yc/item              1      1  news.ycombinator.com/item                             .
+new.yc/item              -      5  example.com/item                                      .
+
+g.c/la                   1      1  github.com/vercel-labs/lat.md                         .
+g.c/la                   2      2  github.com/vercel-labs/lat.md/pulls                   .
+
+g/la                     1      1  github.com/vercel-labs/lat.md                         .
+g/la                     2      2  github.com/vercel-labs/lat.md/pulls                   .
+g/la                     3      1  github.com/vercel-labs/lat.md/actions                 .
+
+n.yc                     1      1  news.ycombinator.com/                                 .
+n.yc                     2      2  news.ycombinator.com/item?id=1                        .
+
+x.com/1                  1      1  x.com/1st1                                            .
+x.com/1                  2     20  x.com/1st1/status/234/photo/1                         .
+x.com/1                  3      7  x.com/1st1/status/234                                 .
+x.com/1                  4     30  x.com/other/status/234/photo/1                        .
+
+https://x.com/1          1      1  x.com/1st1                                            .
+https://x.com/1          2     20  x.com/1st1/status/234/photo/1                         .
+https://x.com/1          3      7  x.com/1st1/status/234                                 .
+https://x.com/1          4     30  x.com/other/status/234/photo/1                        .
+
+x/1                      1      1  x.com/1st1                                            .
+x/1                      2     20  x.com/1st1/status/234/photo/1                         .
+x/1                      3     30  x.com/other/status/234/photo/1                        .
+
+x.c/1                    1      1  x.com/1st1                                            .
+x.c/1                    2     20  x.com/1st1/status/234/photo/1                         .
+x.c/1                    3     30  x.com/other/status/234/photo/1                        .
+
+w.ny                     1      2  www.nytimes.com/                                      .
+w.ny                     2      1  www.nytimes.com/news                                  .
+
+ny.c                     1      2  www.nytimes.com/                                      .
+ny.c                     2      1  news.nytimes.com/                                     .
+
+w.ny/int                 1      2  www.nytimes.com/international/story                   .

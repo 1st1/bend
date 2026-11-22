@@ -15,26 +15,28 @@ import unicodedata
 
 ROOT = Path(__file__).resolve().parent.parent
 WORK = Path(tempfile.gettempdir()) / f"bend-address-corpus-{os.getuid()}"
-CASES = WORK / "cases.jsonl"
 
 
-def sources():
+def sources(include_safari):
     library = Path.home() / "Library"
     support = library / "Application Support"
     yield "Bend", support / "BrowsePrototype/History.db", True
     yield "Bend Debug", support / "Bend Debug/History.db", True
+    if not include_safari:
+        return
     safari = library / "Safari"
     yield "Safari", safari / "History.db", False
     for profile in sorted((safari / "Profiles").glob("*/History.db")):
         yield f"Safari/{profile.parent.name}", profile, False
 
 
-def load_sources(worker=None):
+def load_sources(worker=None, *, include_safari=False):
     """Read consistent, per-profile snapshots. Only the unique URLs stay in Python."""
     urls = set()
-    for name, path, bend in sources():
+    for name, path, bend in sources(include_safari):
         try:
             with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as source:
+                source.execute("PRAGMA temp_store = MEMORY")
                 source.execute("BEGIN")
                 source.row_factory = sqlite3.Row
                 visits = [dict(row) for row in source.execute("""
@@ -87,6 +89,7 @@ def explore(screen, urls, worker):
             highlight |= curses.color_pair(1)
         except curses.error:
             pass
+    cases = {}
     query = ""
     inspiration = []
     status = ""
@@ -109,7 +112,7 @@ def explore(screen, urls, worker):
                 clean = "".join(c if c.isprintable() else " " for c in text)
                 screen.addnstr(y, 0, clean, width - 1)
 
-        line(0, "Type to match   ↑↓: choose best   Ctrl-G: save case   Ctrl-R: 10 random URLs   Esc: quit")
+        line(0, "Type to match   ↑↓: choose best   Ctrl-G: mark case   Ctrl-R: 10 random URLs   Esc: quit")
         line(1, "> " + query)
         def highlighted_line(y, prefix, runs):
             height, width = screen.getmaxyx()
@@ -149,7 +152,7 @@ def explore(screen, urls, worker):
         key = screen.get_wch()
         status = ""
         if key in ("\x1b", "\x03", "\x04"):
-            return
+            return cases
         if key == "\x12":
             inspiration = random_urls(urls)
         elif key == curses.KEY_DOWN and matches:
@@ -160,9 +163,8 @@ def explore(screen, urls, worker):
             expected = [result["url"] for result in matches]
             if expected:
                 expected.insert(0, expected.pop(selected))
-            with CASES.open("a", encoding="utf-8") as saved:
-                saved.write(json.dumps([query, expected]) + "\n")
-            status = "Saved expected ranking"
+            cases[query] = expected
+            status = "Marked for this session; prints on exit"
         elif key in (curses.KEY_BACKSPACE, "\x7f", "\b"):
             query = query[:-1]
         elif key == "\x15":
@@ -173,30 +175,25 @@ def explore(screen, urls, worker):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--random", action="store_true", help="print ten random distinct URLs and exit")
-    mode.add_argument("--cases", action="store_true", help="print saved queries and expected rankings")
+    parser.add_argument("--random", action="store_true", help="print ten random distinct URLs and exit")
+    parser.add_argument("--safari", action="store_true", help="also read available Safari histories")
     args = parser.parse_args()
     os.umask(0o077)
-    WORK.mkdir(mode=0o700, exist_ok=True)
-    if args.cases:
-        if CASES.exists():
-            with CASES.open(encoding="utf-8") as saved:
-                cases = dict(json.loads(line) for line in saved)
-            for query, matches in sorted(cases.items()):
-                print(query)
-                for index, url in enumerate(matches, 1):
-                    print(f"  {index}. {url}")
-    elif args.random:
-        print("\n".join(random_urls(load_sources())))
+    if args.random:
+        print("\n".join(random_urls(load_sources(include_safari=args.safari))))
     else:
+        WORK.mkdir(mode=0o700, exist_ok=True)
         with subprocess.Popen([matcher_binary()], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                               text=True, encoding="utf-8") as worker:
             try:
-                urls = load_sources(worker)
-                curses.wrapper(explore, urls, worker)
+                urls = load_sources(worker, include_safari=args.safari)
+                cases = curses.wrapper(explore, urls, worker)
             finally:
                 worker.stdin.close()
+        for query, matches in cases.items():
+            print(query)
+            for index, url in enumerate(matches, 1):
+                print(f"  {index}. {url}")
 
 
 if __name__ == "__main__":
