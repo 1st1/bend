@@ -5,6 +5,19 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.10.2
+### Added
+- Open tabs and panes keep their Back and Forward history when you quit and reopen Bend.
+### Changed
+- Search unknown domain suffixes by default and visit recognized domains, IP addresses, and localhost subdomains.
+- Rank slash-separated address-bar abbreviations by matching hostname and path components in order.
+- Show the first site domain in the toolbar faster after launch.
+### Fixed
+- Reopening a conversation with an invalid pane layout now reports an error and preserves the saved chat.
+- Keep the typed domain selected in the address bar and filter out history matches from unrelated titles and paths.
+- Dragging past a hover-opened tab gives you 500 ms to reach its canvas before focus returns to the dragged tab. Dropping back into the sidebar reorder area restores focus immediately.
+- Reopening a closed tab or pane with Command-Shift-T restores its Back and Forward history.
+
 ## v0.10.1
 ### Fixed
 - Fixed a crash when AI chat displayed a formula in a new or reopened conversation.
