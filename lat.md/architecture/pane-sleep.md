@@ -22,7 +22,7 @@ A page-world probe conservatively keeps documents awake after constructing WebRT
 
 ## State capture and waking
 
-[[Sources/Browse/PaneSleep.swift#PaneRestorationState]] retains only WebKit interaction state, compressed preview bytes, URL, title, and zoom in memory. It never persists page state or previews to disk.
+[[Sources/Browse/PaneSleep.swift#PaneRestorationState]] retains only WebKit interaction state, compressed preview bytes, URL, title, and zoom in memory. Normal quit can save the navigation state of an open regular pane for [[session#Navigation history across launches]]. Preview images stay in memory.
 
 [[Sources/Browse/BrowserStore.swift#BrowserStore#finishSleeping]] removes the controller from the store and detaches the WebView. [[Sources/Browse/BrowserView.swift]] replaces inactive sleeping pane content with its snapshot, releasing the retained SwiftUI controller and native surface. This is the exception to [[session#Mounted tab views]] retention; unvisited tabs remain lazy.
 

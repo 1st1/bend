@@ -120,6 +120,7 @@ final class BrowserStore: ObservableObject {
     // not exposed by public WKNavigationAction and must not be fabricated.
     private(set) var linkOpeners: [UUID: UUID] = [:]
     private var pendingSave: Task<Void, Never>?
+    private let navigationArchive: PaneNavigationArchive?
     private let sessionFile: URL
     private let historyFile: URL
     private let legacyHistoryFile: URL
@@ -140,6 +141,7 @@ final class BrowserStore: ObservableObject {
         self.persistentExtensions = sharedStore?.persistentExtensions ?? persistentExtensions
         let root = AppProfile.current.supportDirectory
         self.sessionFile = sessionFile ?? root.appendingPathComponent("session.json")
+        navigationArchive = isPrivate ? nil : PaneNavigationArchive(sessionFile: self.sessionFile)
         chatHistory = isPrivate ? ChatHistoryStore(directory: nil) : (sharedStore?.chatHistory ?? ChatHistoryStore(directory: self.sessionFile.deletingLastPathComponent().appendingPathComponent("AIChats")))
         faviconCache = isPrivate ? nil : (sharedStore?.faviconCache ?? FaviconCache(
             file: self.sessionFile.deletingLastPathComponent().appendingPathComponent("Favicons.json")))
@@ -1053,16 +1055,16 @@ final class BrowserStore: ObservableObject {
 
     private func closedPaneStates(for ids: [UUID]) -> [UUID: PaneRestorationState] {
         var states: [UUID: PaneRestorationState] = [:]
-        for id in ids {
-            if let suspended = sleepingPanes[id] {
-                states[id] = suspended
-            } else if let controller = browsers[id],
-                      controller.webView.canGoBack || controller.webView.canGoForward,
-                      controller.webView.backForwardList.currentItem?.url.absoluteString == controller.address {
-                states[id] = controller.restorationState()
-            }
-        }
+        for id in ids { states[id] = navigationState(for: id) }
         return states
+    }
+
+    private func navigationState(for id: UUID) -> PaneRestorationState? {
+        if let sleeping = sleepingPanes[id] { return sleeping }
+        guard let controller = browsers[id] else { return navigationArchive?.read(id) }
+        guard controller.webView.canGoBack || controller.webView.canGoForward,
+              controller.webView.backForwardList.currentItem?.url.absoluteString == controller.address else { return nil }
+        return controller.restorationState()
     }
 
     private func rememberClosed(_ item: ClosedItem) {
@@ -1135,7 +1137,7 @@ final class BrowserStore: ObservableObject {
         let extensionURL = URL(string: page.address).flatMap {
             ["webkit-extension", "safari-web-extension"].contains($0.scheme ?? "") ? $0 : nil
         }
-        let sleeping = sleepingPanes.removeValue(forKey: page.id).flatMap { $0.address == page.address ? $0 : nil }
+        let sleeping = (sleepingPanes.removeValue(forKey: page.id) ?? navigationArchive?.read(page.id)).flatMap { $0.address == page.address ? $0 : nil }
         let hasLinkOrigin = session.workspaces.flatMap(\.tabs).contains { $0.originTabID != nil && $0.pages.contains { $0.id == page.id } }
         let controller = PageController(address: extensionURL == nil ? page.address : "bend://start", paneID: page.id, isPrivate: isPrivate, websiteSettings: websiteSettings, faviconCache: faviconCache, seedCloseHistory: hasLinkOrigin || page.originPageID != nil, downloads: downloads, searchEngine: searchEngine, customSearchEngine: customSearchEngine, restoring: extensionURL == nil ? sleeping : nil, trackSleep: sleepPreferences.enabled, configure: { [weak self] configuration in
             self?.configureWebView(configuration)
@@ -1273,7 +1275,13 @@ final class BrowserStore: ObservableObject {
 
     func existingController(for pageID: UUID) -> PageController? { browsers[pageID] }
 
+    private func discardArchivedNavigation(_ id: UUID) {
+        do { try navigationArchive?.remove(id) }
+        catch { persistenceError = "Could not clear pane navigation history: \(error.localizedDescription)" }
+    }
+
     private func removeController(_ id: UUID) {
+        discardArchivedNavigation(id)
         sleepingPanes.removeValue(forKey: id)
         mediaCoordinator.unregister(id)
         let controller = browsers.removeValue(forKey: id)
@@ -1344,9 +1352,10 @@ final class BrowserStore: ObservableObject {
         guard nextSource.isValid, nextDestination.isValid else { return false }
         let oldPageOrder = session.workspaces.flatMap(\.tabs).flatMap(\.pages).map(\.id)
         for page in incoming.pages {
-            if let sleeping = sleepingPanes.removeValue(forKey: page.id) {
-                destination.sleepingPanes[page.id] = sleeping
+            if browsers[page.id] == nil {
+                destination.sleepingPanes[page.id] = sleepingPanes.removeValue(forKey: page.id) ?? navigationArchive?.read(page.id)
             }
+            discardArchivedNavigation(page.id)
             destination.sleepCoordinator?.didCreate(page.id)
             if let controller = browsers[page.id] {
                 destination.browsers[page.id] = controller
@@ -1399,14 +1408,20 @@ final class BrowserStore: ObservableObject {
         session = cleared
         closedItems.removeAll(); pendingAddressEntry = nil; linkOpeners.removeAll(); zoomedPanes.removeAll()
         save()
+        clearArchivedNavigation()
+    }
+
+    func clearArchivedNavigation() {
+        do { try navigationArchive?.clear() }
+        catch { persistenceError = "Could not clear pane navigation history: \(error.localizedDescription)" }
     }
 
     func stopWindow() {
         sleepObservation?.cancel(); sleepCoordinator?.stop(); sleepCoordinator = nil
-        sleepingPanes.removeAll()
         for chat in chats.values { chat.stop() }
         mediaCoordinator.removeAll()
-        save()
+        save(includingNavigationHistory: true)
+        sleepingPanes.removeAll()
         windowStopped = true
         chats.removeAll(); openChats.removeAll()
         pendingSave?.cancel(); pendingSave = nil
@@ -1483,7 +1498,7 @@ final class BrowserStore: ObservableObject {
         }
     }
 
-    func save() {
+    func save(includingNavigationHistory: Bool = false) {
         guard !isPrivate else { return }
         faviconCache?.flush()
         do {
@@ -1497,6 +1512,12 @@ final class BrowserStore: ObservableObject {
             }
             saved.zoomedPanes = zoomedPanes.isEmpty ? nil : zoomedPanes
             try JSONEncoder().encode(saved).write(to: sessionFile, options: .atomic)
+            if includingNavigationHistory, !windowStopped, let navigationArchive {
+                for page in saved.workspaces.flatMap(\.tabs).flatMap(\.pages)
+                    where browsers[page.id] != nil || sleepingPanes[page.id] != nil {
+                    try navigationArchive.write(navigationState(for: page.id), for: page.id)
+                }
+            }
             persistenceError = nil
         } catch { persistenceError = "Session could not be saved: \(error.localizedDescription)" }
         saveHistory()
@@ -1810,6 +1831,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
             if webView.mediaController == nil { media.attach(to: webView) }
             if webView.go(to: item) != nil { return }
         }
+        closeHistoryURL = nil
         if let url = URL(string: state.address) { load(url) }
     }
 

@@ -34,4 +34,12 @@ Session restoration creates controllers lazily on selection. Opening a new tab i
 
 Per-window sessions also retain active AI conversation IDs and chat panel visibility; [[lat.md/architecture/ai#Saved chat history]] stores the corresponding messages and pane snapshots.
 
-Persistence retains the workspace envelope for compatibility, plus selected tab, URLs, focused panes, and split trees. On load, [BrowserStore.swift](../../Sources/Browse/BrowserStore.swift) combines legacy workspaces into one in their existing tab order, preserving tab and pane identities, layouts, URLs, and selection. New sessions start with one workspace; group names are not displayed. Restarting recreates web views from URLs; in-page state and back-forward lists are only retained during the running process. Invalid session files fall back to the initial workspace. Save failures appear in the sidebar.
+Persistence retains the workspace envelope for compatibility, plus selected tab, URLs, focused panes, and split trees. On load, [BrowserStore.swift](../../Sources/Browse/BrowserStore.swift) combines legacy workspaces into one in their existing tab order, preserving tab and pane identities, layouts, URLs, and selection. New sessions start with one workspace; group names are not displayed. Invalid session files fall back to the initial workspace. Save failures appear in the sidebar.
+
+## Navigation history across launches
+
+On normal quit or final window close, regular windows save the current WebKit navigation list for each open pane that has history. A restored pane can go both Back and Forward from its saved position.
+
+[[Sources/Browse/PaneNavigationArchive.swift#PaneNavigationArchive]] stores WebKit’s opaque data, the associated URL and any link-close marker in a separate file per pane beside the window session. Sleeping panes supply their captured state. Unopened panes keep their files until needed. [[Sources/Browse/BrowserStore.swift#BrowserStore#controller]] reads a pane’s file on demand and falls back to its saved URL if the state is missing, unreadable or belongs to a different address.
+
+Private windows keep navigation state in memory. Closing a pane removes its disk record, and clearing open tabs for privacy removes the window’s archive. The recently closed stack stays local to the current run. [[lat.md/tests/session-tests#Navigation history across launches]] exercises an actual process restart.

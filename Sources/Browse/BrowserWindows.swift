@@ -66,7 +66,10 @@ final class BrowserWindows {
             if self.lastActive === context { self.lastActive = self.windows.last }
             // Retain the final closed window for the next launch. Explicit quit
             // saves the whole open set before AppKit tears down any windows.
-            if !self.terminating, self.windows.contains(where: { !$0.store.isPrivate }) { self.save() }
+            if !self.terminating, self.windows.contains(where: { !$0.store.isPrivate }) {
+                context.store.clearArchivedNavigation()
+                self.save()
+            }
         }
         if !isPrivate {
             store.onNewWindowDrop = { [weak self, weak store] tab, pane, point in
@@ -122,9 +125,11 @@ final class BrowserWindows {
         return context
     }
 
-    func save() {
-        sharedStore.save()
-        for context in windows where context.store !== sharedStore { context.store.save() }
+    func save(includingNavigationHistory: Bool = false) {
+        sharedStore.save(includingNavigationHistory: includingNavigationHistory)
+        for context in windows where context.store !== sharedStore {
+            context.store.save(includingNavigationHistory: includingNavigationHistory)
+        }
         let restorable = windows.filter { !$0.store.isPrivate }
         guard !restorable.isEmpty else { return }
         do {
@@ -149,7 +154,7 @@ final class BrowserWindows {
         try JSONEncoder().encode(["main"]).write(to: root.appendingPathComponent("windows.json"), options: .atomic)
     }
 
-    func prepareToQuit() { terminating = true; sharedStore.downloads.shutdown(); save() }
+    func prepareToQuit() { terminating = true; sharedStore.downloads.shutdown(); save(includingNavigationHistory: true) }
 }
 
 @MainActor

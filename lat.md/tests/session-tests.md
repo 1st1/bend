@@ -38,6 +38,10 @@ Closing a pane and then its tab reopens them in reverse order without duplicate 
 
 Closing a tab or pane in the middle of its navigation list and reopening it restores the current page. Back and Forward on the replacement WebView reach the original neighboring pages.
 
+## Navigation history across launches
+
+Two independent processes share a temporary profile. The first quits on the middle of three visited pages. The second restores that page and traverses the original Back and Forward entries. Unreadable WebKit data falls back to the saved URL.
+
 ## Reopen boundaries and background closures
 
 [ReopenTests.swift](../../Tests/BrowseTests/ReopenTests.swift) checks background extension closures, final-pane tab closure, invalid pane IDs, preservation of navigated replacement tabs, and the fifty-entry history limit.
