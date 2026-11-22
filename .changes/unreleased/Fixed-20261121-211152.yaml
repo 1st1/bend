@@ -1,0 +1,3 @@
+kind: Fixed
+body: Dragging past a hover-opened tab gives you 500 ms to reach its canvas before focus returns to the dragged tab. Dropping back into the sidebar reorder area restores focus immediately.
+time: 2026-11-21T21:11:52.89868-08:00

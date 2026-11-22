@@ -72,7 +72,9 @@ Same-workspace and cross-workspace joins retain valid sessions, including replac
 
 ## Tab drag hover and merge placement
 
-[PaneTransferTests.swift](../../Tests/BrowseTests/PaneTransferTests.swift) drives native tab drags through delayed selection and all four pane-edge merges, checking timer cancellation, zoom exit, preview cleanup, and preservation of live page and extension identities.
+[PaneTransferTests.swift](../../Tests/BrowseTests/PaneTransferTests.swift) drives native tab drags through delayed selection and all four pane-edge merges, checking timer cancellation, zoom exit, and preview cleanup.
+
+Lingering in the sidebar after leaving a previewed row reselects the dragged tab after a grace period. Crossing into the canvas during that period keeps the destination selected. Releasing back at the original sidebar slot immediately reselects the dragged tab and preserves both tabs. Hovering again allows a pane-edge merge that preserves live page and extension identities.
 
 ## Cross-window live transfers
 

@@ -133,6 +133,7 @@ final class TabDragSourceView: NSView {
         let outsidePoint = dragSurface == nil ? nil
             : WindowDragTarget.newWindowPoint(from: window, at: event.locationInWindow, store: store)
         let wasDragging = dragSurface != nil
+        let returningToSource = dragSurface?.isReturningToSource == true
         let placement = dragSurface?.placement
         let destinationWindow = dragSurface?.window
         let destinationStore = dragSurface?.destinationStore
@@ -156,6 +157,7 @@ final class TabDragSourceView: NSView {
             switch placement {
             case .reorder(let destination, let after):
                 _ = store.reorderTab(tabID, relativeTo: destination, after: after)
+                if returningToSource { store.select(tabID) }
             case .join(let destination):
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
                     _ = store.joinTabs(tabID, into: destination)
@@ -218,8 +220,14 @@ final class TabDragSurface: NSView {
     }
     private(set) var paneTarget: PaneDropHost?
     private weak var previewStore: BrowserStore?
-    private var hoverTabID: UUID?
+    private enum HoverTarget: Equatable {
+        case destination(UUID)
+        case returnToSource
+    }
+    private var hoverTarget: HoverTarget?
+    var isReturningToSource: Bool { hoverTarget == .returnToSource }
     private var hoverTask: Task<Void, Never>?
+    private var previewedSourceWindowTab: UUID?
     var destinationStore: BrowserStore? { (window as? BrowseWindow)?.browserStore ?? source?.store }
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
@@ -302,7 +310,13 @@ final class TabDragSurface: NSView {
             (id, bounds.offsetBy(dx: 0, dy: CGFloat(store.tabReorderPreview.offsets[id, default: 0]) * stride))
         }
         let center = joinRows.first { $0.0 != source.tabID && $0.1.insetBy(dx: 0, dy: $0.1.height * 0.2).contains(point) }
-        updateHover(center?.0)
+        if let center {
+            updateHover(.destination(center.0))
+        } else if store === sourceStore, previewedSourceWindowTab == store.session.selectedTab {
+            updateHover(.returnToSource)
+        } else {
+            updateHover(nil)
+        }
         if let row = center {
             placement = .join(tabID: row.0)
             badge.isHidden = window !== sourceWindow
@@ -331,22 +345,30 @@ final class TabDragSurface: NSView {
         badge.stringValue = source.title
     }
 
-    private func updateHover(_ id: UUID?) {
-        guard id != hoverTabID else { return }
+    private func updateHover(_ target: HoverTarget?) {
+        guard target != hoverTarget else { return }
         hoverTask?.cancel(); hoverTask = nil
-        hoverTabID = id
-        guard let id, let store = destinationStore else { return }
+        hoverTarget = target
+        guard let target, let store = destinationStore else { return }
         hoverTask = Task { @MainActor [weak self, weak store] in
-            do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
-            guard let self, let store, self.hoverTabID == id, self.source?.dragSurface === self,
+            let delay: Duration = target == .returnToSource ? .milliseconds(500) : .milliseconds(400)
+            do { try await Task.sleep(for: delay) } catch { return }
+            guard let self, let store, self.hoverTarget == target, self.source?.dragSurface === self,
                   let sourceID = self.source?.tabID,
-                  self.source?.store?.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == sourceID }) == true,
-                  store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == id }) else { return }
+                  self.source?.store?.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == sourceID }) == true else { return }
+            guard case .destination(let id) = target else {
+                guard store === self.source?.store, store.session.selectedTab == self.previewedSourceWindowTab else { return }
+                self.previewedSourceWindowTab = nil
+                store.select(sourceID)
+                return
+            }
+            guard store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == id }) else { return }
             guard self.placement == .join(tabID: id) else { return }
             if store.session.selectedTab != id {
                 InputDiagnostics.transition(.tabHoverSelection, .changed, view: self.source, tabID: id)
                 store.select(id)
             }
+            if self.source?.store === store { self.previewedSourceWindowTab = id }
             store.zoomedPane = nil
         }
     }
@@ -362,6 +384,7 @@ final class TabDragSurface: NSView {
             let position = CGPoint(x: local.x - candidate.bounds.minX,
                 y: candidate.isFlipped ? local.y - candidate.bounds.minY : candidate.bounds.maxY - local.y)
             guard let edge = PaneDropEdge.at(position, in: candidate.bounds.size) else { continue }
+            if store === source?.store { previewedSourceWindowTab = store.selectedTab.id }
             placement = .joinAtPane(tabID: store.selectedTab.id, paneID: pane, edge: edge)
             badge.isHidden = window !== source?.window
             badge.stringValue = "Join tabs"
