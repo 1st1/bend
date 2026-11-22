@@ -29,9 +29,9 @@ def main(command, shard_index=0, shard_count=1):
         return 1
 
     # Discovery builds once with exactly the same SDK flags as execution.
-    listing = subprocess.run([arg for arg in command if arg != "--no-parallel"] + ["list"],
-                             capture_output=True, text=True)
-    sys.stdout.write(listing.stderr)
+    list_args = ["list", "--skip-build"] if os.environ.get("BEND_VM_PREBUILT") == "1" else ["list"]
+    listing = subprocess.run([arg for arg in command if arg != "--no-parallel"] + list_args,
+                              stdout=subprocess.PIPE, text=True)
     if listing.returncode:
         sys.stdout.write(listing.stdout)
         return listing.returncode
