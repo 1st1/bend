@@ -2,13 +2,27 @@ import Foundation
 
 // @lat: [[lat.md/architecture/web-pages#Site domain labels]]
 public enum SiteDisplayDomain {
-    private static let rules: Set<String> = Set(PublicSuffixSnapshot.text.split(separator: "\n").compactMap { line in
-        guard let rule = line.split(whereSeparator: \.isWhitespace).first, !rule.hasPrefix("//") else { return nil }
-        let prefix = rule.hasPrefix("!") ? "!" : rule.hasPrefix("*.") ? "*." : ""
-        let name = rule.dropFirst(prefix.count)
-        guard let host = URL(string: "https://\(name)/")?.host else { return nil }
-        return prefix + host.lowercased()
-    })
+    // Each sorted bucket contains fixed-width ASCII rules separated by LF.
+    private static func containsRule(_ rule: String) -> Bool {
+        var key = rule
+        return key.withUTF8 { bytes in
+            guard let bucket = PublicSuffixSnapshot.rows(ofLength: bytes.count),
+                  let keyStart = bytes.baseAddress else { return false }
+            return bucket.withUTF8Buffer { rows in
+                guard let start = rows.baseAddress else { return false }
+                let stride = bytes.count + 1
+                var low = 0
+                var high = (rows.count + 1) / stride
+                while low < high {
+                    let middle = (low + high) / 2
+                    let order = memcmp(start + middle * stride, keyStart, bytes.count)
+                    if order == 0 { return true }
+                    if order < 0 { low = middle + 1 } else { high = middle }
+                }
+                return false
+            }
+        }
+    }
 
     public static func label(for url: URL) -> String? {
         guard let original = url.host?.lowercased() else { return nil }
@@ -21,11 +35,11 @@ public enum SiteDisplayDomain {
         var suffixLength = 1
         for index in labels.indices {
             let suffix = labels[index...].joined(separator: ".")
-            if rules.contains("!" + suffix) {
+            if containsRule("!" + suffix) {
                 return labels.suffix(labels.count - index).joined(separator: ".")
             }
-            if rules.contains(suffix) { suffixLength = max(suffixLength, labels.count - index) }
-            if index > 0, rules.contains("*." + suffix) {
+            if containsRule(suffix) { suffixLength = max(suffixLength, labels.count - index) }
+            if index > 0, containsRule("*." + suffix) {
                 suffixLength = max(suffixLength, labels.count - index + 1)
             }
         }

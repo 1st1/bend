@@ -82,7 +82,7 @@ The site menu uses the shared toolbar button style and displays the committed si
 
 [[Sources/BrowseCore/SiteDisplayDomain.swift#SiteDisplayDomain]] abbreviates the toolbar label to the registrable domain using an offline Public Suffix List snapshot, including ICANN and private rules.
 
-The formatter applies longest-match, wildcard, and exception rules, normalizing international names to ASCII. IP addresses and single-label hosts remain intact. The full origin stays in the menu and tooltip; permission and certificate identities are unchanged. [[scripts/update-public-suffix-list.py]] refreshes [[Sources/BrowseCore/PublicSuffixSnapshot.swift]] from the official list, preserving its source and license notices without runtime network requests. [[lat.md/tests/web-pages-tests#Site domain labels]] covers boundary cases.
+The formatter applies longest-match, wildcard, and exception rules, normalizing international names to ASCII. IP addresses and single-label hosts remain intact. The full origin stays in the menu and tooltip; permission and certificate identities are unchanged. [[scripts/update-public-suffix-list.swift]] normalizes the official rules with Foundation and groups them by byte length when refreshing the checked-in [[Sources/BrowseCore/PublicSuffixSnapshot.swift]]. [[Sources/BrowseCore/SiteDisplayDomain.swift#SiteDisplayDomain#containsRule]] binary-searches fixed-width rows in compiled string literals, so the first toolbar label requires no table initialization. [[lat.md/tests/web-pages-tests#Site domain labels]] covers boundary cases.
 
 ## Certificate exceptions
 
