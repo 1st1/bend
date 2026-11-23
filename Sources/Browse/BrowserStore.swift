@@ -301,7 +301,7 @@ final class BrowserStore: ObservableObject {
     }
 
     var searchEngineName: String {
-        searchEngine == .custom ? (customSearchEngine?.name ?? "Custom") : searchEngine.name
+        searchEngine.displayName(custom: customSearchEngine)
     }
 
     var searchEngine: SearchEngine {

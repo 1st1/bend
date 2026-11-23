@@ -104,7 +104,7 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
 
     history.record(url: "https://www.nytimes.com/", title: "The New York Times", at: historyNow)
     let times = history.suggestions(for: "nytim", now: historyNow).first!
-    #expect(times.completion(for: "nytim") == nil)
+    #expect(times.completion(for: "nytim") == "nytimes.com/")
     #expect(times.completion(for: "WWW.NYtim") == "WWW.NYtimes.com/")
     #expect(times.completion(for: "www.nytim") == "www.nytimes.com/")
     #expect(times.completion(for: "https://www.nytim") == times.url)
@@ -212,7 +212,7 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     }
     let pathMatch = history.suggestions(for: "nytimes.com/int", now: historyNow).first
     #expect(pathMatch?.url == timesArticle)
-    #expect(pathMatch?.completion(for: "nytimes.com/int") == nil)
+    #expect(pathMatch?.completion(for: "nytimes.com/int") == "nytimes.com/international/story")
 }
 
 // @lat: [[lat.md/tests/history-tests#Matched address characters]]
