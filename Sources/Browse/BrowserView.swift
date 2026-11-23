@@ -217,11 +217,19 @@ struct SidebarTabRow: View {
     @ViewState<Bool> private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    @MainActor static func dragPreview(store: BrowserStore, tab: BrowserTab) -> NSView {
+        let view = NSHostingView(rootView: SidebarTabRow(store: store, tab: tab, isDragPreview: true)
+            .background(.regularMaterial, in: Capsule())
+            .accessibilityHidden(true))
+        view.sizingOptions = []
+        return view
+    }
+
     var body: some View {
         #if DEBUG
         TabPerformanceCounters.record(\.sidebarRowBodies, store: store)
         #endif
-        let selected = tab.id == store.session.selectedTab
+        let selected = isDragPreview || tab.id == store.session.selectedTab
         return HStack(spacing: 8) {
             Button {
                 if OptionKeyState.optionAtClick { store.toggleTabPinned(tab.id) }
@@ -578,13 +586,14 @@ private struct AnimatedPaneHeader<Content: View>: View, Animatable {
     }
 }
 
-private struct BrowserPane: View {
+struct BrowserPane: View {
     // The 24-point buttons have a 36-point center pitch across group boundaries.
     private static let controlGroupSpacing: CGFloat = 12
     @ObservedObject var store: BrowserStore
     @ObservedObject var controller: PageController
     let tab: BrowserTab
     let pageID: UUID
+    var isDragCanvas = false
     @ViewState<CGFloat> private var headerHeight: CGFloat = Chrome.paneHeaderHeight
     @ViewState<Bool> private var titleHovered = false
     @ViewState<Bool> private var paneHovered = false
@@ -642,7 +651,7 @@ private struct BrowserPane: View {
             WebSurface(webView: controller.webView, topContentInset: headerHeight,
                        headerAppearance: store.paneHeaderGlass, topRimClipping: store.paneHeaderTopRimClipping,
                        bottomRimClipping: store.paneHeaderBottomRimClipping,
-                       activeHeaderTint: activeHeaderTint)
+                       activeHeaderTint: activeHeaderTint, isDragCanvas: isDragCanvas)
                 .overlay { wakePreview }
                 .background(PaneChromeBackground(cornerRadius: 12, topRimClipping: store.paneHeaderTopRimClipping))
                 .overlay(alignment: .top) {
@@ -844,7 +853,7 @@ private struct BrowserPane: View {
             StartPage()
                 .onTapGesture { store.focus(pageID) }
         } else {
-            WebSurface(webView: controller.webView, activeHeaderTint: activeHeaderTint)
+            WebSurface(webView: controller.webView, activeHeaderTint: activeHeaderTint, isDragCanvas: isDragCanvas)
         }
     }
 }
@@ -966,17 +975,20 @@ private struct WebSurface: NSViewRepresentable {
     var topRimClipping: CGFloat = BrowserStore.defaultHeaderTopRimClipping
     var bottomRimClipping: CGFloat = BrowserStore.defaultHeaderBottomRimClipping
     var activeHeaderTint: NSColor?
+    var isDragCanvas = false
 
     func makeNSView(context: Context) -> WebSurfaceHost {
         let host = WebSurfaceHost()
         host.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance,
-                    topRimClipping: topRimClipping, bottomRimClipping: bottomRimClipping, activeHeaderTint: activeHeaderTint)
+                    topRimClipping: topRimClipping, bottomRimClipping: bottomRimClipping, activeHeaderTint: activeHeaderTint,
+                    isDragCanvas: isDragCanvas)
         return host
     }
 
     func updateNSView(_ nsView: WebSurfaceHost, context: Context) {
         nsView.update(webView: webView, topContentInset: topContentInset, headerAppearance: headerAppearance,
-                      topRimClipping: topRimClipping, bottomRimClipping: bottomRimClipping, activeHeaderTint: activeHeaderTint)
+                      topRimClipping: topRimClipping, bottomRimClipping: bottomRimClipping, activeHeaderTint: activeHeaderTint,
+                      isDragCanvas: isDragCanvas)
     }
 }
 

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import WebKit
 import BrowseCore
 
 struct PaneDragHandle: NSViewRepresentable {
@@ -107,10 +108,14 @@ final class PaneDragSourceView: NSView {
             content.addSubview(surface, positioned: .above, relativeTo: nil)
 
         }
-        let screenPoint = window.convertPoint(toScreen: event.locationInWindow)
-        dragPreview?.update(at: screenPoint, expanded: WindowDragTarget.previewExpanded(
-            at: screenPoint, store: store, wasExpanded: dragPreview?.expanded == true))
         dragSurface?.update(at: event.locationInWindow)
+        if dragSurface?.sidebarRow?.isHidden == false {
+            dragPreview?.hide()
+        } else {
+            let screenPoint = window.convertPoint(toScreen: event.locationInWindow)
+            dragPreview?.update(at: screenPoint, expanded: WindowDragTarget.previewExpanded(
+                at: screenPoint, store: store, wasExpanded: dragPreview?.expanded == true))
+        }
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -121,6 +126,7 @@ final class PaneDragSourceView: NSView {
             : WindowDragTarget.newWindowPoint(from: window, at: event.locationInWindow, store: store)
         let target = dragSurface?.target
         let sidebarTarget = dragSurface?.sidebarTarget
+        let insertion = dragSurface?.insertion
         let edge = target?.dropEdge
         let sourceID = target?.validSource(self)
         InputDiagnostics.transition(.paneDrop, .requested, event: event, view: self, tabID: target?.tabID, relatedPaneID: target?.pageID, flags: ["paneTarget": target != nil, "sidebarTarget": sidebarTarget != nil])
@@ -137,6 +143,17 @@ final class PaneDragSourceView: NSView {
                 }
             }
         } else if let sidebarTarget, let store, let tabID, let pageID {
+            if let insertion, let destination = sidebarTarget.store {
+                if destination !== store {
+                    if store.transfer(tab: tabID, pane: pageID, to: destination,
+                                      at: .insert(relativeTo: insertion.id, after: insertion.after)) {
+                        sidebarTarget.window?.makeKeyAndOrderFront(nil)
+                    }
+                } else if let workspace = store.session.workspaces.first(where: { $0.tabs.contains { $0.id == insertion.id } }) {
+                    store.detachPane(pageID, from: tabID, into: workspace.id, relativeTo: insertion.id, after: insertion.after)
+                }
+                return
+            }
             if let targetStore = sidebarTarget.store, targetStore !== store {
                 let placement: WindowDropPlacement
                 switch sidebarTarget.destination {
@@ -264,7 +281,17 @@ class PaneDropHost: NSView {
 final class PaneDragSurface: NSView {
     private weak var source: PaneDragSourceView?
     private(set) var target: PaneDropHost?
-    private(set) var sidebarTarget: PaneSidebarTargetView?
+    private var hoveredSidebar: PaneSidebarTargetView?
+    private(set) var insertion: (id: UUID, after: Bool)?
+    private weak var reorderStore: BrowserStore?
+    var sidebarTarget: PaneSidebarTargetView? {
+        if case .tab(let id) = hoveredSidebar?.destination, id == source?.tabID { return nil }
+        return hoveredSidebar
+    }
+    private(set) var sidebarRow: NSView?
+    private var liveCanvas: NSView?
+    private weak var previousWebHost: WebSurfaceHost?
+    private weak var previewWebView: WKWebView?
     private var hoverTask: Task<Void, Never>?
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
@@ -286,39 +313,85 @@ final class PaneDragSurface: NSView {
         }
         let point = convert(windowPoint, from: nil)
         guard bounds.contains(point), let content = superview else { clearTargets(); return }
-        let sidebar = descendants(of: PaneSidebarTargetView.self, in: content).filter {
-            $0.store === store && !$0.isHiddenOrHasHiddenAncestor
-                && $0.bounds.intersection($0.visibleRect).contains($0.convert(windowPoint, from: nil))
+        let targetsInSidebar = descendants(of: PaneSidebarTargetView.self, in: content).filter {
+            $0.store === store && !$0.isHiddenOrHasHiddenAncestor && !$0.visibleRect.isEmpty
+        }
+        let sidebar = targetsInSidebar.filter {
+            $0.bounds.intersection($0.visibleRect).contains($0.convert(windowPoint, from: nil))
         }
         // Rows take precedence over the containing workspace's empty-space target.
-        let hovered = sidebar.first { if case .tab = $0.destination { return true }; return false }
+        var hovered = sidebar.first { if case .tab = $0.destination { return true }; return false }
             ?? sidebar.min { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height }
-        if let hovered, case .tab(let id) = hovered.destination, id == source.tabID {
-            clearTargets()
-            return
-        }
-        if sidebarTarget !== hovered {
+        var insertionFrame: NSRect?
+        if let workspace = sidebar.first(where: { if case .workspace = $0.destination { return true }; return false }),
+           let pageID = source.pageID {
+            let rows = targetsInSidebar.compactMap { view -> (UUID, NSRect)? in
+                guard case .tab(let id) = view.destination else { return nil }
+                return (id, convert(view.bounds, from: view))
+            }.sorted { $0.1.midY < $1.1.midY }
+            // Keep the opened slot stable through mouse-up. Use the fixed row
+            // bounds (outside TabReorderOffset) to locate the next boundary.
+            if reorderStore === store, let frame = sidebarRow?.frame, insertion != nil,
+               frame.contains(point) {
+                insertionFrame = frame
+            } else {
+                clearInsertion()
+                let stride = Chrome.sidebarTabHeight + Chrome.sidebarTabSpacing
+                for (index, row) in rows.enumerated() {
+                    let after = index == rows.count - 1 && point.y >= row.1.midY
+                    let boundary = after ? row.1.maxY : row.1.minY
+                    guard point.x >= row.1.minX, point.x <= row.1.maxX,
+                          abs(point.y - boundary) <= Chrome.sidebarTabSpacing + row.1.height * 0.2 else { continue }
+                    insertion = (row.0, after)
+                    reorderStore = store
+                    store.tabReorderPreview.show(tabs: store.sidebarTabs, source: pageID, target: row.0, after: after)
+                    insertionFrame = row.1.offsetBy(dx: 0, dy: after ? stride : 0)
+                    break
+                }
+            }
+            if insertionFrame != nil { hovered = workspace }
+        } else { clearInsertion() }
+        if hoveredSidebar !== hovered {
+            if liveCanvas?.window !== window { endLiveCanvas() }
             sidebarTarget?.showPreview(false)
             hoverTask?.cancel(); hoverTask = nil
-            sidebarTarget = hovered
+            hoveredSidebar = hovered
             if let hovered, case .tab(let id) = hovered.destination,
                store.session.selectedTab != id {
-                hoverTask = Task { @MainActor [weak self, weak store] in
-                    do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
-                    guard let self, self.sidebarTarget === hovered, let store,
-                          store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == id }) else { return }
-                    InputDiagnostics.transition(.paneHoverSelection, .changed, view: self.source, tabID: id)
+                if id == source.tabID, store === sourceStore {
+                    endLiveCanvas()
                     store.select(id)
                     store.zoomedPane = nil
+                } else {
+                    hoverTask = Task { @MainActor [weak self, weak store] in
+                        do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+                        guard let self, self.hoveredSidebar === hovered, let store,
+                              store.session.workspaces.flatMap(\.tabs).contains(where: { $0.id == id }) else { return }
+                        self.endLiveCanvas()
+                        InputDiagnostics.transition(.paneHoverSelection, .changed, view: self.source, tabID: id)
+                        store.select(id)
+                        store.zoomedPane = nil
+                    }
                 }
             }
         }
         if let hovered {
             setTarget(nil)
             WindowDragTarget.reveal(window, from: source.window)
-            hovered.showPreview(true, at: hovered.convert(windowPoint, from: nil))
+            sidebarTarget?.showPreview(true)
+            showSidebarRow(for: source, over: hovered, at: point)
+            if let insertionFrame { sidebarRow?.frame = insertionFrame }
+            switch hovered.destination {
+            case .workspace:
+                showLiveCanvas(for: source, in: content)
+            case .tab(let id) where id != source.tabID && store.session.selectedTab != id:
+                showLiveCanvas(for: source, in: content)
+            default: endLiveCanvas()
+            }
             return
         }
+        sidebarRow?.isHidden = true
+        endLiveCanvas()
         // Tab hovering can mount a previously unvisited canvas while dragging.
         let targets = descendants(of: PaneDropHost.self, in: content)
         for candidate in targets where candidate.window === window && candidate.validSource(source) != nil {
@@ -331,6 +404,64 @@ final class PaneDragSurface: NSView {
             return
         }
         setTarget(nil)
+    }
+
+    private func showSidebarRow(for source: PaneDragSourceView, over hovered: PaneSidebarTargetView, at point: NSPoint) {
+        if sidebarRow == nil, let store = source.store,
+           let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == source.tabID }),
+           let page = tab.pages.first(where: { $0.id == source.pageID }) {
+            let row = SidebarTabRow.dragPreview(store: store, tab: BrowserTab(title: source.title, pages: [page]))
+            addSubview(row)
+            sidebarRow = row
+        }
+        var slot = convert(hovered.bounds, from: hovered)
+        let height = Chrome.sidebarTabHeight
+        switch hovered.destination {
+        case .workspace:
+            slot = slot.insetBy(dx: Chrome.sidebarHorizontalInset, dy: 0)
+            slot.origin.y = point.y - height / 2
+        case .tab:
+            // Keep the highlighted merge destination visible above the dragged row.
+            slot.origin.y = slot.maxY + Chrome.sidebarTabSpacing
+        }
+        slot.origin.y = max(bounds.minY, min(slot.minY, bounds.maxY - height))
+        slot.size.height = height
+        sidebarRow?.frame = slot
+        sidebarRow?.isHidden = false
+    }
+
+    // Borrow the running WebView, not its controller or session entry. The
+    // original pane and title handle stay mounted throughout AppKit tracking.
+    private func showLiveCanvas(for source: PaneDragSourceView, in content: NSView) {
+        guard liveCanvas == nil, let store = source.store, let pageID = source.pageID,
+              let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == source.tabID }),
+              let page = tab.pages.first(where: { $0.id == pageID }),
+              let controller = store.existingController(for: pageID),
+              let canvas = descendants(of: MountedTabHost.self, in: content).first(where: { !$0.isHiddenOrHasHiddenAncestor })
+        else { return }
+        let standalone = BrowserTab(title: source.title, pages: [page])
+        previousWebHost = controller.webView.superview as? WebSurfaceHost
+        previewWebView = controller.webView
+        let view = NSHostingView(rootView: BrowserPane(store: store, controller: controller, tab: standalone,
+                                                       pageID: pageID, isDragCanvas: true)
+            .background(Color(nsColor: .windowBackgroundColor)).allowsHitTesting(false).accessibilityHidden(true))
+        liveCanvas = view
+        view.sizingOptions = []
+        view.safeAreaRegions = []
+        view.frame = canvas.bounds
+        view.autoresizingMask = [.width, .height]
+        canvas.addSubview(view, positioned: .above, relativeTo: nil)
+        view.layoutSubtreeIfNeeded()
+    }
+
+    private func endLiveCanvas() {
+        guard let view = liveCanvas else { return }
+        let borrowed = previewWebView.flatMap { $0.isDescendant(of: view) ? $0 : nil }
+        view.removeFromSuperview()
+        if let borrowed { previousWebHost?.restoreAfterDrag(borrowed) }
+        liveCanvas = nil
+        previousWebHost = nil
+        previewWebView = nil
     }
 
     private func setTarget(_ next: PaneDropHost?, edge: PaneDropEdge? = nil) {
@@ -350,9 +481,18 @@ final class PaneDragSurface: NSView {
     }
 
     func clearTargets() {
+        clearInsertion()
+        endLiveCanvas()
+        sidebarRow?.isHidden = true
         hoverTask?.cancel(); hoverTask = nil
         setTarget(nil)
-        sidebarTarget?.showPreview(false); sidebarTarget = nil
+        sidebarTarget?.showPreview(false); hoveredSidebar = nil
+    }
+
+    private func clearInsertion() {
+        reorderStore?.tabReorderPreview.clear()
+        reorderStore = nil
+        insertion = nil
     }
 
     override func mouseDown(with event: NSEvent) { source?.cancelDrag() }
@@ -391,23 +531,18 @@ struct PaneSidebarTarget: NSViewRepresentable {
     }
     required init?(coder: NSCoder) { return nil }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    func showPreview(_ visible: Bool, at point: NSPoint = .zero) {
-        let rect: NSRect
-        switch destination {
-        case .tab: rect = bounds.insetBy(dx: 1, dy: 1)
-        case .workspace: rect = NSRect(x: 10, y: point.y, width: max(0, bounds.width - 20), height: 2)
-        }
-        if !visible, preview.isHidden { return }
-        if visible, !preview.isHidden, rect == previewRect { return }
+    func showPreview(_ visible: Bool) {
+        // Only merge destinations get an outline. The dragged row represents
+        // a standalone tab over workspace space.
+        let outline: Bool
+        if case .tab = destination { outline = visible } else { outline = false }
+        let rect = bounds.insetBy(dx: 1, dy: 1)
+        if !outline, preview.isHidden { return }
+        if outline, !preview.isHidden, rect == previewRect { return }
         previewRect = rect
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        preview.isHidden = !visible
-        switch destination {
-        case .tab:
-            preview.path = CGPath(roundedRect: rect, cornerWidth: 12, cornerHeight: 12, transform: nil)
-        case .workspace:
-            preview.path = CGPath(rect: rect, transform: nil)
-        }
+        preview.isHidden = !outline
+        if outline { preview.path = CGPath(roundedRect: rect, cornerWidth: 12, cornerHeight: 12, transform: nil) }
         CATransaction.commit()
     }
 }

@@ -291,14 +291,20 @@ public struct BrowserSession: Codable, Sendable {
         return true
     }
 
-    public mutating func detachPane(_ source: UUID, from sourceTabID: UUID, into workspaceID: UUID, title: String) -> UUID? {
+    public mutating func detachPane(_ source: UUID, from sourceTabID: UUID, into workspaceID: UUID, title: String,
+                                    relativeTo anchor: UUID? = nil, after: Bool = false) -> UUID? {
         guard let sourceTab = workspaces.flatMap(\.tabs).first(where: { $0.id == sourceTabID }),
               let page = sourceTab.pages.first(where: { $0.id == source }),
               let wi = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return nil }
         // A single-pane tab dropped into its existing workspace is already detached.
         guard sourceTab.pages.count > 1 || !workspaces[wi].tabs.contains(where: { $0.id == sourceTabID }) else { return nil }
         let tab = BrowserTab(title: title, pages: [page])
-        workspaces[wi].tabs.append(tab)
+        if let anchor {
+            guard let index = workspaces[wi].tabs.firstIndex(where: { $0.id == anchor }) else { return nil }
+            workspaces[wi].tabs.insert(tab, at: index + (after ? 1 : 0))
+        } else {
+            workspaces[wi].tabs.append(tab)
+        }
         removeTransferredPane(source, from: sourceTabID)
         selectedTab = tab.id
         return tab.id
