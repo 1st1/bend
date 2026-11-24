@@ -280,7 +280,7 @@ final class TabDragSurface: NSView {
         }
         let point = convert(windowPoint, from: nil)
         floatingRow?.isHidden = window !== sourceWindow
-        floatingRow?.setFrameOrigin(NSPoint(x: point.x - grabPoint.x, y: point.y - grabPoint.y))
+        if let floatingRow { SidebarTabRow.positionDragPreview(floatingRow, at: point, grabPoint: grabPoint) }
         badge.isHidden = window !== sourceWindow || floatingRow != nil
         badge.setFrameOrigin(NSPoint(x: point.x + 12, y: point.y + 12))
         guard bounds.contains(point) else { clearPlacement(); return }

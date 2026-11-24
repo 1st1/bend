@@ -335,6 +335,7 @@ import BrowseCore
     let restored = BrowserWindows(root: root, persistentExtensions: false)
     restored.restore(show: false)
     #expect(restored.windows.map(\.id) == [first.id, second.id])
+    #expect(restored.windows.allSatisfy { $0.existingAddressPanel == nil })
     let restoredSecond = try #require(restored.windows.last)
     #expect(restoredSecond.store.session.selectedTab == savedSelection)
     #expect(restoredSecond.store.selectedTab.layout == savedLayout)
@@ -353,6 +354,20 @@ import BrowseCore
     #expect(final.windows.map(\.id) == [second.id])
     #expect(final.active?.store.selectedTab.layout == savedLayout)
     #expect(final.active?.store.inactivePaneDimAmount == 0.42)
+    // Exercise the first visible frame independently of the restore loop so
+    // the test can inspect it before WebKit is attached.
+    let shellStore = BrowserStore(sessionFile: root.appendingPathComponent("shell.json"), persistentExtensions: false)
+    let shell = BrowserWindowSession(id: "shell", store: shellStore, shellFirst: true)
+    defer { shell.window.close() }
+    shell.window.orderFront(nil)
+    shell.window.displayIfNeeded()
+    let page = shellStore.selectedTab.focusedPane
+    #expect(shell.window.isVisible && shellStore.existingController(for: page) == nil)
+    shell.finishLaunchShell()
+    for _ in 0..<50 where shellStore.existingController(for: page) == nil {
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(shellStore.existingController(for: page) != nil)
     if #available(macOS 15.4, *) {
         let manager = final.sharedStore.extensions
         let oldAdapter = try #require(manager.browserWindows.first)

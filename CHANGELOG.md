@@ -5,6 +5,13 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.10.4
+### Added
+- After a TLS connection failure, choose Proceed without TLS to open the site over HTTP and remember that host and port.
+### Changed
+- Restored windows show the sidebar and pane layout before WebKit starts loading pages.
+- Dragging a pane over the sidebar now follows the pointer freely, like dragging a tab.
+
 ## v0.10.3
 ### Changed
 - Drag a pane between sidebar tabs to preview its live page and insert it there. Drag it back to its original tab to restore the split before releasing.

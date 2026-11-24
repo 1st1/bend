@@ -22,7 +22,7 @@ public final class WebsiteSettingsDatabase {
         do {
             sqlite3_busy_timeout(connection, 1_000)
             let version = try rows("PRAGMA user_version").first?.first
-            guard version == "0" || version == "1" || version == "2" || version == "3" || version == "4" || version == "5" else {
+            guard ["0","1","2","3","4","5","6"].contains(version ?? "") else {
                 throw DatabaseError(message: "Website settings database version is not supported.")
             }
             if version == "0" {
@@ -88,11 +88,18 @@ public final class WebsiteSettingsDatabase {
                         """)
                 }
             }
-            if version != "5" {
+            if version != "5" && version != "6" {
                 try transaction {
                     try execute("ALTER TABLE website_permissions ADD COLUMN decision TEXT NOT NULL DEFAULT 'block' CHECK(decision IN ('allow', 'block')); PRAGMA user_version = 5;")
                 }
             }
+            if version != "6" {
+                try transaction {
+                    try execute("CREATE TABLE http_exceptions (origin TEXT PRIMARY KEY NOT NULL); PRAGMA user_version = 6;")
+                }
+            }
+            saved.allowedHTTPOrigins = Set(try rows("SELECT origin FROM http_exceptions").compactMap(\.first))
+            guard saved.isValid else { throw CocoaError(.fileReadCorruptFile) }
             for row in try rows("SELECT origin, permission, decision FROM website_permissions") {
                 guard let permission = WebsitePermission(rawValue: row[1]),
                       URL(string: row[0]).flatMap(WebsitePermission.origin) == row[0] else {
@@ -132,6 +139,12 @@ public final class WebsiteSettingsDatabase {
         guard settings.isValid else { throw DatabaseError(message: "Invalid website zoom settings.") }
         guard settings != saved else { return }
         try transaction {
+            for origin in settings.allowedHTTPOrigins.subtracting(saved.allowedHTTPOrigins) {
+                try run("INSERT INTO http_exceptions(origin) VALUES (?)", [.text(origin)])
+            }
+            for origin in saved.allowedHTTPOrigins.subtracting(settings.allowedHTTPOrigins) {
+                try run("DELETE FROM http_exceptions WHERE origin = ?", [.text(origin)])
+            }
             if settings.blockedPermissions != saved.blockedPermissions || settings.allowedPermissions != saved.allowedPermissions {
                 try execute("DELETE FROM website_permissions")
                 for origin in settings.permissionOrigins {

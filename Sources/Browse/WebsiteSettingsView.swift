@@ -41,6 +41,11 @@ struct WebsiteSettingsView: View {
                 Toggle("Warn before connecting to a website over HTTP", isOn: preference(\.warnHTTP))
                 Text("Tries HTTPS first and shows a warning if a secure connection cannot be established.")
                     .font(.caption).foregroundStyle(.secondary)
+                ForEach(settings.values.allowedHTTPOrigins.sorted(), id: \.self) { origin in
+                    LabeledContent("Allow HTTP for \(origin)") {
+                        Button("Forget") { settings.forgetHTTP(origin) }
+                    }
+                }
             }
             Section {
                 Toggle("Enable JavaScript", isOn: preference(\.javaScriptEnabled))

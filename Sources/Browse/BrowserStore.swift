@@ -69,6 +69,11 @@ final class BrowserStore: ObservableObject {
     @available(macOS 15.4, *)
     var extensions: ExtensionManager {
         if let manager = extensionStorage as? ExtensionManager { return manager }
+        if let sharedStore {
+            let manager = sharedStore.extensions
+            extensionStorage = manager
+            return manager
+        }
         let manager = ExtensionManager(root: sessionFile.deletingLastPathComponent().appendingPathComponent("Extensions"), persistent: persistentExtensions)
         extensionStorage = manager
         manager.store = self
@@ -241,7 +246,7 @@ final class BrowserStore: ObservableObject {
         faviconObservation = faviconCache?.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
         if let sharedStore {
             sharedObservation = sharedStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
-            if #available(macOS 15.4, *) { extensionStorage = sharedStore.extensions }
+            extensionStorage = sharedStore.extensionStorage
         }
         if sharedStore == nil, #available(macOS 15.4, *), let manager = extensionManager as? ExtensionManager {
             manager.store = self
@@ -1666,6 +1671,13 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     @Published var error: String? { didSet { if error != nil { wakeSnapshot = nil } } }
     @Published private(set) var certificateFailure: (url: URL, exception: CertificateException)?
     private var certificateExceptions: Set<CertificateException> = []
+    @Published private(set) var httpFallbackURL: URL?
+
+    func proceedWithoutTLS() {
+        guard error != nil, let url = httpFallbackURL else { return }
+        websiteSettings?.allowHTTP(for: url)
+        navigate(url.absoluteString)
+    }
 
     var usesCertificateException: Bool {
         guard !isStartPage,
@@ -1967,7 +1979,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
     func navigate(_ input: String) {
         onInitialDownload = nil
         let localURL = URL(string: input).flatMap { LocalWebDocument.accepts($0) ? $0 : nil }
-        guard let url = localURL ?? AddressResolver.resolve(input, searchEngine: searchEngine(), customSearchEngine: customSearchEngine()) else { error = "Enter a web address or search phrase."; return }
+        guard let url = localURL ?? (websiteSettings?.values ?? WebsiteSettings()).locationURL(input, searchEngine: searchEngine(), customSearchEngine: customSearchEngine()) else { error = "Enter a web address or search phrase."; return }
         let nativePage = url.scheme == "bend"
         if extensionOrigin != nil || nativePage != isStartPage || (nativePage && webView.configuration.webExtensionController != nil) {
             extensionOrigin = nil
@@ -1991,6 +2003,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         webView.clearURLPreview()
         InputDiagnostics.transition(.webLoad, .requested, view: webView, flags: ["internal": url.scheme == "bend"])
         resetFavicon(for: url)
+        httpFallbackURL = nil
         certificateFailure = nil
         error = nil; address = url.absoluteString
         completedAddress = nil
@@ -2079,6 +2092,7 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         sleepNavigationRevision += 1
         InputDiagnostics.transition(.webLoad, .started, view: webView)
         resetFavicon(for: webView.url ?? URL(string: address))
+        httpFallbackURL = nil
         completedAddress = nil
         certificateFailure = nil
         if !isStartPage { error = nil }
@@ -2165,6 +2179,10 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         let policyInterruption = nativeError.domain == "WebKitErrorDomain" && nativeError.code == 102
         let cancelled = nativeError.domain == NSURLErrorDomain && nativeError.code == NSURLErrorCancelled
         if !cancelled && !policyInterruption {
+            let failedURL = nativeError.userInfo[NSURLErrorFailingURLErrorKey] as? URL
+                ?? (nativeError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String).flatMap(URL.init(string:))
+            httpFallbackURL = nativeError.domain == NSURLErrorDomain && nativeError.code == NSURLErrorSecureConnectionFailed
+                ? failedURL.flatMap(WebsiteSettings.httpAlternative) : nil
             certificateFailure = CertificateException.failure(nativeError)
             error = failure.localizedDescription
         }
@@ -2225,7 +2243,8 @@ final class PageController: BendContextMenuDelegate, ObservableObject, WKNavigat
         if extensionOrigin == nil {
             WebKitPrivacy.enableAdvancedProtection(preferences)
             preferences.allowsContentJavaScript = values.javaScriptEnabled
-            preferences.preferredHTTPSNavigationPolicy = values.warnHTTP ? .userMediatedFallbackToHTTP : .keepAsRequested
+            let allowedHTTP = action.targetFrame?.isMainFrame == true && action.request.url.map(values.allowsHTTP) == true
+            preferences.preferredHTTPSNavigationPolicy = values.warnHTTP && !allowedHTTP ? .userMediatedFallbackToHTTP : .keepAsRequested
         }
         self.webView(webView, decidePolicyFor: action) { policy in decisionHandler(policy, preferences) }
     }

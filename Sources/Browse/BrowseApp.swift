@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     let browserWindows: BrowserWindows
     private var store: BrowserStore { browserWindows.active?.store ?? browserWindows.sharedStore }
     private var window: NSWindow? { browserWindows.active?.window }
-    private var addressPanel: AddressPanelController? { browserWindows.active?.addressPanel }
+    private var addressPanel: AddressPanelController? { browserWindows.active?.existingAddressPanel }
     private let focusedWindow: () -> NSWindow?
 
     init(browserWindows: BrowserWindows = BrowserWindows(), shortcuts: CommandShortcuts = CommandShortcuts(), focusedWindow: @escaping () -> NSWindow? = { NSApp.keyWindow }) {
@@ -123,7 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func openPendingExternalURLs(show: Bool = true) {
         guard browserWindowsReady, !pendingExternalURLs.isEmpty else { return }
         let context = browserWindows.active ?? browserWindows.newWindow(show: show)
-        context.addressPanel.dismiss(restoreFocus: false)
+        context.existingAddressPanel?.dismiss(restoreFocus: false)
         let urls = pendingExternalURLs
         pendingExternalURLs.removeAll()
         for url in urls { context.store.newTab(address: url.absoluteString) }
@@ -355,7 +355,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func openLocation() { store.requestAddress() }
     private var currentPageAddress: String? {
         guard let context = browserWindows.active else { return nil }
-        if let key = focusedWindow(), key !== context.window, !context.addressPanel.owns(key) { return nil }
+        if let key = focusedWindow(), key !== context.window, context.existingAddressPanel?.owns(key) != true { return nil }
         let store = context.store
         let tab = store.selectedTab
         return store.existingController(for: tab.focusedPane)?.address ?? tab.pages.first { $0.id == tab.focusedPane }?.address
@@ -373,7 +373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private var activeWebPage: PageController? {
         guard let context = browserWindows.active,
-              focusedWindow() == nil || focusedWindow() === context.window || focusedWindow().map(context.addressPanel.owns) == true,
+              focusedWindow() == nil || focusedWindow() === context.window || focusedWindow().map({ context.existingAddressPanel?.owns($0) == true }) == true,
               let page = context.store.existingController(for: context.store.selectedTab.focusedPane),
               !page.isStartPage, page.error == nil,
               let surface = page.webView.superview as? WebSurfaceHost,
@@ -444,7 +444,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func showReleaseNotesIfUpdated(tracker: WhatsNewTracker = WhatsNewTracker(), show: Bool = true) {
         guard tracker.consumeUpgrade() else { return }
         let context = browserWindows.windows.first(where: { !$0.store.isPrivate }) ?? browserWindows.newWindow(show: false)
-        context.addressPanel.dismiss(restoreFocus: false)
+        context.existingAddressPanel?.dismiss(restoreFocus: false)
         context.store.showChangelog()
         if show { context.window.makeKeyAndOrderFront(nil) }
     }
@@ -458,14 +458,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func closeFocusedWindow(_ keyWindow: NSWindow?) {
         let context = browserWindows.active
-        if let keyWindow, keyWindow !== context?.window, context?.addressPanel.owns(keyWindow) != true {
+        if let keyWindow, keyWindow !== context?.window, context?.existingAddressPanel?.owns(keyWindow) != true {
             keyWindow.performClose(nil)
             return
         }
         guard let context else { return }
         guard !context.store.isPanePinned(context.store.selectedTab.focusedPane) else { return }
-        if context.addressPanel.cancelInitialEntryIfPresented() { return }
-        context.addressPanel.dismiss(restoreFocus: false)
+        if context.existingAddressPanel?.cancelInitialEntryIfPresented() == true { return }
+        context.existingAddressPanel?.dismiss(restoreFocus: false)
         let store = context.store
         if (store.isPrivate || browserWindows.windows.count > 1),
            store.session.workspaces.flatMap(\.tabs).count == 1, store.selectedTab.pages.count == 1 {

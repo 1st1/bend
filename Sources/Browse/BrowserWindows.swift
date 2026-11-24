@@ -30,7 +30,7 @@ final class BrowserWindows {
         let ids = saved?.filter { $0 == "main" || UUID(uuidString: $0) != nil } ?? []
         var seen: Set<String> = []
         for id in ids.isEmpty ? ["main"] : ids where seen.insert(id).inserted {
-            _ = create(id: id, fresh: false, show: show)
+            _ = create(id: id, fresh: false, show: show, shellFirst: show && windows.isEmpty)
         }
     }
 
@@ -49,7 +49,7 @@ final class BrowserWindows {
         return result
     }
 
-    private func create(id: String, fresh: Bool, show: Bool, isPrivate: Bool = false, address: String = "bend://start") -> BrowserWindowSession {
+    private func create(id: String, fresh: Bool, show: Bool, isPrivate: Bool = false, address: String = "bend://start", shellFirst: Bool = false) -> BrowserWindowSession {
         let store = id == "main" ? sharedStore : BrowserStore(
             sessionFile: root.appendingPathComponent("Windows/\(id).json"), sharedStore: sharedStore, isPrivate: isPrivate)
         if fresh {
@@ -58,7 +58,7 @@ final class BrowserWindows {
             store.session.selectedTab = tab.id
         }
         let previous = active?.window
-        let context = BrowserWindowSession(id: id, store: store)
+        let context = BrowserWindowSession(id: id, store: store, shellFirst: shellFirst)
         context.onFocus = { [weak self, weak context] in self?.lastActive = context }
         context.onClose = { [weak self, weak context] in
             guard let self, let context else { return }
@@ -91,7 +91,15 @@ final class BrowserWindows {
         if fresh, let previous {
             context.window.cascadeTopLeft(from: NSPoint(x: previous.frame.minX + 24, y: previous.frame.maxY - 24))
         }
-        if show { context.window.makeKeyAndOrderFront(nil) }
+        if show {
+            context.window.makeKeyAndOrderFront(nil)
+            if shellFirst {
+                // Submit the restored chrome before synchronous WebKit setup blocks the main thread.
+                context.window.displayIfNeeded()
+                CATransaction.flush()
+                context.finishLaunchShell()
+            }
+        }
         return context
     }
 
@@ -142,7 +150,7 @@ final class BrowserWindows {
     func closeAllForPrivacy() throws {
         let closing = windows
         for context in closing {
-            context.addressPanel.dismiss(restoreFocus: false)
+            context.existingAddressPanel?.dismiss(restoreFocus: false)
             context.store.clearOpenTabsForPrivacy()
             context.window.close()
         }
@@ -162,15 +170,21 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
     let id: String
     let store: BrowserStore
     let window: BrowseWindow
-    let addressPanel: AddressPanelController
+    private(set) var existingAddressPanel: AddressPanelController?
+    var addressPanel: AddressPanelController {
+        if let existingAddressPanel { return existingAddressPanel }
+        let panel = AddressPanelController(store: store, parentWindow: window)
+        existingAddressPanel = panel
+        return panel
+    }
     var onFocus: (() -> Void)?
     var onClose: (() -> Void)?
+    private var mountPages: (() -> Void)?
 
-    init(id: String, store: BrowserStore) {
+    init(id: String, store: BrowserStore, shellFirst: Bool = false) {
         self.id = id; self.store = store
         window = BrowseWindow(contentRect: NSRect(x: 0, y: 0, width: 1420, height: 880),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        addressPanel = AddressPanelController(store: store, parentWindow: window)
         super.init()
         window.browserStore = store
         window.title = AppProfile.current.name + (store.isPrivate ? " — Private Browsing" : "")
@@ -191,27 +205,41 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
             window.setFrameAutosaveName(frameName)
             window.setFrameUsingName(frameName)
         }
-        if #available(macOS 15.4, *) { store.extensions.attachWindow(window, store: store) }
-        let content = NSHostingView(rootView: BrowserView(store: store).ignoresSafeArea())
+        if !shellFirst, #available(macOS 15.4, *) { store.extensions.attachWindow(window, store: store) }
+        let content = NSHostingView(rootView: BrowserView(store: store, shellOnly: shellFirst).ignoresSafeArea())
+        if shellFirst {
+            mountPages = { content.rootView = BrowserView(store: store).ignoresSafeArea() }
+        }
         if #available(macOS 26.0, *) { window.contentView = BrowserWindowGlass(store: store, content: content) }
         else { window.contentView = content }
         store.onAddressRequested = { [weak self] paneID in self?.addressPanel.show(for: paneID) }
         InputDiagnostics.transition(.windowOpen, .created, window: window)
     }
 
+    func finishLaunchShell() {
+        guard let mountPages else { return }
+        self.mountPages = nil
+        if #available(macOS 15.4, *) {
+            store.extensions.attachWindow(window, store: store)
+            if window.isKeyWindow { store.extensions.focusWindow(window) }
+        }
+        mountPages()
+        window.contentView?.layoutSubtreeIfNeeded()
+    }
+
     func windowDidBecomeKey(_ notification: Notification) {
         onFocus?()
-        if #available(macOS 15.4, *) { store.extensions.focusWindow(window) }
+        if mountPages == nil, #available(macOS 15.4, *) { store.extensions.focusWindow(window) }
     }
     func windowDidResignKey(_ notification: Notification) {
-        if #available(macOS 15.4, *) { store.extensions.controller.didFocusWindow(nil) }
+        if mountPages == nil, #available(macOS 15.4, *) { store.extensions.controller.didFocusWindow(nil) }
     }
     // @lat: [[lat.md/architecture/windows#Fullscreen chrome]]
     func window(_ window: NSWindow, willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions) -> NSApplication.PresentationOptions {
         proposedOptions.union(.autoHideToolbar)
     }
     func windowWillEnterFullScreen(_ notification: Notification) {
-        addressPanel.dismiss(restoreFocus: false)
+        existingAddressPanel?.dismiss(restoreFocus: false)
         // The empty unified toolbar is only for windowed traffic-light alignment.
         // Hide its row so fullscreen rollover uses AppKit's compact titlebar.
         window.toolbar?.isVisible = false
@@ -220,7 +248,7 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
         store.isFullScreen = true
     }
     func windowWillExitFullScreen(_ notification: Notification) {
-        addressPanel.dismiss(restoreFocus: false)
+        existingAddressPanel?.dismiss(restoreFocus: false)
     }
     func windowDidExitFullScreen(_ notification: Notification) {
         window.toolbar?.isVisible = true
@@ -234,7 +262,7 @@ final class BrowserWindowSession: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        addressPanel.dismiss(restoreFocus: false)
+        existingAddressPanel?.dismiss(restoreFocus: false)
         if #available(macOS 15.4, *) { store.extensions.detachWindow(window) }
         store.stopWindow()
         window.contentView = nil
