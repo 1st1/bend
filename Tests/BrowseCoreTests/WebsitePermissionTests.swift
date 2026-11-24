@@ -44,9 +44,14 @@ import SQLite3
     }
     var connection: OpaquePointer?
     #expect(sqlite3_open(legacy.path, &connection) == SQLITE_OK)
-    #expect(sqlite3_exec(connection, "ALTER TABLE website_permissions DROP COLUMN decision; PRAGMA user_version = 4;", nil, nil, nil) == SQLITE_OK)
+    #expect(sqlite3_exec(connection, """
+        DROP TABLE http_exceptions;
+        ALTER TABLE website_permissions DROP COLUMN decision;
+        PRAGMA user_version = 4;
+        """, nil, nil, nil) == SQLITE_OK)
     sqlite3_close(connection)
     let migrated = try WebsiteSettingsDatabase(file: legacy).load()
     #expect(migrated.permission(.camera, for: secure) == .block)
     #expect(migrated.allowedPermissions.isEmpty)
+    #expect(migrated.allowedHTTPOrigins.isEmpty)
 }
