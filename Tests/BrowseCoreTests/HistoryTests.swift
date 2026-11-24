@@ -171,6 +171,18 @@ private let historyNow = Date(timeIntervalSince1970: 1_800_000_000)
     }
     #expect(history.suggestions(for: "http://www.chess.com").isEmpty)
     #expect(history.suggestions(for: "review chess.com").first?.title == "Review of chess.com")
+    func popup(_ query: String) -> AddressSuggestions {
+        AddressSuggestions(history: history, typedQuery: query, allowAutofill: true,
+                           searchEngine: .google, customSearchEngine: nil)
+    }
+    for prefix in ["news", "news."] {
+        let model = popup(prefix)
+        #expect(model.rows.first?.history?.url.hasPrefix("https://news.ycombinator.com/") == true)
+        #expect(model.completion?.hasPrefix("news.ycombinator.com") == true)
+    }
+    #expect(popup("missing.").rows.first?.title == "Search for “missing.”")
+    #expect(popup("news.y").rows.first?.title == "Search for “news.y”")
+    #expect(popup("news.com").rows.first?.title == "Visit news.com")
 }
 
 // @lat: [[lat.md/tests/history-tests#Home page suggestion ranking]]

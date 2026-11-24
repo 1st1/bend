@@ -405,6 +405,9 @@ public enum AddressResolver {
         let authority = text.prefix { !"/?#".contains($0) }
         let bareIPv6 = authority.contains(":") && IPv6Address(String(authority)) != nil
         let name = authority.prefix { $0 != ":" }.lowercased()
+        // A first dot starts the next label; it does not yet supply a suffix.
+        if name == text.lowercased(), name.hasSuffix("."), !name.dropLast().contains("."),
+           name != "localhost." { return nil }
         guard bareIPv6 || authority.hasPrefix("[") || name.contains(".") || name == "localhost" else { return nil }
         let address = bareIPv6 ? "[" + authority + "]" + text.dropFirst(authority.count) : text
         guard !authority.contains("@"), let url = URL(string: "https://" + address),

@@ -1,0 +1,3 @@
+kind: Fixed
+body: Keep matching history suggestions first when typing the first dot of a hostname.
+time: 2026-11-23T16:02:18.32866-08:00
