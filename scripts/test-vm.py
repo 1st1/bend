@@ -395,7 +395,7 @@ def run_shards(addresses, args=(), *, build=False, prebuilt=False):
                                      f"BEND_VM_PREBUILT={int(prebuilt)}",
                                      f"BEND_TEST_SHARD_COUNT={len(vms)}", "/bin/sh", "-c",
                                      'echo BEND_VM_TEST_PID=$$; exec /bin/bash "$@"' + (' >/dev/null' if build else ''), "test-runner",
-                                     f"{GUEST_DIR}/scripts/test.sh", *args),
+                                     f"{GUEST_DIR}/scripts/{'test.sh' if build else 'test-vm-guest.sh'}", *args),
                               stdout=sp.PIPE, stderr=sp.STDOUT, text=True, errors="replace")
             reader = threading.Thread(target=output, args=(worker, i), daemon=True)
             workers.append((worker, reader))
