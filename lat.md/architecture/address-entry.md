@@ -14,6 +14,8 @@ Native pages include `bend://start`, `bend://guide`, `bend://history`, `bend://c
 
 IPv4 and IPv6 literals, localhost, and names under .localhost default to Visit, including ports and paths. Loopback and localhost destinations default to HTTP and other hosts to HTTPS. A bracketed IPv6 literal may include a port. [BrowserStore.swift](../../Sources/Browse/BrowserStore.swift) also limits WebKit navigation to web URLs and internal blank documents.
 
+While typing, the first dot alone does not force Search ahead of a history completion: `news.` can still complete to `news.ycombinator.com`. The usual domain rules apply once the next label has a character.
+
 ## Location popup
 
 [AddressPanelController.swift](../../Sources/Browse/AddressPanelController.swift) owns a floating command-palette-style location panel. A rounded search field, compact history rows, and a shortcut footer sit within a frosted shell. URL entry remains separate from pane chrome.

@@ -17,6 +17,11 @@ else
   fi
 fi
 if [[ -z "${DEVELOPER_DIR:-}" && "$(xcode-select -p)" == */CommandLineTools ]]; then
-  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+  if [[ -d /Applications/Xcode.app/Contents/Developer ]]; then
+    export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+  else
+    # The CLT-only VM ships SourceKit outside an Xcode toolchain.
+    export DYLD_FRAMEWORK_PATH="$(xcode-select -p)/usr/lib${DYLD_FRAMEWORK_PATH:+:$DYLD_FRAMEWORK_PATH}"
+  fi
 fi
 exec "$lint" lint --strict --no-cache --quiet

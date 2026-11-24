@@ -17,9 +17,14 @@ jobs:
   metadata:
     name: Changelog and version
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     outputs:
       version: ${{ steps.release.outputs.version }}
       release_required: ${{ steps.release.outputs.release_required }}
+      reuse_native: ${{ steps.pr-tests.outputs.reuse }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -45,6 +50,14 @@ jobs:
         run: python3 scripts/test-update-feed.py
       - name: Test native suite runner
         run: python3 scripts/test-test-runner.py
+      - name: Test PR result lookup
+        run: python3 scripts/test-pr-native-result.py
+      - name: Look for passing PR tests on the merged tree
+        id: pr-tests
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/pr-native-result.py
 
   native:
     name: macOS 26 build and tests (shard ${{ matrix.shard }})
@@ -52,7 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1]
+        shard: ${{ fromJSON(needs.metadata.outputs.reuse_native == 'true' && '[1]' || '[0,1]') }}
     runs-on: macos-26
     # The reporting shard also needs time to upload artifacts after all benchmarks.
     timeout-minutes: ${{ matrix.shard == 1 && 50 || 45 }}
@@ -83,7 +96,8 @@ jobs:
       - name: Test signed update feed and tamper rejection
         if: matrix.shard == 0
         run: python3 scripts/test-update-feed.py
-      - name: Run Swift tests
+      - name: Run Swift tests at ${{ github.sha }}
+        if: needs.metadata.outputs.reuse_native != 'true'
         timeout-minutes: 30
         env:
           LIBDISPATCH_COOPERATIVE_POOL_STRICT: '1'
@@ -99,7 +113,7 @@ jobs:
           BEND_RUN_TAB_SCALING: '1'
         run: |
           mkdir -p tab-perf
-          ./scripts/test.sh --skip-build --filter TabPerformanceTests/scaling \
+          ./scripts/test.sh --filter TabPerformanceTests/scaling \
             2>&1 | tee ci-logs/tab-scaling.log
       - name: Measure tab memory footprint
         if: matrix.shard == 1 && env.RUN_TAB_PERF == 'true'

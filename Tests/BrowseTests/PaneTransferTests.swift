@@ -21,7 +21,8 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     let store = BrowserStore(sessionFile: root.appendingPathComponent("session.json"), extensionManager: manager)
     store.sidebarSide = side
     let first = BrowserTab(pages: [Page(address: address)]), second = BrowserTab(pages: [Page(address: address)])
-    let workspace = Workspace(name: "Test", tabs: [first, second])
+    let trailing = BrowserTab(title: "Trailing")
+    let workspace = Workspace(name: "Test", tabs: [first, second, trailing])
     store.session.workspaces = [workspace]
     store.session.selectedTab = first.id
     let window = DragTrackingWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1400, height: 850),
@@ -66,7 +67,11 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     try sendTransferMouse(.leftMouseDown, at: center(source), to: window)
     try sendTransferMouse(.leftMouseDragged, at: center(row), to: window)
     #expect(source.dragSurface?.sidebarTarget?.destination == row.destination)
+    let previewRow = try #require(source.dragSurface?.sidebarRow)
+    #expect(!previewRow.isHidden && previewRow.frame.height == Chrome.sidebarTabHeight)
+    #expect(source.dragPreview?.panel.isVisible == false)
     source.cancelOperation(nil)
+    #expect(previewRow.window == nil)
     try await settle(10)
     #expect(store.session.selectedTab == first.id)
     #expect(store.selectedTab.pages.count == 1)
@@ -77,11 +82,21 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     try await settle(12)
     #expect(store.session.selectedTab == second.id)
     #expect(source.dragSurface != nil)
+    let hostRow = try #require(descendants(PaneSidebarTargetView.self, content).first { $0.destination == .tab(first.id) })
+    try sendTransferMouse(.leftMouseDragged, at: center(hostRow), to: window)
+    #expect(source.dragSurface?.sidebarTarget == nil)
+    try await settle(12)
+    #expect(store.session.selectedTab == first.id)
+    try sendTransferMouse(.leftMouseDragged, at: center(row), to: window)
+    try await settle(12)
+    #expect(store.session.selectedTab == second.id)
     let destinationWeb = try #require(store.existingController(for: second.pages[0].id)?.webView)
     let point = destinationWeb.convert(NSPoint(x: destinationWeb.bounds.width * 0.9, y: destinationWeb.bounds.midY), to: nil)
     try sendTransferMouse(.leftMouseDragged, at: point, to: window)
     #expect(source.dragSurface?.target?.pageID == second.pages[0].id)
     #expect(source.dragSurface?.target?.dropEdge == .right)
+    #expect(source.dragSurface?.sidebarRow?.isHidden == true)
+    #expect(source.dragPreview?.panel.isVisible == true)
     let firstReleaseCount = window.mouseUpCount
     try sendTransferMouse(.leftMouseUp, at: point, to: window)
     #expect(window.mouseUpCount == firstReleaseCount + 1)
@@ -153,16 +168,46 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     #expect(store.selectedTab.layout.paneIDs == [second.pages[0].id, pageID])
 
     // Drag back into unused sidebar space to create a tab with the same page.
-    store.toggleZoom(pageID)
     try await settle()
     let moved = try handle(pageID)
+    let splitHost = try #require(web.superview as? WebSurfaceHost)
+    let splitFrame = web.convert(web.bounds, to: nil)
+    let splitLayout = store.selectedTab.layout
     try sendTransferMouse(.leftMouseDown, at: center(moved), to: window)
     let sidebarPoint = NSPoint(x: side == .left ? 100 : content.bounds.width - 100, y: 100)
     try sendTransferMouse(.leftMouseDragged, at: sidebarPoint, to: window)
     #expect(moved.dragSurface?.sidebarTarget?.destination == .workspace(workspace.id))
-    try sendTransferMouse(.leftMouseUp, at: sidebarPoint, to: window)
+    let detachingRow = try #require(moved.dragSurface?.sidebarRow)
+    #expect(!detachingRow.isHidden && detachingRow.frame.contains(detachingRow.superview!.convert(sidebarPoint, from: nil)))
+    #expect(moved.dragPreview?.panel.isVisible == false)
+    #expect(store.selectedTab.pages.count == 2)
+    try await settle()
+    let canvas = try #require(descendants(MountedTabHost.self, content).first)
+    #expect(web.superview !== splitHost && web.window === window)
+    #expect(abs(web.frame.width - canvas.bounds.width) < 2)
+    #expect(store.selectedTab.layout == splitLayout && store.zoomedPane == nil)
+    #expect(try await web.evaluateJavaScript("document.querySelector('#transfer').value") as? String == "retained")
+    let origin = try #require(descendants(PaneSidebarTargetView.self, content).first { $0.destination == .tab(second.id) })
+    try sendTransferMouse(.leftMouseDragged, at: center(origin), to: window)
+    try await settle()
+    #expect(web.superview === splitHost)
+    #expect(web.convert(web.bounds, to: nil) == splitFrame)
+    let neighbor = destinationWeb.convert(NSPoint(x: 40, y: destinationWeb.bounds.midY), to: nil)
+    try sendTransferMouse(.leftMouseDragged, at: neighbor, to: window)
+    #expect(moved.dragSurface?.target?.pageID == second.pages[0].id)
+    #expect(moved.dragSurface?.target?.dropEdge == .left)
+    try sendTransferMouse(.leftMouseDragged, at: sidebarPoint, to: window)
+    let trailingRow = try #require(descendants(PaneSidebarTargetView.self, content).first { $0.destination == .tab(trailing.id) })
+    let gap = NSPoint(x: center(origin).x, y: (center(origin).y + center(trailingRow).y) / 2)
+    try sendTransferMouse(.leftMouseDragged, at: gap, to: window)
+    try await settle()
+    #expect(store.tabReorderPreview.offsets[trailing.id] == 1)
+    #expect(store.session.workspaces[0].tabs.map(\.id) == [second.id, trailing.id])
+    try sendTransferMouse(.leftMouseUp, at: gap, to: window)
     try await settle()
     #expect(store.selectedTab.id != second.id)
+    #expect(store.session.workspaces[0].tabs.map(\.id) == [second.id, store.selectedTab.id, trailing.id])
+    #expect(store.tabReorderPreview.offsets.isEmpty)
     #expect(store.zoomedPane == nil)
     #expect(store.selectedTab.pages.map(\.id) == [pageID])
     #expect(store.existingController(for: pageID) === controller)
@@ -294,6 +339,7 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     #expect(store.tabReorderPreview.offsets[tabs[1].id] == -1)
     #expect(store.tabReorderPreview.offsets[tabs[2].id] == -1)
     #expect(store.tabReorderPreview.draggedID == tabs[0].id)
+    #expect(store.session.selectedTab == tabs[0].id)
     let handles = descendants(TabDragSourceView.self, host)
     func visualCenter(_ id: UUID) throws -> CGFloat {
         let handle = try #require(handles.first { $0.tabID == id })
@@ -322,7 +368,7 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     try sendTransferMouse(.leftMouseUp, at: up, to: window)
     try await settle()
     #expect(store.session.workspaces[0].tabs.map(\.id) == [tabs[1].id, tabs[2].id, tabs[0].id])
-    #expect(store.session.selectedTab == tabs[1].id)
+    #expect(store.session.selectedTab == tabs[0].id)
     #expect(window.mouseUpCount == releases + 1)
     #expect(window.frame == frame)
     let source = try #require(descendants(TabDragSourceView.self, host).first { $0.tabID == tabs[0].id })
@@ -340,7 +386,7 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     try sendTransferMouse(.leftMouseUp, at: above, to: window)
     try await settle()
     #expect(store.session.workspaces[0].tabs.map(\.id) == tabs.map(\.id))
-    #expect(store.session.selectedTab == tabs[1].id)
+    #expect(store.session.selectedTab == tabs[0].id)
     #expect(source.dragSurface == nil)
     // Escape and releasing outside all drop targets leave the order unchanged.
     for cancel in [true, false] {
@@ -361,7 +407,7 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
         try await settle()
         #expect(source.dragSurface == nil)
         #expect(store.session.workspaces[0].tabs.map(\.id) == tabs.map(\.id))
-        #expect(store.session.selectedTab == tabs[1].id)
+        #expect(store.session.selectedTab == tabs[0].id)
     }
     // Tab overlays also cannot block the next click when a release is lost.
     try sendTransferMouse(.leftMouseDown, at: try point(tabs[0].id), to: window)
@@ -610,8 +656,7 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     #expect(store.session.selectedTab == second.id)
     #expect(source.dragSurface?.placement == .joinAtPane(tabID: second.id, paneID: paneID, edge: edge))
     #expect(target.dropEdge == edge)
-    // Escape clears a live pane preview, and another gesture can immediately
-    // target the now-visible destination without waiting for sidebar hover.
+    // A new drag activates its source again; hovering the destination reopens it.
     let escape = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
         timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
         context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53))
@@ -620,6 +665,9 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     #expect(store.session.workspaces[0].tabs.count == 2)
     try sendTransferMouse(.leftMouseUp, at: drop, to: window)
     try sendTransferMouse(.leftMouseDown, at: down, to: window)
+    try sendTransferMouse(.leftMouseDragged, at: hover, to: window)
+    #expect(store.session.selectedTab == first.id)
+    try await settle(11)
     try sendTransferMouse(.leftMouseDragged, at: drop, to: window)
     #expect(source.dragSurface?.placement == .joinAtPane(tabID: second.id, paneID: paneID, edge: edge))
     // Releasing back at the original slot aborts the merge immediately.

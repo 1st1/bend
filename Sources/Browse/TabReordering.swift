@@ -88,6 +88,7 @@ final class TabDragSourceView: NSView {
               let window, let content = window.contentView else { cancelDrag(); return }
         guard dragSurface != nil || hypot(event.locationInWindow.x - origin.x, event.locationInWindow.y - origin.y) >= 5 else { return }
         if dragSurface == nil {
+            if store.session.selectedTab != tabID { store.select(tabID) }
             if let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == tabID }) {
                 dragPreview = DetachedDragPreview(store: store, tab: tab, pane: nil, title: title, source: window)
             }
@@ -237,7 +238,8 @@ final class TabDragSurface: NSView {
         self.source = source
         super.init(frame: content.bounds)
         autoresizingMask = [.width, .height]; wantsLayer = true
-        marker.fillColor = NSColor.systemBlue.cgColor
+        marker.fillColor = NSColor.systemBlue.withAlphaComponent(0.22).cgColor
+        marker.strokeColor = NSColor.systemBlue.cgColor
         marker.isHidden = true
         layer?.addSublayer(marker)
         badge.stringValue = source.title
@@ -254,10 +256,7 @@ final class TabDragSurface: NSView {
            let down = source.mouseDownPoint {
             let frame = row.convert(row.bounds, to: nil)
             grabPoint = NSPoint(x: down.x - frame.minX, y: frame.maxY - down.y)
-            let preview = NSHostingView(rootView: SidebarTabRow(store: store, tab: tab, isDragPreview: true)
-                .background(.regularMaterial, in: Capsule())
-                .frame(width: frame.width, height: frame.height))
-            preview.sizingOptions = []
+            let preview = SidebarTabRow.dragPreview(store: store, tab: tab)
             preview.frame.size = frame.size
             floatingRow = preview
             addSubview(preview)
@@ -322,8 +321,6 @@ final class TabDragSurface: NSView {
             badge.isHidden = window !== sourceWindow
             badge.stringValue = "Join tabs"
             CATransaction.begin(); CATransaction.setDisableActions(true)
-            marker.fillColor = NSColor.systemBlue.withAlphaComponent(0.22).cgColor
-            marker.strokeColor = NSColor.systemBlue.cgColor
             marker.path = CGPath(roundedRect: row.1.insetBy(dx: 1, dy: 1),
                                  cornerWidth: 12, cornerHeight: 12, transform: nil)
             marker.isHidden = false

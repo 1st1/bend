@@ -13,6 +13,10 @@ public enum SearchEngine: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    public func displayName(custom: CustomSearchEngine?) -> String {
+        self == .custom ? (custom?.name ?? "Custom") : name
+    }
+
     public func searchURL(for query: String, custom: CustomSearchEngine? = nil) -> URL? {
         let endpoint: String
         switch self {

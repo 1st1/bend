@@ -22,7 +22,7 @@ Moving a designated Command-click pane clears the source tab’s designation and
 
 [PaneTransferTests.swift](../../Tests/BrowseTests/PaneTransferTests.swift) drives a single-pane tab through sidebar hover into an unvisited tab, drops on its WebKit content, then detaches into sidebar space.
 
-Both sidebar positions exercise native sidebar drop targets, including returning a pane to unused sidebar space.
+Both sidebar positions verify that the running WebView expands to canvas width before release, retains unsaved input, and returns to its exact split frame and host when dragged back. Pane-edge targets then work within the same gesture.
 
 The test uses the unified titlebar and glass window hierarchy. It verifies delayed-hover cancellation, destination selection, source-tab removal, edge placement, direct row drops before the hover delay, zoomed-pane detaching and row drops, self-row rejection, and saved layouts. Consecutive same-tab drops alternate between panes during hover animation and after focus/layout updates in a key window, and every release must reach the window drag controller. The same live web view, document timestamp, unsaved input, and extension tab adapter survive transfers without creating closed-item history. A missing mouse-up is followed by a press on another pane, which must cancel stale tracking and complete a fresh drag. A whole-tab row-center drop preserves the source split tree, live document timestamp, unsaved input, controller, and extension adapter inside the joined destination. All data and HTTP pages are disposable.
 

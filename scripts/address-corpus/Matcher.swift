@@ -16,21 +16,17 @@ private struct Run: Encodable {
 }
 
 private struct Result: Encodable {
-    let url: String
-    let address: [Run]
+    let score: HistoryMatchScore?
+    let historyURL: String?
+    let detail: [Run]
     let title: [Run]
 
-    init(_ suggestion: HistorySuggestion, query: String) {
-        url = suggestion.url
-        let full = query.contains("://")
-        let field = full ? url : suggestion.displayURL
-        let decoded = field.removingPercentEncoding ?? field
-        var runs = Self.runs(query, in: decoded)
-        if !full {
-            runs.insert(Run(text: String(url.dropLast(field.count)), matched: false), at: 0)
-        }
-        address = runs
-        title = suggestion.title == url ? [] : Self.runs(query, in: suggestion.title)
+    init(_ row: AddressSuggestions.Row, query: String) {
+        score = row.score
+        historyURL = row.history?.url
+        let highlight = historyURL == nil ? "" : query
+        detail = Self.runs(highlight, in: row.detail)
+        title = Self.runs(highlight, in: row.title)
     }
 
     private static func runs(_ query: String, in text: String) -> [Run] {
@@ -55,15 +51,28 @@ private struct Result: Encodable {
     }
 }
 
-/// Keep one production search index alive across keystrokes, including all imported visits.
-@main
-enum CorpusMatcher {
-    static func main() throws {
-        let decoder = JSONDecoder()
+private struct CorpusInput: Decodable {
+    let snapshots: [Snapshot]
+    let searchEngine: SearchEngine?
+    let customSearchEngine: CustomSearchEngine?
+}
+
+private struct Reply: Encodable {
+    let rows: [Result]
+    let selected: Int
+    let completion: String?
+}
+
+/// One Swift index per Python matcher. Only opaque handles and UTF-8 JSON cross the C ABI.
+private final class CorpusMatcher {
+    let history: BrowsingHistory
+    let engine: SearchEngine
+    let custom: CustomSearchEngine?
+
+    init(_ input: CorpusInput) {
         var visits: [HistoryVisit] = []
         var choices: [HistoryChoice] = []
-        while let line = readLine(), !line.isEmpty {
-            let snapshot = try decoder.decode(Snapshot.self, from: Data(line.utf8))
+        for snapshot in input.snapshots {
             for visit in snapshot.visits {
                 guard let url = BrowsingHistory.webAddress(visit.url) else { continue }
                 visits.append(HistoryVisit(id: UUID(), url: url, title: visit.title.isEmpty ? url : visit.title,
@@ -71,12 +80,31 @@ enum CorpusMatcher {
             }
             choices.append(contentsOf: snapshot.choices)
         }
-        let history = BrowsingHistory(visits: visits, choices: choices)
-        let encoder = JSONEncoder()
-        while let line = readLine() {
-            let query = try decoder.decode(String.self, from: Data(line.utf8))
-            let results = history.suggestions(for: query, limit: 5).map { Result($0, query: query) }
-            FileHandle.standardOutput.write(try encoder.encode(results) + Data([10]))
-        }
+        history = BrowsingHistory(visits: visits, choices: choices)
+        engine = input.searchEngine ?? .google
+        custom = input.customSearchEngine
     }
 }
+
+@_cdecl("bend_corpus_create")
+public func corpusCreate(_ json: UnsafePointer<CChar>) -> UnsafeMutableRawPointer? {
+    guard let input = try? JSONDecoder().decode(CorpusInput.self, from: Data(String(cString: json).utf8)) else { return nil }
+    return Unmanaged.passRetained(CorpusMatcher(input)).toOpaque()
+}
+
+@_cdecl("bend_corpus_query")
+public func corpusQuery(_ handle: UnsafeMutableRawPointer, _ text: UnsafePointer<CChar>, _ autofill: Int32) -> UnsafeMutablePointer<CChar>? {
+    let matcher = Unmanaged<CorpusMatcher>.fromOpaque(handle).takeUnretainedValue()
+    let query = String(cString: text)
+    let model = AddressSuggestions(history: matcher.history, typedQuery: query, allowAutofill: autofill != 0,
+                                   searchEngine: matcher.engine, customSearchEngine: matcher.custom)
+    let reply = Reply(rows: model.rows.map { Result($0, query: query) }, selected: model.selected, completion: model.completion)
+    guard let data = try? JSONEncoder().encode(reply) else { return nil }
+    return strdup(String(decoding: data, as: UTF8.self))
+}
+
+@_cdecl("bend_corpus_free_reply")
+public func corpusFreeReply(_ reply: UnsafeMutablePointer<CChar>) { free(reply) }
+
+@_cdecl("bend_corpus_destroy")
+public func corpusDestroy(_ handle: UnsafeMutableRawPointer) { Unmanaged<CorpusMatcher>.fromOpaque(handle).release() }

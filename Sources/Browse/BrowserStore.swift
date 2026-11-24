@@ -301,7 +301,7 @@ final class BrowserStore: ObservableObject {
     }
 
     var searchEngineName: String {
-        searchEngine == .custom ? (customSearchEngine?.name ?? "Custom") : searchEngine.name
+        searchEngine.displayName(custom: customSearchEngine)
     }
 
     var searchEngine: SearchEngine {
@@ -664,11 +664,17 @@ final class BrowserStore: ObservableObject {
     }
 
     @discardableResult
-    func detachPane(_ source: UUID, from sourceTabID: UUID, into workspaceID: UUID) -> Bool {
+    func detachPane(_ source: UUID, from sourceTabID: UUID, into workspaceID: UUID,
+                    relativeTo anchor: UUID? = nil, after: Bool = false) -> Bool {
         var next = session
+        if let anchor, let tab = next.workspaces.first(where: { $0.id == workspaceID })?.tabs.first(where: { $0.id == sourceTabID }),
+           tab.pages.count == 1, tab.pages.first?.id == source {
+            return reorderTab(sourceTabID, relativeTo: anchor, after: after)
+        }
         let title = browsers[source]?.title ?? session.workspaces.flatMap(\.tabs)
             .first(where: { $0.id == sourceTabID })?.title ?? "New tab"
-        guard next.detachPane(source, from: sourceTabID, into: workspaceID, title: title) != nil else { return false }
+        guard next.detachPane(source, from: sourceTabID, into: workspaceID, title: title,
+                              relativeTo: anchor, after: after) != nil else { return false }
         zoomedPanes[sourceTabID] = nil
         refreshTransferredTitles(&next)
         session = next

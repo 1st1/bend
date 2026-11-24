@@ -321,7 +321,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
     func update(webView: WKWebView, topContentInset: CGFloat, headerAppearance: GlassAppearance? = nil,
                 topRimClipping: CGFloat = BrowserStore.defaultHeaderTopRimClipping,
                 bottomRimClipping: CGFloat = BrowserStore.defaultHeaderBottomRimClipping,
-                activeHeaderTint: NSColor? = nil) {
+                activeHeaderTint: NSColor? = nil, isDragCanvas: Bool = false) {
         if let layer = activeHeaderTintView.layer, layer.backgroundColor != activeHeaderTint?.cgColor {
             let previous = layer.presentation()?.backgroundColor ?? layer.backgroundColor ?? NSColor.clear.cgColor
             layer.backgroundColor = activeHeaderTint?.cgColor
@@ -336,7 +336,7 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         if hostedWebView !== webView {
             titlePreviewURL = ""
             (hostedWebView as? FocusWebView)?.closeInspector()
-            if webView.superview !== self { (webView as? FocusWebView)?.closeInspector() }
+            if !isDragCanvas, webView.superview !== self { (webView as? FocusWebView)?.closeInspector() }
             linkPreview.url = ""
             hideFindBar(restoreFocus: false)
             findSupport?.invalidate()
@@ -369,6 +369,13 @@ final class WebSurfaceHost: NSView, NSSearchFieldDelegate {
         layer?.maskedCorners = topContentInset > 0
             ? [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
             : [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
+    func restoreAfterDrag(_ webView: WKWebView) {
+        guard hostedWebView === webView else { return }
+        addSubview(webView, positioned: .below, relativeTo: headerGlass)
         needsLayout = true
         layoutSubtreeIfNeeded()
     }

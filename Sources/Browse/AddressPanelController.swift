@@ -41,7 +41,11 @@ private final class AddressResultCell: NSTableCellView {
     private func highlight(_ field: NSTextField, ranges: [NSRange], color: NSColor, selected: Bool) {
         let font = NSFont.systemFont(ofSize: field === title ? 14 : 11)
         let baseColor = selected && (!titleMatches.isEmpty || !detailMatches.isEmpty) ? color.withAlphaComponent(0.8) : color
-        let value = NSMutableAttributedString(string: field.stringValue, attributes: [.font: font, .foregroundColor: baseColor])
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = field.lineBreakMode
+        let value = NSMutableAttributedString(string: field.stringValue, attributes: [
+            .font: font, .foregroundColor: baseColor, .paragraphStyle: paragraph
+        ])
         for range in ranges where NSMaxRange(range) <= value.length {
             value.addAttributes([.font: NSFont.systemFont(ofSize: font.pointSize, weight: .bold),
                                  .foregroundColor: selected ? color : NSColor.controlAccentColor], range: range)
@@ -415,38 +419,12 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
             return
         }
         let selectedAddress = preserveSelection && results.indices.contains(selectedResult) ? results[selectedResult].address : nil
-        let query = showingFrequent ? "" : typedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        let suggestions = (history ?? store.history).suggestions(for: query)
-        results = suggestions.map { AddressResult(title: $0.title, detail: $0.displayURL, address: $0.url, history: $0) }
-        let intent = AddressResolver.classify(query)
-        var canPromoteHistory = false
-        if let intent, intent.destination(searchEngine: store.searchEngine, customSearchEngine: store.customSearchEngine, query: query) != nil {
-            let isSearch: Bool
-            switch intent {
-            case .visit:
-                isSearch = false
-            case .search(let prefersDirectAction):
-                isSearch = true
-                canPromoteHistory = allowAutofill && !prefersDirectAction
-            }
-            results.insert(AddressResult(title: isSearch ? "Search for “\(query)”" : "Visit \(query)",
-                detail: isSearch ? "Search with \(store.searchEngineName)" : "Open address", address: query, history: nil), at: 0)
-            selectedResult = 0
-        } else { selectedResult = -1 }
-        // Fuzzy quick-open selects the best result without replacing what was
-        // typed. A non-prefix completion cannot safely be inserted inline.
-        if canPromoteHistory, let first = suggestions.first, first.isFuzzyMatch || first.isPathMatch,
-           let index = results.firstIndex(where: { $0.history?.url == first.url }) {
-            let topHit = results.remove(at: index)
-            results.insert(topHit, at: 0)
-            selectedResult = 0
-        }
-        if canPromoteHistory, let suggestion = suggestions.first,
-           let completion = suggestion.completion(for: typedQuery),
-           let index = results.firstIndex(where: { $0.history?.url == suggestion.url }) {
-            let topHit = results.remove(at: index)
-            results.insert(topHit, at: 0)
-            selectedResult = 0
+        let model = AddressSuggestions(history: history ?? store.history, typedQuery: typedQuery,
+                                       showingFrequent: showingFrequent, allowAutofill: allowAutofill,
+                                       searchEngine: store.searchEngine, customSearchEngine: store.customSearchEngine)
+        results = model.rows.map { AddressResult(title: $0.title, detail: $0.detail, address: $0.address, history: $0.history) }
+        selectedResult = model.selected
+        if let completion = model.completion {
             input.stringValue = completion
             if let editor = input.currentEditor() as? NSTextView {
                 editor.string = completion
@@ -552,11 +530,13 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         let title = view.title
         title.stringValue = result.title
         title.font = .systemFont(ofSize: 14)
+        title.maximumNumberOfLines = 1
         title.lineBreakMode = .byTruncatingTail
         let detail = view.detail
         detail.stringValue = result.detail
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = .secondaryLabelColor
+        detail.maximumNumberOfLines = 1
         detail.lineBreakMode = .byTruncatingMiddle
         if result.history != nil, !showingFrequent {
             view.titleMatches = FuzzyMatch.ranges(typedQuery, in: result.title)

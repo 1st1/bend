@@ -5,6 +5,14 @@ User-facing changes to Bend, maintained with Changie. Versions use `MAJOR.MINOR.
 Earlier prototype builds used the version `0.1` without a versioned changelog; `0.1.0` records that baseline.
 
 
+## v0.10.3
+### Changed
+- Drag a pane between sidebar tabs to preview its live page and insert it there. Drag it back to its original tab to restore the split before releasing.
+### Fixed
+- Keep the URL visible beneath long page titles in address-bar suggestions.
+- Find and autocomplete visited www. addresses by typing the hostname without www., while opening the original URL.
+- Keep matching history suggestions first when typing the first dot of a hostname.
+
 ## v0.10.2
 ### Added
 - Open tabs and panes keep their Back and Forward history when you quit and reopen Bend.
