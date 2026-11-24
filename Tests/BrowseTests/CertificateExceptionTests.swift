@@ -1,8 +1,41 @@
 import AppKit
 import Security
 import Testing
+import BrowseCore
 import WebKit
 @testable import Browse
+
+@Test @MainActor func rememberedHTTPFallback() async throws {
+    _ = NSApplication.shared
+    let server = try await ExtensionHTTPFixture.start()
+    defer { server.listener.cancel() }
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let file = root.appendingPathComponent("settings.db")
+    let settings = WebsiteSettingsStore(file: file)
+    let path = "127.0.0.1:\(server.port)/test?q=1"
+    let page = PageController(address: "https://\(path)", websiteSettings: settings)
+    for _ in 0..<600 where page.error == nil { try await Task.sleep(for: .milliseconds(25)) }
+    #expect(try #require(page.httpFallbackURL, "WebKit error: \(page.error ?? "none"), URL: \(String(describing: page.webView.url))").absoluteString == "http://\(path)")
+    settings.setPreference(\.warnHTTP, true)
+    page.proceedWithoutTLS()
+    for _ in 0..<200 where page.committedSiteURL?.scheme != "http" || page.webView.isLoading { try await Task.sleep(for: .milliseconds(25)) }
+    #expect(try await page.webView.evaluateJavaScript("document.body.innerText") as? String == "Fixture")
+    #expect(page.webView.url?.absoluteString == "http://\(path)")
+    #expect(WebsiteSettingsStore(file: file).values.allowsHTTP(try #require(page.webView.url)))
+
+    let address = "100.91.15.25:9000"
+    settings.allowHTTP(for: try #require(URL(string: "http://\(address)")))
+    let reopened = WebsiteSettingsStore(file: file)
+    func scheme(_ input: String) -> String? {
+        reopened.values.locationURL(input, searchEngine: .google, customSearchEngine: nil)?.scheme
+    }
+    #expect(scheme("\(address)/status") == "http")
+    #expect(scheme("100.91.15.25:9001") == "https")
+    #expect(scheme("https://\(address)") == "https")
+    reopened.forgetHTTP("http://\(address)")
+    #expect(scheme(address) == "https")
+}
 
 @MainActor private final class CertificateTestWebView: FocusWebView {
     var omitsServerTrust = false

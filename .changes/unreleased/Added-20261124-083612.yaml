@@ -1,0 +1,3 @@
+kind: Added
+body: After a TLS connection failure, choose Proceed without TLS to open the site over HTTP and remember that host and port.
+time: 2026-11-24T08:36:12.919346-08:00

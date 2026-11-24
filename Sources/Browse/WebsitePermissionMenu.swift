@@ -9,20 +9,30 @@ struct WebsitePermissionMenu: View {
     let pageID: UUID
     let showExtensionSettings: () -> Void
     private var capturing: Bool { page.cameraCaptureState != .none || page.microphoneCaptureState != .none }
+    private var isHTTP: Bool { !page.isStartPage && page.committedSiteURL?.scheme?.lowercased() == "http" }
+    private var securityLabel: String? {
+        if isHTTP { return "Not Secure — HTTP" }
+        return page.usesCertificateException ? "Not Secure" : nil
+    }
 
     var body: some View {
         Menu {
             if !page.isStartPage, let url = page.committedSiteURL, let origin = WebsitePermission.origin(for: url) {
                 Text(origin)
-                if page.usesCertificateException {
+                if isHTTP {
+                    Text("Not Secure — HTTP")
+                    Text("The connection to this website is not encrypted.")
+                } else if page.usesCertificateException {
                     Text("Not Secure")
                     Text("You chose to trust a certificate Bend could not verify.")
                     Text("This website’s identity cannot be confirmed.")
                 } else {
                     Text(url.scheme == "https" ? (page.webView.hasOnlySecureContent ? "HTTPS connection" : "Some content is not secure") : "Connection is not encrypted")
                 }
-                Button("View HTTPS Certificates…") { page.showCertificates() }
-                    .disabled(page.certificateTrust == nil)
+                if url.scheme?.lowercased() == "https" {
+                    Button("View HTTPS Certificates…") { page.showCertificates() }
+                        .disabled(page.certificateTrust == nil)
+                }
                 Divider()
                 ForEach(WebsitePermission.allCases, id: \.self) { permission in
                     Picker(permission.title, selection: Binding(
@@ -50,11 +60,12 @@ struct WebsitePermissionMenu: View {
             }
         }
         .menuStyle(.button)
-        .buttonStyle(ChromeButtonStyle(pill: true, foregroundColor: page.usesCertificateException ? .red : nil))
+        .buttonStyle(ChromeButtonStyle(pill: true, foregroundColor: securityLabel != nil ? .red : nil))
         .menuIndicator(.hidden)
         .disabled(page.isStartPage)
         .fixedSize()
         .help((page.isStartPage ? page.address : (page.committedSiteURL.flatMap(WebsitePermission.origin) ?? "Page")) + " — " + (capturing ? "Camera or microphone in use — website permissions" : "Website permissions"))
-        .accessibilityLabel(page.usesCertificateException ? "Not Secure — website permissions" : capturing ? "Capture controls and website permissions" : "Website permissions")
+        .accessibilityLabel([securityLabel, capturing ? "Capture controls and website permissions" : "Website permissions"]
+            .compactMap { $0 }.joined(separator: " — "))
     }
 }

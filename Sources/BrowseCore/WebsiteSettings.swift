@@ -17,6 +17,29 @@ public struct WebsiteSettings: Equatable, Sendable {
     public var warnFraudulentSites = true
     public var javaScriptEnabled = true
     public var warnHTTP = false
+    public var allowedHTTPOrigins: Set<String> = []
+
+    public static func httpAlternative(for url: URL) -> URL? {
+        guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              parts.scheme?.lowercased() == "https", parts.host?.isEmpty == false,
+              parts.user == nil, parts.password == nil else { return nil }
+        parts.scheme = "http"
+        return parts.url
+    }
+
+    public func allowsHTTP(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "http", let origin = WebsitePermission.origin(for: url) else { return false }
+        return allowedHTTPOrigins.contains(origin)
+    }
+
+    public func locationURL(_ input: String, searchEngine: SearchEngine, customSearchEngine: CustomSearchEngine?) -> URL? {
+        guard let intent = AddressResolver.classify(input) else { return nil }
+        if case .visit(let url) = intent,
+           !input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("https://"),
+           let http = Self.httpAlternative(for: url), allowsHTTP(http) { return http }
+        return intent.destination(searchEngine: searchEngine, customSearchEngine: customSearchEngine,
+                                  query: input.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
     public var blockAllCookies = false
     public var preventCrossSiteTracking = true
     public var applePayDisclosureAllowed = true
@@ -52,6 +75,7 @@ public struct WebsiteSettings: Equatable, Sendable {
     }
 
     public var isValid: Bool {
+        allowedHTTPOrigins.allSatisfy { $0.hasPrefix("http://") && URL(string: $0).flatMap(WebsitePermission.origin) == $0 } &&
         allowedPermissions.keys.allSatisfy { URL(string: $0).flatMap(WebsitePermission.origin) == $0 } && blockedPermissions.keys.allSatisfy { URL(string: $0).flatMap(WebsitePermission.origin) == $0 } && PageZoom.isValid(defaultZoom) && zoomByHost.allSatisfy { host, zoom in
             guard let url = URL(string: "https://\(host)/") else { return false }
             return Self.hostname(for: url) == host && PageZoom.isValid(zoom)

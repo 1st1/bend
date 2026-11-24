@@ -63,6 +63,13 @@ final class WebsiteSettingsStore: ObservableObject {
         update { $0.defaultZoom = zoom }
     }
 
+    func allowHTTP(for url: URL) {
+        guard url.scheme == "http", let origin = WebsitePermission.origin(for: url) else { return }
+        update { $0.allowedHTTPOrigins.insert(origin) }
+    }
+
+    func forgetHTTP(_ origin: String) { update { $0.allowedHTTPOrigins.remove(origin) } }
+
     func setPreference(_ key: WritableKeyPath<WebsiteSettings, Bool>, _ enabled: Bool) {
         update { $0[keyPath: key] = enabled }
     }

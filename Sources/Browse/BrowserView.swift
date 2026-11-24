@@ -846,6 +846,9 @@ struct BrowserPane: View {
                 Text(error).font(.system(size: 12)).foregroundStyle(Chrome.muted).multilineTextAlignment(.center)
                 HStack {
                     Button("Try again") { controller.navigate(controller.address) }.buttonStyle(.bordered)
+                    if controller.httpFallbackURL != nil {
+                        Button("Proceed without TLS") { controller.proceedWithoutTLS() }.buttonStyle(.bordered)
+                    }
                     if controller.certificateFailure != nil {
                         Button("Continue anyway") { controller.continueDespiteCertificateError() }
                             .buttonStyle(.bordered)
