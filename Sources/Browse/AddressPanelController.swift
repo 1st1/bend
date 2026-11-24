@@ -41,7 +41,11 @@ private final class AddressResultCell: NSTableCellView {
     private func highlight(_ field: NSTextField, ranges: [NSRange], color: NSColor, selected: Bool) {
         let font = NSFont.systemFont(ofSize: field === title ? 14 : 11)
         let baseColor = selected && (!titleMatches.isEmpty || !detailMatches.isEmpty) ? color.withAlphaComponent(0.8) : color
-        let value = NSMutableAttributedString(string: field.stringValue, attributes: [.font: font, .foregroundColor: baseColor])
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = field.lineBreakMode
+        let value = NSMutableAttributedString(string: field.stringValue, attributes: [
+            .font: font, .foregroundColor: baseColor, .paragraphStyle: paragraph
+        ])
         for range in ranges where NSMaxRange(range) <= value.length {
             value.addAttributes([.font: NSFont.systemFont(ofSize: font.pointSize, weight: .bold),
                                  .foregroundColor: selected ? color : NSColor.controlAccentColor], range: range)
@@ -526,11 +530,13 @@ final class AddressPanelController: NSObject, NSWindowDelegate, NSTextFieldDeleg
         let title = view.title
         title.stringValue = result.title
         title.font = .systemFont(ofSize: 14)
+        title.maximumNumberOfLines = 1
         title.lineBreakMode = .byTruncatingTail
         let detail = view.detail
         detail.stringValue = result.detail
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = .secondaryLabelColor
+        detail.maximumNumberOfLines = 1
         detail.lineBreakMode = .byTruncatingMiddle
         if result.history != nil, !showingFrequent {
             view.titleMatches = FuzzyMatch.ranges(typedQuery, in: result.title)
