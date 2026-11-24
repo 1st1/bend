@@ -25,6 +25,7 @@ enum Chrome {
 
 struct BrowserView: View {
     @ObservedObject var store: BrowserStore
+    var shellOnly = false
     @ViewState<SidebarScrollStatus> private var sidebarScrollStatus = .init()
     @ViewState private var mediaPlayerHeight: CGFloat = 0
     @ViewState private var sidebarHeaderHeight: CGFloat = 52
@@ -34,7 +35,20 @@ struct BrowserView: View {
         HStack(spacing: 0) {
             if store.sidebarSide == .right { chatSidebar }
             if store.sidebarVisible && store.sidebarSide == .left { dockedSidebar }
-            MountedTabContent(store: store)
+            Group {
+                if shellOnly {
+                    GeometryReader { proxy in
+                        let tab = store.selectedTab
+                        let layout = store.zoomedPanes[tab.id].map(PaneLayout.pane) ?? tab.layout
+                        let geometry = PaneGeometry(layout: layout, viewport: proxy.size)
+                        ForEach(geometry.panes) { placement in
+                            RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .windowBackgroundColor))
+                                .frame(width: placement.frame.width, height: placement.frame.height)
+                                .position(x: placement.frame.midX, y: placement.frame.midY)
+                        }
+                    }.clipped().accessibilityHidden(true)
+                } else { MountedTabContent(store: store) }
+            }
             .padding(Chrome.paneInset)
             .background {
                 if #unavailable(macOS 26.0) {

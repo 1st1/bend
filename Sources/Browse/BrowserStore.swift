@@ -69,6 +69,11 @@ final class BrowserStore: ObservableObject {
     @available(macOS 15.4, *)
     var extensions: ExtensionManager {
         if let manager = extensionStorage as? ExtensionManager { return manager }
+        if let sharedStore {
+            let manager = sharedStore.extensions
+            extensionStorage = manager
+            return manager
+        }
         let manager = ExtensionManager(root: sessionFile.deletingLastPathComponent().appendingPathComponent("Extensions"), persistent: persistentExtensions)
         extensionStorage = manager
         manager.store = self
@@ -241,7 +246,7 @@ final class BrowserStore: ObservableObject {
         faviconObservation = faviconCache?.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
         if let sharedStore {
             sharedObservation = sharedStore.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
-            if #available(macOS 15.4, *) { extensionStorage = sharedStore.extensions }
+            extensionStorage = sharedStore.extensionStorage
         }
         if sharedStore == nil, #available(macOS 15.4, *), let manager = extensionManager as? ExtensionManager {
             manager.store = self
