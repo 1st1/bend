@@ -203,7 +203,12 @@ func crossTabPaneDragging(side: SidebarSide) async throws {
     try await settle()
     #expect(store.tabReorderPreview.offsets[trailing.id] == 1)
     #expect(store.session.workspaces[0].tabs.map(\.id) == [second.id, trailing.id])
-    try sendTransferMouse(.leftMouseUp, at: gap, to: window)
+    let floatStart = detachingRow.frame
+    let shifted = NSPoint(x: gap.x + 24, y: gap.y - 3)
+    try sendTransferMouse(.leftMouseDragged, at: shifted, to: window)
+    #expect(detachingRow.frame == floatStart.offsetBy(dx: 24, dy: 3))
+    #expect(store.tabReorderPreview.offsets[trailing.id] == 1)
+    try sendTransferMouse(.leftMouseUp, at: shifted, to: window)
     try await settle()
     #expect(store.selectedTab.id != second.id)
     #expect(store.session.workspaces[0].tabs.map(\.id) == [second.id, store.selectedTab.id, trailing.id])

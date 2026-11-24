@@ -1,0 +1,3 @@
+kind: Changed
+body: Restored windows show the sidebar and pane layout before WebKit starts loading pages.
+time: 2026-11-24T08:57:53.85648-08:00

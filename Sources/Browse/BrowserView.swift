@@ -239,6 +239,10 @@ struct SidebarTabRow: View {
         return view
     }
 
+    @MainActor static func positionDragPreview(_ row: NSView, at pointer: NSPoint, grabPoint: NSPoint) {
+        row.setFrameOrigin(NSPoint(x: pointer.x - grabPoint.x, y: pointer.y - grabPoint.y))
+    }
+
     var body: some View {
         #if DEBUG
         TabPerformanceCounters.record(\.sidebarRowBodies, store: store)

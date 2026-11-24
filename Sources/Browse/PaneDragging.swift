@@ -283,6 +283,7 @@ final class PaneDragSurface: NSView {
     private(set) var target: PaneDropHost?
     private var hoveredSidebar: PaneSidebarTargetView?
     private(set) var insertion: (id: UUID, after: Bool)?
+    private var insertionFrame: NSRect?
     private weak var reorderStore: BrowserStore?
     var sidebarTarget: PaneSidebarTargetView? {
         if case .tab(let id) = hoveredSidebar?.destination, id == source?.tabID { return nil }
@@ -322,7 +323,6 @@ final class PaneDragSurface: NSView {
         // Rows take precedence over the containing workspace's empty-space target.
         var hovered = sidebar.first { if case .tab = $0.destination { return true }; return false }
             ?? sidebar.min { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height }
-        var insertionFrame: NSRect?
         if let workspace = sidebar.first(where: { if case .workspace = $0.destination { return true }; return false }),
            let pageID = source.pageID {
             let rows = targetsInSidebar.compactMap { view -> (UUID, NSRect)? in
@@ -331,10 +331,7 @@ final class PaneDragSurface: NSView {
             }.sorted { $0.1.midY < $1.1.midY }
             // Keep the opened slot stable through mouse-up. Use the fixed row
             // bounds (outside TabReorderOffset) to locate the next boundary.
-            if reorderStore === store, let frame = sidebarRow?.frame, insertion != nil,
-               frame.contains(point) {
-                insertionFrame = frame
-            } else {
+            if reorderStore !== store || insertionFrame?.contains(point) != true {
                 clearInsertion()
                 let stride = Chrome.sidebarTabHeight + Chrome.sidebarTabSpacing
                 for (index, row) in rows.enumerated() {
@@ -379,8 +376,9 @@ final class PaneDragSurface: NSView {
             setTarget(nil)
             WindowDragTarget.reveal(window, from: source.window)
             sidebarTarget?.showPreview(true)
-            showSidebarRow(for: source, over: hovered, at: point)
-            if let insertionFrame { sidebarRow?.frame = insertionFrame }
+            let rowTarget = targetsInSidebar.first { if case .tab = $0.destination { return true }; return false }
+            let width = rowTarget?.bounds.width ?? max(1, hovered.bounds.width - 2 * Chrome.sidebarHorizontalInset)
+            showSidebarRow(for: source, width: width, at: point)
             switch hovered.destination {
             case .workspace:
                 showLiveCanvas(for: source, in: content)
@@ -406,7 +404,7 @@ final class PaneDragSurface: NSView {
         setTarget(nil)
     }
 
-    private func showSidebarRow(for source: PaneDragSourceView, over hovered: PaneSidebarTargetView, at point: NSPoint) {
+    private func showSidebarRow(for source: PaneDragSourceView, width: CGFloat, at point: NSPoint) {
         if sidebarRow == nil, let store = source.store,
            let tab = store.session.workspaces.flatMap(\.tabs).first(where: { $0.id == source.tabID }),
            let page = tab.pages.first(where: { $0.id == source.pageID }) {
@@ -414,20 +412,12 @@ final class PaneDragSurface: NSView {
             addSubview(row)
             sidebarRow = row
         }
-        var slot = convert(hovered.bounds, from: hovered)
-        let height = Chrome.sidebarTabHeight
-        switch hovered.destination {
-        case .workspace:
-            slot = slot.insetBy(dx: Chrome.sidebarHorizontalInset, dy: 0)
-            slot.origin.y = point.y - height / 2
-        case .tab:
-            // Keep the highlighted merge destination visible above the dragged row.
-            slot.origin.y = slot.maxY + Chrome.sidebarTabSpacing
-        }
-        slot.origin.y = max(bounds.minY, min(slot.minY, bounds.maxY - height))
-        slot.size.height = height
-        sidebarRow?.frame = slot
-        sidebarRow?.isHidden = false
+        guard let sidebarRow else { return }
+        sidebarRow.frame.size = NSSize(width: width, height: Chrome.sidebarTabHeight)
+        // A pane handle has no original sidebar grab point. Pick up the tab at its center.
+        SidebarTabRow.positionDragPreview(sidebarRow, at: point,
+            grabPoint: NSPoint(x: width / 2, y: Chrome.sidebarTabHeight / 2))
+        sidebarRow.isHidden = false
     }
 
     // Borrow the running WebView, not its controller or session entry. The
@@ -493,6 +483,7 @@ final class PaneDragSurface: NSView {
         reorderStore?.tabReorderPreview.clear()
         reorderStore = nil
         insertion = nil
+        insertionFrame = nil
     }
 
     override func mouseDown(with event: NSEvent) { source?.cancelDrag() }
